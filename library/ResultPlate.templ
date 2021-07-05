@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<meta charset="utf-8">
+<head>
+  <title>SVG test</title>
+  <style>
+    body { padding: 10px; }
+    td.count { text-align: right; padding: 0px 5px; }
+    td.perc  { text-align: right; padding: 0px 5px; }
+    td.assay { text-align: left; padding: 0px 5px; }
+    div.info { padding: 5px 10px; background-color: #EFE; }
+  </style>
+  <script>
+  let data = {!plates!};
+  function addfig(p) {
+      let dx = data[p], pid=dx.pid, obj=dx.wells;
+      let popupid = 'PU_'+pid;
+      var t, col;
+      let xdim=obj.length, ydim=obj[0].length, radius=16, sep=4, xmargin=20, ymargin=16;
+      let ypopup = (ydim*2*(radius+sep)+2*ymargin);
+      let svg = "<svg width=\""+(xdim*2*(radius+sep)+2*xmargin)+"\" height=\""+ypopup+"\">\n";
+      svg += "  <g transform=\"translate("+xmargin+" "+ymargin+")\">\n";
+      svg += "    <rect x=\"0\" y=\"0\" width=\""+(radius+sep)*2*xdim+"\" height=\""+(radius+sep)*2*ydim;
+      svg += "\" fill=\"#EEE\" />\n";
+      for(let i=0; i<obj.length; i++) {
+          col = obj[i];
+          for (let j=0; j<col.length; j++) {
+              let f = col[j], extra='';
+              // let y = f.well.charCodeAt(0)-'A'.charCodeAt(0), x = f.well.substring(1)-1;
+              let xpos=(i*2+1)*(radius+sep), ypos=(j*2+1)*(radius+sep);
+	      let colour="white";
+              if (f) {
+                  // calculate a colour
+                  if (f.reads) {
+                      let rx = Math.log(f.reads)/Math.LN10-2;
+                      if (rx<0) rx=0;
+                      rx = rx/3*30;
+                      if (rx>30) rx = 30;
+                      let cbx = "0123456789ABCDEF".charAt(rx<15?rx:15);
+                      let cgx = "0123456789ABCDEF".charAt(rx<15?0:rx-15);
+                      let crx = "0123456789ABCDEF".charAt(rx<15?0:(rx-15)/2);
+                      colour = "#"+crx+cgx+cbx;
+                  }
+                  else
+                      colour = "red";
+                  extra = " onmouseover=\"popup("+p+", "+i+", "+j+");\"";
+                  // extra += " onmouseout=\"popup('".concat(popupid, "', '');\"");
+              }
+              t = "    <circle cx=\""+xpos+"\" cy=\""+ypos+"\""+" r=\""+radius+"\" fill=\""+colour+"\""+extra+" />";
+              // console.log("adding - "+t);
+              svg += t+"\n";
+          }
+      }
+/*
+      for(let i=0; i<obj.length; i++) {
+          col= obj[i];
+          for (let j=0; j<col.length; j++) {
+              let f = col[j];
+              // let y = f.well.charCodeAt(0)-'A'.charCodeAt(0), x = f.well.substring(1)-1;
+              let xpos=(i*2+1)*(radius+sep), ypos=(j*2+1)*(radius+sep);
+              if (f) {
+                  t = "<g>\n  ";
+                  t += "    <circle class=\"popup\" cx=\""+xpos+"\" cy=\""+ypos+"\"";
+                  t += " r=\""+radius+"\" opacity=\"0\" />";
+                  t += "      <text class=\"popup\" x=\""+(xpos+10)+"\" y=\""+ypos+"\">"+f.pos+" - ";
+                  if (f.reads) {
+                      t+= "reads: "+f.reads+" clean: "+f.clean+" merges: "+f.merge;
+                  } else {
+                      t += "no data!";
+                  }
+                  t += "</text>\n    </g>\n";
+              }  
+              // console.log("adding - "+t);
+              svg += t+"\n";
+          }
+      }
+*/
+      svg += "  </g>\n";
+      for(let i=0;i<ydim;i++) {
+        svg += "    <text x=\"0\" y=\""+((i*2+1)*(radius+sep)+20)+"\">"+"ABCDEFGHIJKLMNOP".charAt(i)+"</text>\n";
+      }
+      for (let i=0; i<xdim; i++) {
+        svg += "    <text x=\""+((i*2+1)*(radius+sep)+16)+"\" y=\"12\">"+(i+1)+"</text>\n";
+      }
+      svg += "</svg>\n";
+      let nh = document.createElement("h2");
+      nh.innerHTML = "Plate "+pid;
+      document.body.appendChild(nh);
+
+      let newnode = document.createElement("figure");
+      newnode.innerHTML = svg;
+      document.body.appendChild(newnode);
+
+      // the following needs some styling!
+      newnode = document.createElement("p");
+      newnode["id"] = popupid;
+      let ndiv = document.createElement("div");
+      ndiv.classList.add("info");
+      ndiv.appendChild(newnode);
+      document.body.appendChild(ndiv);
+      newnode.innerHTML = "Well information!"; //remove later
+      //console.log("Did addfig() for "+pid);
+  }
+  function addfigs(ps) { 
+    console.log('adding '+ps.length+' figures.');
+    for (let i=0; i<ps.length; i++) { 
+        addfig(i);
+        // console.log('added figure for '+ps[i].pid);
+    }
+    document.body.appendChild(document.creatElement("p")); // add an empty para. for space
+  }
+  function popup(i, j, k) {
+    let pdata = data[i], info=pdata.wells[j][k], node = document.getElementById('PU_'+pdata.pid);
+    let text = pdata.pid+'-'+info.pos+": ";
+    text += "source - "+info.source;
+    text += "<br/>\nmouse: "+info.mousebc+"<br/>\nstrain: "+info.strain
+    text += "<br/>\n";
+    if (info.reads) {
+      text += "reads="+info.reads+" clean="+info.clean+" merged="+info.merge;
+    }
+    else {
+      text += "no data!";
+    }
+    text += "<br/><br/>\nassay: "+info.assay;
+    if (info.results.length) {
+        // text += "<br/>results :"+info.results;
+        text += "<br/><table>\n";
+        for (let i=0; i<info.results.length/2; i++) {
+            let cnt = info.results[i*2], perc=(cnt/info.merge*100.0).toFixed(1);
+            text += "<tr><td class='count'>"+cnt+"</td><td class='perc'>"+perc+"%</td><td class='assay'>"+info.results[i*2+1]+"</td></tr>\n";
+        }
+        text += "</table>\n";
+    }
+    node.innerHTML = text;
+  }
+  </script>
+</head>
+<body onload="addfigs(data);">
+  <h1>NGS Genotyping result page.</h1>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<meta charset="utf-8">
+<head>
+  <title>Result Table</title>
+  <style>
+    body { padding: 10px; }
+    tbody.ctaball { height: 600px; overflow-y: auto; }
+    table, th, td { border: 1px solid lightgray; }
+    td.r { text-align: right; }
+  </style>
+  <script>
+    var taball, tabsel, lastsel;
+    function showall() { // make the complete table visible.
+        tabsel.style.display = "none";
+        taball.style.display = "block";
+        // console.log("did showall()");
+    } 
+    function showsx(sid, cprefix) {
+	let sel = document.getElementById(sid);
+        let n = sel.value;
+	if (lastsel!==null && lastsel!=sel) { // set other select to None
+	    lastsel.value = "0";
+	}
+	lastsel = sel;
+        //console.log("showsx "+sid+" - class="+cprefix+n);
+        let tbody = tabsel.getElementsByTagName("tbody")[0];
+        //console.log("clearing "+tbody.childNodes.length+" <tr> from tabsel tbody.");
+        while (tbody.childNodes.length) { tbody.removeChild(tbody.lastChild); } // clear select table
+        if (n-0) { // interpret n as integer
+            let trs = taball.getElementsByClassName(cprefix+n);
+            //console.log("display class "+cprefix+n+"  "+trs.length+" rows.");
+            for (let i=0; i<trs.length; i++) {
+                 let newnode = document.createElement("tr");
+                 newnode.innerHTML = trs[i].innerHTML;
+                 tbody.appendChild(newnode);
+            }
+            tabsel.style.display = "block";
+            taball.style.display = "none";
+        }
+        else {
+            // console.log("display All.");
+            showall();
+        }
+    }
+    function setup() {
+        tabsel = document.getElementById("tabselect");
+        taball = document.getElementById("taball");
+	lastsel = null;
+        showall();
+        //console.log("did setup()");
+    }
+            
+  </script>
+</head>
+<body onload="setup();">
+  <h1>NGS Genotyping result table.</h1>
+  <label>Mouse barcode:</label>
+  <select id="selectmbc" onchange="showsx('selectmbc', 'bc');">
+    <option value="0">None</option>
+{!bcx!}
+  </select><br/>
+  <label>Strain:</label>
+  <select id="selectsx" value="0" onchange="showsx('selectsx', 's');">
+    <option value="0">None</option>
+{!sx!}
+  </select><br/>
+  <label>Assay:</label>
+  <select id="selectax" value="0" onchange="showsx('selectax', 'a');">
+    <option value="0">None</option>
+{!ax!}
+  </select><br/>
+  <p> </p>
+  <table id="tabselect">
+    <thead>
+      <tr><th>PCR&nbsp;well</th><th>EP&nbsp;well</th><th>DNA&nbsp;well</th><th>mouse BC</th><th>strain</th>
+          <th>assay</th><th>reads&nbsp;merge/<br/>clean/raw</th><th>matches</th><th>%</th><th align="left">assay seq.</th>
+      </tr>
+    </thead>
+    <tbody>
+    </tbody>
+  </table>
+  <div id="taball">
+  <h2>Full table</h2>
+  <table>
+    <thead>
+      <tr><th>PCR&nbsp;well</th><th>EP&nbsp;well</th><th>DNA&nbsp;well</th><th>mouse BC</th><th>strain</th>
+          <th>assay</th><th>reads&nbsp;merge/<br/>clean/raw</th><th>matches</th><th>%</th><th align="left">assay seq.</th>
+      </tr>
+    </thead>
+    <tbody class="ctaball">
+{!tabrows!}
+    </tbody>
+  </table>
+  </div>
+</body>
+</html>
