@@ -37,15 +37,16 @@ html = """
     96-well ear-punch plates to a 384-well DNA sample plate for use in the Echo robot.
     </p>
     <form action="{stage1}" method="get">
-        {options}
       <p>Please provide the following information:</p>
         {eps}
         <br>
         <label for="dnap">DNA (Echo) plate barcode:</label>
-          <input type="text" id="dnap" name="dnap" size="10" /><br>
+          <input type="text" id="dnap" name="dnap" size="10" required/><br>
         <br>
         <input type="submit" value="Create Nimbus Picklist" style="border-color:red"/>
-        <hr>
+    </form>
+    <hr>
+    <form action="{stage1}" method="get">
         <h2>Custom sample pipeline - Stage 1</h2>
         <p>To run the custom sample pipeline, you must first create a "run" folder within the NGSgeno folder for your project. 
         You then need to copy the required files there: Sample file - max 4 plates per file!(CSV), Assay list file (CSV), Custom primer-plate layout (CSV)</p>
@@ -62,12 +63,15 @@ html = """
          <label style="margin-left:25px;" for="customPrimers">Custom primer-plate layout:</label>
           <input type="file" id="customPrimers" name="customPrimers" size="80" accept=".csv" /><br><br>
         <label for="dnap">DNA (Echo) plate barcode:</label>
-          <input type="text" id="dnap_cust" name="dnap_cust" size="10" /><br>
+          <input type="text" id="dnap_cust" name="dnap_cust" size="10" required/><br>
         <br>
         <input type="submit" value="Create Nimbus Picklist" style="border-color:red"/>
     </form>
+    <hr>
+    <h2>Resume existing pipeline project</h2>
+    {optany}
   </div>
-  {optany}
+  
   <p>
     <button onclick="location.reload();">Refresh form</button>
   </p>
@@ -92,9 +96,9 @@ def main():
     # dir = form.getfirst('dir')
     # Find optional sample directories - they have P*-EP.json files but not Echo*.csv files
     # If the user doesn't choose a directory, then a new sample directory will be created
-    jfiles = frozenset(map(os.path.dirname, glob.glob(os.path.join('20*', 'P*-EP.json'))))
+    jfiles = frozenset(map(os.path.dirname, glob.glob(os.path.join('*', 'P*-EP.json'))))
     # probably should look at Nimbus*.csv files - not Echo files
-    efiles = frozenset(map(os.path.dirname, glob.glob(os.path.join('20*', 'Echo_384_COC*.csv'))))
+    efiles = frozenset(map(os.path.dirname, glob.glob(os.path.join('*', 'Echo_384_COC*.csv'))))
     dirs = sorted(jfiles-efiles, reverse=True)
     if dirs:
         dx = '\n\t\t    '.join("<option value='{0}'>{0}</option>".format(d) for d in dirs)
@@ -115,7 +119,7 @@ def main():
     if wdirs:
         dx = '\n\t\t    '.join("<option value='{0}'>{0}</option>".format(d) for d in wdirs)
         optmiseq = """<label for="ngid2">NGS Geno run Id:</label>
-            <select name="ngid" id="ngid2">
+            <select name="ngid2" id="ngid2">
                 <option value="">None</option>
                 {}
             </select><br>""".format(dx)

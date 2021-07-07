@@ -309,10 +309,13 @@ def main():
     nowstr = str(now.year)+str(now.month).zfill(2)+str(now.day).zfill(2)
     if 'ngid' in fields:
         ngid = fields.getfirst('ngid')
+    elif 'ngid2' in fields:
+        ngid = fields.getfirst('ngid2')
     elif 'projectDir' in fields:
         ngid = fields.getfirst('projectDir')
-    else:
-        ngid = nowstr
+    #else:
+    #
+    #    ngid = nowstr
 
     if not os.path.isdir(ngid): # only if dnap is also defined?
         os.mkdir(ngid)
@@ -325,6 +328,8 @@ def main():
         dnaBC = fields.getfirst("dnap")
     elif "dnap_cust" in fields:
         dnaBC = fields.getfirst("dnap_cust")
+    elif "ngid2" in fields:
+        pass
     else:
         print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>"))
         return
@@ -335,15 +340,15 @@ def main():
             pxs, pids, errx = readCustomCSVtoJSON(fields.getfirst('customSamples'))
             if fields.getfirst('customAssays') in (None, ''):
                 errx.append('Custom assay list file required')
-        else:
+        elif 'ep1' in fields:
             # note - nimbus.getPlate_app calls mb.showerror() and app.setstatus and returns None for errors
             # get plate info from input form and lookup in Musterer or cache
             pids = [(i, fields.getfirst('ep'+str(i))) for i in range(1,5) if 'ep'+str(i) in fields]
             pxs = [getPlate(pid) for n, pid in pids]
             errx = [e for px, es in pxs for e in es]
-        if len(pxs) == 0:
-            print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>"))
-            return
+            if len(pxs) == 0:
+                print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>"))
+                return
         if errx: # any errors - report them
             errs = "    <p>\n"+"<br>\n    ".join(errx)+"\n    </p>"
             print(htmlerr.format(errs=errs))
