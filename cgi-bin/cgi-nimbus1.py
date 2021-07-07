@@ -47,15 +47,21 @@ html = """
         <hr>
         <h2>Custom sample pipeline - Stage 1</h2>
         <p>To run the custom sample pipeline, you must first create a "run" folder within the NGSgeno folder for your project. 
-        You then need to copy the required files there: Sample file (CSV), Assay list file (CSV), Custom primer-plate layout (CSV)</p>
-        <h3>(Optional) Select custom sample, assay and primer plate files (CSV format)</h3>
-        <p>These will be used instead of the corresponding Musterer information. These files MUST be the run folder.</p>
+        You then need to copy the required files there: Sample file - max 4 plates per file!(CSV), Assay list file (CSV), Custom primer-plate layout (CSV)</p>
+        <p>Select project folder</p>
+        <label style="margin-left:25px;" for="projectDir">Set project folder:</label>
+          <input type="text" id="projectDir" name="projectDir" size="40"/><br><br>
+
+        <h3>Select custom sample, assay and primer plate files (CSV format)</h3>
+        <p>These will be used instead of the corresponding Musterer information. These files MUST be in the run folder.</p>
          <label style="margin-left:25px;" for="customSamples">Samples/assays file:</label>
           <input type="file" id="customSamples" name="customSamples" size="80" accept=".csv"/><br><br>
          <label style="margin-left:25px;" for="customAssays">Assay list file:</label>
           <input type="file" id="customAssays" name="customAssays" size="80" accept=".csv"/><br><br>
          <label style="margin-left:25px;" for="customPrimers">Custom primer-plate layout:</label>
           <input type="file" id="customPrimers" name="customPrimers" size="80" accept=".csv" /><br><br>
+        <label for="dnap">DNA (Echo) plate barcode:</label>
+          <input type="text" id="dnap_cust" name="dnap_cust" size="10" /><br>
         <br>
         <input type="submit" value="Create a Nimbus picklist" />
     </form>

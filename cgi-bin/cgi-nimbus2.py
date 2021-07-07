@@ -251,9 +251,10 @@ def eppfn(bc):
 
 mustfix = re.compile(r'(,\s*"(mouseBarcode|plateId)":\s*)(\d+)')
 
-def readCustomCSVtoJSON(input_fn, pids):
-    """ read a custom plate and make sure the plate IDs match, then return as JSON """
+def readCustomCSVtoJSON(input_fn):
+    """ read a custom plate with no more than 4 plates! Then return as JSON """
     data = {}
+    errs = []  # error messages
     with open(input_fn, 'rt', newline=None) as f:
         in_csv = csv.reader(f, delimiter=',')
         for i, row in enumerate(in_csv):
@@ -265,9 +266,10 @@ def readCustomCSVtoJSON(input_fn, pids):
             well = row[2]
             sampleBarcode = row[3]
             assays = [a.strip() for a in row[4:]]
-            if plate not in pids:
-                continue
             if plate not in data:
+                if len(data) == 4:
+                    errs.append('Too many input plates specified in experiment file. Max of 4 plates are allowed per file!')
+                    break
                 data[plate] = {'plateId':plate, 'custom':True, 'sampleBarcode':sampleBarcode, 
                        'wells':[{'wellLocation':well, 'organism':{'sampleId':sampleBarcode, 
                                 'sampleBarcode':sampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a} for a in assays]}}]}                  
@@ -278,18 +280,12 @@ def readCustomCSVtoJSON(input_fn, pids):
                 data[plate]['wells'].append({'wellLocation':well, 'organism':{'sampleId':sampleBarcode, 
                         'sampleBarcode':sampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a} for a in assays]}})
            
-    used_plates = set([p for p in data])
-    for u in used_plates:
-        assert u in pids, 'Plate '+str(u)+ ' not in requested plate ids' + '; '.join(map(str,pids))
-    err = []
-    for p in pids:
-        if p not in data:
-            err.append('Plate {p1} not found in {ifile}'.format(p1=p, ifile=input_fn))
+    pids = data.keys()
     data = [(data[p],p) for p in sorted(data)]
     #print(data, file=sys.stderr)
     #with open('test_horizo_json.txt', 'wt') as out:
     #    print(data, file=out)
-    return data, err
+    return data, pids, errs
 
 #  
 def main():
@@ -311,24 +307,35 @@ def main():
     from datetime import date
     now = date.today() # get today's date
     nowstr = str(now.year)+str(now.month).zfill(2)+str(now.day).zfill(2)
-    ngid = fields.getfirst("ngid") if "ngid" in fields else nowstr
+    if 'ngid' in fields:
+        ngid = fields.getfirst('ngid')
+    elif 'projectDir' in fields:
+        ngid = fields.getfirst('projectDir')
+    else:
+        ngid = nowstr
+
     if not os.path.isdir(ngid): # only if dnap is also defined?
         os.mkdir(ngid)
     os.chdir(ngid) # change to working directory
 
     
     global htmlerr
+    dnaBC = ''
     if "dnap" in fields:
         dnaBC = fields.getfirst("dnap")
-        # get plate info from cache or from Musterer                               
-        pids = [(i, fields.getfirst('ep'+str(i))) for i in range(1,5) if 'ep'+str(i) in fields]
+    elif "dnap_cust" in fields:
+        dnaBC = fields.getfirst("dnap_cust")
+    if dnaBC:      
         # Either call getPlate() to get plate data from Musterer, or if custom, get it from a file
         if 'customSamples' in fields:
-            pxs, errx = readCustomCSVtoJSON(fields.getfirst('customSamples'),[pid for n,pid in pids])
+            # get plate info from file
+            pxs, pids, errx = readCustomCSVtoJSON(fields.getfirst('customSamples'))
             if fields.getfirst('customAssays') in (None, ''):
                 errx.append('Custom assay list file required')
         else:
             # note - nimbus.getPlate_app calls mb.showerror() and app.setstatus and returns None for errors
+            # get plate info from input form and lookup in Musterer or cache
+            pids = [(i, fields.getfirst('ep'+str(i))) for i in range(1,5) if 'ep'+str(i) in fields]
             pxs = [getPlate(pid) for n, pid in pids]
             errx = [e for px, es in pxs for e in es]
         if len(pxs) == 0:
