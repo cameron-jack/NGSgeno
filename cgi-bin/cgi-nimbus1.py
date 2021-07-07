@@ -5,8 +5,8 @@
 @author: Bob Buckley & Cameron Jack - ANU Bioinformatics Consultancy JCSMR, ANU
 @version: 0.7
 @version_comment: No changes
-@last_edit:
-@edit_comment:
+@last_edit: 2021-07-07
+@edit_comment:  Improvements to user interface and error reporting. Allows users to enter custom pipeline folder name
 
 Application Stage 1 webpage.
 Display a form for creating Stage 1 Nimbus picklists files.
@@ -44,6 +44,7 @@ html = """
         <label for="dnap">DNA (Echo) plate barcode:</label>
           <input type="text" id="dnap" name="dnap" size="10" /><br>
         <br>
+        <input type="submit" value="Create Nimbus Picklist" style="border-color:red"/>
         <hr>
         <h2>Custom sample pipeline - Stage 1</h2>
         <p>To run the custom sample pipeline, you must first create a "run" folder within the NGSgeno folder for your project. 
@@ -63,7 +64,7 @@ html = """
         <label for="dnap">DNA (Echo) plate barcode:</label>
           <input type="text" id="dnap_cust" name="dnap_cust" size="10" /><br>
         <br>
-        <input type="submit" value="Create a Nimbus picklist" />
+        <input type="submit" value="Create Nimbus Picklist" style="border-color:red"/>
     </form>
   </div>
   {optany}

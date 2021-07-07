@@ -5,8 +5,8 @@
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 @version: 0.7
 @version_comment: all html reporting now working for custom pipeline
-@last_edit: 2021-07-04
-@edit_comment: Calls stage1report.py and stage2report/echo with --custom option if required
+@last_edit: 2021-07-07
+@edit_comment: Improvements to user interface and error reporting, allows user to input custom folder name
 
 Application Webpage.
 Nimbus picklists are already created - now gather Nimbus files
@@ -325,6 +325,9 @@ def main():
         dnaBC = fields.getfirst("dnap")
     elif "dnap_cust" in fields:
         dnaBC = fields.getfirst("dnap_cust")
+    else:
+        print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>"))
+        return
     if dnaBC:      
         # Either call getPlate() to get plate data from Musterer, or if custom, get it from a file
         if 'customSamples' in fields:
