@@ -119,7 +119,7 @@ def main():
     if wdirs:
         dx = '\n\t\t    '.join("<option value='{0}'>{0}</option>".format(d) for d in wdirs)
         optmiseq = """<label for="ngid2">NGS Geno run Id:</label>
-            <select name="ngid2" id="ngid2">
+            <select name="existing" id="existing">
                 <option value="">None</option>
                 {}
             </select><br>""".format(dx)

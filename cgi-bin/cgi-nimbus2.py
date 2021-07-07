@@ -76,6 +76,7 @@ html1 = """
     Note: Nimbus output files are CSV files whose name
     starts with <code>Echo_384_COC_</code><br><br>
     Click the "Continue" button below when done.</p>
+    <input type="hidden" id="existing" name="existing" value="{existingDir}"/>
     <input type="submit" value="Continue" />
     <input style="display: none;" type="text" id="ngid" name="ngid" value="{ngid}"></input>
   </form>
@@ -130,7 +131,7 @@ htmlpl1 = """
           
           <label for="taq">Mytaq #1 - plate barcode:</label>
           <input type="text" id="taq" name="taq" size="10" /><br><br>
-          
+    <input type="hidden" id="existing" name="existing" value="{existingDir}"/>
     <input type="submit" value="Continue" />
     <input style="display: none;" type="text" id="ngid" name="ngid" value="{ngid}" />
   </form>
@@ -178,6 +179,7 @@ htmlpl2 = """
         </ol>         
           <label for="taq">Mytaq #2 - plate barcode:</label>
           <input type="text" id="taq" name="taq" size="10" /><br><br>
+     <input type="hidden" id="existing" name="existing" value="{existingDir}"/>
      <input type="submit" value="Continue" />
     <input style="display: none;" type="text" id="ngid" name="ngid" value="{ngid}" />
   </form>
@@ -210,6 +212,7 @@ html3 = """
   <form action="{stage2}" method="get">
     <input type="submit" value="Continue" />
     <input style="display: none;" type="text" id="ngid" name="ngid" value="{ngid}" />
+    <input type="hidden" id="existing" name="existing" value="{existingDir}"/>
   </form>
   </div>
   {info}
@@ -309,8 +312,8 @@ def main():
     nowstr = str(now.year)+str(now.month).zfill(2)+str(now.day).zfill(2)
     if 'ngid' in fields:
         ngid = fields.getfirst('ngid')
-    elif 'ngid2' in fields:
-        ngid = fields.getfirst('ngid2')
+    elif 'existing' in fields:
+        ngid = fields.getfirst('existing')
     elif 'projectDir' in fields:
         ngid = fields.getfirst('projectDir')
     #else:
@@ -328,7 +331,7 @@ def main():
         dnaBC = fields.getfirst("dnap")
     elif "dnap_cust" in fields:
         dnaBC = fields.getfirst("dnap_cust")
-    elif "ngid2" in fields:
+    elif "existing" in fields:
         pass
     else:
         print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>"))
@@ -419,7 +422,7 @@ def main():
         # Nimbus output files are not present
         global html1
         xinfo = ''.join("<p>{}</p>\n".format(x) for x in info)
-        print(html1.format(bcs='\n    '.join(sorted(xbc)), stage1=nimbus2, ngid=ngid, info1=xinfo, info2=getinfo()))
+        print(html1.format(bcs='\n    '.join(sorted(xbc)), stage1=nimbus2, ngid=ngid, info1=xinfo, info2=getinfo(), existingDir=ngid))
         return
     
     def allfiles(fns):
@@ -530,11 +533,12 @@ def main():
         import echo
         if not allfiles([prsvy]):
             taq, h2o = echo.mytaq2(wellcnt, 1000, 300)
-            print(htmlpl1.format(ngid=ngid, taq=sorted(set(taq)), h2o=sorted(set(h2o)), ebcs=' '.join(sorted(ebc)), wellcount=wellcnt, noplates=pc, pcrs=pcrx, info=getinfo(), stage2=nimbus2))
+            print(htmlpl1.format(ngid=ngid, taq=sorted(set(taq)), h2o=sorted(set(h2o)), ebcs=' '.join(sorted(ebc)), 
+                    wellcount=wellcnt, noplates=pc, pcrs=pcrx, info=getinfo(), stage2=nimbus2, existingDir=ngid))
             return
         if not allfiles([i7svy]):
             taq, h2o = echo.mytaq2(wellcnt, 2000, 650)
-            print(htmlpl2.format(ngid=ngid, taq=sorted(set(taq)), h2o=sorted(set(h2o)), info=getinfo(), stage2=nimbus2))
+            print(htmlpl2.format(ngid=ngid, taq=sorted(set(taq)), h2o=sorted(set(h2o)), info=getinfo(), stage2=nimbus2, existingDir=ngid))
             return
         
         # the form calls echo.py (indirectly?) then displays the form for collecting MiSeq results
@@ -544,7 +548,7 @@ def main():
     if not os.path.isdir("raw") and not os.path.isdir("RAW"):
         print('cgi-nimbus2:', 'No raw FASTQ directory', file=sys.stderr)
         global html3 # data analysis & reporting step
-        print(html3.format(ngid=ngid, info=getinfo(), stage2=nimbus2))
+        print(html3.format(ngid=ngid, info=getinfo(), stage2=nimbus2, existingDir=ngid))
         return
     
     if not os.path.isfile("Results.csv"):
