@@ -50,7 +50,10 @@ htmlerr = """
     {errs}
   </div>
   <p>
-    <button onclick="window.history.back();">Back</button>
+    <button onclick="window.history.back();">Back to previous page</button>
+  </p>
+  <p>
+    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -64,7 +67,7 @@ html1 = """
 </head>
 <body style="padding: 20px;">
   <h1>NGS Genotyping pipeline</h1>
-  <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 400px;">
+  <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
   <h2>Nimbus transfer file(s)</h2>
   <form action="{stage1}" method="get">
     <p>Please copy Nimbus output files for the following DNA plate(s):<br>
@@ -80,7 +83,10 @@ html1 = """
   {info2}
   {info1}
   <p>
-    <button onclick="window.history.back();">Back</button>
+    <button onclick="window.history.back();">Back to previous page</button>
+  </p>
+  <p>
+    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -131,7 +137,10 @@ htmlpl1 = """
   </div>
   {info}
   <p>
-    <button onclick="window.history.back();">Back</button>
+    <button onclick="window.history.back();">Back to previous page</button>
+  </p>
+  <p>
+    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -175,7 +184,10 @@ htmlpl2 = """
   </div>
   {info}
   <p>
-    <button onclick="window.history.back();">Back</button>
+    <button onclick="window.history.back();">Back to previous page</button>
+  </p>
+  <p>
+    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -189,7 +201,7 @@ html3 = """
 </head>
 <body style="padding: 20px;">
   <h1>NGS Genotyping pipeline</h1> 
-  <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 400px;">
+  <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
   <h2>Awaiting MiSeq results</h2>
   <p>When the MiSeq run completes and you have copied the MiSeq FASTQ files into 
   the "raw" folder for run {ngid} click the Continue button.</p>
@@ -202,7 +214,10 @@ html3 = """
   </div>
   {info}
   <p>
-    <button onclick="window.history.back();">Back</button>
+    <button onclick="window.history.back();">Back to previous page</button>
+  </p>
+  <p>
+    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -219,7 +234,10 @@ html4 = """
   <h2>{ngid} results</h2>
   {info}
   <p>
-    <button onclick="window.history.back();">Back</button>
+    <button onclick="window.history.back();">Back to previous page</button>
+  </p>
+  <p>
+    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>

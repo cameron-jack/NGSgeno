@@ -227,7 +227,7 @@ class MObs():
         if idx_rec:
             self.barcode = idx_rec[1].mouseBarcode
             self.upload_identity = idx_rec[1].EPplate + '_' + idx_rec[1].EPwell +\
-                    '_' + idx_rec[1].strain + '#' + idx_rec[1].SampleNo
+                    '_' + idx_rec[1].strainName + '#' + idx_rec[1].SampleNo
             self.add_indexed_record(idx_rec, old_assays, ngs_assays) #assay_conversion)
             #if not success:
             #    print('Failed to add indexed record', idx_rec, file=sys.stderr)
@@ -408,13 +408,7 @@ class MObs():
 
 
     def call_genotypes(self, old_families, ngs_families, old_assays, ngs_assays, config):
-        """ """
-        genotype_opts = config['genotypes']
-        mut_test = lambda o: any([m in o.lower() for m in genotype_opts['mut'].split(',')])
-        wt_test = lambda o: any([w in o.lower() for w in genotype_opts['wt'].split(',')])
-        y_test = lambda o: any([y in o.lower() for y in genotype_opts['y'].split(',')])
-        # multi-allele/named-allele observables
-        multi_test = lambda o: any([a in o.lower() for a in genotype_opts['multi'].split(',')])
+        """ Establish which assay we are using then compare the sequenced allele tags against the available observables """
 
         for i in self.indexed_primer:
             fam = self.indexed_primer[i].split('_')[0]
@@ -450,6 +444,7 @@ class MObs():
                 #self.family_to_musterer_assays[f] = ['NA']
                 continue
 
+            alleles_present = set([ps.split('_')[1] for ps in passing_seqs])
             self.family_to_musterer_assays[f] = musterer_assays
             if len(musterer_assays) == 2: # chose one assay if possible
                 if musterer_assays[0].split('_')[0].lower().replace('-','') in musterer_assays[1].split('_')[0].lower().replace('-','') or \
@@ -461,7 +456,7 @@ class MObs():
                     else:
                         print('Assays not found in Musterer records', musterer_assays, self.musterer_info['assay_value_options'], file=sys.stderr)
 
-            alleles_present = set()
+            # we can get the allele from the 2nd field of the reference sequence. We should be able to gather these and largely be done with it
             possible_observables = set()
             for ma in musterer_assays:
                 try:
@@ -473,123 +468,27 @@ class MObs():
                 self.family_to_musterer_assays[f] = [ma]
                 break
 
-            obs_counts = defaultdict(int)
-            for ps in passing_seqs:
-                if wt_test(ps) and mut_test(ps)
-                
-                
-                obs_partial = {}
-                for o in obs:
-                    obs_partial[o] = ['/Y' if '/Y' in o and 'Y' in allele else allele for allele in o.split('/')]
-
-                wt_ob = [o for o in obs_partial if wt_test(o) and not mut_test(o) and not y_test(o)][0]
-                het_ob = [o for o in obs_partial if wt_test(o) and mut_test(o) and not y_test(o)][0]
-                mut_ob = [o for o in obs_partial if  mut_test(o) and not wt_test(o) and not y_test(o)][0]
-                multi_ob = [o for o in obs if multi_test(o) and not y_test(o)][0]
-                wtY_ob = [o for o in obs if wt_test(o) and not mut_test(o) and y_test(o)]
-                mutY_ob = [o for o in obs if  mut_test(o) and not wt_test(o) and y_test(o)]
-                multiY_ob = [o for o in obs if multi_test(o) and y_test(o)][0]
-
-                if wtY_ob or mutY_ob or multiY_ob:  # sex-linked
-                    if len(multiY_ob) > len(wtY_ob):  # wt is in both groups, so need to decide which it is
-                        # named/multi-allele locus
-                        self.family_genotype[f]
-
-
-            # one Musterer Observable but possibly multiple assay tests
-            if len(musterer_assays) == 1:
-                musterer_assay = musterer_assays[0]
-                self.family_to_musterer_assays[f] = [musterer_assay]
-                obs = self.musterer_info['assay_value_options'][musterer_assay]
-                # If obs doesn't contain MUT or WT, then we need to find the new version of it (which does) and then convert back
-                if not any([wt_test(o) for o in obs]) or not any([mut_test(o) for o in obs]):
-                    if musterer_assay in old_assays:
-                        obs_obj = old_assays[musterer_assay]
-                        wt_ob, het_ob, mut_ob,wtY_ob,mutY_ob, multi_ob = obs_obj.get_old_obs()
-                    elif musterer_assay in ngs_assays:
-                        obs_obj = ngs_assays[musterer_assay]
-                        wt_ob, het_ob, mut_ob,wtY_ob,mutY_ob, multi_ob = obs_obj.get_old_obs()
-                    else:
-                        print('No conversion records available for assay', musterer_assay, file=sys.stderr)
-                else:
-                    
-                    wt_ob = [o for o in obs if wt_test(o) and not mut_test(o) and not y_test(o)][0]
-                    het_ob = [o for o in obs if wt_test(o) and mut_test(o) and not y_test(o)][0]
-                    mut_ob = [o for o in obs if  mut_test(o) and not wt_test(o) and not y_test(o)][0]
-                    multi_ob = [o for o in obs if multi_test(o) and not y_test(o)][0]
-                    wtY_ob = [o for o in obs if wt_test(o) and not mut_test(o) and y_test(o)]
-                    mutY_ob = [o for o in obs if  mut_test(o) and not wt_test(o) and y_test(o)]
-                    multiY_ob = [o for o in obs if multi_test(o) and y_test(o)][0]
-                    
-                # wtY and mutY can be either None or []
-                if len(passing_assays) < 3: # Ptprc (new Ly5ab)
-                    print('1 assay', len(passing_assays), 'passing assays', 'Barcode:',self.barcode,'Family:',
-                            f, 'Musterer assays:', musterer_assays, passing_assays, passing_seqs, file=sys.stderr)
-                    if any([wt_test(ps) for ps in passing_seqs]) and any([mut_test(ps) for ps in passing_seqs]):
-                        self.family_genotype[f] = het_ob
-                    elif any([wt_test(ps) for ps in passing_seqs]):
-                        if any([y_test(ps) for ps in passing_seqs]):
-                            self.family_genotype[f] = wtY_ob
-                        else:
-                            self.family_genotype[f] = wt_ob     
-                    elif any([mut_test(ps) for ps in passing_seqs]):
-                        if any([y_test(ps) for ps in passing_seqs]):
-                            self.family_genotype[f] = mutY_ob
-                        else:
-                            self.family_genotype[f] = mut_ob
-                    else:   # report all observed genotypes
-                        #self.family_genotype[f] = [o for o in obs if any([o.lower() in po.lower() for po in passing_seqs])]
-                        #if self.family_genotype[f] == []:
-                        print('Not sure how to call:', musterer_assays, passing_assays, obs, file=sys.stderr)
-            
-            elif len(musterer_assays) == 2:
-                print('2, Barcode:',self.barcode,'Family:', f, 'Musterer assays:', musterer_assays, passing_assays, passing_seqs, file=sys.stderr)
-                musterer_assay = musterer_assays[0]
-                self.family_to_musterer_assays[f] = musterer_assays
-                obs = self.musterer_info['assay_value_options'][musterer_assay]
-                if any(['wt' in ps.lower() for ps in passing_seqs]) and any(['wt' in o.lower() for o in obs]) and \
-                        any(['mut' in ps.lower() for ps in passing_seqs]) and any(['mut' in o.lower() for o in obs]):
-                    self.family_genotype[f] = [o for o in obs if 'wt' in o.lower() and 'mut' in o.lower()][0]
-                elif any(['wt' in ps.lower() for ps in passing_seqs]) and any(['wt' in o.lower() for o in obs]):
-                    self.family_genotype[f] = [o for o in obs if 'wt' in o.lower()][0]
-                elif any(['mut' in ps.lower() for ps in passing_seqs]) and any(['mut' in o.lower() for o in obs]):
-                    self.family_genotype[f] = [o for o in obs if 'mut' in o.lower()][0]
-                else:
-                    #self.family_genotype[f] = [o for o in obs if any([o.lower() in po.lower() for po in passing_seqs])]
-                    #if self.family_genotype[f] == []:
-                    print('Not sure how to call:', musterer_assays, passing_assays, obs, file=sys.stderr)
-
-            else: # Multi-locus, multi-part, e.g. ?
-                print('Musterer assays:', musterer_assays, 'Passing assays:', passing_assays, file=sys.stderr)
-                gts = set()
-                # check that an observed value can match an observable
-                for ma in musterer_assays:
-                    obs = self.musterer_info['assay_value_options'][ma]
-                    for i in sorted(self.family_indices[f]):
-                        if self.indexed_calls[i] != 'plus':
-                            continue
-                        for i_obs in self.indexed_seqs[i]:
-                            for i_obs_part in i_obs.split('_'):
-                                if f.lower() in i_obs_part.lower():
-                                    continue
-                                for o in obs:
-                                    if o.lower() in i_obs_part.lower() or i_obs_part.lower() in o.lower():
-                                        gts.add(o)
-                                        if self.musterer_assay_genotype[ma]:
-                                            print('Whoops, why are we seeing this twice?!', ma, self.musterer_assay_genotype[ma], o, file=sys.stderr)
-                                        self.musterer_assay_genotype[ma] = o
-                self.family_genotype[f] = list(gts)
-            
+            chosen_obs = [o for o in obs if all(alleles_present in o)]
+            if len(chosen_obs) == 0:
+                print('No genotype found for assay family',f, 'Passing seqs:', passing_seqs, 'Alleles present:', alleles_present, file=sys.stderr)
+                self.family_genotype[f] = 'unknown'
+            elif len(chosen_obs) == 1:
+                self.family_genotype[f] = chosen_obs[0]
+            else:
+                print('Multiple genotypes possible for assay family', f,'Passing seqs:', passing_seqs, 'Alleles present:', alleles_present, file=sys.stderr)
+                self.family_genotype[f] = 'ambig'
             self.musterer_assay_genotype[musterer_assay] = self.family_genotype[f]
-            # create upload record
-            self.upload_records.append(self.upload_identity + '\t' + musterer_assay + '\t' + self.family_genotype[f])            
-
             # set all indexed genotypes to be the same for each record in the same assay family
             for i in self.family_indices[f]:
                 if f in self.family_genotype: 
                     self.indexed_genotype[i] = self.family_genotype[f]
                 else:
                     print('Mismatched assay family name:', f, self.family_genotype.keys(), file=sys.stderr)
+
+            if self.family_genotype[f] not in set(['unknown','ambig']):
+                # create upload record
+                self.upload_records.append(self.upload_identity + '\t' + musterer_assay + '\t' + self.family_genotype[f])            
+            
 
 
     def check_family_match(self):

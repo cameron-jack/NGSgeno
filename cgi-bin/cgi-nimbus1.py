@@ -30,11 +30,11 @@ html = """
 <meta charset="utf-8">
 </head>
 <body style="padding: 20px;">
-  <h1>NGS Genotyping pipeline</h1>
-  <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 500px;">
-    <h2>Stage 1</h2>
+  <h1>NGS Genotyping pipelines (Mouse &amp; Custom)</h1>
+  <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
+    <h2>Mouse pipeline - Stage 1</h2>
     <p>Stage 1 writes picklist files for the Nimbus robot to tranfer material from 
-    96-well sample/ear-punch plates to a 384-well DNA sample plate for use in the Echo robot.
+    96-well ear-punch plates to a 384-well DNA sample plate for use in the Echo robot.
     </p>
     <form action="{stage1}" method="get">
         {options}
@@ -44,14 +44,18 @@ html = """
         <label for="dnap">DNA (Echo) plate barcode:</label>
           <input type="text" id="dnap" name="dnap" size="10" /><br>
         <br>
+        <hr>
+        <h2>Custom sample pipeline - Stage 1</h2>
+        <p>To run the custom sample pipeline, you must first create a "run" folder within the NGSgeno folder for your project. 
+        You then need to copy the required files there: Sample file (CSV), Assay list file (CSV), Custom primer-plate layout (CSV)</p>
         <h3>(Optional) Select custom sample, assay and primer plate files (CSV format)</h3>
-        <p>These will be used instead of the corresponding Musterer information. These files must be located in the run folder.</p>
+        <p>These will be used instead of the corresponding Musterer information. These files MUST be the run folder.</p>
          <label style="margin-left:25px;" for="customSamples">Samples/assays file:</label>
-          <input type="file" id="customSamples" name="customSamples" size="80" /><br><br>
+          <input type="file" id="customSamples" name="customSamples" size="80" accept=".csv"/><br><br>
          <label style="margin-left:25px;" for="customAssays">Assay list file:</label>
-          <input type="file" id="customAssays" name="customAssays" size="80" /><br><br>
+          <input type="file" id="customAssays" name="customAssays" size="80" accept=".csv"/><br><br>
          <label style="margin-left:25px;" for="customPrimers">Custom primer-plate layout:</label>
-          <input type="file" id="customPrimers" name="customPrimers" size="80" /><br><br>
+          <input type="file" id="customPrimers" name="customPrimers" size="80" accept=".csv" /><br><br>
         <br>
         <input type="submit" value="Create a Nimbus picklist" />
     </form>
@@ -95,7 +99,7 @@ def main():
         <p>Leave this (choose 'New MiSeq run') if you are preparing a new MiSeq run. 
         The system will assign a new date-based run Id.
         <br></p>""".format(dx)  
-    epfmt = '<label for="ep{0}">Ear punch Plate {0}:</label>\n\t  <input type="text" id="ep{0}" name="ep{0}" size="6" /><br>'
+    epfmt = '<label for="ep{0}">Ear-punch plate {0} barcode:</label>\n\t  <input type="text" id="ep{0}" name="ep{0}" size="6" /><br>'
     epx = '\n\t'.join(epfmt.format(i) for i in range(1,5))
 
     optform = ''
