@@ -3,10 +3,10 @@
 """
 @created: Jul 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy
-@version: 0.7
-@version_comment: minor changes to column names
-@last_edit: 2021-07-02
-@edit_comment: epplate->EPplate, epwell->EPwell
+@version: 0.8
+@version_comment:
+@last_edit:
+@edit_comment:
 
 Create SVG plate images, Summary and Result Table HTML files.
 """

@@ -4,10 +4,10 @@
 """
 @created: Dec 2020
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.7
-@version_comment: finally incorporated
-@last_edit: 2021-07-02
-@edit_comment: all test cases genotyping correctly
+@version: 0.8
+@version_comment:
+@last_edit:
+@edit_comment:
 
 Take read counts for observed alleles in the report so far and create a new report with
 called genotypes.

@@ -3,10 +3,10 @@
 """
 @created: Oct 2019
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.7
-@version_comment: column header changes
-@last_edit: 2021-07-02
-@edit_comment: epwell->EPwell, epplate->EPplate, Sample No->mouseID in reporting
+@version: 0.8
+@version_comment:
+@last_edit: 
+@edit_comment:
 
 GUI for Nimbus files for the NGSgenotyping project.
 Note - The GUI code is no longer used - the nimbus() function is called by cgi-nimbus2.py

@@ -3,10 +3,10 @@
 """
 @created June 2020
 @author: Bob Buckley and Cameron Jack
-@version: 0.7
-@version_comment: custom pipeline supported
-@last_edit: 2021-07-04
-@edit_comment: epplate->EPplate epwell->EPwell, --custom option, tweaked output wording
+@version: 0.8
+@version_comment:
+@last_edit:
+@edit_comment:
 
 Draw 384-well plates using Chart.js
 

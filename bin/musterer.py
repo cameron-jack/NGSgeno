@@ -3,10 +3,10 @@
 """
 @created: July 2021
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.7
-@version_comment: Everything except sanity checking
-@last_edit: 2021-07-04
-@edit_comment: added upload_plate() for final result upload, added global variables
+@version: 0.8
+@version_comment:
+@last_edit:
+@edit_comment:
 
 Common code for connecting to the Musterer database web services. Should be extended to Rodentity when that becomes available.
 """

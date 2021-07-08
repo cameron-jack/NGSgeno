@@ -3,10 +3,10 @@
 """
 @created: Aug 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.7
-@version_comment: all html reporting now working for custom pipeline
-@last_edit: 2021-07-07
-@edit_comment: Improvements to user interface and error reporting, allows user to input custom folder name
+@version: 0.8
+@version_comment: Supports multiple taq/water plates, mouse_ and custom_ run folders.
+@last_edit: 2021-07-08
+@edit_comment: Supports multiple taq/water plates, mouse_ and custom_ run folders. Numerous cleanups.
 
 Application Webpage.
 Nimbus picklists are already created - now gather Nimbus files
@@ -35,7 +35,6 @@ import primercheck
 
 nimbus2 = "/cgi-bin/cgi-nimbus2.py"
 stage2  = "/cgi-bin/cgi-stage2.py"
-i7i5_fn = os.path.join('..', 'library', 'i7i5_plate_layout_20200226.csv')
 
 htmlerr = """
 <html>
@@ -110,7 +109,7 @@ htmlpl1 = """
   <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
   <h2>Echo Picklists - part 1</h2>
   <form action="{stage2}" method="get">
-    <p>This step creates an Echo picklist to transferring DNA from DNA plates: <code>{ebcs}</code></p>
+    <p>This step creates an Echo picklist to transfer DNA from DNA plates to PCR reaction plates: <code>{ebcs}</code></p>
     <p>The run needs {wellcount} wells in {noplates} PCR plates for separate assay samples.
     Please provide barcodes for the PCR plates.</p>
     {pcrs}
@@ -123,14 +122,13 @@ htmlpl1 = """
           <label>Primer plate -</label><br>
           <label style="margin-left:25px;" for="psvy">survey file:</label>
           <input type="file" id="psvy" name="psvy" size="80" /><br>
-    <p>Please provide a Mytaq & H<sub>2</sub>O plate with:
+    <p>Please provide {tc} Mytaq & H<sub>2</sub>O plates with:
         <ol>
         <li>wells {taq} filled with Mytaq, and</li>
         <li>wells {h2o} filled with water.</li>
         </ol>
-          
-          <label for="taq">Mytaq #1 - plate barcode:</label>
-          <input type="text" id="taq" name="taq" size="10" /><br><br>
+        {taqs}
+        <br>
     <input type="hidden" id="existing" name="existing" value="{existingDir}"/>
     <input type="submit" value="Continue" />
     <input style="display: none;" type="text" id="ngid" name="ngid" value="{ngid}" />
@@ -172,13 +170,13 @@ htmlpl2 = """
         <label style="margin-left:25px;" for="i7svy">i7i5 plate survey:</label>
         <input type="file" id="i7svy" name="i7svy" size="40" /><br>
           
-    <p>Please provide a Mytaq & H<sub>2</sub>O plate with:
+    <p>Please provide {tc} Mytaq & H<sub>2</sub>O plates with:
         <ol>
         <li>wells {taq} filled with Mytaq, and</li>
         <li>wells {h2o} filled with water.</li>
         </ol>         
-          <label for="taq">Mytaq #2 - plate barcode:</label>
-          <input type="text" id="taq" name="taq" size="10" /><br><br>
+        {taqs}
+        <br>
      <input type="hidden" id="existing" name="existing" value="{existingDir}"/>
      <input type="submit" value="Continue" />
     <input style="display: none;" type="text" id="ngid" name="ngid" value="{ngid}" />
@@ -285,9 +283,6 @@ def readCustomCSVtoJSON(input_fn):
            
     pids = data.keys()
     data = [(data[p],p) for p in sorted(data)]
-    #print(data, file=sys.stderr)
-    #with open('test_horizo_json.txt', 'wt') as out:
-    #    print(data, file=out)
     return data, pids, errs
 
 #  
@@ -315,15 +310,20 @@ def main():
     elif 'existing' in fields:
         ngid = fields.getfirst('existing')
     elif 'projectDir' in fields:
-        ngid = fields.getfirst('projectDir')
-    #else:
-    #
-    #    ngid = nowstr
+        ngid = 'custom_'+fields.getfirst('projectDir').replace('custom_','')  # in case the user inputs "custom_"
+    else:
+        ngid = 'mouse_'+nowstr
 
     if not os.path.isdir(ngid): # only if dnap is also defined?
         os.mkdir(ngid)
     os.chdir(ngid) # change to working directory
 
+    ### Everything below this line happens in the run folder ###
+    try:
+        i7i5_fn = sorted(glob.glob(os.path.join('..','library', 'i7i5_plate_layout_*.csv')), reverse=True)[0]
+    except IndexError:
+        print('Cannot find i7i5_plate_layout_*.csv', file=sys.stderr)
+        exit(1)
     
     global htmlerr
     dnaBC = ''
@@ -439,9 +439,9 @@ def main():
         print('cgi-nimbus2:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
     else:
         # set the most recent standard library
-        template_files['assays'] = sorted(glob.glob(os.path.join('..', 'library', 'assay_list_20*.csv')), reverse=True)[0]
-        template_files['primers'] = sorted(glob.glob(os.path.join('..', 'library', 'primer_layout*_20*.csv')), reverse=True)[0]
-        template_files['ref'] = sorted(glob.glob(os.path.join('..', 'library', "reference_sequences_*.txt")), reverse=True)[0]
+        template_files['assays'] = sorted(glob.glob(os.path.join('..','library', 'assay_list_*.csv')), reverse=True)[0]
+        template_files['primers'] = sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
+        template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt")), reverse=True)[0]
 
     prsvy = "primer-svy.csv"
     if 'pcr' in fields:
@@ -466,7 +466,6 @@ def main():
     #TODO: i5's seem to be uneven in their use
     i7svy = "i7i5-svy.csv"
     if "i7svy" in fields:
-        global i7i5_fn
         # from htmlpl2 form - call the echo.py code
         # should handle all the other options!!!
         # below handles multiple i7i5 plate surveys, but this is overkill
@@ -476,7 +475,7 @@ def main():
         #print(cmd, file=sys.stderr)
         subprocess.run(cmd)
         cmd = ["python", os.path.join("..", "bin", "echo.py"), "--i7i5",
-                        i7svy, "--taq", fields.getfirst('taq')]
+                        i7svy, "--taq"] + fields.getlist('taq')
         if template_files['customPrimers'] != '':
             cmd += ['--custom']
         cmd += ["--"]+sorted(ebc)
@@ -533,12 +532,23 @@ def main():
         import echo
         if not allfiles([prsvy]):
             taq, h2o = echo.mytaq2(wellcnt, 1000, 300)
-            print(htmlpl1.format(ngid=ngid, taq=sorted(set(taq)), h2o=sorted(set(h2o)), ebcs=' '.join(sorted(ebc)), 
-                    wellcount=wellcnt, noplates=pc, pcrs=pcrx, info=getinfo(), stage2=nimbus2, existingDir=ngid))
+            tc = max(max([p for w,p in h2o]),max([p for t,p in taq]))
+            #print(len(taq), len(h2o), file=sys.stderr)
+            taq_set = sorted(set([w for w,p in taq]))
+            h2o_set = sorted(set([w for w,p in h2o]))
+            taqfmt = '<label for="taq">Mytaq/Water plate {0} barcode:</label>\n\t  <input type="text" id="taq" name="taq" size="8" /><br>'
+            taqx ='\n\t'.join(taqfmt.format(i) for i in range(1,tc+1))
+            print(htmlpl1.format(ngid=ngid, taq=taq_set, h2o=h2o_set, ebcs=' '.join(sorted(ebc)), 
+                    wellcount=wellcnt, noplates=pc, pcrs=pcrx, tc=tc, taqs=taqx, info=getinfo(), stage2=nimbus2, existingDir=ngid))
             return
         if not allfiles([i7svy]):
             taq, h2o = echo.mytaq2(wellcnt, 2000, 650)
-            print(htmlpl2.format(ngid=ngid, taq=sorted(set(taq)), h2o=sorted(set(h2o)), info=getinfo(), stage2=nimbus2, existingDir=ngid))
+            tc = max(max([p for w,p in h2o]),max([p for t,p in taq]))
+            taq_set = sorted(set([w for w,p in taq]))
+            h2o_set = sorted(set([w for w,p in h2o]))
+            taqfmt = '<label for="taq">Mytaq/Water plate {0} barcode:</label>\n\t  <input type="text" id="taq" name="taq" size="8" /><br>'
+            taqx ='\n\t'.join(taqfmt.format(i) for i in range(1,tc+1))
+            print(htmlpl2.format(ngid=ngid, taq=taq_set, h2o=h2o_set, tc=tc, taqs=taqx, info=getinfo(), stage2=nimbus2, existingDir=ngid))
             return
         
         # the form calls echo.py (indirectly?) then displays the form for collecting MiSeq results

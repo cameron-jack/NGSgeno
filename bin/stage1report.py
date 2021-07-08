@@ -3,10 +3,10 @@
 """
 @created: June 2020
 @author: Bob Buckley
-@version: 0.7
-@version_comment: Custom pipeline supported
-@last_edit: 2021-07-04
-@edit_comment: Added fmtReportCustom and --custom argument
+@version: 0.8
+@version_comment:
+@last_edit:
+@edit_comment:
 
 Draw 96-well plates using Chart.js
 

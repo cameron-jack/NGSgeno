@@ -2,10 +2,10 @@
 """
 @created Aug 2020
 @author: Bob Buckley and Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.7
-@version_comment: Nothing changed
-@last_edit: 2021-07-02
-@edit_comment: modified default library paths
+@version: 0.8
+@version_comment: supports custom and mouse pipelines
+@last_edit: 2021-07-08
+@edit_comment: removed all local library paths
 
 This code checks assay data (from the "library") for the NGS Geno application
 The challenges are:
@@ -18,11 +18,7 @@ import glob
 import csv
 import itertools
 import sys
-
-lib_fnmm  = os.path.join('..', 'library', 'assay_list_*.csv')    # Musterer map filename
-lib_fnpp  = os.path.join('..', 'library', 'primer_layout*_*.csv')
-lib_fnref = os.path.join('..', 'library', "reference_sequences_*.txt")
-#fngrp = os.path.join('..', 'library', "groups_SB_20*.csv")
+import argparse
 
 def grouper(xs, kf=lambda x:x[0]):
     "group pairs: a, b, c ... => (kf(a),[a,b, ...]), (kf(c), [c, ...]), ..."
@@ -51,19 +47,8 @@ class PrimerLookup:
         have duplicated columns)
         fnpp - file name primer layout plate 'primer_layout_<date>.csv'
         fnref - file name reference sequences 'reference_sequences_<date?>.txt
-
-        TODO: remove the ugly stuff that chooses the most recent date for these files
         """
-        #print('Inside PrimerLookup', file=sys.stderr)
-        if not fnmm:
-            fnmm = lib_fnmm
-        if not fnpp:
-            fnpp = lib_fnpp
-        if not fnref:
-            fnref = lib_fnref
-        print('Assays:', fnmm, file=sys.stderr)
-        print('Primers:', fnpp, file=sys.stderr)
-        print('Reference seqs:', fnref, file=sys.stderr)
+        
         fns = sorted(glob.glob(fnmm), reverse=True)
         self.fnmm = fns[0]
         with open(fns[0]) as srcfd:
@@ -126,8 +111,13 @@ class PrimerLookup:
         
 def main():
     "check library files for NGS Geno pipeline"
-    global fnref
-    pl = PrimerLookup(fnref=fnref) # yes, read reference
+    parser = argparse.ArgumentParser()
+    parser.add_argument('fnref', help='Path to reference file (FASTA format)')
+    parser.add_argument('fnpp', help='Path to primer plate layout file')
+    parser.add_argument('fnmm', help='Path to Musterer to primer family names')
+    args = parser.parse_args()
+    
+    pl = PrimerLookup(fnref=args.fnref,fnpp=args.fnpp,fnmm=args.fnmm)
         
     print(len(pl.ppdict), 'primers in the primer plate:', pl.fnpp)
     print(len(pl.pfdict), 'primer families.')

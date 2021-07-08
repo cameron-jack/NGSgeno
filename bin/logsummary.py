@@ -3,7 +3,7 @@
 """
 @created Apr 2020
 @author: Bob Buckley
-@version: 0.7
+@version: 0.8
 @version_comment: Nothing changed
 @last_edit:
 @edit_comment:

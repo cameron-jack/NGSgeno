@@ -2,8 +2,8 @@
 """
 @created: Nov 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.7
-@version_comment: Nothing changed
+@version: 0.8
+@version_comment: 
 @last_edit: 
 @edit_comment: 
 

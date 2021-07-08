@@ -4,9 +4,10 @@ inheritance_rules.py
 
 @created Nov 2020
 @author: Cameron Jack, cameron.jack@anu.edu.au, ANU Bioinformatics Consultancy
-@version_comment: finally incorporated
-@last_edit: 2021-07-02
-@edit_comment: untested, some cases not implemented
+@version: 0.8
+@version_comment: untested, some cases not implemented
+@last_edit:
+@edit_comment: 
 """
 
 def test_true_wt(sire_gt, dam_gt):

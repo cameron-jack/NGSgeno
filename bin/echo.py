@@ -3,11 +3,10 @@
 """
 @created May 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.7
-@version_comments: minor changes to variable and function names, support custom pipeline reporting
-@last_edit: 2021-07-02
-@edit_comments: epwell->EPwell, epplate->EPplate, Sample No->mouseID in reporting. \
-    Renamed epwell() and echowell() as padwell() and unpadwell() respectively
+@version: 0.8
+@version_comments: extensive changes to seamlessly support custom and mouse pipelines, plate dead volumes increased
+@last_edit: 2021-07-08
+@edit_comments: better handling of paths, multiple taq/water plates, mytaq2() now handles well and plate counting and allocation tasks, mytaq() is now deprecated
 
 Produce picklists for NGS Genotyping pipeline for the Echo robot.
 There are two stages: 
@@ -238,7 +237,7 @@ class EchoSurvey(Table):
         return
     
 class SourcePlates(dict):
-    deadvol = { '384PP_AQ_BP': 20, '6RES_AQ_BP2': 250 } # Echo dead volume for plate types 
+    deadvol = { '384PP_AQ_BP': 50, '6RES_AQ_BP2': 700 } # Echo dead volume for plate types 
     def __init__(self, pairs):
         "add contents and build contents dictionary"
         for table, contents in pairs:
@@ -259,7 +258,7 @@ class SourcePlates(dict):
     
 class PicklistSrc:
     "read a survey & contents file (echovolume.py output)"
-    deadvol = { '384PP_AQ_BP': 20, '6RES_AQ_BP2': 250 } # Echo dead volume for plate types 
+    deadvol = { '384PP_AQ_BP': 50, '6RES_AQ_BP2': 700 } # Echo dead volume for plate types 
 
     def __init__(self, fn, idx=0):
         with open(fn) as srcfd:
@@ -411,7 +410,7 @@ def fileGetCheck(fids, fmt):
         alert('\n'.join(fmt.format(fid)+': no file found.' for fid in nofile))
     return collections.OrderedDict((fid, sorted(ps)[-1]) for fid, ps in globs.items())
 
-def mkPickList(fndst, rows):
+def mk_picklist(fndst, rows):
     "output an Echo picklist given the rows (transfer spec)"
     plhdr = "Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,Destination Plate Name,Destination Plate Barcode,Destination Plate Type,Destination Well,Volume".split(',')
     def rowchk(r):
@@ -428,7 +427,11 @@ def mkPickList(fndst, rows):
     return  
 
 def mytaq(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2'):
-    """ create enough source wells for a Mytaq & H2O picklist, uses the same well until it's empty """
+    """ 
+    ***DEPRECATED***
+    Create enough source wells for a Mytaq & H2O picklist, uses the same well until it's empty.
+    Broken - needs a consistent output with mytaq2
+    """
     wells = [r+c for r in "AB" for c in "123"]
     # volumes in nanolitres
     dv = PicklistSrc.deadvol[plateType]
@@ -436,13 +439,13 @@ def mytaq(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2'):
     # work in nanolitres
     wc = [(2800-dv)*1000//v for v in (voltaq, volh2o)]
     wct, wcw = [(wellCount+c-1)//c for c in wc]
-    assert wct+wcw<=6
+    plates_required = max([wct//3, wcw//3])
     # Water is A1, A2, ... while Mytaq is B3, B2, ...
     # returns wells: Mytaq list, water list
-    return wells[-wct:], wells[:wcw]
+    return wells[-wct:], wells[:wcw], plates_required
 
 
-def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2'):
+def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2', plate_barcodes=None):
     """ declare source wells for a Mytaq & H2O picklist, cycles through each well sequentially """
     water_wells = ['A'+c for c in '123']
     taq_wells = ['B'+c for c in '123']
@@ -450,30 +453,48 @@ def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2'):
     # calculate whether we have enough wells, volumes in nanolitres
     dv = PicklistSrc.deadvol[plateType]
     # initial well volume is 2800uL per well in a full 6 well plate
-    wc = [(2800-dv)*1000//v for v in (voltaq, volh2o)]
-    wct, wcw = [(wellCount+c-1)//c for c in wc]
-    assert wct+wcw<=6
+    transfers_per_well = [(2800-dv)*1000//v for v in (voltaq, volh2o)]
+    max_transfers_per_well = min(transfers_per_well)  # worst case scenario
+    taq_wells_required, water_wells_required = [(wellCount+c-1)//c for c in transfers_per_well]
+    plates_required = (max([taq_wells_required, water_wells_required])//3)+1
+    #print('Plates required:',plates_required, file=sys.stderr)
     # Water is A1, A2, ... while Mytaq is B3, B2, ...
     # returns wells: Mytaq list, water list
-    tw = [taq_wells[i%len(taq_wells)] for i in range(wellCount)]
-    ww = [water_wells[i%len(water_wells)] for i in range(wellCount)]
+    tw_pi = []
+    ww_pi = []
+    transfer_count = 0
+    plate_index = 1  # 1st taq/water plate
+    while transfer_count < wellCount:
+        if transfer_count != 0 and transfer_count%(max_transfers_per_well*3)==0:
+            plate_index += 1
+        tw = taq_wells[transfer_count%len(taq_wells)]
+        ww = water_wells[transfer_count%len(water_wells)]
+        if not plate_barcodes:
+            tw_pi.append((tw,plate_index))
+            ww_pi.append((ww,plate_index))
+        else:
+            tw_pi.append((tw,plate_barcodes[plate_index-1]))
+            ww_pi.append((ww,plate_barcodes[plate_index-1]))
+        transfer_count += 1
+    return tw_pi, ww_pi
+#    tw = [taq_wells[i%len(taq_wells)] for i in range(wellCount)]
+#    ww = [water_wells[i%len(water_wells)] for i in range(wellCount)]
     #print(set(tw), set(ww), file=sys.stderr)
-    return tw, ww
-            
+#    return tw, ww
 
 
-def mytaqPicklist(fn, wells, bc, voltaq, volh2o, plateType='6RES_AQ_BP2'):
+def mk_mytaq_picklist(fn, wells, taq_plate_barcodes, voltaq, volh2o, plateType='6RES_AQ_BP2'):
     "create a picklist for Mytaq & H2O transfers"
     dstPlateType = 'Hard Shell 384 well PCR Biorad'
     well_count = len(wells)
-    wtss, wwss = mytaq2(well_count, voltaq, volh2o)
-    # number of uses of each well - use available wells evenly. trep, wrep (taq rep, water rep)
-    trep, wrep = (well_count+int(bool(well_count%len(c))) for c in (wtss, wwss))
-    tws = (('Source[1]', bc, plateType, w) for i in range(trep) for w in wtss)
+    # mytaq2 return a list of each well and plate for taq wells (tw) and for water wells (ww).
+    tw_pbcs, ww_pbcs = mytaq2(well_count, voltaq, volh2o, plate_barcodes=taq_plate_barcodes)
+    # now merge the column info together
+    tws = (('Source[1]', bc, plateType, tw) for tw,bc in tw_pbcs)
     rowstaq = ([x for xs in xss for x in xs]+[voltaq] for xss in zip(tws, (('', w.pcrplate, dstPlateType, w.pcrwell) for w in wells))) 
-    wws = (('Source[1]', bc, plateType, w) for i in range(wrep) for w in wwss)
+    wws = (('Source[1]', bc, plateType, ww) for ww,bc in ww_pbcs)
     rowsh2o = ([x for xs in xss for x in xs]+[volh2o] for xss in zip(wws, (('', w.pcrplate, dstPlateType, w.pcrwell) for w in wells))) 
-    mkPickList(fn, (x for xs in (rowstaq, rowsh2o) for x in xs))
+    mk_picklist(fn, (x for xs in (rowstaq, rowsh2o) for x in xs))
     return
 
 
@@ -551,7 +572,7 @@ def main():
     parser.add_argument('-w', '--workdir', default='', help='specify a working directory (default $NGSDIR or $HOME/NGSDIR)')
     parser.add_argument('-l', '--library', default=deflib, help="library directory (default={}), best left alone".format(deflib))
     parser.add_argument('-v', '--verbose', action="store_true", help='lots of reporting')
-    parser.add_argument('-t', '--taq', help='Mytaq and water plate survey filename')
+    parser.add_argument('-t', '--taq', nargs='+', help='Mytaq and water plate survey filename')
     parser.add_argument('--custom', action='store_true', help='Pipeline is running in custom sample mode')
     grp2 = parser.add_argument_group('Stage 2 - dna & assays')
     grp3 = parser.add_argument_group('Stage 3 - Miseq barcodes')
@@ -559,7 +580,7 @@ def main():
     grp2.add_argument('-d', '--pcr', nargs='+',  help='PCR (destination) plate barcodes')
     # grp2.add_argument('-r', '--resume', help='i7i5 plate last well used - for example D15,H19.')
     grp2.add_argument('dna', nargs="+", help='barcode for 1 or more 384-well sample source (DNA - Nimbus output) plates')
-    # parser.add_argument('-D', '--dnadiff', action="store_true", help='allow different barcode in DNA files')
+    parser.add_argument('-D', '--dnadiff', action="store_true", help='allow different barcode in DNA files')
     grp3.add_argument('-i', '--i7i5', help='i7i5 plate survey filename.')
     grp3.add_argument('-x', '--xname', default=defxname, help="experiment name - used in MiSeq file (default={})".format(defxname))
     args = parser.parse_args()
@@ -658,7 +679,7 @@ def main():
         gen = ((sdict[r.dnaplate], r.dnaplate, srcPlateType, r.dnawell,
                 ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)
                for r in s2tab.data)
-        mkPickList(fn, gen)
+        mk_picklist(fn, gen)
         
         # Primer Picklist
         # [Source[1]', '', '384PP_AQ_BP', 'H6', 'Destination[1]', '3121', 'Hard Shell 384 well PCR Biorad', 'A1', 500]
@@ -681,8 +702,8 @@ def main():
         #gen = ([f for fs in (primsrc.xfersrc(r.primer, volume, depleted), 
         #        (ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)) for f in fs]
         #       for r in s2tab.data)
-        #mkPickList(fn, gen)
-        mkPickList(fn, primer_output_rows)
+        #mk_picklist(fn, gen)
+        mk_picklist(fn, primer_output_rows)
 
         if len(depleted):
             # Outputting HTML like this seems to display OK - though it shoule be done properly (in cgi-nimbus2.py)
@@ -701,7 +722,7 @@ def main():
         
         # also PCR1 water and Taq
         fndst = pcrfmt.format("1TaqWater")
-        mytaqPicklist(fndst, s2tab.data, args.taq, 1000, 300)
+        mk_mytaq_picklist(fndst, s2tab.data, args.taq, 1000, 300)
         if args.verbose:
             print('created:', fndst)
         
@@ -733,14 +754,14 @@ def main():
         rowi7 = (("Source[1]", "", '384PP_AQ_BP', r.i7well, ddict[r.pcrplate], r.pcrplate, '384PP_AQ_BP', r.pcrwell, bcvol) for r in s3tab.data)
         rowi5 = (("Source[1]", "", '384PP_AQ_BP', r.i5well, ddict[r.pcrplate], r.pcrplate, '384PP_AQ_BP', r.pcrwell, bcvol) for r in s3tab.data)
         fnbc = pcrfmt.format("2bc")
-        mkPickList(fnbc, (r for rs in (rowi7, rowi5) for r in rs))
+        mk_picklist(fnbc, (r for rs in (rowi7, rowi5) for r in rs))
         if args.verbose:
             print("created:", fnbc) 
     
         
         # also PCR2 water and Taq
         fndst = pcrfmt.format("2TaqWater")
-        mytaqPicklist(fndst, s3tab.data, args.taq, 2000, 650)
+        mk_mytaq_picklist(fndst, s3tab.data, args.taq, 2000, 650)
         if args.verbose:
             print('created:', fndst)
             

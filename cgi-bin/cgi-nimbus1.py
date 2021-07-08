@@ -3,10 +3,10 @@
 """
 @created Aug 10 2020
 @author: Bob Buckley & Cameron Jack - ANU Bioinformatics Consultancy JCSMR, ANU
-@version: 0.7
-@version_comment: No changes
-@last_edit: 2021-07-07
-@edit_comment:  Improvements to user interface and error reporting. Allows users to enter custom pipeline folder name
+@version: 0.8
+@version_comment: Massive interface changes. mouse_ and cutom_ run folders.
+@last_edit: 2021-07-08
+@edit_comment:  Improvements to user interface separate forms for each pipeline type. Improvements to pipeline resume.
 
 Application Stage 1 webpage.
 Display a form for creating Stage 1 Nimbus picklists files.
@@ -35,6 +35,7 @@ html = """
     <h2>Mouse pipeline - Stage 1</h2>
     <p>Stage 1 writes picklist files for the Nimbus robot to tranfer material from 
     96-well ear-punch plates to a 384-well DNA sample plate for use in the Echo robot.
+    New mouse projects will get a "run" folder created for them which will be today's date prefixed by "mouse_".
     </p>
     <form action="{stage1}" method="get">
       <p>Please provide the following information:</p>
@@ -48,10 +49,11 @@ html = """
     <hr>
     <form action="{stage1}" method="get">
         <h2>Custom sample pipeline - Stage 1</h2>
-        <p>To run the custom sample pipeline, you must first create a "run" folder within the NGSgeno folder for your project. 
-        You then need to copy the required files there: Sample file - max 4 plates per file!(CSV), Assay list file (CSV), Custom primer-plate layout (CSV)</p>
-        <p>Select project folder</p>
-        <label style="margin-left:25px;" for="projectDir">Set project folder:</label>
+        <p>To run the custom sample pipeline, you must first create a custom "run" folder (these MUST be prefixed with "custom_") within the NGSgeno 
+        folder for your project. You then need to copy the required files there: Sample file - max 4 plates per file!(CSV), 
+        Assay list file (CSV), Custom primer-plate layout (CSV)</p>
+        <p>Set project folder (don't type the "custom_" prefix):</p>
+        <label style="margin-left:25px;" for="projectDir"><em>custom_</em></label>
           <input type="text" id="projectDir" name="projectDir" size="40"/><br><br>
 
         <h3>Select custom sample, assay and primer plate files (CSV format)</h3>
@@ -94,28 +96,29 @@ def main():
 
     optx = ''
     # dir = form.getfirst('dir')
-    # Find optional sample directories - they have P*-EP.json files but not Echo*.csv files
+    # Find optional sample directories - they have P*-EP.json files but not Nimbus*.csv files
     # If the user doesn't choose a directory, then a new sample directory will be created
-    jfiles = frozenset(map(os.path.dirname, glob.glob(os.path.join('*', 'P*-EP.json'))))
-    # probably should look at Nimbus*.csv files - not Echo files
-    efiles = frozenset(map(os.path.dirname, glob.glob(os.path.join('*', 'Echo_384_COC*.csv'))))
-    dirs = sorted(jfiles-efiles, reverse=True)
-    if dirs:
-        dx = '\n\t\t    '.join("<option value='{0}'>{0}</option>".format(d) for d in dirs)
-        optx = """<label for="ngid">NGS Geno run Id:</label>
-        <select name="ngid" id="ngid">
-            <option value="">New MiSeq run</option>
-            {}
-        </select><br>
-        <p>Leave this (choose 'New MiSeq run') if you are preparing a new MiSeq run. 
-        The system will assign a new date-based run Id.
-        <br></p>""".format(dx)  
+    #jsonfiles = frozenset(map(os.path.dirname, glob.glob(os.path.join('*', 'P*-EP.json'))))
+    #nimfiles = frozenset(map(os.path.dirname, glob.glob(os.path.join('*', 'Nimbus*.csv'))))
+    #echofiles = frozenset(map(os.path.dirname, glob.glob(os.path.join('*', 'Echo*.csv')))) 
+    #dirs = sorted(set([jsonfiles-nimfiles,jsonfiles-echofiles]), reverse=True)
+    #if dirs:
+    #    dx = '\n\t\t    '.join("<option value='{0}'>{0}</option>".format(d) for d in dirs)
+    #    optx = """<label for="ngid">NGS Geno run Id:</label>
+    #    <select name="ngid" id="ngid">
+    #        <option value="">New MiSeq run</option>
+    #        {}
+    #    </select><br>
+    #    <p>Leave this (choose 'New MiSeq run') if you are preparing a new MiSeq run. 
+    #    The system will assign a new date-based run Id.
+    #    <br></p>""".format(dx)  
     epfmt = '<label for="ep{0}">Ear-punch plate {0} barcode:</label>\n\t  <input type="text" id="ep{0}" name="ep{0}" size="6" /><br>'
     epx = '\n\t'.join(epfmt.format(i) for i in range(1,5))
 
     optform = ''
     global nimbus2
-    wdirs = sorted(jfiles, reverse=True)
+    wdirs = [d for d in os.listdir() if (d.startswith('mouse_') or d.startswith('custom_')) and os.path.isdir(d)]
+    #wdirs = sorted(jsonfiles, reverse=True)
     if wdirs:
         dx = '\n\t\t    '.join("<option value='{0}'>{0}</option>".format(d) for d in wdirs)
         optmiseq = """<label for="ngid2">NGS Geno run Id:</label>

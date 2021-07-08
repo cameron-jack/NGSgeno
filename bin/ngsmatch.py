@@ -3,11 +3,10 @@
 """
 @created: Mar 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
-@version: 0.7
-@version_date: 2021-07-02
-@version_comment: replaced echo.epwell with echo.padwell
-@last_edit: 2021-07-02
-@edit_comment: as version_comment
+@version: 0.8
+@version_comment:
+@last_edit:
+@edit_comment:
 
 Read a NGS Genotyping Stage3.csv file
 Read an NGS Genotyping reference file containing assay target sequences.
