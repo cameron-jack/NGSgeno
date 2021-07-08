@@ -6,7 +6,7 @@
 @version: 0.8
 @version_comment: Supports multiple taq/water plates, mouse_ and custom_ run folders.
 @last_edit: 2021-07-08
-@edit_comment: Supports multiple taq/water plates, mouse_ and custom_ run folders. Numerous cleanups.
+@edit_comment: Changed active port to 9123 after Windows suddenly stole 9000
 
 Application Webpage.
 Nimbus picklists are already created - now gather Nimbus files
@@ -32,7 +32,7 @@ import nimbus
 from musterer import getPlate
 import primercheck
 
-
+port=9123
 nimbus2 = "/cgi-bin/cgi-nimbus2.py"
 stage2  = "/cgi-bin/cgi-stage2.py"
 
@@ -52,7 +52,7 @@ htmlerr = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -86,7 +86,7 @@ html1 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -139,7 +139,7 @@ htmlpl1 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -187,7 +187,7 @@ htmlpl2 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -218,7 +218,7 @@ html3 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -238,7 +238,7 @@ html4 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:9000/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -324,7 +324,7 @@ def main():
     except IndexError:
         print('Cannot find i7i5_plate_layout_*.csv', file=sys.stderr)
         exit(1)
-    
+    global port
     global htmlerr
     dnaBC = ''
     if "dnap" in fields:
@@ -334,7 +334,7 @@ def main():
     elif "existing" in fields:
         pass
     else:
-        print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>"))
+        print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>", port=port))
         return
     if dnaBC:      
         # Either call getPlate() to get plate data from Musterer, or if custom, get it from a file
@@ -350,11 +350,11 @@ def main():
             pxs = [getPlate(pid) for n, pid in pids]
             errx = [e for px, es in pxs for e in es]
             if len(pxs) == 0:
-                print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>"))
+                print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>", port=port))
                 return
         if errx: # any errors - report them
             errs = "    <p>\n"+"<br>\n    ".join(errx)+"\n    </p>"
-            print(htmlerr.format(errs=errs))
+            print(htmlerr.format(errs=errs, port=port))
             return
         if 'customSamples' in fields:
             plates_data = [(n, px[0]['plateId'], px[0]) for n,px in enumerate(pxs)]
@@ -422,7 +422,7 @@ def main():
         # Nimbus output files are not present
         global html1
         xinfo = ''.join("<p>{}</p>\n".format(x) for x in info)
-        print(html1.format(bcs='\n    '.join(sorted(xbc)), stage1=nimbus2, ngid=ngid, info1=xinfo, info2=getinfo(), existingDir=ngid))
+        print(html1.format(bcs='\n    '.join(sorted(xbc)), stage1=nimbus2, ngid=ngid, info1=xinfo, info2=getinfo(), existingDir=ngid, port=port))
         return
     
     def allfiles(fns):
@@ -539,7 +539,7 @@ def main():
             taqfmt = '<label for="taq">Mytaq/Water plate {0} barcode:</label>\n\t  <input type="text" id="taq" name="taq" size="8" /><br>'
             taqx ='\n\t'.join(taqfmt.format(i) for i in range(1,tc+1))
             print(htmlpl1.format(ngid=ngid, taq=taq_set, h2o=h2o_set, ebcs=' '.join(sorted(ebc)), 
-                    wellcount=wellcnt, noplates=pc, pcrs=pcrx, tc=tc, taqs=taqx, info=getinfo(), stage2=nimbus2, existingDir=ngid))
+                    wellcount=wellcnt, noplates=pc, pcrs=pcrx, tc=tc, taqs=taqx, info=getinfo(), stage2=nimbus2, existingDir=ngid,port=port))
             return
         if not allfiles([i7svy]):
             taq, h2o = echo.mytaq2(wellcnt, 2000, 650)
@@ -548,17 +548,17 @@ def main():
             h2o_set = sorted(set([w for w,p in h2o]))
             taqfmt = '<label for="taq">Mytaq/Water plate {0} barcode:</label>\n\t  <input type="text" id="taq" name="taq" size="8" /><br>'
             taqx ='\n\t'.join(taqfmt.format(i) for i in range(1,tc+1))
-            print(htmlpl2.format(ngid=ngid, taq=taq_set, h2o=h2o_set, tc=tc, taqs=taqx, info=getinfo(), stage2=nimbus2, existingDir=ngid))
+            print(htmlpl2.format(ngid=ngid, taq=taq_set, h2o=h2o_set, tc=tc, taqs=taqx, info=getinfo(), stage2=nimbus2, existingDir=ngid,port=port))
             return
         
         # the form calls echo.py (indirectly?) then displays the form for collecting MiSeq results
-        # print(html2.format(wellcount=wellcnt, noplates=pc, pcrs=pcrx, stage2=nimbus2, ngid=ngid, info=''.join(info)+getinfo()))
+        # print(html2.format(wellcount=wellcnt, noplates=pc, pcrs=pcrx, stage2=nimbus2, ngid=ngid, info=''.join(info)+getinfo(),port=port))
         # return
 
     if not os.path.isdir("raw") and not os.path.isdir("RAW"):
         print('cgi-nimbus2:', 'No raw FASTQ directory', file=sys.stderr)
         global html3 # data analysis & reporting step
-        print(html3.format(ngid=ngid, info=getinfo(), stage2=nimbus2, existingDir=ngid))
+        print(html3.format(ngid=ngid, info=getinfo(), stage2=nimbus2, existingDir=ngid, port=port))
         return
     
     if not os.path.isfile("Results.csv"):
@@ -571,7 +571,7 @@ def main():
                 dst.write("============ STDERR =============\n")
                 dst.write(res.stderr.decode('utf-8').replace('\r',''))
                 
-    print(html4.format(ngid=ngid, info=getinfo(), stage2=nimbus2))
+    print(html4.format(ngid=ngid, info=getinfo(), stage2=nimbus2, port=port))
     return    
     
 
