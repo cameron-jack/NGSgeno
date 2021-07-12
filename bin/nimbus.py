@@ -5,8 +5,8 @@
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 @version: 0.8
 @version_comment:
-@last_edit: 
-@edit_comment:
+@last_edit: 2021-07-12
+@edit_comment: Fixed broken file links to library files
 
 GUI for Nimbus files for the NGSgenotyping project.
 Note - The GUI code is no longer used - the nimbus() function is called by cgi-nimbus2.py
@@ -51,17 +51,21 @@ app = None # global!
 
 
 
-def nimbus(tgtid, platesdata):
+def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
     """
     Process Musterer punch-plate data to produce a workfile for the BRF's Nimbus robot.
     See nimbus_custom() for custom data version.
+    fnmm - assay_list_<date>.csv file, maps Musterer names to assay/sequence names (custom inputs should
+        have duplicated columns)
+    fnpp - file name primer layout plate 'primer_layout_<date>.csv'
+    fnref - file name reference sequences 'reference_sequences_<date?>.txt
     
     It needs the name of an output file and ear-punch data for each plate.
     """
     
     # use common code to read library files
     global assayMethod
-    pl = primercheck.PrimerLookup()
+    pl = primercheck.PrimerLookup(fnmm=fnmm, fnpp=fnpp, fnref=fnref)
     def getassays(winf):
         "combine old and new assay family names from Musterer"
         ngsassays = [n['assayName'] for n in winf.get('assays', []) if n['assayMethod']==assayMethod]

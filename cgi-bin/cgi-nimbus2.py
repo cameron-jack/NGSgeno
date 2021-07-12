@@ -5,8 +5,8 @@
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 @version: 0.8
 @version_comment: Supports multiple taq/water plates, mouse_ and custom_ run folders.
-@last_edit: 2021-07-08
-@edit_comment: Changed active port to 9123 after Windows suddenly stole 9000
+@last_edit: 2021-07-12
+@edit_comment: Fixed broken file links to library files
 
 Application Webpage.
 Nimbus picklists are already created - now gather Nimbus files
@@ -370,11 +370,25 @@ def main():
         if 'customPrimers' in fields:
             custom_primer_fn = fields.getfirst('customPrimers')
         
+        template_files = collections.defaultdict(str)
+        if os.path.exists('template_files.txt'):
+            with open('template_files.txt', 'rt') as f:
+                for line in f:
+                    cols = line.strip().split('\t')
+                    template_files[cols[0]] = cols[1]
+            print('cgi-nimbus2:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
+        else:
+            # set the most recent standard library
+            template_files['assays'] = sorted(glob.glob(os.path.join('..','library', 'assay_list_*.csv')), reverse=True)[0]
+            template_files['primers'] = sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
+            template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt")), reverse=True)[0]
+
         #tgtfn = 'Nimbus'+dnaBC+'.csv'
         if 'customSamples' in fields:
             dnacnt, plist, unk = nimbus.nimbus_custom(dnaBC, plates_data, custom_assay_fn, custom_primer_fn)
         else:
-            dnacnt, plist, unk = nimbus.nimbus(dnaBC, plates_data)
+            dnacnt, plist, unk = nimbus.nimbus(dnaBC, plates_data, fnmm=template_files['assays'],
+                    fnpp=template_files['primers'], fnref=template_files['ref'])
 
         # save "state" of custom resources to file
         if 'customSamples' in fields:
@@ -430,18 +444,7 @@ def main():
     
     #library = os.path.join("..", "library")
     
-    template_files = collections.defaultdict(str)
-    if os.path.exists('template_files.txt'):
-        with open('template_files.txt', 'rt') as f:
-            for line in f:
-                cols = line.strip().split('\t')
-                template_files[cols[0]] = cols[1]
-        print('cgi-nimbus2:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
-    else:
-        # set the most recent standard library
-        template_files['assays'] = sorted(glob.glob(os.path.join('..','library', 'assay_list_*.csv')), reverse=True)[0]
-        template_files['primers'] = sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
-        template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt")), reverse=True)[0]
+    
 
     prsvy = "primer-svy.csv"
     if 'pcr' in fields:
