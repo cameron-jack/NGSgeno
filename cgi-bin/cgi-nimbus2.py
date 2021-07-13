@@ -324,6 +324,19 @@ def main():
     except IndexError:
         print('Cannot find i7i5_plate_layout_*.csv', file=sys.stderr)
         exit(1)
+
+    ### set library defaults
+    template_files = collections.defaultdict(str)
+    template_files['assays'] = sorted(glob.glob(os.path.join('..','library', 'assay_list_*.csv')), reverse=True)[0]
+    template_files['primers'] = sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
+    template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt")), reverse=True)[0]
+    ### load existing custom library info if available
+    if os.path.exists('template_files.txt'):
+        with open('template_files.txt', 'rt') as f:
+            for line in f:
+                cols = line.strip().split('\t')
+                template_files[cols[0]] = cols[1]
+        #print('cgi-nimbus2:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
     global port
     global htmlerr
     dnaBC = ''
@@ -369,19 +382,14 @@ def main():
         custom_primer_fn = None
         if 'customPrimers' in fields:
             custom_primer_fn = fields.getfirst('customPrimers')
-        
-        template_files = collections.defaultdict(str)
-        if os.path.exists('template_files.txt'):
-            with open('template_files.txt', 'rt') as f:
-                for line in f:
-                    cols = line.strip().split('\t')
-                    template_files[cols[0]] = cols[1]
-            print('cgi-nimbus2:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
-        else:
-            # set the most recent standard library
-            template_files['assays'] = sorted(glob.glob(os.path.join('..','library', 'assay_list_*.csv')), reverse=True)[0]
-            template_files['primers'] = sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
-            template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt")), reverse=True)[0]
+            
+        if 'customSamples' in fields:
+            with open('template_files.txt', 'wt') as outf:
+                print('customSamples\t' + fields.getfirst('customSamples'), file=outf)
+                if 'customAssays' in fields:
+                    print('customAssays\t' + fields.getfirst('customAssays'), file=outf)
+                if 'customPrimers' in fields:
+                    print('customPrimers\t' + fields.getfirst('customPrimers'), file=outf)  
 
         #tgtfn = 'Nimbus'+dnaBC+'.csv'
         if 'customSamples' in fields:
@@ -391,13 +399,7 @@ def main():
                     fnpp=template_files['primers'], fnref=template_files['ref'])
 
         # save "state" of custom resources to file
-        if 'customSamples' in fields:
-            with open('template_files.txt', 'wt') as outf:
-                print('customSamples\t' + fields.getfirst('customSamples'), file=outf)
-                if 'customAssays' in fields:
-                    print('customAssays\t' + fields.getfirst('customAssays'), file=outf)
-                if 'customPrimers' in fields:
-                    print('customPrimers\t' + fields.getfirst('customPrimers'), file=outf)
+        
 
         # acnt = len(plist)
         # infostr = ("Nimbus file for DNA plate ID {} uses {} wells.<br>".format(dnaBC, dnacnt) +  
@@ -494,7 +496,10 @@ def main():
         # determine the number of PCR plates needed
         # maybe add reports - no. occupied DNA wells, no. assays per plate, ...
         
-        prm = primercheck.PrimerLookup(fnmm=template_files['customAssays'], fnpp=template_files['customPrimers'])
+        if 'customAssays' in template_files:
+            prm = primercheck.PrimerLookup(fnmm=template_files['customAssays'], fnpp=template_files['customPrimers'])
+        else:
+            prm = primercheck.PrimerLookup(fnmm=template_files['assays'], fnpp=template_files['primers'])
         
         def platePrimers(bc):
             "reads the Stage1-P*.csv file - return tuple: barcode, set of primers per sample"
