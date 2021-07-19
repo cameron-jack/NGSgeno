@@ -20,7 +20,7 @@ import cgi
 import cgitb
 import requests
 import subprocess
-import collections
+from collections import defaultdict
 import sys
 from configparser import ConfigParser as CP
 from pathlib import PurePath
@@ -216,23 +216,24 @@ def get_musterer_mouse_info(mouse_barcodes, debug=False):
     results = []
     config = CP()
     config.read(PurePath('../bin/config.ini'))
-    url = config['mice']['url']
     username = config['mice']['username']
     passwd = config['mice']['passwd']
     for bg in barcode_groups:
         #print(bg)
-        url += '?barcode='
-        url += '&barcode='.join(bg)
+        url = config['mice']['url'] + '?barcode=' + '&barcode='.join(bg)
         try:
+            #print(url, username, passwd, file=sys.stderr)
             r = requests.get(url, auth=(username, passwd), verify=False)
         except requests.exceptions.ConnectionError:
             print('No connection to Musterer!', file=sys.stderr)
             return None
 
-        assert r.headers['content-type']=="application/json;charset=UTF-8", r.headers['content-type']
+        #assert r.headers['content-type']=="application/json;charset=UTF-8", r.headers['content-type']
+        #assert r.headers['content-type']=="text/html;charset=UTF-8", r.headers['content-type']
         if not r.ok:
             #app.setstatus("Return status =", r.status_code)
             #app.setstatus("when accessing URL:", url)
+            print('Return status:', r.status_code, 'when accessing URL:', url, file=sys.stderr)
             return None
         assert r.ok
         if not r.status_code==200:
@@ -244,8 +245,7 @@ def get_musterer_mouse_info(mouse_barcodes, debug=False):
             msg = "Musterer returned no results for barcodes:" + ','.join(bg)
             #app.setstatus(msg)
             #mb.showerror("Musterer error", msg)
-            if debug:
-                print(msg, file=sys.stderr)
+            print(msg, file=sys.stderr)
         results.append(res)
     return simplify_mouse_JSON(results)
 
