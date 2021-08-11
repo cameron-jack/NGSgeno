@@ -187,15 +187,21 @@ def simplify_mouse_JSON(json_data):
             sire = mouse.get('sire')
             dams = mouse.get('dams')
             assays = mouse.get('assays')
-            m = {'sex' : mouse.get('sex'),
-                'strain' : mouse.get('strainName')}
+            m = defaultdict(None)
+            m['sex'] = mouse.get('sex')
+            m['strain'] = mouse.get('strainName')
+            m['mouseId'] = mouse.get('mouseId')
             if sire:
                 m['sire_barcode'] = str(sire.get('barcode'))
             if dams:
                 m['dams_barcodes'] = [str(d.get('barcode')) for d in dams]
             if assays:
-                m['assay_names_values'] = {a.get('assayName'):a.get('assayValue') for a in assays}
-                m['assay_value_options'] = {a.get('assayName'):a.get('assayValueOptions') for a in assays}
+                m['assay_names_values'] = defaultdict(list)
+                m['assay_value_options'] = defaultdict(list)
+                for a in assays:
+                    if 'assayName' in a:
+                        m['assay_names_values'][a.get('assayName')] = a.get('assayValue')
+                        m['assay_value_options'][a.get('assayName')] = a.get('assayValueOptions')
             mice[barcode] = m
     return mice
 
@@ -247,6 +253,8 @@ def get_musterer_mouse_info(mouse_barcodes, debug=False):
             #mb.showerror("Musterer error", msg)
             print(msg, file=sys.stderr)
         results.append(res)
+    simple_mice = simplify_mouse_JSON(results)
+    print('Returned', len(simple_mice), 'from', len(mouse_barcodes), 'lookups', file=sys.stderr)
     return simplify_mouse_JSON(results)
 
 

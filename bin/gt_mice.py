@@ -4,8 +4,8 @@
 """
 @created: Dec 2020
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.8
-@version_comment:
+@version: 0.9
+@version_comment: 'Call' concept removed. Genotyping appears to be working
 @last_edit:
 @edit_comment:
 
@@ -39,9 +39,6 @@ are location specific (results are WT, HET or MUT):
     In some cases, especially breeding trios, the gender of the mouse is an important
     factor in a pass/fail result.
 
-We need to output 2 colums: "call" and "GT". Call is a row-based decision based on the
-observed counts vs the expected primer, while GT is of the form that matches what is expected 
-by Musterer.
 """
 
 import csv
@@ -49,6 +46,7 @@ from collections import defaultdict, namedtuple
 import sys
 import gzip
 import requests
+import multiprocessing
 from pathlib import PurePath
 from configparser import ConfigParser as CP
 from argparse import ArgumentParser as AP
@@ -71,10 +69,10 @@ class Observable:
     def __init__(self, old_family, old_assay, old_obs, ngs_family, ngs_assay, ngs_obs):
         self.old_family = old_family
         self.old_assay = old_assay
-        self.old_observables = tuple(old_obs)  # the per-reaction calls/gts
+        self.old_observables = tuple(old_obs)  # the possible genotypes
         self.ngs_family = ngs_family
         self.ngs_assay = ngs_assay
-        self.ngs_observables = tuple(ngs_obs)  # the per-reaction calls/gts
+        self.ngs_observables = tuple(ngs_obs)  # the possible genotypes
 
 
     def __str__(self):
@@ -184,14 +182,27 @@ def get_old_new_assay(assay_or_fam, ngs_families, ngs_assays, old_families, old_
     There is a chance of getting a new NGS assay and needing to figure out the matching old assay name.
     Alternatively, get the new ngs_assay from the old assay or family name 
     """
+    #print('Assay or family to look up', assay_or_fam, file=sys.stderr)
+    #print('ngs_families', ngs_families, file=sys.stderr)
+    #print('ngs_assays', ngs_assays, file=sys.stderr)
+    #print('old_families', old_families, file=sys.stderr)
+    #print('old_assays', old_assays, file=sys.stderr)
     if assay_or_fam in ngs_assays:
-        return ngs_assays[assay_or_fam][0].old_assay
+        a = ngs_assays[assay_or_fam][0].old_assay.replace('Amplifluor::','')
+        print('Found in ngs assays!', a, file=sys.stderr)
+        return a
     elif assay_or_fam in ngs_families:
-        return ngs_families[assay_or_fam][0].old_assay
+        a = ngs_families[assay_or_fam][0].old_assay.replace('Amplifluor::','')
+        print('Found in ngs families!', a, file=sys.stderr)
+        return a
     elif assay_or_fam in old_assays:
-        return old_assays[assay_or_fam][0].ngs_assay
+        a = old_assays[assay_or_fam][0].ngs_assay.replace('NGS::','')
+        print('Found in old assays!', a, file=sys.stderr)
+        return a
     elif assay_or_fam in old_families:
-        return old_families[assay_or_fam][0].ngs_assay
+        a = old_families[assay_or_fam][0].ngs_assay.replace('NGS::','')
+        print('Found in old families!', a, file=sys.stderr)
+        return a
     else:
         print('Cannot find', assay_or_fam, 'in known assay or family conversions', file=sys.stderr)
         return ''
@@ -216,6 +227,8 @@ def read_results(result_fn):
 def standardise_allele(config, allele):
     """ take an observed or Musterer allele (half an observable) and try to convert it to standard terms """
     allele = allele.lower()
+    if allele == 'other':
+        return ''
     if allele == 'y':
         allele = '/y'
     mut_set = set(config['genotypes']['mut'].lower().split(','))
@@ -227,7 +240,7 @@ def standardise_allele(config, allele):
 
     if allele in y_set:
         return '/y'
-    elif allele in mut_set:
+    if allele in mut_set:
         return 'mut'
     elif allele in wt_set:
         return 'wt'
@@ -242,6 +255,50 @@ def standardise_allele(config, allele):
         return ''
 
 
+def match_assay(my_assay, target_assays, ngs_families, ngs_assays, old_families, old_assays):
+    """ try to find matching assays in a target set. Try converting old/new if required """
+    my_assay = my_assay.lower()
+    musterer_assays = [ta for ta in target_assays if ta.lower() in my_assay]
+    if musterer_assays:
+        #print('(1)Primers matching Musterer assays:', musterer_assays, file=sys.stderr)
+        return musterer_assays
+    musterer_assays = [ta for ta in target_assays if ta.lower().replace('-','') in my_assay.replace('-','')]
+    if musterer_assays:
+        #print('(2)Primers matching Musterer assays:', musterer_assays, file=sys.stderr)
+        return musterer_assays
+    musterer_assays = [ta for ta in target_assays if ta.lower().split('-')[0] in my_assay.split('-')[0]]
+    if musterer_assays:
+        #print('(3)Primers matching Musterer assays:', musterer_assays, file=sys.stderr)
+        return musterer_assays
+    
+    # try at family level
+    f = my_assay.split('_')[0].lower()
+    musterer_assays = [ta for ta in target_assays if f in ta.lower()]
+    if musterer_assays:
+        #print('(1)Family matching Musterer assays:', musterer_assays, file=sys.stderr)
+        return musterer_assays
+    musterer_assays = [ta for ta in target_assays if f.replace('-','') in ta.lower().replace('-','')]
+    if musterer_assays:  # sometimes just the first part of a name is all that is in common
+        #print('(2)Family matching Musterer assays:', musterer_assays, file=sys.stderr)
+        return musterer_assays
+    musterer_assays = [ta for ta in target_assays if f.split('-')[0] in ta.split('-')[0].lower()]
+    if musterer_assays:
+        #print('(3)Family matching Musterer assays:', musterer_assays, file=sys.stderr)
+        return musterer_assays
+
+    # try converting to old/new assay
+    musterer_assays = [get_old_new_assay(my_assay, ngs_families, ngs_assays, old_families, old_assays)]
+    if musterer_assays:
+        #print('(1)Assay conversion matching Musterer assays:', musterer_assays, file=sys.stderr)
+        return musterer_assays
+    musterer_assays = [get_old_new_assay(f, ngs_families, ngs_assays, old_families, old_assays)]
+    if musterer_assays:
+        #print('(1)Family conversion Musterer assays:', musterer_assays, file=sys.stderr)
+        return musterer_assays
+    print('No match found for', my_assay, file=sys.stderr)
+    return []             
+
+
 class MObs():
     """ Mouse Observations, encapsulates per-mouse results """
     def __init__(self, idx_rec, old_assays, ngs_assays): #assay_conversion=None):
@@ -254,22 +311,23 @@ class MObs():
         self.musterer_assay_heredity_check = defaultdict(lambda: False)  # does each assay pass its heredity checks
         self.family_indices = defaultdict(list)
         self.mouseAssays = []  # directly from Rec.mouseAssays
-        self.indexed_primer = {}   # [idx] = primer
-        self.family_pass = defaultdict(str)  # dictionary assay:true/false
-        self.family_comment = defaultdict(str)  # dictionary assay:''
-        self.indexed_reactions = defaultdict(list)  # all observed reactions within a well
-        self.indexed_sum_counts = defaultdict(lambda: 0)  # for calculating efficiency, etc
+        self.indexed_primer = defaultdict(str)   # [idx] = primer
+        self.family_sanity_pass = defaultdict(str)  # dictionary assay:true/false
+        self.family_sanity_comment = defaultdict(str)  # dictionary assay:''
+        self.family_allele_ratio = defaultdict(str)  # propagated to self.indexed_allele_ratio
+        self.indexed_matches = defaultdict(list)  # all observed matches within a well
+        #self.indexed_sum_counts = defaultdict(lambda: 0)  # for calculating efficiency, etc
         #self.indexed_primer_conversion = defaultdict(None)  # one assay conversion object per index
-        self.indexed_allele_ratios = defaultdict(lambda: ['NA'])
-        self.indexed_efficiencies = defaultdict(lambda: 'NA')
+        self.indexed_allele_ratio = defaultdict(lambda: ['NA'])
+        self.indexed_efficiency = defaultdict(lambda: 'NA')
         self.indexed_contaminated = defaultdict(lambda: False)  # [i] = True/False
-        self.indexed_calls = defaultdict(str)  # string 'plus'/'minus'/'new'/''
-        self.indexed_seqs = defaultdict(list)  # the sequence names that match the expected primer
-        self.indexed_empty = defaultdict(lambda: False)  # True if no observed DNA fragments
+        #self.indexed_seqs = defaultdict(list)  # the sequence names that match the expected primer
+        #self.indexed_empty = defaultdict(lambda: False)  # True if no observed DNA fragments
         self.indexed_new = defaultdict(lambda: False)
         self.indexed_family_match = defaultdict(lambda: False)
         self.indexed_genotype = defaultdict(str)
         self.indexed_musterer_assays = defaultdict(list)
+        self.indexed_chosen_matches = defaultdict(list)  # contains list of (count,assay) which match the primer
         self.upload_records = []  # created on calling genotypes
         self.checked_upload_records = []  # filtered on heredity checking
         if idx_rec:
@@ -282,15 +340,16 @@ class MObs():
         #else:
         #    print('Successfully added indexed record', idx_rec, file=sys.stderr)
         # these three are for data we pull from Musterer
-        self.musterer_info = None
+        self.musterer_info = defaultdict(None)
         self.sire_barcode = None
-        self.sire_info = defaultdict(lambda: 'NA')  # [sire_bc] = {dict:sire_info}
+        self.sire_info = defaultdict(None)  # [sire_bc] = {dict:sire_info}
+        self.sire_gt = None
         self.dams_barcodes = None
-        self.dams_info = defaultdict(lambda: 'NA')  # [dam_bc] = {dict:dam_info}
+        self.dams_info = defaultdict(None)  # [dam_bc] = {dict:dam_info}
         self.dam_bc_gt = None  # barcode of dam that passed sanity check
 
     def __str__(self):
-        return '\t'.join([self.barcode, 'records:', str(len(self.indexed_records)), 'reactions:', str(len(self.indexed_reactions))])
+        return '\t'.join([self.barcode, 'records:', str(len(self.indexed_records)), 'matches:', str(len(self.indexed_matches))])
 
 
     # def get_parents_strains(self):
@@ -381,8 +440,8 @@ class MObs():
     def add_indexed_record(self, idx_rec, old_assays, ngs_assays, minreads=50): # assay_conversion=None, minreads=100):
         """
             Add a record for the given index and filter assays/counts
-            Record the filtered assay reactions by index
-            Record the allele ratios by index
+            Record the filtered assay matches by index
+            Record the allele ratio by index
         """
         idx = idx_rec[0]
         rec = idx_rec[1]
@@ -391,7 +450,7 @@ class MObs():
             self.moouseAssays = rec.mouseAssays
         #self.indexed_primer_conversion[idx] = assay_conversion
         # group together counts and their assay reference name
-        self.indexed_reactions[idx] = []
+        self.indexed_matches[idx] = []
         self.indexed_primer[idx] = rec.primer
         matches = rec.matches
             
@@ -401,61 +460,15 @@ class MObs():
 
         counts_assays = sorted([(int(c),a) for c,a in matches], reverse=True)
         all_counts = [c for (c,a) in counts_assays]
-        if all_counts:
-            max_count = max(all_counts)
-
-        if sum(all_counts) < minreads:
+        if not all_counts or sum(all_counts) < minreads:
             print('Insufficient sequence reads found for record:', idx, 'Minimum required reads:', minreads, file=sys.stderr)
-            return
-
-        # filter, only keep assays in meaningful proportions
-        counts_assays = [(c,a) for c,a in counts_assays \
-                if c > max_count/10 and c > minreads/len(all_counts)]
-        if len(counts_assays) == 0:  # can this even happen? Probably not...
-            print('No sequence reads found of significant proportion', idx, file=sys.stderr)
-            return
         
-        self.indexed_reactions[idx] = counts_assays
+        self.indexed_matches[idx] = counts_assays
         self.indexed_primer[idx] = rec.primer
         #return True
 
 
-    def call_reactions(self, minreads=100):
-        """
-            'Call' whether we have successfully observed a primer sequence, based on rec.primer
-            Record all indexed calls as 'plus' or 'minus'
-        """   #
-        #if self.musterer_info is None:
-        #    print('Musterer assay information unavailable, calling impossible', file=sys.stderr)
-        #    sys.exit(-1)
-        # If assay is only unknown sequence then it's 'new'
-        #dna_chars = {'A','C','G','T'}
-        for i in self.indexed_reactions:
-            self.indexed_calls[i] = 'minus'
-            assay = self.indexed_primer[i]
-
-            observed_assays = [a for (c,a) in self.indexed_reactions[i]]
-            # check that both the assay family name and the specific variation e.g. Apc_WT, are present in at least 1 sequence name
-            for oa in observed_assays:
-                if all(part.lower() in oa.lower() for part in assay.split('_')):
-                    self.indexed_calls[i] = 'plus'
-                    break
-
-    def call_obs(self):
-        """
-            'Call' the observed alleles if the reference sequence name is related to the primer.
-            Record the sequence names that match
-        """
-        for i in self.indexed_reactions:
-            expected_assay = self.indexed_primer[i]
-            observed_assays = [a for (c,a) in self.indexed_reactions[i]]
-            # check that both the assay family name and the specific variation e.g. Apc_WT, are present in at least 1 sequence name
-            for oa in observed_assays:
-                if all(part.lower() in oa.lower() for part in expected_assay.split('_')):
-                    self.indexed_seqs[i].append(oa)
-
-
-    def call_genotypes(self, old_families, ngs_families, old_assays, ngs_assays, config):
+    def call_genotypes(self, ngs_families, ngs_assays, old_families, old_assays, config):
         """ Establish which assay we are using then compare the sequenced allele tags against the available observables """
         
         # gather rows belonging to the same assay family
@@ -465,102 +478,124 @@ class MObs():
                 continue
             self.family_indices[fam].append(i)
         
-        # check if sequenced assays match expected assay
         for f in sorted(self.family_indices):
             print('family being genotyped',f, file=sys.stderr)
-            #matching_reactions = set()
-            passing_assays = []
-            passing_seqs = []
-            for i in sorted(self.family_indices[f]):
-                if self.indexed_calls[i] == 'plus':
-                    passing_assays.append(self.indexed_primer[i])
-                    passing_seqs.append(self.indexed_seqs[i])
-            if len(passing_assays) == 0:
-                print('No successful assays found for family:', f, file=sys.stderr)
-                continue
-            passing_seqs = list(chain(*passing_seqs))
+            all_assays = [p for p in [self.indexed_primer[i] for i in self.family_indices[f]]]
+            if len(all_assays) == 0:
+                print('No assay primers found for family:', f, file=sys.stderr)
+                continue 
             all_musterer_assays = self.musterer_info['assay_value_options'].keys()
-            # try first to use the primer info, then fall back to family matches
-            musterer_assays = [ma for ma in all_musterer_assays if ma.lower() in map(str.lower, passing_assays)]
-            print('Primers matching Musterer assays:', musterer_assays, file=sys.stderr)
-            if not musterer_assays:
-                musterer_assays = [ma for ma in all_musterer_assays if f.lower().replace('-','') in ma.lower().replace('-','')]
-            print('Barcode:',self.barcode,'Family:', f, 'Musterer assays:', musterer_assays, passing_assays, passing_seqs, file=sys.stderr)
-            if not musterer_assays:  # sometimes just the first part of a name is all that is in common
-                musterer_assays = [ma for ma in all_musterer_assays if f.split('-')[0].lower() in ma.split('-')[0].lower()]
-            if len(musterer_assays) == 0:
-                print('No recognised Musterer assay for family:', f, 'Possible Musterer assays:', 
-                        all_musterer_assays, 'Attempting to convert between NGS and Musterer assays', file=sys.stderr)
-                # Now need to try converting from NGS to Musterer assay names
-                musterer_assays = []
-                for pa in passing_assays:
-                    conv_assay = get_old_new_assay(pa, ngs_families, ngs_assays, old_families, old_assays)
-                    if conv_assay and conv_assay in all_musterer_assays:
-                        musterer_assays.append(conv_assay)
-                if not musterer_assays:
-                    print('failed to find', passing_assays, 'in assay conversion data', file=sys.stderr)
-                    continue
+            # find all primer assays in musterer assay options
+            musterer_assays = list(set(chain(*[match_assay(aa, all_musterer_assays, ngs_families, ngs_assays, old_families, old_assays) for aa in all_assays])))
+            print('Musterer assays for this mouse:', all_musterer_assays, file=sys.stderr)
 
-            alleles_present = set([ps.split('_')[1] for ps in passing_seqs])
-            standard_alleles_present = set([standardise_allele(config, a) for a in alleles_present])
-            print('Alleles present', alleles_present, 'Standardised alleles present', standard_alleles_present, file=sys.stderr)
+            # apply count filtering here and calculate efficiency, allele ratio, etc
+            #all_matches = [m for m in [self.indexed_matches[i] for i in self.family_indices[f]]]
+            family_matches = []
+            for i in self.family_indices[f]:
+                primer_matches = []
+                well_total = sum([c for c,a in self.indexed_matches[i]])
+                well_matches = []
+                for c,a in self.indexed_matches[i]:  # m = (count, assay)
+                    # efficiency is calculated per-well
+                    # assay ratio is calculated across all wells for all valid alleles
+                    # valid alleles are found per-well and combined together
+                    # alleles are already sorted by decreasing count
+                    if f.lower() in a.lower():
+                        if not well_matches:
+                            well_matches.append((c,a))
+                            self.indexed_chosen_matches[i].append((c,a))
+                        elif c > 0.3*(sum([c for c,a in well_matches])/len(well_matches)):
+                            # catch underperforming alleles with 1/3rd the counts of others
+                            well_matches.append((c,a))
+                            self.indexed_chosen_matches[i].append((c,a))
+                if well_total:
+                    self.indexed_efficiency[i] = sum([c for c,a in well_matches])/well_total
+                family_matches += well_matches
 
-            #self.family_to_musterer_assays[f] = musterer_assays
-            #if len(musterer_assays) == 2: # chose one assay if possible
-            #    if musterer_assays[0].split('_')[0].lower().replace('-','') in musterer_assays[1].split('_')[0].lower().replace('-','') or \
-            #            musterer_assays[1].split('_')[0].lower().replace('-','') in musterer_assays[0].split('_')[0].lower().replace('-',''):
-            #        if musterer_assays[0] in self.musterer_info['assay_value_options']:
-            #            musterer_assays = [musterer_assays[0]]
-            #        elif musterer_assays[1] in self.musterer_info['assay_value_options']:
-            #            musterer_assays = [musterer_assays[1]]
-            #        else:
-            #            print('Assays not found in Musterer records', musterer_assays, self.musterer_info['assay_value_options'], file=sys.stderr)
+            standard_alleles_present = {standardise_allele(config, a.split('_')[1]):c for c,a in family_matches}
+            standard_alleles_present = {sa:standard_alleles_present[sa] for sa in standard_alleles_present if sa != ''}
+            total_counts_present = sum([c for c,a in family_matches])
 
-            #def decide_assay_and_genotype(assay, standard_alleles_present):
-            #    """ test an assay's observables against the standardised alleles seen from seqs """
+            print('Standardised alleles present', standard_alleles_present, file=sys.stderr)
+
             for assay in musterer_assays:   
                 if assay not in self.musterer_info['assay_value_options']:
                     print("This was meant to come from self.musterer_info['assay_value_options']... the code is wrong!", assay, 
                             self.musterer_info['assay_value_options'], file=sys.stderr)
                     continue
                 obs = self.musterer_info['assay_value_options'][assay]
-                print(assay, obs, file=sys.stderr)
+                sex_linked = False
+                if any(['/y' in o.lower() for o in obs]):
+                    sex_linked = True
+                print('Assay:',assay, 'Observables:',obs, file=sys.stderr)
                 for ob in obs:
+                    print('ob', ob, 'obs', obs, file=sys.stderr)
                     if not '/' in ob:
-                        o1 = standardise_allele(config, ob)
-                        if o1 == 'pos':
-                            print('This is...', assay, o1, standard_alleles_present, file=sys.stderr)
+                        # CRE or other single insert mutations
+                        o = standardise_allele(config, ob)
                         # is any match good enough, or does it need to be the ONLY match?
-                        if o1 in standard_alleles_present:
+                        if o in standard_alleles_present or (o == 'neg' and not standard_alleles_present):
+                            # if CREneg then there won't be any alleles present
                             self.family_to_musterer_assays[f].append(assay)
                             self.musterer_assay_genotype[assay] = ob
                             if self.family_genotype[f]:
                                 self.family_genotype[f] = self.family_genotype[f] + '/' + ob
+                                self.family_allele_ratio[f] = [1/self.family_genotype[f].count('/')+1]
                             else:
                                 self.family_genotype[f] = ob
-                            break
-                    else:
+                                self.family_allele_ratio[f] = [1]
+                            break 
+                    elif ob.count('/') == 1:
+                        # standard wt/mut style assay
                         o1, o2 = ob.split('/')
-                        o1 = standardise_allele(config, o1)
-                        o2 = standardise_allele(config, o2)
-                        # test that we have a bijection 
-                        if all([sa in set([o1,o2]) for sa in standard_alleles_present]) and all([o in standard_alleles_present for o in [o1,o2]]):
+                        so1 = standardise_allele(config, o1)
+                        so2 = standardise_allele(config, o2)
+                        print ('Ob1:',so1, 'Ob2:',so2, 'Standard alleles present:',standard_alleles_present, file=sys.stderr)
+                        # deal with sex-linked /Y genotypes
+                        if (so1 == '/y' or so2 == '/y') and self.musterer_info['sex'] == 'M' and \
+                                len(standard_alleles_present) == 1 and list(standard_alleles_present.keys())[0] in [so1,so2]:
                             self.family_to_musterer_assays[f].append(assay)
                             self.musterer_assay_genotype[assay] = ob
                             self.family_genotype[f] = ob
+                            self.family_allele_ratio[f] = [1]
                             break
-                        
+                        # test that we have a bijection 
+                        elif all([sa in set([o1,o2]) for sa in standard_alleles_present]) and all([o in standard_alleles_present for o in [o1,o2]]):
+                            if self.musterer_info['sex'] == 'M' and any(['/y' in o.lower() for o in obs]) and '/y' not in ob.lower():
+                                #print('Skipping', file=sys.stderr)
+                                continue
+                            self.family_to_musterer_assays[f].append(assay)
+                            self.musterer_assay_genotype[assay] = ob
+                            self.family_genotype[f] = ob
+                            self.family_allele_ratio[f] = [standard_alleles_present[sa]/total_counts_present for sa in standard_alleles_present]
+                            break
+                        #else:
+                        #    print('Missed:', ob, 'with:', standard_alleles_present, file=sys.stderr)
+                    else:
+                        # multi-allelic fun
+                        all_o = ob.split('/')
+                        all_standard_o = set([standardise_allele(config, o) for o in all_o])
+                        if all([sa in all_standard_o for sa in standard_alleles_present]) and \
+                                all(o in standard_alleles_present for o in all_standard_o):
+                            self.family_to_musterer_assays[f].append(assay)
+                            self.musterer_assay_genotype[assay] = ob
+                            self.family_genotype[f] = ob
+                            self.family_allele_ratio[f] = [standard_alleles_present[sa]/total_counts_present for sa in standard_alleles_present]
+                            break
             if not self.family_genotype[f]:
                 self.family_genotype[f] = 'unknown'
-                print('No genotype found for assay family',f, 'Passing seqs:', passing_seqs, 'Alleles present:', alleles_present, file=sys.stderr)
+                print('No genotype found for assay family',f, 'Family matches:', family_matches, 'Standard alleles present:', 
+                        standard_alleles_present, file=sys.stderr)
             
-            print(self.family_to_musterer_assays[f], self.family_genotype[f], alleles_present, file=sys.stderr)
+            #print(self.family_to_musterer_assays[f], self.family_genotype[f], alleles_present, file=sys.stderr)
             
             # set all indexed genotypes and indexed_musterer_assay to be the same for each record in the same assay family
             for i in self.family_indices[f]:
                 if f in self.family_genotype: 
                     self.indexed_genotype[i] = self.family_genotype[f]
                     self.indexed_musterer_assays[i] = self.family_to_musterer_assays[f]
+                    self.indexed_allele_ratio[i] = self.family_allele_ratio[f]
                 else:
                     print('Mismatched assay family name:', f, self.family_genotype.keys(), file=sys.stderr)
 
@@ -623,6 +658,7 @@ class MObs():
                 sanity_result = 'Pass' if IR.test_true_neg(sgtl, dgtl) else 'Fail'
             return sanity_result, sanity_comment
 
+
     def write_upload_records_to_CSV(csv_fh):
         """
         Inputs: Open file handle (tab delimited entries)
@@ -645,69 +681,21 @@ class MObs():
         pass
 
 
-
-def identify_assay(record, ngs_assays, old_assays, ngs_families, old_families):
-    """
-        Based on the expected assay family in the primer column of the result table:
-            return conversion object(s) expected, or None
-    """
-    parts = record.primer.split('_')
-    expected_assay_family = parts[0]
-    additional_info = []
-    if len(parts) > 1:
-        additional_info = parts[1:]
-    #print('NGS assays:', ngs_assays, file=sys.stderr)
-    #print('NGS families:', ngs_families, file=sys.stderr)
-    if expected_assay_family in ngs_families:
-        #print(expected_assay_family)
-        #print(ngs_families)
-        assays = ngs_families[expected_assay_family]
-        #print(assays)
-        #sys.exit(0)
-        if len(assays) > 1:
-            # try to correctly identify the assay
-            for ai in additional_info:
-                for assay in assays:
-                    if ai in assay:
-                        return ngs_assays[assay]
-            print('Oops, assay is ambiguous from primer info:', record.primer, file=sys.stderr)
-            return None
-        else:
-            return ngs_assays[assays[0]]
-    elif expected_assay_family in old_families:
-        assays = old_families[expected_assay_family]
-        if len(assays) > 1:
-            # try to correctly identify the assay
-            for ai in additional_info:
-                for assay in assays:
-                    if ai in assay:
-                        return ngs_assays[assay]
-            print('Oops, assay is ambiguous from primer info:', record.primer, file=sys.stderr)
-            return None
-        else:
-            return ngs_assays[assays[0]]
-    else:
-        print('No recognised conversion for assay:', expected_assay_family,
-              ' ... Defaulting to Musterer search info', file=sys.stderr)
-        return None
-
-
 def gather_mouse_results(records, ngs_assays, old_assays, ngs_families, old_families):
     """ combine records on a per-mouse basis and return a dictionary of mouse objects """
-    mice = {}  # [barcode] = MObs()
+    mice = defaultdict(None)  # [barcode] = MObs()
     for i,r in enumerate(records):
-        #assay_conversion = identify_assay(r, ngs_assays, old_assays, ngs_families, old_families)
         if r.mouseBarcode in mice:
-            mice[r.mouseBarcode].add_indexed_record((i,r), old_assays, ngs_assays) #assay_conversion)
+            mice[r.mouseBarcode].add_indexed_record((i,r), old_assays, ngs_assays)
         else:
-            mice[r.mouseBarcode] = MObs((i,r), old_assays, ngs_assays) #assay_conversion)
+            mice[r.mouseBarcode] = MObs((i,r), old_assays, ngs_assays)
     return mice
 
 
-def output_results_csv(out_fn, records, mice, in_hdr):
+def output_results_csv(out_fn, records, mice, in_hdr, ngs_families, ngs_assays, old_families, old_assays):
     """ output a header and all mouse records to CSV file, matching results.csv input """
     # build new header for output
-    out_hdr = ','.join(in_hdr[:23] + ['call','gt','alleleRatios',
+    out_hdr = ','.join(in_hdr[:23] + ['gt','alleleRatio',
             'efficiency','sanity_result', 'sanity_comment','sire_barcode','sire_strain', 'sire_gt',
             'dam_barcode','dam_strain','dam_gt'] + in_hdr[23:])
     #print(out_hdr, file=sys.stderr)
@@ -716,22 +704,34 @@ def output_results_csv(out_fn, records, mice, in_hdr):
         for i,r in enumerate(records):
             mbc = r.mouseBarcode
             m = mice[mbc]
-            call = m.indexed_calls[i]
             gt = m.indexed_genotype[i]
-            allele_ratios = ';'.join(map(str, m.indexed_allele_ratios[i]))
+            assays = m.indexed_musterer_assays[i]
+            allele_ratio = ';'.join(map(str, m.indexed_allele_ratio[i]))
             # TODO: efficiency needs to be based off mergedCount
-            efficiency = m.indexed_efficiencies[i]
+            efficiency = m.indexed_efficiency[i]
             #sanity_result = m.indexed_family_match[i]
             sire_bc = m.sire_barcode
-            if m.sire_info == 'NA':
+            
+            def set_sire_strain_gt(sire_info, assays, ngs_families, ngs_assays, old_families, old_assays):
                 sire_gt = 'NA'
                 sire_strain = 'NA'
+                if 'strain' in sire_info:
+                    sire_strain = m.sire_info['strain']
+                if 'assay_names_values' in sire_info:
+                    sire_assays = sire_info.get('assay_names_values')
+                    # Will need to match Ptprc against Ly5A/B
+                    # sire_assays = chain(*[match_assay(sa,assays, ngs_families, ngs_assays, old_families, old_assays) for sa in sire_assays])
+                    for a in assays:
+                        if a in sire_assays:
+                            sire_gt = sire_info['assay_names_values'][a]
+                            break
+                return sire_strain, sire_gt
+            if not m.sire_info:
+                sire_strain = 'NA'
+                sire_gt = 'NA'
             else:
-                sire_strain = m.sire_info['strain']
-                try:
-                    sire_gt = m.sire_info['assay_names_values'][m.indexed_primer[i]]
-                except:
-                    sire_gt = 'NA'
+                sire_strain, sire_gt = set_sire_strain_gt(m.sire_info, assays, ngs_families, ngs_assays, old_families, old_assays)
+            
             #dam_bc = m.dam_bc_gt # this needs to be added
             dam_bcs = m.dams_barcodes
 
@@ -742,7 +742,7 @@ def output_results_csv(out_fn, records, mice, in_hdr):
                 dams_gt = 'NA'
 
             #print('Record:', i, r, file=sys.stderr)
-            outcols = list(r[:23]) + [call, gt, allele_ratios, efficiency, '', '', sire_bc,
+            outcols = list(r[:23]) + [gt, allele_ratio, efficiency, '', '', sire_bc,
                                       sire_strain, sire_gt, ';'.join(map(str,dam_bcs)), dams_strain, dams_gt] + \
                     list(r[23:26]) + list(chain(*r[26]))
             outline = ','.join(map(str, outcols))
@@ -751,9 +751,55 @@ def output_results_csv(out_fn, records, mice, in_hdr):
 
 
 def output_mouse_gts(mice_gt_fn, mice):
-    """ output a CSV of mouse barcodes with genotypes"""
+    """ output a CSV of mouse barcodes with genotypes
+    mouseID	EPplate	EPwell	mouseBarcode	strainName	mouseAssays	assayFamilies	dnaplate	dnawell	primer	pcrplate	pcrwell	gt	alleleRatios	efficiency	seqCount	seqName		
+    33	71561	A5	105210000027	ASD792:RCE:LoxP::F1rF4N6	RCEloxP	RCE-LoxP	20210706	A3	RCE-LoxP_MUT; RCE-LoxP_WT	3121; 3121	H1; I1	mut/wt			5193; 1715 & 7 	RCE-LoxP_MUT_Neo_100bp; RCE-LoxP_WT_100bp & RCE-LoxP_MUT_Neo_100bp		
+    197	71590	B2	105366300045	Ku70 ApcMin DKO::::F3	Apc-min;Apc_18:34312602-T>A;Ku70	Apc;Ku70	20210706	B13	Apc	3121	F5	mut/wt	NA	NA	4128 & 3037	Apc_WT_120bp & Apc_MUT_PM_TtoA_120bp		
+    197	71590	B2	105366300045	Ku70 ApcMin DKO::::F3	Apc-min;Apc_18:34312602-T>A;Ku70	Apc;Ku70	20210706	B13	Ku70_MUT; Ku70_WT	3121; 3121	G5; H5 	wt/wt	NA	NA	; 3600	; Ku70_WT_86bp		no reads found for mutant reaction
+    193	71590	A2	105366300050	Ku70 ApcMin DKO::::F3	Apc-min;Apc_18:34312602-T>A;Ku70	Apc;Ku70	20210706	A13	Apc	3121	M4	mut/wt	NA	NA	1710 & 1478	Apc_WT_120bp & Apc_MUT_PM_TtoA_120bp		
+    193	71590	A2	105366300050	Ku70 ApcMin DKO::::F3	Apc-min;Apc_18:34312602-T>A;Ku70	Apc;Ku70	20210706	A13	Ku70_MUT; Ku70_WT	3121; 3121	N4; O4	Ku70 KO/wt	NA	NA	1176 & 8 ; 1591	Ku70_MUT_Neo_86bp & Ku70_WT_86bp ; Ku70_WT_86bp		
+    """
     mice_gt_fn = 'mice_gts.csv'
-    pass
+    hdrs = 'mouseID EPplate EPwell mouseBarcode strainName mouseAssays assayFamilies dnaplate '+\
+            'dnawell primer pcrplate pcrwell gt alleleRatios efficiency seqCount seqName'
+    col_hdrs = hdrs.split(' ')
+    
+    #print(out_hdr, file=sys.stderr)
+    with open(mice_gt_fn, 'wt') as out:
+        print('\t'.join(col_hdrs), file=out)
+        for mouse in mice:
+            m = mice[mouse]
+            for f in m.family_indices:
+                info = defaultdict(list)
+                for x,i in enumerate(m.family_indices[f]):
+                    if x == 0:
+                        info['mouseID'] = m.indexed_records[i].mouseID
+                        info['EPplate'] = m.indexed_records[i].EPplate
+                        info['EPwell'] = m.indexed_records[i].EPwell
+                        info['mouseBarcode'] = m.indexed_records[i].mouseBarcode
+                        info['strainName'] = m.indexed_records[i].strainName
+                        info['mouseAssays'] = m.indexed_records[i].mouseAssays
+                        info['assayFamilies'] = m.indexed_records[i].assayFamilies
+                        info['dnaplate'] = m.indexed_records[i].dnaplate
+                        info['dnawell'] = m.indexed_records[i].dnawell
+                    info['primer'].append(m.indexed_records[i].primer)
+                    info['pcrplate'].append(m.indexed_records[i].pcrplate)
+                    info['pcrwell'].append(m.indexed_records[i].pcrwell)
+                    info['gt'].append(m.indexed_genotype[i])
+                    if x == 0:
+                        info['alleleRatios'] = m.indexed_allele_ratio[i]
+                        info['efficiency'] = m.indexed_efficiency[i]
+                    info['seqCount'].append('; '.join([str(c) for c,a in m.indexed_chosen_matches[i]]))
+                    info['seqName'].append('; '.join([a for c,a in m.indexed_chosen_matches[i]]))
+                # add placeholders for missing data
+                for field in info:
+                    if not info[field]:
+                        info[field] = 'NA'
+                    
+                out_line = '\t'.join([' & '.join(map(str,info[col])) if type(info[col]) is list else str(info[col]) for col in col_hdrs])
+                print(out_line, file=out)
+
+
 
 
 def main(result_fn, reference_fn, config_fn, conversions_fn, out_fn=None, mice_fn=None):
@@ -762,11 +808,11 @@ def main(result_fn, reference_fn, config_fn, conversions_fn, out_fn=None, mice_f
         Read results file...
         For each row in the results table:
             1) extract alleles and counts
-            2) then call the alleles
-            3) decide the genotype
-            4) sanity check the genotype
-            5) output genotype table
-            6) output per-mouse table
+            2) decide the genotype
+            3) sanity check the genotype
+            4) output per-well table
+            5) output per-mouse table
+            6) output upload table
     """
 
     warnings.filterwarnings("ignore")
@@ -806,19 +852,21 @@ def main(result_fn, reference_fn, config_fn, conversions_fn, out_fn=None, mice_f
             m.dams_barcodes = m.musterer_info['dams_barcodes']
             m.dams_info = {qdbc:dams_info[qdbc] for qdbc in m.dams_barcodes}
 
-    # "call" each well, then call genotypes
-    print('"Calling" per-well reactions, and genotyping mice', file=sys.stderr)
+    #  call genotypes
+    print('Genotyping mice', file=sys.stderr)
+    #loggable = []
+
     for j, mbc in enumerate(mice):
         m = mice[mbc]
-        m.call_reactions()
-        m.call_obs()
         print(m, file=sys.stderr)
         print(j+1,'/',len(mice),mbc, file=sys.stderr)
-        print('Reactions, assay, and calls:', [(i, m.indexed_reactions[i], m.indexed_primer[i],
-                m.indexed_calls[i]) for i in m.indexed_reactions if not m.indexed_empty[i]], file=sys.stderr)
-        m.call_genotypes(old_families, ngs_families, old_assays, ngs_assays, config)
-        print('GTs by index:', [(i, m.indexed_genotype[i]) for i in m.indexed_records \
-                                if not m.indexed_empty[i]], file=sys.stderr)
+        #print('matches and assay', [(i, m.indexed_matches[i], m.indexed_primer[i]) \
+        #        for i in m.indexed_matches], file=sys.stderr)
+        
+        #debug = m.call_genotypes(ngs_families, ngs_assays, old_families, old_assays, config)
+        #loggable.append(debug)
+        m.call_genotypes(ngs_families, ngs_assays, old_families, old_assays, config)
+        print('GTs by index:', [(i, m.indexed_genotype[i]) for i in m.indexed_records], file=sys.stderr)
         #if mbc == '105371500058':
         #    print(m.sire_barcode, m.sire_info)
         #    print(m.dams_info)
@@ -826,8 +874,8 @@ def main(result_fn, reference_fn, config_fn, conversions_fn, out_fn=None, mice_f
         #print(file=sys.stderr)
         #m.check_family_match()
 
-    output_results_csv(out_fn, records, mice, in_hdr)
-    #output_mouse_gts('mice_gts.csv', mice)
+    output_results_csv(out_fn, records, mice, in_hdr, ngs_families, ngs_assays, old_families, old_assays)
+    output_mouse_gts('mice_gts.csv', mice)
     print('\nGenotyping complete.', file=sys.stderr)
 
 
@@ -842,4 +890,4 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--mice', help='Path to output per-mouse genotype CSV')
     parser.add_argument('-k','--config',default='../bin/config.ini',help='Path to config file')
     args = parser.parse_args()
-    main(args.resultfile, args.reference, args.config, args.conversions, out_fn=args.outfile)
+    main(args.resultfile, args.reference, args.config, args.conversions, out_fn=args.outfile, mice_fn=args.mice)

@@ -3,21 +3,20 @@
 """
 @created: Mar 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
-@version: 0.8
-@version_comment:
-@last_edit:
-@edit_comment:
+@version: 0.9
+@version_comment: Match all possible target sequences. Drop per-well 'calling'.
+@last_edit: 2021-07-22
+@edit_comment: Inexact match was broken - minimising scoring rather than maximising
 
 Read a NGS Genotyping Stage3.csv file
 Read an NGS Genotyping reference file containing assay target sequences.
-Process raw FASTQ files and check the sequences they contain against expected assay 
-sequences. Raw MiSeq reads shold be in the 'raw' directory.
+Process raw FASTQ files and check the sequences they contain against all known target sequences.
+Raw MiSeq reads shold be in the 'raw' directory.
 It cleans reads into files in the 'clean' directory, then merges them into an 'mclean'
 directory ... along with a log of the cleaning and merging that tells us how many
 reads there are at each stage.
 This code uses BBtools to clean and merge paired-end read files.
 """
-dstfn = "Results.csv" # target filename
 
 import os
 import sys
@@ -25,6 +24,7 @@ import argparse
 import re
 import csv
 import collections
+from collections import Counter
 import itertools
 import subprocess
 import gzip
@@ -43,31 +43,37 @@ basetrans = str.maketrans("ACGT-", "TGCA-") # include '-' to allow for translati
 class ProgramFail(Exception):
     pass
 
+
 def printv(*x, **kw):
     global args
     if args.verbose:
         print(*x, **kw)
     return
 
+
 class Target(collections.namedtuple("TgtSeqTuple", "hdr seq")):
-    "Target sequence: name/hdr and R1 and R2 versions"
+    """ Target sequence: name/hdr and R1 and R2 versions """
     def __new__(cls, idx, seq):
-        "construct from FASTA record - tuple of header and sequence"
+        """ construct from FASTA record - tuple of header and sequence """
         return super(Target, cls).__new__(cls, idx, seq)
+
     
     def offmatch(self, s, off):
-        "exact match with target - allow for an initial offset"
+        """ exact match with target - allow for an initial offset """
         ts = self.seq if not off else self.seq[off:]
         return ts.startswith(s) if len(s)<=len(ts) else s.startswith(ts)
 
+
 def myopen(fn):
+    """ handles gz files seamlessly """
     if fn.endswith('.gz') :
         return gzip.open(fn, "rt")
     return open(fn, errors="ignore")
 
+
 def domatch(mcnt, s, n, cs):
     """
-    exact matching for a (merged) read with the sequences for an assay.
+    exact matching for a (merged) read with all known target sequences
 
     Parameters
     ----------
@@ -83,7 +89,7 @@ def domatch(mcnt, s, n, cs):
 
     Returns
     -------
-    None.
+    True on success, else False
 
     """
     # it would be good to count the offsets below to see what they look like
@@ -99,9 +105,46 @@ def domatch(mcnt, s, n, cs):
             return True
     return False
 
-def seqname(s, ts):
+
+def exact_match(match_cnt, s, n, targets):
     """
-    Sequence name - resembles other sequences
+    exact matching for a (merged) read with all known target sequences.
+    Length of seq to target must be within 5 bases.
+
+    Parameters
+    ----------
+    match_cnt : Counter
+        DESCRIPTION. list counting number of matches to match candidates
+    s : sequence (string)
+        DESCRIPTION. sequence to match (merged read)
+    n : int
+        DESCRIPTION. number of reads that have this (merged) sequence - if there 
+        is a match add this to the appropriate value in mcnt
+    targets : list(Target)
+        DESCRIPTION. Match candidates - list of sequences for the assay
+
+    Returns
+    -------
+    True on success, else False
+
+    """
+    # it would be good to count the offsets below to see what they look like
+    for j, cx in enumerate(targets):
+        c = cx.seq
+        # match with small offset - len(a) <= len(b)
+        a, b = s, c
+        if len(c)<len(s):
+            a, b = c, s
+            # note: 'in' operator does exact substring matching
+        if len(b)<=len(a)+5 and a in b:
+            match_cnt[cx.hdr] += n
+            return True
+    return False
+
+
+def best_match(match_cnt, s, n, targets):
+    """
+    Sequence name - inexact match of sequence to targets - returns the best matching target name
     s is a sequence, ts -s a list (set) or targets to base the name on
     Pairwise match - base name on matching name pluse difference
     
@@ -111,19 +154,22 @@ def seqname(s, ts):
 
     Parameters
     ----------
+    match_cnt : Counter
     s : string
         DNA sequence.
+    n : int 
+        counts of this sequence
     ts : list of Targets
         namedtuple with hdr and sequence.
 
     Returns
     -------
-    something to use as a name.
+    True if an inexact within 75% was found, False if not.
 
     """
     def bestalign(naxs):
-        score, best, bn = min((x[0].score, x[0], n) for n, x in naxs)
-        return bn, best
+        score, best_align, bn = max((x[0].score, x[0], n) for n, x in naxs)
+        return bn, best_align
     def mkstr(s1, s2, start):
         pos = -10
         for p, (ca, cb) in enumerate(zip(s1, s2), start=start):
@@ -133,15 +179,22 @@ def seqname(s, ts):
                 pos = p
         return
     varsep = " // "
-    zs = [(t.hdr, pw2.align.localms(s, t.seq, 1, 0, -1, -0.01)) for t in ts if varsep not in t.hdr]
+    #print('before zs. Number of targets:', len(targets), 'Counts:', n, file=sys.stderr)
+    #print(targets, file=sys.stderr)
+    zs = [(t.hdr, pw2.align.localms(s, t.seq, 1, -1, -1, -1,one_alignment_only=True)) for t in targets if varsep not in t.hdr]
+    #print(zs, file=sys.stderr)
     if zs:
-        name, ax = bestalign(zs)
+        best_name, ax = bestalign(zs)
+        #print(best_name, ax, file=sys.stderr)
         pos = ax.start
         sa, sb = [s[pos:ax.end] for s in (ax.seqA, ax.seqB)]
         if ax.score>len(sa)*0.75: # only use a name if we have a close-ish (75%) match
             dx = ''.join(mkstr(sa, sb, pos))
-            return varsep.join((name, dx))
-    return s
+            match_cnt[varsep.join((best_name, dx))] += n
+            #print('Got a hit for', n, 'counts', file=sys.stderr)
+            return True
+    return False
+
 
 def main():
     """
@@ -150,7 +203,7 @@ def main():
     
     Raises
     ------
-    ProgramFail
+    ProgramFail - fail silently...
         if the program fails for any (programmed) reason.
     """
     global args
@@ -159,6 +212,7 @@ def main():
     #parse.add_argument("-d", "--datadir", default="mclean", help="data directory")
     parse.add_argument("-t", "--targets", default=None, help="file of targets in FASTA format")
     # parse.add_argument("-a", "--assays", default=None, help="file linking mice/samples to assay names")
+    parse.add_argument('-o','--outfn', default='Results.csv', help='Path to output file name (CSV format)')
     parse.add_argument("stagefile", default="Stage3.csv", help="NGS genotyping Stage 3 file (default=Stage3.csv")
     args = parse.parse_args()
     
@@ -172,8 +226,8 @@ def main():
         
     print(len(wdata), "sample wells to process.")
         
-    # get a set of assay family names - family name ends with first underscore char  
-    assays = frozenset(r.primer.split('_',1)[0] for r in wdata)
+    ## get a set of assay family names - family name ends with first underscore char  
+    #assays = frozenset(r.primer.split('_',1)[0] for r in wdata)
         
     if not args.targets:
         ts = [t for rpat in ("*ref*seq*.fa", "*ref*seq*.fasta", "*ref*seq*.txt") for t in glob.glob(os.path.join('..', 'library', rpat))]
@@ -188,7 +242,7 @@ def main():
         args.targets = ts[0]
         print("using targets reference:", args.targets)
     # read the target sequence file into a dictionary of target sequences
-    global fadict
+    #global fadict
 
     # make sure there are no lowercase chars in target sequences            
     with myopen(args.targets) as src:
@@ -200,23 +254,23 @@ def main():
     print()
     
     # associate sequences with the known assays
-    adict = {}
-    for a in sorted(assays):
-        al = []
-        for k in fadict.keys():
-            if k.startswith(a):
-                al.append(k)
-        adict[a] = al
+    #adict = {}
+    #for a in sorted(assays):
+    #    al = []
+    #    for k in fadict.keys():
+    #        if k.startswith(a):
+    #            al.append(k)
+    #    adict[a] = al
     
     # we may need more testing - are there enough sequences for the type of test?
-    noseq = [a for a in sorted(assays) if a not in adict]
-    if noseq:
-        print('Assays with no associated sequences ...')
-        for a in noseq:
-            print(a)
-        print()
+    #noseq = [a for a in sorted(assays) if a not in adict]
+    #if noseq:
+    #    print('Assays with no associated sequences ...')
+    #    for a in noseq:
+    #        print(a)
+    #    print()
             
-    sdict = dict((a, [fadict[k] for k in ks]) for a, ks in adict.items())
+    #sdict = dict((a, [fadict[k] for k in ks]) for a, ks in adict.items())
     # should check that sequences in each group are different
     
     if not os.path.isdir("raw"):
@@ -228,8 +282,7 @@ def main():
             os.mkdir(d)
                 
     # process data for each sample well
-    global dstfn
-    with open(dstfn, "wt", buffering=1) as dstfd:
+    with open(args.outfn, "wt", buffering=1) as dstfd:
         dst = csv.writer(dstfd, dialect="unix")
         hdrres1 = ("readCount", "cleanCount", "mergeCount")
         hdrres2 = ("seqCount", "seqName")
@@ -298,6 +351,7 @@ def main():
                 log1, log2 = ['\n'.join((p.stdout, p.stderr)) for p in (pres1, pres2)]
 
             else:
+                print('Skipping cleaning and merging of reads for', fnmfmt.replace('{}.{}',''), file=sys.stderr)
                 with open(fnlog) as log:
                     logdata = log.read()
                 log1, log2 = logdata.split("======\n", 1)
@@ -331,26 +385,35 @@ def main():
             
             printv((wr.pcrplate+'-'+echo.padwell(wr.pcrwell)).ljust(6), str(mergeCount).rjust(6), wr.primer)
             
-            # we are looking for sequences that match fadict[ax] for ax in adict[wr.primer] 
+            # we are looking for sequences that match any target in fadict
             # what's the best matching algorithm?
             #assayfam = wr.primer.split('_',1)[0] # assay family name for this well/sample
-            assayfams = [r.primer.split('_',1)[0] for r in wrs] # multiple assay families in same well!!!
-            mseq = [s for f in assayfams for s in sdict[f]]
-            # match count 
-            mcnt = [0 for x in mseq]
-            limit = max(mergeCount/20, 50) # 
-            # mcnt = [[0, x] for x in sdict[assayfam]]
+            #assayfams = [r.primer.split('_',1)[0] for r in wrs] # multiple assay families in same well!!!
+            targets = [fadict[k] for k in sorted(fadict)]
+            match_cnt = Counter()
+            low_cov_cutoff = max(mergeCount/20, 50)
+            other_count = 0
             for seq, num in seqcnt.most_common():
-                if not domatch(mcnt, seq, num, mseq):
-                    if num>=limit:
-                        mcnt.append(num)
-                        # get a name for the sequence
-                        sn = seqname(seq, mseq)
-                        mseq.append(Target(sn, seq))
-                    elif num<5:
-                        break
+                if num >= low_cov_cutoff:
+                    if exact_match(match_cnt, seq, num, targets):
+                        print('Exact match of', num, 'counts', file=sys.stderr)
+                        continue
+                    if best_match(match_cnt, seq, num, targets):
+                        print('Inexact match of', num, 'counts', file=sys.stderr)
+                        continue
+                    else:
+                        match_cnt[seq] += num
+                        print('Missed matching', num, 'counts', file=sys.stderr)
+                else:
+                    match_cnt['other'] += num
+                    other_count += 1
+            # rename 'other' to include number of separate sequence variations
+            match_cnt['other ('+str(other_count)+')'] = match_cnt['other']
+            match_cnt['other'] = 0
             res1 = readCount, cleanCount, mergeCount
-            resx = sorted(((cnt, target.hdr) for cnt, target in zip(mcnt, mseq) if cnt), reverse=True)
+            resx = sorted(((match_cnt[key], key) for key in match_cnt if match_cnt[key] >= low_cov_cutoff), reverse=True)
+            print(resx, file=sys.stderr)
+            #resx = sorted(((cnt, target.hdr) for cnt, target in zip(mcnt, mseq) if cnt), reverse=True)
             for n, a in resx:
                 printv('      ', str(n).rjust(6), a)
             res2 = tuple(x for p in resx for x in p)
