@@ -3,8 +3,8 @@
 """
 @created: July 2021
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.8
-@version_comment:
+@version: 0.10
+@version_comment: mouseID added to attributes returned
 @last_edit:
 @edit_comment:
 
@@ -126,7 +126,7 @@ def getPlate(plateID, cache=True):
         errs.append(msg)
         return None, errs
     assert str(res[0]['plateId'])==plateID # check that we got the right PlateID
-    print('\n',res[0],'\n', file=sys.stderr)
+    print(f"Returning {len(res[0]['wells'])} plate-well entries from Musterer\n", file=sys.stderr)
     return res[0], errs  # return one plate from the result list
 
 
@@ -199,9 +199,9 @@ def simplify_mouse_JSON(json_data):
                 m['assay_names_values'] = defaultdict(list)
                 m['assay_value_options'] = defaultdict(list)
                 for a in assays:
-                    if 'assayName' in a:
-                        m['assay_names_values'][a.get('assayName')] = a.get('assayValue')
-                        m['assay_value_options'][a.get('assayName')] = a.get('assayValueOptions')
+                    if 'assayMethod' in a and 'assayName' in a:
+                        m['assay_names_values'][a.get('assayMethod')+'::'+a.get('assayName')] = a.get('assayValue')
+                        m['assay_value_options'][a.get('assayMethod')+'::'+a.get('assayName')] = a.get('assayValueOptions')
             mice[barcode] = m
     return mice
 
