@@ -3,10 +3,10 @@
 """
 @created: Oct 2019
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.8
+@version: 0.10
 @version_comment:
-@last_edit: 2021-07-12
-@edit_comment: Fixed broken file links to library files
+@last_edit: 
+@edit_comment: 
 
 GUI for Nimbus files for the NGSgenotyping project.
 Note - The GUI code is no longer used - the nimbus() function is called by cgi-nimbus2.py
@@ -61,6 +61,7 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
     fnref - file name reference sequences 'reference_sequences_<date?>.txt
     
     It needs the name of an output file and ear-punch data for each plate.
+    Output - creates Nimbus_bc.csv and Stage1-P_bc.csv files
     """
     
     # use common code to read library files
@@ -70,9 +71,9 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
         "combine old and new assay family names from Musterer"
         ngsassays = [n['assayName'] for n in winf.get('assays', []) if n['assayMethod']==assayMethod]
         gx = [n['assayName'] for n in winf.get('assays', []) if n['assayMethod']!=assayMethod and n['assayName'] not in pl.isna]
-        mas = sorted(frozenset(x for xs in (ngsassays, gx) for x in xs))
+        mouse_assays = sorted(frozenset(x for xs in (ngsassays, gx) for x in xs))
         genold = (mt for ma in gx for mt in pl.mmdict.get(ma, [ma]))
-        return mas, sorted(frozenset(x.split('_',1)[0] for xs in (genold, ngsassays) for x in xs))
+        return mouse_assays, sorted(frozenset(x.split('_',1)[0] for xs in (genold, ngsassays) for x in xs))
     # basic validation
     tgtfn = 'Nimbus'+tgtid+'.csv'
     fnstg = 'Stage1-P'+tgtid+'.csv'
@@ -110,14 +111,14 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
                     dstpl.writerow(rd)
                     if nwixm in wells:
                         winf = wells[nwixm]
-                        mas, mafs = getassays(wells[nwixm])
-                        unk += [maf for maf in mafs if maf not in pl.pfdict]
-                        if mafs:
-                            xtras = {"mouseAssays": ';'.join(mas), "assayFamilies": ';'.join(mafs)}
+                        mouse_assays, mouse_assayFamilies = getassays(wells[nwixm])
+                        unk += [mouse_assayFamily for mouse_assayFamily in mouse_assayFamilies if mouse_assayFamily not in pl.pfdict]
+                        if mouse_assayFamilies:
+                            xtras = {"mouseAssays": ';'.join(mouse_assays), "assayFamilies": ';'.join(mouse_assayFamilies)}
                             xtra = [xtras[k] if k in xtras else winf.get(k, '') for k in stghdr[4:]]
                             dststg.writerow(rd+xtra)
                             wn += 1
-                            plist += mafs
+                            plist += mouse_assayFamilies
     # return values for use in cgi-nimbus2.py code
     return wn, sorted(frozenset(plist)), sorted(frozenset(unk))
 
@@ -127,17 +128,18 @@ def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None
     Process custom sample-plate data, to produce a workfile for the BRF's Nimbus robot.
     
     It needs the name of an output file and sample data for each plate.
+    tgtid = barcode or name of target output files
     """
     # use common code to read library files
     global assayMethod
     pl = primercheck.PrimerLookup(fnmm=custom_assay_fn, fnpp=custom_primer_fn)
-    def getassays(winf):
+    def getassays(well_info):
         "combine old and new assay family names from Musterer"
-        ngsassays = [n['assayName'] for n in winf.get('assays', []) if n['assayMethod']==assayMethod]
-        gx = [n['assayName'] for n in winf.get('assays', []) if n['assayMethod']!=assayMethod and n['assayName'] not in pl.isna]
-        mas = sorted(frozenset(x for xs in (ngsassays, gx) for x in xs))
+        ngsassays = [n['assayName'] for n in well_info.get('assays', []) if n['assayMethod']==assayMethod]
+        gx = [n['assayName'] for n in well_info.get('assays', []) if n['assayMethod']!=assayMethod and n['assayName'] not in pl.isna]
+        mouse_assays = sorted(frozenset(x for xs in (ngsassays, gx) for x in xs))
         genold = (mt for ma in gx for mt in pl.mmdict.get(ma, [ma]))
-        return mas, sorted(frozenset(x.split('_',1)[0] for xs in (genold, ngsassays) for x in xs))
+        return mouse_assays, sorted(frozenset(x.split('_',1)[0] for xs in (genold, ngsassays) for x in xs))
     # basic validation
     tgtfn = 'Nimbus'+tgtid+'.csv'
     fnstg = 'Stage1-P'+tgtid+'.csv'
@@ -154,7 +156,7 @@ def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None
         stghdr = ['SampleNo', 'EPplate', 'EPwell', 'sampleBarcode', 'assays', 'assayFamilies']
         dststg.writerow(stghdr)
         for no, pbc, shx in platesdata: # plate no, barcode, platedata (from JSON format)
-            #print('Plate', pbc, 'data:', ', '.join(k+': '+str(v) for k,v in shx.items() if k!=''), file=sys.stderr)
+            #print(f"Plate {no}, {pbc}, data: {shx}", file=sys.stderr)
             # Nope! assert str(shx['barcode']).endswith(pbc)
             if not shx:
                 print('No plate data found for plate', no, pbc, file=sys.stderr)
@@ -176,15 +178,15 @@ def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None
                     rd = [rn, pbc, nwix, mbc]
                     dstpl.writerow(rd)
                     if nwixm in wells:
-                        winf = wells[nwixm]
-                        mas, mafs = getassays(wells[nwixm])
-                        unk += [maf for maf in mafs if maf not in pl.pfdict]
-                        if mafs:
-                            xtras = {"assays": ';'.join(mas), "assayFamilies": ';'.join(mafs)}
-                            xtra = [xtras[k] if k in xtras else winf.get(k, '') for k in stghdr[4:]]
+                        well_info = wells[nwixm]
+                        mouse_assays, mouse_assayFamilies = getassays(well_info)
+                        unk += [maf for maf in mouse_assayFamilies if maf not in pl.pfdict]
+                        if mouse_assayFamilies:
+                            xtras = {"assays": ';'.join(mouse_assays), "assayFamilies": ';'.join(mouse_assayFamilies)}
+                            xtra = [xtras[k] if k in xtras else well_info.get(k, '') for k in stghdr[4:]]
                             dststg.writerow(rd+xtra)
                             wn += 1
-                            plist += mafs
+                            plist += mouse_assayFamilies
     # return values for use in cgi-nimbus2.py code
     return wn, sorted(frozenset(plist)), sorted(frozenset(unk))
 

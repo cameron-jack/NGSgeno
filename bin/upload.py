@@ -5,10 +5,10 @@
 """
 @created: July 2021
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.7
-@version_comment: brand new
-@last_edit: 2021-07-02
-@edit_comment: All new code
+@version: 0.10
+@version_comment: Still not included in production pipeline
+@last_edit: 
+@edit_comment:
 
 upload.py, a script to:
 1) read the results_gt.csv, sanity-checked genotype results file

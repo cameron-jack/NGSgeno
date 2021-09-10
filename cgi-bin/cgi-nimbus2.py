@@ -3,10 +3,10 @@
 """
 @created: Aug 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.8
-@version_comment: Supports multiple taq/water plates, mouse_ and custom_ run folders.
+@version: 0.10
+@version_comment: bug fixes
 @last_edit: 2021-07-12
-@edit_comment: Fixed broken file links to library files
+@edit_comment: Bug fixed: readCSVtoJSON no longer returns empty assay entries
 
 Application Webpage.
 Nimbus picklists are already created - now gather Nimbus files
@@ -34,7 +34,8 @@ import primercheck
 
 port=9123
 nimbus2 = "/cgi-bin/cgi-nimbus2.py"
-stage2  = "/cgi-bin/cgi-stage2.py"
+#stage2  = "/cgi-bin/cgi-stage2.py"
+stage2 = nimbus2
 
 htmlerr = """
 <html>
@@ -253,7 +254,7 @@ def eppfn(bc):
 mustfix = re.compile(r'(,\s*"(mouseBarcode|plateId)":\s*)(\d+)')
 
 def readCustomCSVtoJSON(input_fn):
-    """ read a custom plate with no more than 4 plates! Then return as JSON """
+    """ read a custom sample manifest with no more than 4x96 well plates! Then return as JSON """
     data = {}
     errs = []  # error messages
     with open(input_fn, 'rt', newline=None) as f:
@@ -273,13 +274,15 @@ def readCustomCSVtoJSON(input_fn):
                     break
                 data[plate] = {'plateId':plate, 'custom':True, 'sampleBarcode':sampleBarcode, 
                        'wells':[{'wellLocation':well, 'organism':{'sampleId':sampleBarcode, 
-                                'sampleBarcode':sampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a} for a in assays]}}]}                  
+                                'sampleBarcode':sampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a.strip()} \
+                                for a in assays if a.strip() != '']}}]}                  
             else:
                 if well in data[plate]:
                     print('duplicate well number', well, 'in plate', plate, file=sys.stderr)
                     return
                 data[plate]['wells'].append({'wellLocation':well, 'organism':{'sampleId':sampleBarcode, 
-                        'sampleBarcode':sampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a} for a in assays]}})
+                        'sampleBarcode':sampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a.strip()} \
+                        for a in assays if a.strip() != '']}})
            
     pids = data.keys()
     data = [(data[p],p) for p in sorted(data)]
@@ -354,6 +357,8 @@ def main():
         if 'customSamples' in fields:
             # get plate info from file
             pxs, pids, errx = readCustomCSVtoJSON(fields.getfirst('customSamples'))
+            #print('pxs:', pxs, file=sys.stderr)
+            #print('pids', pids, file=sys.stderr)
             if fields.getfirst('customAssays') in (None, ''):
                 errx.append('Custom assay list file required')
         elif 'ep1' in fields:
@@ -413,7 +418,7 @@ def main():
     # barcodes for Nimbus 384-well plate outputs
     nbc = frozenset(fn[6:-4] for fn in nfiles)
     # identify missing Stage1 files.
-    missing = [bc for bc in nbc if not os.path.isfile("Stage1-P{}.html".format(bc))]
+    missing = [bc for bc in nbc if not os.path.isfile(f"Stage1-P{bc}.html")]
     if missing:
         # print("<pre>")
         # print("cwd =", os.getcwd())
@@ -448,7 +453,7 @@ def main():
     
     
 
-    prsvy = "primer-svy.csv"
+    prsvy_fn = "primer-svy.csv"
     if 'pcr' in fields:
         # from htmlpl1 form - call the echo.py code
         #prs = [x for xs in zip(template_files['customPrimers'], fields.getlist('psvy')) for x in xs]
@@ -456,11 +461,11 @@ def main():
             prs = [template_files['customPrimers']] + fields.getlist('psvy')
         else:
             prs = [template_files['primers']] + fields.getlist('psvy')
-        cmd = ["python", os.path.join("..", "bin", "echovolume.py")]+prs+[prsvy]
+        cmd = ["python", os.path.join("..", "bin", "echovolume.py")]+prs+[prsvy_fn]
         print('cgi-nimbus2:', cmd, file=sys.stderr)
         subprocess.run(cmd)
         # expect one only TAQ plate file
-        cmd = ["python", os.path.join("..", "bin", "echo.py"), "--prim", prsvy, \
+        cmd = ["python", os.path.join("..", "bin", "echo.py"), "--prim", prsvy_fn, \
                         "--taq", fields.getfirst('taq'), "--pcr"] + \
                        fields.getlist('pcr')
         if template_files['customPrimers'] != '':
@@ -538,7 +543,7 @@ def main():
     
         #TODO: Need to be able detect and use multiple Taq/water plates
         import echo
-        if not allfiles([prsvy]):
+        if not allfiles([prsvy_fn]):
             taq, h2o = echo.mytaq2(wellcnt, 1000, 300)
             tc = max(max([p for w,p in h2o]),max([p for t,p in taq]))
             #print(len(taq), len(h2o), file=sys.stderr)

@@ -3,10 +3,10 @@
 """
 @created May 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.8
-@version_comments: extensive changes to seamlessly support custom and mouse pipelines, plate dead volumes increased
-@last_edit: 2021-07-08
-@edit_comments: better handling of paths, multiple taq/water plates, mytaq2() now handles well and plate counting and allocation tasks, mytaq() is now deprecated
+@version: 0.10
+@version_comments: bugs fixes for empty rows and white space in names
+@last_edit: 2021-09-10
+@edit_comments: white spaces removed correctly from input files on injestion
 
 Produce picklists for NGS Genotyping pipeline for the Echo robot.
 There are two stages: 
@@ -217,6 +217,7 @@ class CSVTable(Table):
                 assert fields or hdrrow
                 Table.newtype(clsname, fields if fields else hdrrow)
             filtfunc = lambda x: len(x)==len(hdrrow) # could do padding?
+            # TODO: need a filter-type lambda to apply strip() to everything... covered for now but it's not a safe patch
             Table.__init__(self, clsname, data=filter(filtfunc, csvrdr), headers=hdrrow, prefix=prefix, selector=selector)
         return
 
@@ -241,7 +242,7 @@ class SourcePlates(dict):
     def __init__(self, pairs):
         "add contents and build contents dictionary"
         for table, contents in pairs:
-            wdict = dict((r.srcwell, [r.srcbc, r.srctype, r.srcwell, r.volume]) for r in table.data)
+            wdict = dict((r.srcwell.strip(), [r.srcbc.strip(), r.srctype.strip(), r.srcwell.strip(), r.volume.strip()]) for r in table.data)
             def kf(x):
                 return x[0]
             for c, g in itertools.groupby(sorted(contents), key=kf):
@@ -267,9 +268,10 @@ class PicklistSrc:
             def voldata(xs):
                 "last element of each list is an integer"
                 # volumes in nanolitres
-                v = [x[:-1]+[int(float(x[-1])*1000)] for x in xs] # contents in nanolitres
+                v = [[s.strip() for s in map(str,x[:-1])]+[int(float(x[-1].strip())*1000)] for x in xs] # contents in nanolitres
                 return v
-            self.data = dict((k, voldata(gs)) for k, gs in itertools.groupby(sorted(src, key=lambda x:x[idx]), key=lambda x:x[idx]))
+            self.data = dict((k.strip(), voldata(gs)) for k, gs in \
+                    itertools.groupby(sorted(src, key=lambda x:x[idx]), key=lambda x:x[idx]) if k.strip()!='')
         return
     
     def xfersrc(self, l, vol, depleted):
@@ -641,12 +643,18 @@ def main():
         primerTable = CSVTable("PPRec", args.prim, fields="spn spbc spt well primer volume")
         if args.verbose:
             print("Loaded primer plate file:", args.prim)
-        primset = sorted(frozenset(x.primer for x in primerTable.data))
-        pfdict = dict((k, list(g)) for k, g in itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
+        primset = sorted(frozenset(x.primer for x in primerTable.data if x.primer != ''))
 
-        # create recored for PCR wells  
-        wgenflds =  dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)      
+        # primer family dict to list of primers within family group
+        pfdict = dict((k.strip(), list([p.strip() for p in g])) for k, g in itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
+
+        # create record for PCR wells  
+        wgenflds =  dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)
+        
+        # Is this the plating of DNA samples for each assay? Yes. It is.
         wgen = [xs+dnadict[(xs.EPplate, xs.EPwell)]+(x,) for xss in dnas for xs in xss.data for f in xs.assayFamilies.split(';') if f in pfdict for x in pfdict[f]]
+        #print("wgen",wgen)
+        #('9', '80201', 'A2', '105584300122', 'Ahr-fl;Cd79a-cre_MUT;Cd79a-cre_WT;Lef1_MUT;Lef1_WT;Tcf7-fl', 'Ahr-fl;Cd79a-cre;Lef1;Tcf7-fl', '2021090101', 'C1', 'Ahr-fl')
         
         # combine nimbus files if there is more than one
         # nimbusTable = nimbusTables[0] if len(nimbusTables)==1 else Table(typenim, (x for t in nimbusTables for x in t.data)) # fix multi-tables !!!

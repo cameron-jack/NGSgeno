@@ -3,10 +3,10 @@
 """
 @created Aug 10 2020
 @author: Bob Buckley & Cameron Jack - ANU Bioinformatics Consultancy JCSMR, ANU
-@version: 0.8
-@version_comment: Massive interface changes. mouse_ and cutom_ run folders.
-@last_edit: 2021-07-08
-@edit_comment:  Improvements to user interface separate forms for each pipeline type. Improvements to pipeline resume.
+@version: 0.10
+@version_comment: 
+@last_edit:
+@edit_comment: 
 
 Application Stage 1 webpage.
 Display a form for creating Stage 1 Nimbus picklists files.

@@ -2,10 +2,10 @@
 """
 @created Aug 2020
 @author: Bob Buckley and Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.8
-@version_comment: supports custom and mouse pipelines
-@last_edit: 2021-07-08
-@edit_comment: removed all local library paths
+@version: 0.10
+@version_comment:
+@last_edit: 
+@edit_comment: 
 
 This code checks assay data (from the "library") for the NGS Geno application
 The challenges are:

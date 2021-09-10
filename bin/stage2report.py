@@ -3,7 +3,7 @@
 """
 @created June 2020
 @author: Bob Buckley and Cameron Jack
-@version: 0.8
+@version: 0.10
 @version_comment:
 @last_edit:
 @edit_comment:

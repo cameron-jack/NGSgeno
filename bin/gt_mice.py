@@ -4,8 +4,8 @@
 """
 @created: Dec 2020
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.9
-@version_comment: 'Call' concept removed. Genotyping appears to be working
+@version: 0.10
+@version_comment:
 @last_edit:
 @edit_comment:
 
@@ -46,7 +46,6 @@ from collections import defaultdict, namedtuple
 import sys
 import gzip
 import requests
-import multiprocessing
 from pathlib import PurePath
 from configparser import ConfigParser as CP
 from argparse import ArgumentParser as AP
@@ -177,7 +176,7 @@ def parse_conversions(fn):
     return old_families, old_assays, ngs_families, ngs_assays
 
 
-def get_old_new_assay(assay_or_fam, ngs_families, ngs_assays, old_families, old_assays):
+def get_old_new_assay(query, ngs_families, ngs_assays, old_families, old_assays):
     """ 
     There is a chance of getting a new NGS assay and needing to figure out the matching old assay name.
     Alternatively, get the new ngs_assay from the old assay or family name 
@@ -187,24 +186,26 @@ def get_old_new_assay(assay_or_fam, ngs_families, ngs_assays, old_families, old_
     #print('ngs_assays', ngs_assays, file=sys.stderr)
     #print('old_families', old_families, file=sys.stderr)
     #print('old_assays', old_assays, file=sys.stderr)
-    if assay_or_fam in ngs_assays:
-        a = ngs_assays[assay_or_fam][0].old_assay.replace('Amplifluor::','')
+    ngs_query = 'NGS::' + query
+    amplifluor_query = 'Amplifluor' + query
+    if ngs_query in ngs_assays:
+        a = ngs_assays[ngs_query][0].old_assay
         print('Found in ngs assays!', a, file=sys.stderr)
         return a
-    elif assay_or_fam in ngs_families:
-        a = ngs_families[assay_or_fam][0].old_assay.replace('Amplifluor::','')
+    elif ngs_query + query in ngs_families:
+        a = ngs_families[ngs_query][0].old_assay
         print('Found in ngs families!', a, file=sys.stderr)
         return a
-    elif assay_or_fam in old_assays:
-        a = old_assays[assay_or_fam][0].ngs_assay.replace('NGS::','')
+    elif amplifluor_query in old_assays:
+        a = old_assays[amplifluor.query][0].ngs_assay
         print('Found in old assays!', a, file=sys.stderr)
         return a
-    elif assay_or_fam in old_families:
-        a = old_families[assay_or_fam][0].ngs_assay.replace('NGS::','')
+    elif amplifluor_query in old_families:
+        a = old_families[amplifluor_query][0].ngs_assay
         print('Found in old families!', a, file=sys.stderr)
         return a
     else:
-        print('Cannot find', assay_or_fam, 'in known assay or family conversions', file=sys.stderr)
+        print('Cannot find', query, 'in known assay or family conversions', file=sys.stderr)
         return ''
 
 
@@ -510,7 +511,8 @@ class MObs():
                             well_matches.append((c,a))
                             self.indexed_chosen_matches[i].append((c,a))
                 if well_total:
-                    self.indexed_efficiency[i] = sum([c for c,a in well_matches])/well_total
+                    efficiency = 100*sum([c for c,a in well_matches])/well_total
+                    self.indexed_efficiency[i] = f"{efficiency:.2f}%"
                 family_matches += well_matches
 
             standard_alleles_present = {standardise_allele(config, a.split('_')[1]):c for c,a in family_matches}
@@ -519,7 +521,8 @@ class MObs():
 
             print('Standardised alleles present', standard_alleles_present, file=sys.stderr)
 
-            for assay in musterer_assays:   
+            for assay in musterer_assays:
+                assay = assay_long.replace('Amplifluor::','').replace('NGS::','')
                 if assay not in self.musterer_info['assay_value_options']:
                     print("This was meant to come from self.musterer_info['assay_value_options']... the code is wrong!", assay, 
                             self.musterer_info['assay_value_options'], file=sys.stderr)
@@ -530,6 +533,7 @@ class MObs():
                     sex_linked = True
                 print('Assay:',assay, 'Observables:',obs, file=sys.stderr)
                 for ob in obs:
+                    std_ob_list = [standardise_allele(config, ob)]
                     print('ob', ob, 'obs', obs, file=sys.stderr)
                     if not '/' in ob:
                         # CRE or other single insert mutations
@@ -541,10 +545,11 @@ class MObs():
                             self.musterer_assay_genotype[assay] = ob
                             if self.family_genotype[f]:
                                 self.family_genotype[f] = self.family_genotype[f] + '/' + ob
-                                self.family_allele_ratio[f] = [1/self.family_genotype[f].count('/')+1]
+                                allele_ratios = [1/self.family_genotype[f].count('/')+1]
+                                self.family_allele_ratio[f] = [f"{ar:.2f}" for ar in allele_ratios]
                             else:
                                 self.family_genotype[f] = ob
-                                self.family_allele_ratio[f] = [1]
+                                self.family_allele_ratio[f] = ['1.00']
                             break 
                     elif ob.count('/') == 1:
                         # standard wt/mut style assay
@@ -558,7 +563,7 @@ class MObs():
                             self.family_to_musterer_assays[f].append(assay)
                             self.musterer_assay_genotype[assay] = ob
                             self.family_genotype[f] = ob
-                            self.family_allele_ratio[f] = [1]
+                            self.family_allele_ratio[f] = ['1.00']
                             break
                         # test that we have a bijection 
                         elif all([sa in set([o1,o2]) for sa in standard_alleles_present]) and all([o in standard_alleles_present for o in [o1,o2]]):
@@ -568,7 +573,8 @@ class MObs():
                             self.family_to_musterer_assays[f].append(assay)
                             self.musterer_assay_genotype[assay] = ob
                             self.family_genotype[f] = ob
-                            self.family_allele_ratio[f] = [standard_alleles_present[sa]/total_counts_present for sa in standard_alleles_present]
+                            allele_ratios = [standard_alleles_present[sa]/total_counts_present for sa in standard_alleles_present]
+                            self.family_allele_ratio[f] = [f"{ar:.2f}" for ar in allele_ratios]
                             break
                         #else:
                         #    print('Missed:', ob, 'with:', standard_alleles_present, file=sys.stderr)
@@ -581,7 +587,8 @@ class MObs():
                             self.family_to_musterer_assays[f].append(assay)
                             self.musterer_assay_genotype[assay] = ob
                             self.family_genotype[f] = ob
-                            self.family_allele_ratio[f] = [standard_alleles_present[sa]/total_counts_present for sa in standard_alleles_present]
+                            allele_ratios = [standard_alleles_present[sa]/total_counts_present for sa in standard_alleles_present]
+                            self.family_allele_ratio[f] = [f"{ar:.2f}" for ar in allele_ratios]
                             break
             if not self.family_genotype[f]:
                 self.family_genotype[f] = 'unknown'
@@ -659,7 +666,7 @@ class MObs():
             return sanity_result, sanity_comment
 
 
-    def write_upload_records_to_CSV(csv_fh):
+    def write_upload_records_to_CSV(self, csv_fh):
         """
         Inputs: Open file handle (tab delimited entries)
         Column #1: mouse 
@@ -706,7 +713,7 @@ def output_results_csv(out_fn, records, mice, in_hdr, ngs_families, ngs_assays, 
             m = mice[mbc]
             gt = m.indexed_genotype[i]
             assays = m.indexed_musterer_assays[i]
-            allele_ratio = ';'.join(map(str, m.indexed_allele_ratio[i]))
+            allele_ratio = ':'.join(map(str, m.indexed_allele_ratio[i]))
             # TODO: efficiency needs to be based off mergedCount
             efficiency = m.indexed_efficiency[i]
             #sanity_result = m.indexed_family_match[i]
@@ -787,7 +794,7 @@ def output_mouse_gts(mice_gt_fn, mice):
                     info['pcrwell'].append(m.indexed_records[i].pcrwell)
                     info['gt'].append(m.indexed_genotype[i])
                     if x == 0:
-                        info['alleleRatios'] = m.indexed_allele_ratio[i]
+                        info['alleleRatios'] = ':'.join(m.indexed_allele_ratio[i])
                         info['efficiency'] = m.indexed_efficiency[i]
                     info['seqCount'].append('; '.join([str(c) for c,a in m.indexed_chosen_matches[i]]))
                     info['seqName'].append('; '.join([a for c,a in m.indexed_chosen_matches[i]]))
@@ -802,7 +809,7 @@ def output_mouse_gts(mice_gt_fn, mice):
 
 
 
-def main(result_fn, reference_fn, config_fn, conversions_fn, out_fn=None, mice_fn=None):
+def main(result_fn, reference_fn, config_fn, conversions_fn, out_fn=None, mice_fn=None, upload_fn=None):
     """
         Read reference file
         Read results file...
@@ -855,7 +862,9 @@ def main(result_fn, reference_fn, config_fn, conversions_fn, out_fn=None, mice_f
     #  call genotypes
     print('Genotyping mice', file=sys.stderr)
     #loggable = []
-
+    
+    if upload_fn:
+        ur = open(upload_fn, 'wt')
     for j, mbc in enumerate(mice):
         m = mice[mbc]
         print(m, file=sys.stderr)
@@ -873,6 +882,9 @@ def main(result_fn, reference_fn, config_fn, conversions_fn, out_fn=None, mice_f
         #    sys.exit(0)
         #print(file=sys.stderr)
         #m.check_family_match()
+        if upload_fn:
+            m.write_upload_records_to_CSV(ur)
+    ur.close()
 
     output_results_csv(out_fn, records, mice, in_hdr, ngs_families, ngs_assays, old_families, old_assays)
     output_mouse_gts('mice_gts.csv', mice)
@@ -889,5 +901,7 @@ if __name__ == '__main__':
                         'output to stdout')
     parser.add_argument('-m', '--mice', help='Path to output per-mouse genotype CSV')
     parser.add_argument('-k','--config',default='../bin/config.ini',help='Path to config file')
+    parser.add_argument('-u','--upload', help='Path to create file for upload of genotypes to Musterer'
+                        , default='upload_records.csv')
     args = parser.parse_args()
-    main(args.resultfile, args.reference, args.config, args.conversions, out_fn=args.outfile, mice_fn=args.mice)
+    main(args.resultfile, args.reference, args.config, args.conversions, out_fn=args.outfile, mice_fn=args.mice, upload_fn=args.upload)

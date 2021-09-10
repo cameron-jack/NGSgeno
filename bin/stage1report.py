@@ -3,14 +3,14 @@
 """
 @created: June 2020
 @author: Bob Buckley
-@version: 0.8
+@version: 0.10
 @version_comment:
 @last_edit:
 @edit_comment:
 
 Draw 96-well plates using Chart.js
 
-This is run after Nimbus.py completes (and the Nimbusxxx.csv files were written).
+This is run after Nimbus.py completes (and the Nimbusxxx.csv files were written), and generates files to report where everything has been placed.
 """
 
 import os
