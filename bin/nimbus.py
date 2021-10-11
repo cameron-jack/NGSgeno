@@ -58,7 +58,7 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
     fnmm - assay_list_<date>.csv file, maps Musterer names to assay/sequence names (custom inputs should
         have duplicated columns)
     fnpp - file name primer layout plate 'primer_layout_<date>.csv'
-    fnref - file name reference sequences 'reference_sequences_<date?>.txt
+    fnref - file name reference sequences 'reference_sequences_<date?>.txt or .csv
     
     It needs the name of an output file and ear-punch data for each plate.
     Output - creates Nimbus_bc.csv and Stage1-P_bc.csv files

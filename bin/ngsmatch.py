@@ -3,10 +3,10 @@
 """
 @created: Mar 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
-@version: 0.10
-@version_comment: Near-total rewrite for performance. Multiprocessing, caching, and Bio.Align algorithm give 6x, 15x, and 8x speedup respectively 
+@version: 0.11
+@version_comment: Minor revisions to cope with non-Musterer runs 
 @last_edit: 2021-09-01
-@edit_comment: bug fixes, commented out print statements
+@edit_comment: various bug fixes, some options still need to be removed
 
 Read a NGS Genotyping Stage3.csv file
 Read an NGS Genotyping reference file containing assay target sequences.
@@ -150,7 +150,7 @@ def exact_match(match_cnt, s, n, targets, mc):
     return False
 
 
-def best_match(match_cnt, s, n, targets, mc):
+def best_match(match_cnt, s, n, targets, mc, sum_parent=True):
     """
     Sequence name - inexact match of sequence to targets - returns the best matching target name
     s is a sequence, ts -s a list (set) or targets to base the name on
@@ -167,8 +167,10 @@ def best_match(match_cnt, s, n, targets, mc):
         DNA sequence.
     n : int 
         counts of this sequence
-    ts : list of Targets
+    targets : list of Targets
         namedtuple with hdr and sequence.
+    mc: match_cache
+    sum_parent: [T/F] if True add counts to original sequence as well as individual variation
 
     Returns
     -------
@@ -244,8 +246,11 @@ def best_match(match_cnt, s, n, targets, mc):
             #print(f"{os.getpid()} dx: {dx}", file=sys.stderr)
             match_name = varsep.join((best_name, dx))
             #print(f"{os.getpid()} match_name {match_name}", file=sys.stderr)
+            if sum_parent:
+                match_cnt[best_name] += n
             match_cnt[match_name] += n
             mc[s] = match_name
+            
             #print('Returning True', file=sys.stderr)
             return True
         return False
@@ -266,6 +271,8 @@ def best_match(match_cnt, s, n, targets, mc):
                 dx = ''.join(mkstr(sa, sb, pos))
         #        print(f"{os.getpid()} Bestmatch dx:{dx}", file=sys.stderr)
                 match_name = varsep.join((best_name, dx))
+                if sum_parent:
+                    match_cnt[best_name] += n
                 match_cnt[match_name] += n
                 mc[s] = match_name
         #        print(f"{os.getpid()} Bestmatch, done... returning True to process_well()", file=sys.stderr)
@@ -275,7 +282,8 @@ def best_match(match_cnt, s, n, targets, mc):
         return False
 
 
-def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, results, lock_c, lock_mc, lock_r, exhaustive, fast, logging_level):
+def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, results, lock_c, lock_mc, 
+                 lock_r, exhaustive, fast, logging_level, sum_parent=True):
     """ 
     Worker process that runs bbduk, bbmerge, and matching
     work_block: work block number
@@ -290,7 +298,9 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
     exhaustive: [T/F] don't skip any sequences, not matter how low their count
     fast: [T/F] only compare seqs against targets matching the primer
     logging_level: logging.DEBUG/logging.INFO/logging.ERROR
-    """
+    sum_parent: [T/F] best match adds counts to parent as well as specific variation
+  """
+    varsep = " // "
     PID = os.getpid()
     #print(f"Logging level: {logging_level}", file=sys.stderr)
     log = []  # hack to get around multiprocess/thread sync issues with log
@@ -438,6 +448,9 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
                 if seq in mc:
                     if logging_level == logging.DEBUG:
                         print(f"{PID}: Cache hit {wr['pcrplate']} {wr['pcrwell']} {num} {seq}", file=sys.stderr)
+                    if sum_parent:
+                        if varsep in mc[seq]:
+                            match_cnt[mc[seq].split(varsep)[0]] += num
                     #print(f"Cache hit of {num} counts")
                     match_cnt[mc[seq]] += num
                     #cache_hits += 1
@@ -495,7 +508,11 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
         match_cnt['other'] = 0
         res1 = readCount, cleanCount, mergeCount
         if not exhaustive:
-            resx = sorted(((match_cnt[key], key) for key in match_cnt if match_cnt[key] >= low_cov_cutoff), reverse=True)
+            try:
+                resx = sorted(((match_cnt[key], key) for key in match_cnt if match_cnt[key] >= low_cov_cutoff), reverse=True)
+            except TypeError:
+                print(f"!!! match_cnt: {match_cnt}", file=sys.stderr)
+                
         else:
             resx = sorted(((match_cnt[key], key) for key in match_cnt), reverse=True)
         res2 = tuple(x for p in resx for x in p)
@@ -524,24 +541,25 @@ def main():
     logging.basicConfig(filename='ngsmatch.log',format=format, level=logging.INFO,
                         datefmt="%H:%M:%S")
     
-    parse = argparse.ArgumentParser(description="NGS Reporting Program")
-    parse.add_argument("-v", "--verbose", action="store_true", help="more reporting/output")
-    #parse.add_argument("-d", "--datadir", default="mclean", help="data directory")
-    parse.add_argument("-t", "--targets", default=None, help="file of targets in FASTA format")
-    # parse.add_argument("-a", "--assays", default=None, help="file linking mice/samples to assay names")
-    parse.add_argument('-o','--outfn', default='Results.csv', help='Path to output file name (CSV format)')
-    parse.add_argument('-c','--match_cache', help="Path to sequence match cache file. Writes to this file if it doesn't exist yet")
-    parse.add_argument('-m','--miss_cache', help="Path to unknown-sequence mismatch cache file. Writes to this file if it doesn't exist yet")
-    parse.add_argument('-s','--save', action='store_true',help='Save the caches to disk as work progresses. Useful in case of long run times')
-    parse.add_argument('-k','--chunk_size', type=int, default=1, help='Number of unique sequences per work unit, default 1')
-    parse.add_argument('-n','--ncpus', type=int, default=os.cpu_count(), help='Number of processes to run simultaneously, default=number of CPUs in system')
-    parse.add_argument('-d','--disable_miss_cache',action='store_true',help='disable the missed sequence cache. Use to incorporate new sequences')
-    parse.add_argument('-x','--exhaustive',action='store_true',help='Try to match every sequence, no matter how few counts')
+    parser = argparse.ArgumentParser(description="NGS Reporting Program")
+    parser.add_argument("-v", "--verbose", action="store_true", help="more reporting/output")
+    #parser.add_argument("-d", "--datadir", default="mclean", help="data directory")
+    parser.add_argument("-t", "--targets", default=None, help="file of targets in FASTA format")
+    # parser.add_argument("-a", "--assays", default=None, help="file linking mice/samples to assay names")
+    parser.add_argument('-o','--outfn', default='Results.csv', help='Path to output file name (CSV format)')
+    parser.add_argument('-c','--match_cache', help="Path to sequence match cache file. Writes to this file if it doesn't exist yet")
+    parser.add_argument('-m','--miss_cache', help="Path to unknown-sequence mismatch cache file. Writes to this file if it doesn't exist yet")
+    parser.add_argument('-s','--save', action='store_true',help='Save the caches to disk as work progresses. Useful in case of long run times')
+    parser.add_argument('-k','--chunk_size', type=int, default=1, help='Number of unique sequences per work unit, default 1')
+    parser.add_argument('-n','--ncpus', type=int, default=os.cpu_count(), help='Number of processes to run simultaneously, default=number of CPUs in system')
+    parser.add_argument('-d','--disable_miss_cache',action='store_true',help='disable the missed sequence cache. Use to incorporate new sequences')
+    parser.add_argument('-x','--exhaustive',action='store_true',help='Try to match every sequence, no matter how few counts')
     # The --fast option gives very little performance but does stop us characterising contamination effectively
-    #parse.add_argument('-f','--fast',action='store_true',help='Only match against expected primer. Disables saving miss cache to file')
-    parse.add_argument('-q','--quiet',action='store_true',help='Run with minimal messages')
-    parse.add_argument("stagefile", default="Stage3.csv", help="NGS genotyping Stage 3 file (default=Stage3.csv")
-    args = parse.parse_args()
+    parser.add_argument('-f','--fast',action='store_true',help='Only match against expected primer. Disables saving miss cache to file')
+    parser.add_argument('-q','--quiet',action='store_true',help='Run with minimal messages')
+    parser.add_argument('--custom', action='store_true',help='Musterer data columns not present')
+    parser.add_argument("stagefile", default="Stage3.csv", help="NGS genotyping Stage 3 file (default=Stage3.csv")
+    args = parser.parse_args()
     format = "%(asctime)s: %(message)s"
     if args.quiet:
         logging_level = logging.ERROR
@@ -586,7 +604,7 @@ def main():
     # read the target sequence file into a dictionary of target sequences
     # make sure there are no lowercase chars in target sequences            
     with myopen(args.targets) as src:
-        fadict = dict((x.id, Target(x.id, str(x.seq).upper())) for x in Bio.SeqIO.parse(src, "fasta"))
+        fadict = dict((x.id, Target(x.id, str(x.seq).upper())) for x in Bio.SeqIO.parse(src, "fasta") if len(x.seq) != 0 and len(x.id) != 0)
     # fagen = ((h, s.upper()) for h,s in fasta.fasta_reader(args.targets))
     # fadict = dict(sorted((x.hdr, x) for x in map(Target, fagen)))
     logging.info(f"read {len(fadict)} target sequences.\n")
@@ -744,14 +762,18 @@ def main():
                     json_f.write(json.dumps(dict(miss_cache)))
 
             logging.info('Writing results to' + args.outfn)
-            
+
             complete_results = {}
             for k,r in enumerate(results):
                 # order results by pcrplate and pcrwell
-                complete_results[(r[0][15],r[0][16])] = r[0]
+                if args.custom:
+                    complete_results[(r[0][9],int(r[0][10][1:]),r[0][10][0])] = r[0]
+                else:
+                    complete_results[(r[0][15],r[0][16][1:],int(r[0][16][0]))] = r[0]
                 
-            for k,i in enumerate(sorted(complete_results.keys())):
-                dst.writerow(complete_results[i])
+            for i,k in enumerate(sorted(complete_results.keys())):
+                dst.writerow(complete_results[k])
+            dstfd.flush()
 
             pool.close()
             pool.join()

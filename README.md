@@ -2,6 +2,18 @@
 
 Integrates robotic sample preparation and Illumin Miseq DNA sequencing of amplicons with the APF's Musterer (and later Rodentity) database.
 
+## Dependencies
+
+BBtools https://jgi.doe.gov/data-and-tools/bbtools/
+Java https://www.java.com/en/download/manual.jsp
+Python 3.8 or newer
+Microsoft Edge is the default browser but this can be changed in ngsrun.bat
+
+Python modules:
+Openpyxl
+Biopython
+Requests
+
 ## Changelog:
 
 Pipeline version: 0.10

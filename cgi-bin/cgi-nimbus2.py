@@ -328,11 +328,13 @@ def main():
         print('Cannot find i7i5_plate_layout_*.csv', file=sys.stderr)
         exit(1)
 
-    ### set library defaults
+    ### set library defaults for assay definitions, primer layout, reference sequences, and old/new assay name conversions
     template_files = collections.defaultdict(str)
     template_files['assays'] = sorted(glob.glob(os.path.join('..','library', 'assay_list_*.csv')), reverse=True)[0]
     template_files['primers'] = sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
-    template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt")), reverse=True)[0]
+    template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt"))+\
+        glob.glob(os.path.join('..','library', "reference_sequences_*.csv")), reverse=True)[0]
+    template_files['conv'] = sorted(glob.glob(os.path.join('..','library', 'NGS_assay_conversions*_*.csv')), reverse=True)[0]
     ### load existing custom library info if available
     if os.path.exists('template_files.txt'):
         with open('template_files.txt', 'rt') as f:
@@ -576,7 +578,7 @@ def main():
     
     if not os.path.isfile("Results.csv"):
         print('cgi-nimbus2:', 'Running stage3 FASTQ analysis', file=sys.stderr)
-        res = subprocess.run([os.path.join("..", "bin", "stage3.bat"), "Stage3.csv"], capture_output=True)
+        res = subprocess.run([os.path.join("..", "bin", "stage3.bat"), "Stage3.csv", template_files['ref'], template_files['conv']], capture_output=True)
         # capture output to log file
         with open("match.log", "wt") as dst:
             dst.write(res.stdout.decode('utf-8').replace('\r',''))

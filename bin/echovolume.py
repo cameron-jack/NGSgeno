@@ -3,7 +3,7 @@
 @created: Nov 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 @version: 0.10
-@version_comment: 
+@version_comment:
 @last_edit: 
 @edit_comment: 
 
@@ -124,8 +124,8 @@ def main():
                 # print("Echo survey file =", svyfn)
                 # print("Plate description file =", dscfn)
                 # print("matched wells:", cnt)
-                # if missing:
-                #     print(len(missing), "missing primer names for wells:", missing)
+                if missing:
+                     print(len(missing), "missing primer names for wells:", missing, file=sys.stderr)
                 #     print("wells =", sorted(dictsvy.keys()))
                 # print()
     return

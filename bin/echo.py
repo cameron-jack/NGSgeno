@@ -390,14 +390,15 @@ def filler(rs):
         yield rp
     return
 
-def groupfile(fn):
-    "The group file contains two mappings - family to primer, primer to reference"
-    with open(fn, errors="ignore") as srcfd:
-        rx = csv.reader(srcfd)
-        data = [r for r in rx]
-    gen1 = filler(r[:2] for r in data if r[1])
-    gen2 = filler(r[1:3] for r in data)
-    return gen1, gen2
+#def groupfile(fn):
+#    """ DEPRECATED """
+#    "The group file contains two mappings - family to primer, primer to reference"
+#    with open(fn, errors="ignore") as srcfd:
+#        rx = csv.reader(srcfd)
+#        data = [r for r in rx]
+#    gen1 = filler(r[:2] for r in data if r[1])
+#    gen2 = filler(r[1:3] for r in data)
+#    return gen1, gen2
 
 def fileGetCheck(fids, fmt):
     
@@ -634,6 +635,7 @@ def main():
             alert(message)
         
         dnadict = dict(((x.srcplate, x.srcwell), (x.dstplate, x.dstwell)) for nt in nimbusTables for x in nt.data)
+        #print('<<< DNA dictionary >>>', dnadict, file=sys.stderr)
         # find and read Stage1 files - see also primercheck.py and its use in cgi-nimbus2.py
         #s1fns = ['Stage1-P{}.csv'.format(dnabc) for dnabc in args.dna]
         #s1type = Table.csvtype(s1fns[0], 'S1Rec')
