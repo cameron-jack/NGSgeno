@@ -4,10 +4,10 @@
 """
 @created: Dec 2020
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.10
-@version_comment:
-@last_edit:
-@edit_comment:
+@version: 0.11
+@version_comment: New genotyping algorithm, correctly calls all types of genotype.
+@last_edit: 2021-10-21
+@edit_comment: g/t column is now Musterer format, instead of standardised
 
 Take read counts for observed alleles in the report so far and create a new report with
 called genotypes.
@@ -187,22 +187,40 @@ def get_old_new_assay(query, ngs_families, ngs_assays, old_families, old_assays)
     #print('old_families', old_families, file=sys.stderr)
     #print('old_assays', old_assays, file=sys.stderr)
     ngs_query = 'NGS::' + query
-    amplifluor_query = 'Amplifluor' + query
+    amplifluor_query = 'Amplifluor::' + query
+    pcr_query = 'PCR::' + query
+    for na in ngs_assays:
+        if query.lower() in na.lower():
+            a = ngs_assays[na][0].old_assay
+            print('Found assay in NGS assays, returning old assay', a, file=sys.stderr)
+            return a
+    for oa in old_assays:
+        if query.lower() in oa.lower():
+            a = old_assays[oa][0].ngs_assay
+            print('Found assay in old assays, returning NGS assay', a, file=sys.stderr)
+            return a
     if ngs_query in ngs_assays:
         a = ngs_assays[ngs_query][0].old_assay
-        print('Found in ngs assays!', a, file=sys.stderr)
+        print('Found assay in NGS assays', a, file=sys.stderr)
         return a
     elif ngs_query + query in ngs_families:
         a = ngs_families[ngs_query][0].old_assay
-        print('Found in ngs families!', a, file=sys.stderr)
+        print('Found assay in NGS families', a, file=sys.stderr)
         return a
     elif amplifluor_query in old_assays:
-        a = old_assays[amplifluor.query][0].ngs_assay
-        print('Found in old assays!', a, file=sys.stderr)
+        a = old_assays[amplifluor_query][0].ngs_assay
+        print('Found assay in old assays(Amplifluor)', a, file=sys.stderr)
         return a
+    elif pcr_query in old_assays:
+        a = old_assay[pcr_query][0].ngs_assay
+        print('Found assay in old assays (PCR)', a, file=sys.stderr)
     elif amplifluor_query in old_families:
         a = old_families[amplifluor_query][0].ngs_assay
-        print('Found in old families!', a, file=sys.stderr)
+        print('Found assay in old families (Amplifluor)', a, file=sys.stderr)
+        return a
+    elif pcr_query in old_families:
+        a = old_families[pcr_query][0].ngs_assay
+        print('Found assay in old families (PCR)', a, file=sys.stderr)
         return a
     else:
         print('Cannot find', query, 'in known assay or family conversions', file=sys.stderr)
@@ -226,21 +244,22 @@ def read_results(result_fn):
 
 
 def standardise_allele(config, allele):
-    """ take an observed or Musterer allele (half an observable) and try to convert it to standard terms """
+    """ take an observed or Musterer allele (half an observable) and try to convert it to standard terms, which are always lower case! """
     allele = allele.lower()
+    #print(f"allele={allele}",file=sys.stderr)
     if allele == 'other':
         return ''
-    if allele == 'y':
-        allele = '/y'
     mut_set = set(config['genotypes']['mut'].lower().split(','))
     wt_set = set(config['genotypes']['wt'].lower().split(','))
     y_set = set(config['genotypes']['y'].lower().split(','))
     pos_set = set(config['genotypes']['pos'].lower().split(','))
     neg_set = set(config['genotypes']['neg'].lower().split(','))
-    multi_set = set(config['genotypes']['multi'].lower().split(','))
+    #multi_set = set(config['genotypes']['multi'].lower().split(','))
+    unk_set = set(['?'])
+    nr_set = set(['nr'])
 
     if allele in y_set:
-        return '/y'
+        return 'y'
     if allele in mut_set:
         return 'mut'
     elif allele in wt_set:
@@ -249,8 +268,12 @@ def standardise_allele(config, allele):
         return 'pos'
     elif allele in neg_set:
         return 'neg'
-    elif allele in multi_set:
-        return allele
+    #elif allele in multi_set:
+    #    return allele
+    elif allele in unk_set:
+        return '?'
+    elif allele in nr_set:
+        return 'nr'
     else:
         print('Unknown allele', allele, file=sys.stderr)
         return ''
@@ -259,6 +282,7 @@ def standardise_allele(config, allele):
 def match_assay(my_assay, target_assays, ngs_families, ngs_assays, old_families, old_assays):
     """ try to find matching assays in a target set. Try converting old/new if required """
     my_assay = my_assay.lower()
+
     musterer_assays = [ta for ta in target_assays if ta.lower() in my_assay]
     if musterer_assays:
         #print('(1)Primers matching Musterer assays:', musterer_assays, file=sys.stderr)
@@ -300,12 +324,22 @@ def match_assay(my_assay, target_assays, ngs_families, ngs_assays, old_families,
     return []             
 
 
+def db_obs_from_std_obs(assay, std_ob):
+    """ for a given assay and a standardised observable, return the database-given observable """
+    obs = self.musterer_info['assay_value_options'][assay]
+    for ob in obs:
+        so1, so2 = [standardise_allele(config, o) for o in ob.split('/')]
+        if so1 in std_ob and so2 in std_ob and all([sa in [so1,so2] for sa in std_ob]):
+            return ob  # the database observable matching our std_ob
+    return ''  # we didn't find a match somehow?!
+
+
 class MObs():
     """ Mouse Observations, encapsulates per-mouse results """
     def __init__(self, idx_rec, old_assays, ngs_assays): #assay_conversion=None):
         self.barcode = ''
         self.indexed_records = defaultdict(list)  # [idx] = record
-        self.family_genotype = defaultdict(str)  # should be a dictionary of assay family:genotype
+        self.family_std_genotype = defaultdict(str)  # dictionary of assay family:(standardised alleles)
         self.family_to_musterer_assays = defaultdict(list)  # for each recorded family, these are the associated assay names
         #self.family_heredity_check = defaultdict(lambda: False)  # does the assay pass heredity sanity checks
         self.musterer_assay_genotype = defaultdict(str) # musterer assay name, associated with an observable as its genotype
@@ -506,7 +540,7 @@ class MObs():
                         if not well_matches:
                             well_matches.append((c,a))
                             self.indexed_chosen_matches[i].append((c,a))
-                        elif c > 0.3*(sum([c for c,a in well_matches])/len(well_matches)):
+                        elif c > 0.2*(sum([c for c,a in well_matches])/len(well_matches)):
                             # catch underperforming alleles with 1/3rd the counts of others
                             well_matches.append((c,a))
                             self.indexed_chosen_matches[i].append((c,a))
@@ -514,102 +548,154 @@ class MObs():
                     efficiency = 100*sum([c for c,a in well_matches])/well_total
                     self.indexed_efficiency[i] = f"{efficiency:.2f}%"
                 family_matches += well_matches
-
-            standard_alleles_present = {standardise_allele(config, a.split('_')[1]):c for c,a in family_matches}
-            standard_alleles_present = {sa:standard_alleles_present[sa] for sa in standard_alleles_present if sa != ''}
+            std_alleles_pres = {standardise_allele(config, a.split('_')[1]):c for c,a in family_matches}
+            if not std_alleles_pres:
+                # this could be Cre that's missing
+                print(f"No alleles seen from sequencing. {f}", file=sys.stderr)
+            std_alleles_pres = {sa:std_alleles_pres[sa] for sa in std_alleles_pres if sa != ''}
             total_counts_present = sum([c for c,a in family_matches])
 
-            print('Standardised alleles present', standard_alleles_present, file=sys.stderr)
+            print('Standardised alleles present', std_alleles_pres, file=sys.stderr)
 
-            for assay in musterer_assays:
-                assay = assay_long.replace('Amplifluor::','').replace('NGS::','')
-                if assay not in self.musterer_info['assay_value_options']:
-                    print("This was meant to come from self.musterer_info['assay_value_options']... the code is wrong!", assay, 
-                            self.musterer_info['assay_value_options'], file=sys.stderr)
+            for assay_long in sorted(musterer_assays):
+                ngs_assay = assay_long.replace('Amplifluor::','NGS::').replace('PCR::','NGS::')
+                amp_assay = ngs_assay.replace('NGS::','Amplifluor::')
+                pcr_assay = ngs_assay.replace('NGS::','PCR::')
+                if ngs_assay in self.musterer_info['assay_value_options'].keys():
+                    assay = ngs_assay
+                    print(f"{assay_long} is NGS", file=sys.stderr)
+                elif amp_assay in self.musterer_info['assay_value_options'].keys():
+                    assay = amp_assay
+                    print(f"{assay_long} is Amplifluor")
+                elif pcr_assay in self.musterer_info['assay_value_options'].keys():
+                    assay = pcr_assay
+                    print(f"{assay_long} is PCR")
+                else:
+                    print("This was meant to come from self.musterer_info['assay_value_options']... the code is wrong!", 
+                            assay_long, self.musterer_info['assay_value_options'].keys(), file=sys.stderr)
                     continue
+
                 obs = self.musterer_info['assay_value_options'][assay]
-                sex_linked = False
-                if any(['/y' in o.lower() for o in obs]):
-                    sex_linked = True
-                print('Assay:',assay, 'Observables:',obs, file=sys.stderr)
+                ob_to_std_obs = {}
                 for ob in obs:
-                    std_ob_list = [standardise_allele(config, ob)]
-                    print('ob', ob, 'obs', obs, file=sys.stderr)
-                    if not '/' in ob:
-                        # CRE or other single insert mutations
-                        o = standardise_allele(config, ob)
-                        # is any match good enough, or does it need to be the ONLY match?
-                        if o in standard_alleles_present or (o == 'neg' and not standard_alleles_present):
-                            # if CREneg then there won't be any alleles present
+                    #print(f"ob={ob}",file=sys.stderr)
+                    ob_to_std_obs[ob] = '/'.join([standardise_allele(config, o) for o in ob.split('/')])
+                print(f"Assay: {assay}, Observables/standardised: {ob_to_std_obs}, Alleles: {std_alleles_pres}", file=sys.stderr)
+                
+                # check now if we'll need to worry about sex-linked assays
+                sex_linked_assay = False
+                for ob in ob_to_std_obs:
+                    sos = ob_to_std_obs[ob].split('/')
+                    if any([so == 'y' for so in sos]):
+                        sex_linked_assay = True
+                
+                matched = False
+                for ob in ob_to_std_obs:
+                    std_ob = ob_to_std_obs[ob]
+                    sos = std_ob.split('/')
+                    if len(std_alleles_pres) == 0 and len(sos) == 1: # Didn't find Cre!
+                        if sos[0] == 'neg':
+                            matched = True
+                            self.family_std_genotype[f] = std_ob
                             self.family_to_musterer_assays[f].append(assay)
                             self.musterer_assay_genotype[assay] = ob
-                            if self.family_genotype[f]:
-                                self.family_genotype[f] = self.family_genotype[f] + '/' + ob
-                                allele_ratios = [1/self.family_genotype[f].count('/')+1]
-                                self.family_allele_ratio[f] = [f"{ar:.2f}" for ar in allele_ratios]
-                            else:
-                                self.family_genotype[f] = ob
-                                self.family_allele_ratio[f] = ['1.00']
-                            break 
-                    elif ob.count('/') == 1:
-                        # standard wt/mut style assay
-                        o1, o2 = ob.split('/')
-                        so1 = standardise_allele(config, o1)
-                        so2 = standardise_allele(config, o2)
-                        print ('Ob1:',so1, 'Ob2:',so2, 'Standard alleles present:',standard_alleles_present, file=sys.stderr)
-                        # deal with sex-linked /Y genotypes
-                        if (so1 == '/y' or so2 == '/y') and self.musterer_info['sex'] == 'M' and \
-                                len(standard_alleles_present) == 1 and list(standard_alleles_present.keys())[0] in [so1,so2]:
-                            self.family_to_musterer_assays[f].append(assay)
-                            self.musterer_assay_genotype[assay] = ob
-                            self.family_genotype[f] = ob
                             self.family_allele_ratio[f] = ['1.00']
                             break
-                        # test that we have a bijection 
-                        elif all([sa in set([o1,o2]) for sa in standard_alleles_present]) and all([o in standard_alleles_present for o in [o1,o2]]):
-                            if self.musterer_info['sex'] == 'M' and any(['/y' in o.lower() for o in obs]) and '/y' not in ob.lower():
-                                #print('Skipping', file=sys.stderr)
-                                continue
+                    elif len(std_alleles_pres) == 1 and len(sos) == 1:  # Cre and friends
+                        print(f"Assay: {assay}, Observables/standardised: {ob_to_std_obs}, Alleles: {std_alleles_pres}", file=sys.stderr)
+                        if sos[0] in std_alleles_pres and all([sa == sos[0] for sa in std_alleles_pres]):
+                            matched = True
+                            self.family_std_genotype[f] = std_ob
                             self.family_to_musterer_assays[f].append(assay)
                             self.musterer_assay_genotype[assay] = ob
-                            self.family_genotype[f] = ob
-                            allele_ratios = [standard_alleles_present[sa]/total_counts_present for sa in standard_alleles_present]
+                            self.family_allele_ratio[f] = ['1.00']
+                            break
+                        else:
+                            continue
+                            #print('obs:', ob_to_std_obs, 'alleles:', std_alleles_pres, file=sys.stderr)
+                            #exit()
+                    elif len(std_alleles_pres) == 1 and len(sos) == 2:
+                        so1, so2 = sos
+                        if self.musterer_info['sex'] == 'M' and sex_linked_assay:
+                            if (so1 == 'y' and so2 in std_alleles_pres) or \
+                                    (so2 == 'y' and so1 in std_alleles_pres):
+                                # we matched a sex-linked genotype
+                                matched = True
+                                self.family_std_genotype[f] = std_ob
+                                self.family_to_musterer_assays[f].append(assay)
+                                self.musterer_assay_genotype[assay] = ob
+                                self.family_allele_ratio[f] = ['1.00']
+                                break
+                        else:  # either female or not sex-linked
+                            if so1 in std_alleles_pres and so2 in std_alleles_pres \
+                                    and all(sa in (so1,so2) for sa in std_alleles_pres):
+                                # we have an exact match with a homozygous genotype
+                                matched = True
+                                self.family_std_genotype[f] = std_ob
+                                self.family_to_musterer_assays[f].append(assay)
+                                self.musterer_assay_genotype[assay] = ob
+                                self.family_allele_ratio[f] = ['1.00']
+                                break
+                    elif len(std_alleles_pres) == 2 and len(sos) == 2:
+                        # presumably a het
+                        so1, so2 = sos
+                        if so1 != so2 and so1 in std_alleles_pres and so2 in std_alleles_pres:
+                            matched = True
+                            self.family_std_genotype[f] = std_ob
+                            self.family_to_musterer_assays[f].append(assay)
+                            self.musterer_assay_genotype[assay] = ob
+                            allele_ratios = [std_alleles_pres[sa]/total_counts_present for sa in std_alleles_pres]
+                            self.family_allele_ratio[f] = [f"{ar:.2f}" for ar in allele_ratios]
+                    else:  # 3 or more alleles observed
+                        # check for an exact match - might be too restrictive?
+                        if all([so in std_alleles_pres for so in sos]) and all([sa in sos for sa in std_alleles_pres]):
+                            matched = True
+                            self.family_std_genotype[f] = std_ob
+                            self.family_to_musterer_assays[f].append(assay)
+                            self.musterer_assay_genotype[assay] = ob
+                            allele_ratios = [std_alleles_pres[sa]/total_counts_present for sa in std_alleles_pres]
                             self.family_allele_ratio[f] = [f"{ar:.2f}" for ar in allele_ratios]
                             break
-                        #else:
-                        #    print('Missed:', ob, 'with:', standard_alleles_present, file=sys.stderr)
+                if not matched:
+                    if f in self.family_std_genotype and self.family_std_genotype[f] != 'Unk':
+                        continue  # don't replace a meaningful result!
+                    self.family_std_genotype[f] = 'Unk'
+                    self.family_to_musterer_assays[f].append(assay)
+                    self.musterer_assay_genotype[assay] = 'Unk'
+                    self.family_allele_ratio[f] = ['NA']
+                    if len(std_alleles_pres) > 1:
+                        print("Sequenced alleles don't match expectation", f, std_alleles_pres, ob_to_std_obs, file=sys.stderr)
                     else:
-                        # multi-allelic fun
-                        all_o = ob.split('/')
-                        all_standard_o = set([standardise_allele(config, o) for o in all_o])
-                        if all([sa in all_standard_o for sa in standard_alleles_present]) and \
-                                all(o in standard_alleles_present for o in all_standard_o):
-                            self.family_to_musterer_assays[f].append(assay)
-                            self.musterer_assay_genotype[assay] = ob
-                            self.family_genotype[f] = ob
-                            allele_ratios = [standard_alleles_present[sa]/total_counts_present for sa in standard_alleles_present]
-                            self.family_allele_ratio[f] = [f"{ar:.2f}" for ar in allele_ratios]
-                            break
-            if not self.family_genotype[f]:
-                self.family_genotype[f] = 'unknown'
-                print('No genotype found for assay family',f, 'Family matches:', family_matches, 'Standard alleles present:', 
-                        standard_alleles_present, file=sys.stderr)
+                        print("Skipping, apparent failed sequencing", f, std_alleles_pres, ob_to_std_obs, file=sys.stderr)
+                    continue
+                    
+
+            #if not self.family_std_genotype[f]:
+            #    self.family_std_genotype[f] = 'unknown'
+            #    print('No genotype found for assay family',f, 'Family matches:', family_matches, 'Standard alleles present:', 
+            #            std_alleles_pres, file=sys.stderr)
             
-            #print(self.family_to_musterer_assays[f], self.family_genotype[f], alleles_present, file=sys.stderr)
+            #print(self.family_to_musterer_assays[f], self.family_std_genotype[f], alleles_present, file=sys.stderr)
             
             # set all indexed genotypes and indexed_musterer_assay to be the same for each record in the same assay family
             for i in self.family_indices[f]:
-                if f in self.family_genotype: 
-                    self.indexed_genotype[i] = self.family_genotype[f]
+                if f in self.family_std_genotype: 
+                    #self.indexed_genotype[i] = self.family_std_genotype[f]  # we need this for sanity checking?
                     self.indexed_musterer_assays[i] = self.family_to_musterer_assays[f]
+                    assays = [a for a in self.family_to_musterer_assays[f] if a != 'Unk']
+                    if len(assays) > 0:
+                        assay = assays[0]
+                        self.indexed_genotype[i] = self.musterer_assay_genotype[assay]
+                    else:
+                        self.indexed_genotype[i] = self.family_std_genotype[f]
                     self.indexed_allele_ratio[i] = self.family_allele_ratio[f]
                 else:
-                    print('Mismatched assay family name:', f, self.family_genotype.keys(), file=sys.stderr)
+                    print('Mismatched assay family name:', f, self.family_std_genotype.keys(), file=sys.stderr)
 
         ### This should be done AFTER sanity checking
         # Create upload records based on accepted musterer assays
         for assay in self.musterer_assay_genotype:
-            if self.musterer_assay_genotype[assay] not in set(['unknown','ambig']):
+            if self.musterer_assay_genotype[assay] not in set(['Unk', 'unknown', 'ambig']):
                 self.upload_records.append(self.upload_identity + '\t' + assay + '\t' + self.musterer_assay_genotype[assay])
                    
             
@@ -625,7 +711,7 @@ class MObs():
         Filter self.upload_records into self.checked_upload_records
         """
         msex = self.musterer_info['sex']
-        for fam in self.family_genotypes:
+        for fam in self.family_std_genotypes:
             for i in self.family_indices[fam]:
                 mgtl = self.indexed_genotype[i].lower()
                 sire_assays = {a for a in self.sire_info['assay_names_values'] \
