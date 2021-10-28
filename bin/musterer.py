@@ -3,8 +3,8 @@
 """
 @created: July 2021
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.10
-@version_comment: mouseID added to attributes returned
+@version: 0.12
+@version_comment: 
 @last_edit:
 @edit_comment:
 
@@ -196,7 +196,7 @@ def simplify_mouse_JSON(json_data):
             if dams:
                 m['dams_barcodes'] = [str(d.get('barcode')) for d in dams]
             if assays:
-                m['assay_names_values'] = defaultdict(list)
+                m['assay_names_values'] = defaultdict(str)
                 m['assay_value_options'] = defaultdict(list)
                 for a in assays:
                     if 'assayMethod' in a and 'assayName' in a:

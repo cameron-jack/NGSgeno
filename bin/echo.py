@@ -3,10 +3,10 @@
 """
 @created May 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.10
-@version_comments: bugs fixes for empty rows and white space in names
-@last_edit: 2021-09-10
-@edit_comments: white spaces removed correctly from input files on injestion
+@version: 0.12
+@version_comments: i7i5 barcodes now allocated in rotating fashion
+@last_edit: 2021-10-28
+@edit_comments: barcode rotation now in place, ignoring volumes
 
 Produce picklists for NGS Genotyping pipeline for the Echo robot.
 There are two stages: 
@@ -502,7 +502,7 @@ def mk_mytaq_picklist(fn, wells, taq_plate_barcodes, voltaq, volh2o, plateType='
 
 
 def i7i5alloc(vol, wellcount):
-    "allocate vol to wellcount wells with unique barcode pairs"
+    "allocate vol to wellcount wells with unique barcode pairs - Bob's code, exhausts well before moving on"
     global args
     
     typebc = Table.newtype('BCRecord', "name platebc type well set barcode xxx oligo volume")
@@ -553,6 +553,82 @@ def i7i5alloc(vol, wellcount):
     resset = frozenset(tuple(x[0] for x in xs) for xs in res)
     assert len(resset)==wellcount # all i7-i5 pairs are unique
     return res
+
+
+def i7i5alloc_rot(vol, wellcount):
+    "allocate vol to wellcount wells with unique barcode pairs - rotates barcode wells to avoid wells being drained"
+    global args
+    
+    typebc = Table.newtype('BCRecord', "name platebc type well set barcode xxx oligo volume")
+    # typebc = Table.newtype('BCRecord', "well name index indexName oligo volume")
+    tab = CSVTable(typebc, args.i7i5)
+
+    dv=PicklistSrc.deadvol['384PP_AQ_BP']
+    def getvol(x): return x[-1]
+    i7s, i5s = (sorted(((r.barcode, r.set, r.well, float(r.volume)) for r in tab.data if x in r.set), key=getvol, reverse=True) for x in ['_i7F_', '_i5R_'])
+    # This assumes that we will never double up on any one barcode!
+    if args.verbose or not (len(i7s) and len(i5s)):
+        print("Barcode file:", tab.filename)
+        print("   no. of i7Fs =", len(i7s))
+        print("   no. of i5Rs =", len(i5s))
+        print()
+    #assert len(i5s)<=len(i7s)
+    #assert len(i5s)
+    # check barcode sets and well sets are unique
+    assert all(len(frozenset(x[0] for x in xs))==len(xs) for xs in (i7s, i5s))
+    assert all(len(frozenset(x[2] for x in xs))==len(xs) for xs in (i7s, i5s))
+    
+    i7len, i5len = (len(x) for x in (i7s, i5s))
+    assert i5len<=i7len
+    # create lists of transfer counts from each well
+    i7cnt, i5cnt = ([int((r[-1])*1000-dv)//vol for r in ws] for ws in (i7s, i5s))
+    assert wellcount<=sum(i5cnt)
+    # number of imbalanced wells - What does imbalanced mean?
+    imb = [x-i5cnt[-1] for x in i5cnt]
+    extra = sum(imb)
+    excess = max(extra+i5len-wellcount, 0)
+    while excess:
+        for i in range(len(imb)):
+            if imb[i]:
+                imb[i] -= 1
+                excess -= 1
+                if not excess:
+                    break
+    extra = sum(imb)
+    base = (wellcount-extra)//i5len
+    alloc = [base+i for i in imb]
+    
+    # biggest i5 allocation is fewer than the number of i7 wells
+    # if so, there should be no duplicate i7F, i5R pairs - we check below anyway
+    assert alloc[0]<=i7len 
+    assert sum(alloc)==wellcount
+    i7gen = (x[:3] for xs in itertools.repeat(i7s) for x in xs)
+    i5gen = (x[:3] for xs in itertools.repeat(i5s) for x in xs)
+    res = []
+    res_set = set()
+    combos = len(i7s) * len(i5s)
+    if combos < wellcount:
+        print(f"Not enough barcode combos {combos} for wells requested {wellcount}", file=sys.stderr)
+        return
+    while len(res) < wellcount:
+        i7 = next(i7gen)
+        i5 = next(i5gen)
+        if (i7,i5) in res_set:
+            if len(i7s) > len(i5s):
+                i7 = next(i7gen)
+            else:
+                i5 = next(i5gen)
+            if (i7,i5) in res_set:
+                continue
+        res.append((i7,i5))
+        res_set.add((i7,i5))
+    #i5gen = (x[:3] for cnt, xs in zip(alloc, i5s) for x in [xs]*cnt)
+    #res = list(zip(i7gen, i5gen))
+    print(res)
+    resset = frozenset(tuple(x[0] for x in xs) for xs in res)
+    assert len(resset)==wellcount # all i7-i5 pairs are unique
+    return res
+
     
 def main():
     """
@@ -741,7 +817,7 @@ def main():
         s2tab = CSVTable('Stage2', fnstage2)           
             
         bcvol = 175 # nanolitres
-        bcalloc = i7i5alloc(bcvol, len(s2tab.data))
+        bcalloc = i7i5alloc_rot(bcvol, len(s2tab.data))
         
         def mks3rec(s2rec, bcrec):
             return 

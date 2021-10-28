@@ -3,7 +3,7 @@
 """
 @created Aug 10 2020
 @author: Bob Buckley & Cameron Jack - ANU Bioinformatics Consultancy JCSMR, ANU
-@version: 0.10
+@version: 0.12
 @version_comment: 
 @last_edit:
 @edit_comment: 

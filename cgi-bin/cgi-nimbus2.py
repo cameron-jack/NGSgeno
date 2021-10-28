@@ -3,10 +3,10 @@
 """
 @created: Aug 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.10
-@version_comment: bug fixes
+@version: 0.12
+@version_comment: 
 @last_edit: 2021-07-12
-@edit_comment: Bug fixed: readCSVtoJSON no longer returns empty assay entries
+@edit_comment: 
 
 Application Webpage.
 Nimbus picklists are already created - now gather Nimbus files
@@ -334,7 +334,7 @@ def main():
     template_files['primers'] = sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
     template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt"))+\
         glob.glob(os.path.join('..','library', "reference_sequences_*.csv")), reverse=True)[0]
-    template_files['conv'] = sorted(glob.glob(os.path.join('..','library', 'NGS_assay_conversions*_*.csv')), reverse=True)[0]
+    template_files['conv'] = sorted(glob.glob(os.path.join('..','library', 'NGS_assay_conversions_*.xlsx')), reverse=True)[0]
     ### load existing custom library info if available
     if os.path.exists('template_files.txt'):
         with open('template_files.txt', 'rt') as f:

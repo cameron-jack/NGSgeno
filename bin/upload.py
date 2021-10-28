@@ -5,7 +5,7 @@
 """
 @created: July 2021
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.10
+@version: 0.12
 @version_comment: Still not included in production pipeline
 @last_edit: 
 @edit_comment:

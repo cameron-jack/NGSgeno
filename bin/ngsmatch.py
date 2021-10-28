@@ -3,10 +3,10 @@
 """
 @created: Mar 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
-@version: 0.11
-@version_comment: Minor revisions to cope with non-Musterer runs 
-@last_edit: 2021-09-01
-@edit_comment: various bug fixes, some options still need to be removed
+@version: 0.12
+@version_comment: removed --fast option
+@last_edit: 
+@edit_comment: 
 
 Read a NGS Genotyping Stage3.csv file
 Read an NGS Genotyping reference file containing assay target sequences.
@@ -283,7 +283,7 @@ def best_match(match_cnt, s, n, targets, mc, sum_parent=True):
 
 
 def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, results, lock_c, lock_mc, 
-                 lock_r, exhaustive, fast, logging_level, sum_parent=True):
+                 lock_r, exhaustive, logging_level, sum_parent=True):
     """ 
     Worker process that runs bbduk, bbmerge, and matching
     work_block: work block number
@@ -296,7 +296,6 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
     lock_ms: lock object for the miss cache
     lock_r: lock object for the results
     exhaustive: [T/F] don't skip any sequences, not matter how low their count
-    fast: [T/F] only compare seqs against targets matching the primer
     logging_level: logging.DEBUG/logging.INFO/logging.ERROR
     sum_parent: [T/F] best match adds counts to parent as well as specific variation
   """
@@ -426,7 +425,7 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
         for t in targets:
             if assayfam.lower() in t[0].lower():
                 prime_targets.append(t)
-            elif not fast:
+            else:
                 other_targets.append(t)
         #print(f"{PID} Prime targets: {len(prime_targets)} {[pt[0] for pt in prime_targets]}")
         #print(f"{PID} Other targets: {len(other_targets)} {[ot[0] for ot in other_targets]}")
@@ -554,8 +553,6 @@ def main():
     parser.add_argument('-n','--ncpus', type=int, default=os.cpu_count(), help='Number of processes to run simultaneously, default=number of CPUs in system')
     parser.add_argument('-d','--disable_miss_cache',action='store_true',help='disable the missed sequence cache. Use to incorporate new sequences')
     parser.add_argument('-x','--exhaustive',action='store_true',help='Try to match every sequence, no matter how few counts')
-    # The --fast option gives very little performance but does stop us characterising contamination effectively
-    parser.add_argument('-f','--fast',action='store_true',help='Only match against expected primer. Disables saving miss cache to file')
     parser.add_argument('-q','--quiet',action='store_true',help='Run with minimal messages')
     parser.add_argument('--custom', action='store_true',help='Musterer data columns not present')
     parser.add_argument("stagefile", default="Stage3.csv", help="NGS genotyping Stage 3 file (default=Stage3.csv")
@@ -708,7 +705,7 @@ def main():
                         missc = miss_cache
                     # save the miss cache if it's grown and we are doing intermediate saves
                     if len(missc) > previous_miss_cache_size and args.save:
-                        if args.miss_cache and not args.fast:
+                        if args.miss_cache:
                             if logging_level != logging.ERROR:
                                 print(f"Saving miss cache with size {len(missc)}", file=sys.stderr)
                             with open(args.miss_cache, 'wt') as json_f:
@@ -724,7 +721,7 @@ def main():
                 elif not args.quiet:
                     print(f"Adding work to pool... chunk {i*chunksize}, cache size {len(matchc)}, miss cache disabled")
                 r1 = pool.apply_async(process_well, (i, chunk, targets, matchc, missc, results, lock_c, 
-                        lock_mc, lock_r, args.exhaustive, args.fast, logging_level))
+                        lock_mc, lock_r, args.exhaustive, logging_level))
                 reports.append((r1,chunk))
                 #if i%4 == 0 and i != 0:
                 #    time.sleep(2 + chunksize/10)
@@ -756,7 +753,7 @@ def main():
             if args.match_cache:
                 with open(args.match_cache, 'wt') as json_f:
                     json_f.write(json.dumps(dict(match_cache)))
-            if args.miss_cache and not args.fast:
+            if args.miss_cache:
                 logging.info(f"Size of miss cache {len(miss_cache)}")
                 with open(args.miss_cache, 'wt') as json_f:
                     json_f.write(json.dumps(dict(miss_cache)))
