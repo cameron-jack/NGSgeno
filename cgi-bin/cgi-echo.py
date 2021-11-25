@@ -522,9 +522,9 @@ def main():
         pcrx = '\n\t'.join(pcrfmt.format(i) for i in range(1,pc+1))
     
         #TODO: Need to be able detect and use multiple Taq/water plates
-        import echo
+        import echo_primer
         if not allfiles([prsvy_fn]):
-            taq, h2o = echo.mytaq2(wellcnt, 1000, 300)
+            taq, h2o = echo_primer.mytaq2(wellcnt, 1000, 300)
             tc = max(max([p for w,p in h2o]),max([p for t,p in taq]))
             #print(len(taq), len(h2o), file=sys.stderr)
             taq_set = sorted(set([w for w,p in taq]))
@@ -535,7 +535,7 @@ def main():
                     wellcount=wellcnt, noplates=pc, pcrs=pcrx, tc=tc, taqs=taqx, info=getinfo(), stage=stage2, existingDir=ngid,port=port))
             return
         if not allfiles([i7svy]):
-            taq, h2o = echo.mytaq2(wellcnt, 2000, 650)
+            taq, h2o = echo_primer.mytaq2(wellcnt, 2000, 650)
             tc = max(max([p for w,p in h2o]),max([p for t,p in taq]))
             taq_set = sorted(set([w for w,p in taq]))
             h2o_set = sorted(set([w for w,p in h2o]))
