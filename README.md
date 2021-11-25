@@ -14,7 +14,28 @@ Openpyxl
 Biopython
 Requests
 
+## To do
+* Add column to per-well GT outputs for excess alleles in sequencing
+* Combine custom and Musterer pipelines
+
 ## Changelog:
+
+Pipeline version: 0.13
+* New analysis (stage 3) interface for running ngsmatch.py and gt_mice.py
+* barcode protection for Musterer mnnnm, Rodentity MnnnM, custom cnnnc, plate pnnnp
+* Separate out file interfaces to improve code maintainability
+* Eliminate excess white-space/empty rows in files as an issue?
+
+Pipeline version: 0.12
+* Separated Tm1a,b,c,d into their own cases for genotyping - genotyping *works*
+* Removed --fast option from ngsmatch.py
+* i7i5 barcodes now applied in rotating fashion (like primer pairs) in echo.py
+* Sanity checking incorporated
+
+Pipeline version: 0.11
+* Much improved genotyping code
+* Hard coded Stage3.bat to run custom pipeline matching
+* ngsmatch can now work with custom assay inputs
 
 Pipeline version: 0.10
 * Added per-mouse genotyping report (much more human readable)

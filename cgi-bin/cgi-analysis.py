@@ -102,15 +102,16 @@ html_analysis = """
       <label for="quiet">Quiet. Run with minimal screen output</label>    
     </p>
     <h2> Genotyping and Sanity Checking</h2>
+    <h3> Leave these fields blank for standard mouse runs - it will use defaults for everything!</h3>
     <p>                                               
     <label style="margin-left:25px;" for="conversions" title="Defaults to library NGS_assay_conversions.xlsx">Assay conversions file</label>
       <input type="file" id="conversions" name="conversions" size="80" title="Defaults to library NGS_assay_conversions.xlsx"/><br>
     <label style="margin-left:25px;" for="gtoutfile" title="Defaults to results_gt.csv">Per-row output filename</label>
-      <input type="text" id="gtoutfile" name="gtoutfile" size="50" title="Defaults to results_gt.csv"/><br>
+      <input type="text" id="gtoutfile" name="gtoutfile" size="50" value="results_gt.csv" title="Defaults to results_gt.csv"/><br>
     <label style="margin-left:25px;" for="gtmice" title="Defaults to mice_gts.csv">Per-mouse GTs filename</label>
-      <input type="text" id="gtmice" name="gtmice" size="50" title="Defaults to mice_gts.csv"/><br>
+      <input type="text" id="gtmice" name="gtmice" size="50" value="mice_gts.csv" title="Defaults to mice_gts.csv"/><br>
     <label style="margin-left:25px;" for="gtupload" title="Defaults to mice_uploads.csv">Mouse DB upload filename</label>
-      <input type="text" id="gtupload" name="gtupload" size="50" title="Defaults to mice_uploads.csv"/><br>
+      <input type="text" id="gtupload" name="gtupload" size="50" value="mice_uploads.csv" title="Defaults to mice_uploads.csv"/><br>
     <label style="margin-left:25px;" for="gtconfig" title="Defaults to bin/config.ini">Config file path</label>          
       <input type="file" id="gtconfig" name="gtconfig" size="80" title="Defaults to bin/config.ini"/><br>
     </p>
