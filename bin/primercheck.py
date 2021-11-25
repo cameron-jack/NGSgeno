@@ -2,10 +2,10 @@
 """
 @created Aug 2020
 @author: Bob Buckley and Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.10
+@version: 0.13
 @version_comment:
 @last_edit: 
-@edit_comment: 
+@edit_comment: file IO has been cleaned up a little
 
 This code checks assay data (from the "library") for the NGS Geno application
 The challenges are:
@@ -49,14 +49,13 @@ class PrimerLookup:
         fnref - file name reference sequences 'reference_sequences_<date?>.txt
         """
         
-        fns = sorted(glob.glob(fnmm), reverse=True)
-        self.fnmm = fns[0]
-        with open(fns[0]) as srcfd:
+        self.fnmm = sorted(glob.glob(fnmm), reverse=True)[0]  # get most recent assay_list file
+        with open(self.fnmm) as srcfd:
             src = csv.reader(srcfd)
-            hdr = next(src)
+            hdr = (s.strip() for s in next(src))
             data = sorted([a.strip() for a in x] for x in src if len(x)==2)
         # what to do if first column is empty?
-        self.mmdict = dict((k, frozenset(x[1].split('_',1)[0] for x in g if x[1]!='N/A')) for k, g in grouper(data))
+        self.mmdict = dict((k.strip(), frozenset(x[1].split('_',1)[0] for x in g if x[1]!='N/A')) for k, g in grouper(data) if k.strip() != '')
         #self.mmdict = dict((m, f.split('_',1)[0]) for m, f in data if m and f!='N/A')
         self.isna = frozenset(x[0] for x in data if x[1]=='N/A')
         del data
@@ -69,7 +68,7 @@ class PrimerLookup:
         #if not fns: # no local file - use library
         #    fns = sorted(glob.glob(os.path.join('..', 'library', fnpp)), reverse=True)
         self.fnpp = fns[0]
-        with open(fns[0]) as srcfd:
+        with open(self.fnpp) as srcfd:
             src = csv.reader(srcfd)
             hdr = next(src)
             # the following is probably (1,0)
@@ -87,9 +86,8 @@ class PrimerLookup:
         # read names of the reference sequences from the reference file
         # build a dictionary indexed by primer names from reference names
         if fnref:
-            fns = sorted(glob.glob(fnref), reverse=True)
-            self.fnref = fns[0]
-            with open(fns[0]) as src:
+            self.fnref = sorted(glob.glob(fnref), reverse=True)[0]
+            with open(self.fnref) as src:
                 hdr = next(src)
                 refgen = (x[1:].strip() for x in src if x.startswith('>'))
                 # gen = itertools.groupby(sorted(refgen), key=lambda s:keyfix(s.split('_',1)[0]))

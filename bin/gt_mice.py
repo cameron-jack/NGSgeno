@@ -54,6 +54,7 @@ from openpyxl import load_workbook
 import inheritance_rules as IR
 import warnings
 from musterer import get_musterer_mouse_info
+import file_io
 
 
 def myopen(fn):
@@ -259,7 +260,7 @@ def standardise_allele(config, allele):
     tm1c_set = set(config['genotypes']['tm1c'].lower().split(','))
     tm1d_set = set(config['genotypes']['tm1d'].lower().split(','))
     #multi_set = set(config['genotypes']['multi'].lower().split(','))
-    unk_set = set(['?'])
+    unk_set = set(['?','unk'])
     nr_set = set(['nr'])
 
     if allele in y_set:
@@ -358,8 +359,9 @@ class MObs():
         self.family_to_musterer_assays = defaultdict(list)  # for each recorded family, these are the associated assay names
         #self.family_heredity_check = defaultdict(lambda: False)  # does the assay pass heredity sanity checks
         self.musterer_assay_genotype = defaultdict(str) # musterer assay name, associated with an observable as its genotype
-        self.musterer_assay_indices = defaultdict(list) # lets us link back to self.indexed_sanity_results
+        self.musterer_assay_indices = defaultdict(list)  # lets us link back to self.indexed_sanity_results
         self.family_indices = defaultdict(list)
+        self.family_sex_linked = defaultdict(lambda: False)  # the assays of this family contain '/Y' alleles
         self.mouseAssays = []  # directly from Rec.mouseAssays
         self.indexed_primer = defaultdict(str)   # [idx] = primer
         self.family_allele_ratio = defaultdict(str)  # propagated to self.indexed_allele_ratio
@@ -374,14 +376,14 @@ class MObs():
         self.indexed_new = defaultdict(lambda: False)
         self.indexed_family_match = defaultdict(lambda: False)
         self.indexed_genotype = defaultdict(str)
-        self.indexed_sanity_result = defaultdict(str)  # we should always check if this exists
+        self.indexed_sanity_result = defaultdict(defaultdict)  # we should always check if this exists
         self.indexed_musterer_assays = defaultdict(list)
         self.indexed_chosen_matches = defaultdict(list)  # contains list of (count,assay) which match the primer
         self.upload_records = []  # created on calling genotypes
         self.checked_upload_records = []  # filtered on heredity checking
         if idx_rec:
             self.barcode = idx_rec[1].mouseBarcode
-            self.upload_identity = idx_rec[1].EPplate + '_' + idx_rec[1].EPwell +\
+            self.upload_identity = file_io.unguard_pbc(idx_rec[1].EPplate) + '_' + idx_rec[1].EPwell +\
                     '_' + idx_rec[1].strainName + '#' + idx_rec[1].mouseID
             self.add_indexed_record(idx_rec, old_assays, ngs_assays) #assay_conversion)
             #if not success:
@@ -539,6 +541,7 @@ class MObs():
                     sos = ob_to_std_obs[ob].split('/')
                     if any([so == 'y' for so in sos]):
                         sex_linked_assay = True
+                self.family_sex_linked[f] = sex_linked_assay
                 
                 matched = False
                 for ob in ob_to_std_obs:
@@ -626,14 +629,6 @@ class MObs():
                     else:
                         print("Skipping, apparent failed sequencing", f, std_alleles_pres, ob_to_std_obs, file=sys.stderr)
                     continue
-                    
-
-            #if not self.family_std_genotype[f]:
-            #    self.family_std_genotype[f] = 'unknown'
-            #    print('No genotype found for assay family',f, 'Family matches:', family_matches, 'Standard alleles present:', 
-            #            std_alleles_pres, file=sys.stderr)
-            
-            #print(self.family_to_musterer_assays[f], self.family_std_genotype[f], alleles_present, file=sys.stderr)
             
             # set all indexed genotypes and indexed_musterer_assay to be the same for each record in the same assay family
             for i in self.family_indices[f]:
@@ -661,13 +656,22 @@ class MObs():
         returns a sanity_result string (Pass/Fail) and a sanity_comment string (usually empty)
         """
         sanity_comment = ''
+        sanity_result = 'Fail'
         # Do sex linked assays first
+        print(f"msex={msex} mgt={mgt} sgt={sgt}, dgt={dgt}, sex_linked={sex_linked}", file=sys.stderr)
+        msex = msex.lower()
+        mgt = mgt.lower()
+        sgt = sgt.lower()
+        dgt = dgt.lower()
+        if mgt == '?':
+            sanity_comment = 'Unknown genotype'
+            return sanity_result, sanity_comment
         if sex_linked:
-            if mgt == 'wt/wt' or mgt == 'wt/y':
+            if mgt in {'wt/wt', 'wt/y', 'y/wt'}:
                 sanity_result = 'Pass' if IR.test_true_XY_wt(msex, sgt, dgt) else 'Fail'
-            elif mgt == 'mut/wt' or mgt =='wt/mut':
+            elif mgt in {'mut/wt', 'wt/mut'}:
                 sanity_result = 'Pass' if IR.test_true_XY_het(msex, sgt, dgt) else 'Fail'
-            elif mgt == 'mut/mut' or mgt =='mut/y':
+            elif mgt in {'mut/mut', 'mut/y', 'y/mut'}:
                 sanity_result = 'Pass' if IR.test_true_XY_mut(msex, sgt, dgt) else 'Fail'
             if sanity_result == 'Fail':
                 sanity_comment = 'Sex impossible'
@@ -684,9 +688,7 @@ class MObs():
             sanity_result = 'Pass' if IR.test_true_neg(sgt, dgt) else 'Fail'
         elif 'tm1a' in mgt or 'tm1b' in mgt or 'tm1c' in mgt or 'tm1d' in mgt:
             sanity_result = 'Pass' if IR.test_eucomm_assay(mgt, sgt, dgt) else 'Fail'
-        else:
-            sanity_result ='Unk'
-
+        print(f"sanity_result:{sanity_result} sanity_comment:{sanity_comment}", file=sys.stderr)
         return sanity_result, sanity_comment
 
 
@@ -704,64 +706,73 @@ class MObs():
         Save parental info at this point to self.indexed_sanity_result[i], 
             where i is the index from sle.fsamily_indices
         """
+
+        def get_parental_assay(assays, parental_info, ngs_families, ngs_assays, old_families, old_assays):
+            """ return the parental assay appropriate for the query mouse assay - it must have observables """
+            parental_assay = ''
+            for a_long in assays:
+                if a_long in parental_info['assay_names_values'] and parental_info['assay_names_values'][a_long] is not None:
+                    parental_assay = a_long
+                    #print('first',  a_long, parental_info['assay_names_values'][a_long], file=sys.stderr)
+                    break
+                elif '::' in a_long:
+                    a = a_long.split('::')[1]
+                    if a in parental_info['assay_names_values'] and parental_info['assay_names_values'][a] is not None:
+                        parental_assay = a
+                        #print('second', file=sys.stderr)
+                        break
+                else:
+                    alt_assay = get_old_new_assay(a_long, ngs_families, ngs_assays, old_families, old_assays)
+                    #print('converted:',parental_assay, alt_assay, file=sys.stderr)
+                    if not alt_assay:
+                        continue
+                    if alt_assay in parental_info['assay_names_values'] and parental_info['assay_names_values'][alt_assay] is not None:
+                        parental_assay = alt_assay
+                        #print('third', file=sys.stderr)
+                        break
+                    elif '::' in alt_assay:
+                        a = alt_assay.split('::')[1]
+                        if a in parental_info['assay_names_values'] and parental_info['assay_names_values'][a] is not None:
+                            parental_assay = a
+                            #print('fourth', file=sys.stderr)
+                            break
+            return parental_assay
+
         msex = self.musterer_info['sex']
-        for fam in self.family_std_genotype:
-            for i in self.family_indices[fam]:
+        sanity_dict = {'sanity_result': 'Fail', 'sanity_comment': '',
+                'sire_gt':'Unk', 'sire_strain':'Unk', 'dam_bc': 'Unk', 'dam_gt': 'Unk', 'dam_strain':'Unk'}
+        if not self.sire_info:
+            sanity_dict['sanity_comment'] = 'No sire information'
+        else:
+            for fam in self.family_std_genotype:
+                m_std_gt = self.family_std_genotype[fam]
+                sex_linked = self.family_sex_linked[fam]
                 sanity_dict = {'sanity_result': 'Fail', 'sanity_comment': '',
-                               'sire_gt':'Unk', 'dam_bc': 'Unk', 'dam_gt': 'Unk', 'dam_strain':'Unk'}
-                m_std_gt = '/'.join([standardise_allele(config, o) for o in self.indexed_genotype[i].split('/')])
-                if 'Unk' in m_std_gt:
-                    self.indexed_sanity_result[i] = sanity_dict
+                        'sire_gt':'Unk', 'sire_strain':self.sire_info['strain'], 'dam_bc': 'Unk', 'dam_gt': 'Unk', 'dam_strain':'Unk'}
+                if m_std_gt in {'?', 'Unk'}:
+                    sanity_dict['sanity_comment'] = 'Unknown GT'
                     continue
                 if 'assay_names_values' not in self.sire_info:
                     sanity_dict['sanity_comment'] = 'Sire missing assays'
-                    self.indexed_sanity_result[i] = sanity_dict
                     continue
                 sire_assays = {a for a in self.sire_info['assay_names_values']}
                 print('Attempting to match:', fam, sire_assays)
                 assays = match_assay(fam, sire_assays, ngs_families, ngs_assays, old_families, old_assays)
                 if len(assays) == 0 or assays[0] is None:
                     sanity_dict['sanity_comment'] = 'Sire assay family not matched:' +fam
-                    self.indexed_sanity_result[i] = sanity_dict
                     continue
 
-                sire_assay = ''
-                for a_long in assays:
-                    if a_long in self.sire_info['assay_names_values'] and self.sire_info['assay_names_values'][a_long] is not None:
-                        sire_assay = a_long
-                        print('first',  a_long, self.sire_info['assay_names_values'][a_long])
-                        break
-                    elif '::' in a_long:
-                        a = a_long.split('::')[1]
-                        if a in self.sire_info['assay_names_values'] and self.sire_info['assay_names_values'][a] is not None:
-                            sire_assay = a
-                            print('second')
-                            break
-                    else:
-                        alt_assay = get_old_new_assay(a_long, ngs_families, ngs_assays, old_families, old_assays)
-                        print('converted:',sire_assay, alt_assay)
-                        if not alt_assay:
-                            continue
-                        if alt_assay in self.sire_info['assay_names_values'] and self.sire_info['assay_names_values'][alt_assay] is not None:
-                            sire_assay = alt_assay
-                            print('third')
-                            break
-                        elif '::' in alt_assay:
-                            a = alt_assay.split('::')[1]
-                            if a in self.sire_info['assay_names_values'] and self.sire_info['assay_names_values'][a] is not None:
-                                sire_assay = a
-                                print('fourth')
-                                break
+                sire_assay = get_parental_assay(assays, self.sire_info, ngs_families, ngs_assays, old_families, old_assays)
                     
-                print(sire_assay)
-                if not sire_assay or not sire_assay[0]:
+                print(f"sire_assay:{sire_assay}", file=sys.stderr)
+                if not sire_assay:
                     sanity_dict['sanity_comment'] = 'Sire assay has no observables'
-                    self.indexed_sanity_result[i] = sanity_dict
                     continue
                 sire_gt = self.sire_info['assay_names_values'][sire_assay]
+                sanity_dict['sire_gt'] = sire_gt
                 print(sire_assay, 'GT:',sire_gt)
                 sire_std_gt = '/'.join([standardise_allele(config, o) for o in sire_gt.split('/')])
-                        
+                     
                 dam_gt = 'Unk'
                 dam_strain = 'Unk'
                 sanity_result = 'Fail'
@@ -769,7 +780,6 @@ class MObs():
                 for dam_bc in self.dams_barcodes:
                     if 'assay_names_values' not in self.dams_info[dam_bc]:
                         sanity_dict['sanity_comment'] = 'Dam missing assays'
-                        self.indexed_sanity_result[i] = sanity_dict
                         continue
                     dam_assays = {a for a in self.dams_info[dam_bc]['assay_names_values']}
                     # after getting the g/t, check each dam/sire pairing to see if it works with the mouse in question.
@@ -777,50 +787,33 @@ class MObs():
                     assays = match_assay(fam, dam_assays, ngs_families, ngs_assays, old_families, old_assays)
                     if len(assays) == 0 or assays[0] is None:
                         sanity_dict['sanity_comment'] = 'Dam assay family not matched:'+fam
-                        self.indexed_sanity_result[i] = sanity_dict
                         continue
-                    dam_assay = ''
-                    for a_long in assays:
-                        print(a_long)
-                        for a_long in assays:
-                            if a_long in self.dams_info[dam_bc]['assay_names_values'] and \
-                                    self.dams_info[dam_bc]['assay_names_values'][a_long] is not None:
-                                dam_assay = a_long
-                                break
-                            elif '::' in a_long:
-                                a = a_long.split('::')[1]
-                                if a in self.dams_info[dam_bc]['assay_names_values'] and \
-                                        self.dams_info[dam_bc]['assay_names_values'][a] is not None:
-                                    dam_assay = a
-                                    break
-                            else:
-                                alt_assay = get_old_new_assay(a_long, ngs_families, ngs_assays, old_families, old_assays)
-                                if not alt_assay:
-                                    continue
-                                if alt_assay in self.dams_info[dam_bc]['assay_names_values'] and \
-                                        self.dams_info[dam_bc]['assay_names_values'][alt_assay] is not None:
-                                    dam_assay = a_long
-                                    break
-                                elif '::' in alt_assay:
-                                    a = alt_assay.split('::')[1]
-                                    if a in self.dams_info[dam_bc]['assay_names_values'] and \
-                                            self.dams_info[dam_bc]['assay_names_values'][a] is not None:
-                                        dam_assay = a
-                                        break
+                    dam_assay = get_parental_assay(assays, self.dams_info[dam_bc], ngs_families, ngs_assays, old_families, old_assays)
+                
                     if not dam_assay:
                         sanity_dict['sanity_comment'] = 'Dam assay has no observables'
-                        self.indexed_sanity_result[i] = sanity_dict
                         continue
                     dam_gt = self.dams_info[dam_bc]['assay_names_values'][dam_assay]
                     dam_std_gt = '/'.join([standardise_allele(config, o) for o in dam_gt.split('/')])
                     dam_strain = self.dams_info[dam_bc]['strain']
+                    sanity_dict['dam_bc'] = dam_bc
+                    sanity_dict['dam_gt'] = dam_gt
+                    sanity_dict['dam_strain'] = dam_strain
 
-                    sanity_result, sanity_comment = self.do_sanity_tests(msex, m_std_gt, sire_std_gt, dam_std_gt)
+                    print(f"Going to sanity tests with msex:{msex} m_std_gt:{m_std_gt} sire_std_gt:{sire_std_gt} " + 
+                            f"dam_std_gt:{dam_std_gt} sex_linked:{sex_linked}", file=sys.stderr)
+                    sanity_result, sanity_comment = self.do_sanity_tests(msex, m_std_gt, sire_std_gt, dam_std_gt, sex_linked)
+                    sanity_dict['sanity_result'] = sanity_result
+                    sanity_dict['sanity_comment'] = sanity_comment
+                    print(sanity_dict, file=sys.stderr)
                     if sanity_result == 'Pass':
                         break
-                sanity_dict = {'sanity_result': sanity_result, 'sanity_comment': sanity_comment,
-                               'sire_gt':sire_gt, 'dam_bc': dam_bc, 'dam_gt': dam_gt, 'dam_strain':dam_strain}
-                self.indexed_sanity_result[i] = sanity_dict           
+
+                #sanity_dict = {'sanity_result': sanity_result, 'sanity_comment': sanity_comment,
+                #                'sire_gt':sire_gt, 'sire_strain': sire_strain, 'dam_bc': dam_bc, 'dam_gt': dam_gt, 'dam_strain':dam_strain}
+
+                for i in self.family_indices[fam]:
+                    self.indexed_sanity_result[i] = sanity_dict           
 
 
     def create_upload_records(self):
@@ -828,12 +821,16 @@ class MObs():
         Create records after sanity checking and before writing for efficiency
         """
         records = {}
+        sanity_dict = {'sanity_result': 'Fail', 'sanity_comment': '',
+                'sire_gt':'Unk', 'dam_bc': 'Unk', 'dam_gt': 'Unk', 'dam_strain':'Unk'}
         for assay in sorted(self.musterer_assay_genotype):
             if self.musterer_assay_genotype[assay] not in set(['Unk', 'unknown', 'ambig']):
                 for i in self.musterer_assay_indices[assay]:
-                    if self.indexed_sanity_result[i]['sanity_result'] == 'Pass':
+                    if i not in self.indexed_sanity_result:
+                        self.indexed_sanity_result[i] = sanity_dict
+                    elif self.indexed_sanity_result[i]['sanity_result'] == 'Pass':
                         line = '\t'.join([self.upload_identity,assay,self.musterer_assay_genotype[assay]])
-                        records[line] = 0
+                        records[line] = 0  # keep unique records only
         for r in records:
             self.upload_records.append(r)
 
@@ -892,8 +889,8 @@ def output_results_csv(out_fn, records, mice, in_hdr, ngs_families, ngs_assays, 
             sire_bc = m.sire_barcode
             sire_strain = m.sire_info['strain']
 
-            sanity_result = 'Unk'
-            sanity_comment = 'Unk'
+            sanity_result = 'Fail'
+            sanity_comment = 'Unknown'
             sire_gt = 'Unk'
             dam_bc = 'Unk'
             dam_gt = 'Unk'
@@ -957,12 +954,13 @@ def output_mouse_gts(mice_gt_fn, mice):
                     if x == 0:
                         info['alleleRatios'] = ':'.join(m.indexed_allele_ratio[i])
                         info['efficiency'] = m.indexed_efficiency[i]
-                    info['seqCount'].append('; '.join([str(c) for c,a in m.indexed_chosen_matches[i]]))
-                    info['seqName'].append('; '.join([a for c,a in m.indexed_chosen_matches[i]]))
+                    info['seqCount'].append('; '.join([str(c) if c != '' else str(0) for c,a in m.indexed_chosen_matches[i]]))
+                    info['seqName'].append('; '.join([a if a != '' else 'Empty' for c,a in m.indexed_chosen_matches[i]]))
                 # add placeholders for missing data
                 for field in info:
                     if not info[field]:
                         info[field] = 'NA'
+                info['gt'] = list({gt:0 for gt in info['gt']}.keys())
                     
                 out_line = ','.join([' & '.join(map(str,info[col])) if type(info[col]) is list else str(info[col]) for col in col_hdrs])
                 print(out_line, file=out)
@@ -1049,7 +1047,9 @@ def main(result_fn, reference_fn, config_fn, conversions_fn, out_fn=None, mice_f
     if upload_fn:
         ur.close()
 
+    # This is the row-by-row report
     output_results_csv(out_fn, records, mice, in_hdr, ngs_families, ngs_assays, old_families, old_assays)
+    # easier to read GT report
     output_mouse_gts('mice_gts.csv', mice)
     print('\nGenotyping complete.', file=sys.stderr)
 

@@ -3,14 +3,16 @@
 """
 @created: June 2020
 @author: Bob Buckley
-@version: 0.12
-@version_comment:
+@version: 0.13
+@version_comment: supports guarded barcodes
 @last_edit:
 @edit_comment:
 
 Draw 96-well plates using Chart.js
 
-This is run after Nimbus.py completes (and the Nimbusxxx.csv files were written), and generates files to report where everything has been placed.
+This is run after Nimbus.py completes (and the Nimbusxxx.csv files were written), and generates HTML files to report where everything has been placed.
+Because it isn't part of the interface per-se it isn't in the cgi-bin folder. It is called by cgi-echo.py and operates on Stage1-PXXXX.csv files
+        written by Nimbus.py.
 """
 
 import os
@@ -19,6 +21,7 @@ import sys
 import csv
 import argparse
 import collections
+import file_io
 
 # Template for the HTML file
 fmtReport = """
@@ -159,62 +162,109 @@ def getvalues(fn):
                 d[fld[0]] = fld[1]
     return (fnx,)+tuple(d[k] for k in fldnames)
 
+
 def makelabel(x, n):
     # print(x)
     pct = "%.2f"%(int(x[n])/int(x[1])*100)
     return '\\n'.join((x[0], ' '.join((x[1], x[n], pct+'%')))), x[1], pct
 
-def main():
-    parse = argparse.ArgumentParser(description="NGS Genotyping - Summary Report Program")
-    parse.add_argument("barcodes", nargs='+', help="barcodes of Nimbus target plates")
-    parse.add_argument('--custom', action='store_true', help='True if running the custom samples pipeline')
-    args = parse.parse_args()
-    
-    if args.custom:
-        Rec = collections.namedtuple('Rec', 'sno pbc well sid')
+
+def build_nimbus_reports(plate_bcs, is_custom=False):
+    """ Programmatic interface - expects plate_bcs var to be guarded already
+        Read from Stage1-PXXX.csv and produce an HTML report 
+    """
+    # sample number, guarded plate barcode, well, sampleid, guarded musterer barcode
+    if is_custom:
+        Rec = collections.namedtuple('Rec', ['sno', 'gpbc', 'well', 'gsid'])
     else:
-        Rec = collections.namedtuple('Rec', 'sno pbc well mbc')
-    
-    for pbc in args.barcodes:
-        nimbusfn = "Nimbus{}.csv".format(pbc)
-        with open(nimbusfn) as srcfd:
-            src = csv.reader(srcfd, dialect="unix")
-            next(src) # hdr = next(src) # drop header 
-            data = [Rec(*x) for x in src]
-        
-        plates = sorted(set(x.pbc for x in data))
-        if args.custom:
-            pdata = dict((bc, [x for x in data if x.pbc==bc and x.sid!='0']) for bc in plates)
+        Rec = collections.namedtuple('Rec', ['sno', 'gpbc', 'well', 'gmbc'])
+
+    for tgtp in plate_bcs:
+        is_old_format = False
+        nimbus_fn_old = f"Nimbus{file_io.unguard_pbc(tgtp)}.csv"
+        if os.path.exists(nimbus_fn_old):
+            nimbus_fn = nimbus_fn_old
+            is_old_format = True
         else:
-            pdata = dict((bc, [x for x in data if x.pbc==bc and x.mbc!='0']) for bc in plates)
+            nimbus_fn = f"Nimbus-{tgtp}.csv"
+        records = []
+        with open(nimbus_fn) as srcfd:
+            src = csv.reader(srcfd, dialect="unix")
+            next(src) # hdr = next(src) # drop header
+            for row in src:
+                fields = [field.strip() for field in row]
+                if any(field == '' for field in fields):
+                    print(f"Incomplete sample entry in {nimbus_fn}: {fields}", file=sys.stderr)
+                    continue
+                #if not file_io.is_guarded(fields[3]) and not is_old_format:
+                #    print('WARNING: Possibly unguarded or incorrect sample barcode.', fields[3], file=sys.stderr)
+                try:
+                    records.append(Rec(*fields))
+                except TypeError:
+                    print('Bogus data line:',fields, file=sys.stderr)
+                    exit(1)
+                
+        plate_set = sorted(set([x.gpbc for x in records]))
+        
+        if is_custom:
+            pdata = dict((gpbc, [x for x in records if x.gpbc==gpbc and x.gsid!='0']) for gpbc in plate_set)
+        else:
+            pdata = dict((gpbc, [x for x in records if x.gpbc==gpbc and x.gmbc!='0']) for gpbc in plate_set)
         fs = []
         ch = []
-        for figno, pn in enumerate(plates, start=1):
-            if args.custom:
-                fs.append(makefigure(figno, 'Custom sample plate '+pn))
+        for figno, gpbc in enumerate(plate_set, start=1):
+            if is_custom:
+                fs.append(makefigure(figno, 'Custom sample plate '+file_io.unguard_pbc(gpbc)))
             else:
-                fs.append(makefigure(figno, "Ear-punch Plate "+pn))
-            welz = set((ord('H')-ord(x.well[0]), int(x.well[1:])-1) for x in pdata[pn])
-            if args.custom:
+                fs.append(makefigure(figno, "Ear-punch Plate "+file_io.unguard_pbc(gpbc)))
+            welz = set((ord('H')-ord(x.well[0]), int(x.well[1:])-1) for x in pdata[gpbc])
+            if is_custom:
                 argx = [("red", "Sample", [(None, ord('H')-ord(x.well[0]), int(x.well[1:])-1, 
-                                            "Well: "+x.well+'; Sample barcode: '+x.sid) for x in pdata[pn]]),
+                                            "Well: "+x.well+'; Sample barcode: '+file_io.unguard_cbc(x.gsid)) for x in pdata[gpbc]]),
                          ("white", "empty", [(None, r, c, chr(ord('H')-r)+str(c+1)+'; empty') 
                                              for c in range(12) for r in range(8) if (r,c) not in welz])]
             else:
                 argx = [("red", "Sample", [(None, ord('H')-ord(x.well[0]), int(x.well[1:])-1, 
-                                            "Well: "+x.well+'; Mouse barcode: '+x.mbc) for x in pdata[pn]]),
+                                            "Well: "+x.well+'; Mouse barcode: '+file_io.unguard(x.gmbc, silent=True)) for x in pdata[gpbc]]),
                          ("white", "empty", [(None, r, c, chr(ord('H')-r)+str(c+1)+'; empty') 
                                              for c in range(12) for r in range(8) if (r,c) not in welz])]
-            ch.append(makeplate(figno, argx, title="Plate "+pn))
+
+            ch.append(makeplate(figno, argx, title="Plate "+file_io.unguard_pbc(gpbc)))
         
-        htmlfn = "Stage1-P{}.html".format(pbc)
-        with open(htmlfn, "wt") as dst:
-            if args.custom:
+        html_fn = f"Stage1-P{file_io.unguard_pbc(tgtp)}.html"
+        with open(html_fn, "wt") as dst:
+            if is_custom:
                 print(fmtReportCustom.format(figspace='\n'.join(fs), charts='\n'.join(ch)), file=dst)
             else:
                 print(fmtReport.format(figspace='\n'.join(fs), charts='\n'.join(ch)), file=dst)
 
-    return
+
+def main():
+    """ provide a command line interface. We'd prefer guarded plate barcodes, but we'll try to work with unguarded pbcs too """
+    parse = argparse.ArgumentParser(description="NGS Genotyping - Summary Report Program")
+    parse.add_argument("barcodes", nargs='+', help="barcodes of Nimbus target plates")
+    parse.add_argument('--custom', action='store_true', help='True if running the custom samples pipeline')
+    args = parse.parse_args()
+
+    guarded_pbcs = []
+    for pbc in args.barcodes:
+        if file_io.is_guarded_pbc(pbc):
+            guarded_pbcs.append(pbc)
+        else:
+            try:
+                guarded_pbcs.append(file_io.guard_pbc(pbc))
+            except TypeException as t_ex:
+                print(t_ex, file=sys.stderr)
+                exit(1)
+            except file_io.EmptyBarcodeError as ebe_ex:
+                print(ebe_ex, file=sys.stderr)
+                exit(1)
+            except file_io.ExistingGuardError as ege_ex:
+                # We might want to check if they already have plate guards and let them through
+                print(ege_ex, file=sys.stderr)
+                exit(1)
+    build_nimbus_reports(guarded_pbcs, is_custom=args.custom)
+
 
 if __name__=="__main__":
      main()

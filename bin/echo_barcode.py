@@ -3,17 +3,13 @@
 """
 @created May 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.12
+@version: 0.13 guarded barcodes, split echo.py, analysis interface
 @version_comments: i7i5 barcodes now allocated in rotating fashion
 @last_edit: 2021-10-28
 @edit_comments: barcode rotation now in place, ignoring volumes
 
 Produce picklists for NGS Genotyping pipeline for the Echo robot.
-There are two stages: 
-    stage 1 takes sample DNA from Nimbus output plates, assay primer plate(s)
-    and a Mytaq+H2O plate and produced a stahe 1 PCR plate.
-    stage 2 adds barcode primers and more Mytaq+H2O to the plates, and also outputs
-    a MiSeq file.
+Adds i7i5 Illumina barcodes to each sample in an even fashion.
 
 Each of these stages usually follows a couple of runs of the echovolume.py script.
 Each such run combines an Echo survey run with a plate description file into
@@ -40,6 +36,7 @@ import glob
 import collections
 import itertools
 import argparse
+import file_io
 
 def fail(x):
     "display message and stop"
@@ -565,7 +562,11 @@ def i7i5alloc_rot(vol, wellcount):
 
     dv=PicklistSrc.deadvol['384PP_AQ_BP']
     def getvol(x): return x[-1]
-    i7s, i5s = (sorted(((r.barcode, r.set, r.well, float(r.volume)) for r in tab.data if x in r.set), key=getvol, reverse=True) for x in ['_i7F_', '_i5R_'])
+    i7s = {(r.barcode, r.set, r.well): float(r.volume)*1000-dv for r in tab.data if '_i7F_' in r.set}
+    i5s = {(r.barcode, r.set, r.well): float(r.volume)*1000-dv for r in tab.data if '_i5R_' in r.set}
+    i7_bcs = set([i7[0] for i7 in i7s.keys()])
+    i5_bcs = set([i5[0] for i5 in i5s.keys()])
+    #i7s, i5s = (sorted(((r.barcode, r.set, r.well, float(r.volume)) for r in tab.data if x in r.set), key=getvol, reverse=True) for x in ['_i7F_', '_i5R_'])
     # This assumes that we will never double up on any one barcode!
     if args.verbose or not (len(i7s) and len(i5s)):
         print("Barcode file:", tab.filename)
@@ -575,59 +576,125 @@ def i7i5alloc_rot(vol, wellcount):
     #assert len(i5s)<=len(i7s)
     #assert len(i5s)
     # check barcode sets and well sets are unique
-    assert all(len(frozenset(x[0] for x in xs))==len(xs) for xs in (i7s, i5s))
-    assert all(len(frozenset(x[2] for x in xs))==len(xs) for xs in (i7s, i5s))
+    #assert all(len(frozenset(x[0] for x in xs))==len(xs) for xs in (i7s, i5s))
+    #assert all(len(frozenset(x[2] for x in xs))==len(xs) for xs in (i7s, i5s))
     
-    i7len, i5len = (len(x) for x in (i7s, i5s))
-    assert i5len<=i7len
-    # create lists of transfer counts from each well
-    i7cnt, i5cnt = ([int((r[-1])*1000-dv)//vol for r in ws] for ws in (i7s, i5s))
-    assert wellcount<=sum(i5cnt)
+    #i7len, i5len = (len(x) for x in (i7s, i5s))
+    # check volume of each barcode is sufficient
+    #i7cnt = {i7:int((i7[-1])*1000-dv)//vol for i7 in i7s}
+    #i5cnt = {i5:int((i5[-1])*1000-dv)//vol for i5 in i5s}
+    #i7cnt, i5cnt = ([int((r[-1])*1000-dv)//vol for r in ws] for ws in (i7s, i5s))
+    #assert wellcount<=sum(i5cnt)
+    #assert wellcount<=sum(i7cnt)
     # number of imbalanced wells - What does imbalanced mean?
-    imb = [x-i5cnt[-1] for x in i5cnt]
-    extra = sum(imb)
-    excess = max(extra+i5len-wellcount, 0)
-    while excess:
-        for i in range(len(imb)):
-            if imb[i]:
-                imb[i] -= 1
-                excess -= 1
-                if not excess:
-                    break
-    extra = sum(imb)
-    base = (wellcount-extra)//i5len
-    alloc = [base+i for i in imb]
+    #imb = [x-i5cnt[-1] for x in i5cnt]
+    #extra = sum(imb)
+    #excess = max(extra+i5len-wellcount, 0)
+    #while excess:
+    #    for i in range(len(imb)):
+    #        if imb[i]:
+    #            imb[i] -= 1
+    #            excess -= 1
+    #            if not excess:
+    #                break
+    #extra = sum(imb)
+    #base = (wellcount-extra)//i5len
+    #alloc = [base+i for i in imb]
     
     # biggest i5 allocation is fewer than the number of i7 wells
     # if so, there should be no duplicate i7F, i5R pairs - we check below anyway
-    assert alloc[0]<=i7len 
-    assert sum(alloc)==wellcount
-    i7gen = (x[:3] for xs in itertools.repeat(i7s) for x in xs)
-    i5gen = (x[:3] for xs in itertools.repeat(i5s) for x in xs)
-    res = []
-    res_set = set()
-    combos = len(i7s) * len(i5s)
+    #assert alloc[0]<=i7len 
+    #assert sum(alloc)==wellcount
+    i7gen = (x for xs in itertools.repeat(i7s.keys()) for x in xs)
+    i5gen = (x for xs in itertools.repeat(i5s.keys()) for x in xs)
+    i7s_empty = set()
+    i5s_empty = set()
+    bc_info_pairs = []
+    used_bc_pairs = set()
+    combos = len(i7_bcs) * len(i5_bcs)
     if combos < wellcount:
         print(f"Not enough barcode combos {combos} for wells requested {wellcount}", file=sys.stderr)
         return
-    while len(res) < wellcount:
+    while len(bc_info_pairs) < wellcount:     
+        if len(i7s_empty) == len(i7s):
+            print("i7 wells contain insufficient volume for the number of experiment wells", file=sys.stderr)
+            print(f"Diagnostic. i7s_empty:{i7s_empty},i5s_empty{i5s_empty},used BCs:{len(used_bc_pairs)}", file=sys.stderr)
+            return
+        elif len(i5s_empty) == len(i5s):
+            print("i5 wells contain insufficient volume for the number of experimental wells", file=sys.stderr)
+            print(f"Diagnostic. i7s_empty:{i7s_empty},i5s_empty{i5s_empty},used BCs:{len(used_bc_pairs)}", file=sys.stderr)
+            return
         i7 = next(i7gen)
         i5 = next(i5gen)
-        if (i7,i5) in res_set:
+        if (i7[0],i5[0]) in used_bc_pairs:
             if len(i7s) > len(i5s):
                 i7 = next(i7gen)
             else:
                 i5 = next(i5gen)
-            if (i7,i5) in res_set:
+            if (i7[0],i5[0]) in used_bc_pairs:
                 continue
-        res.append((i7,i5))
-        res_set.add((i7,i5))
+        i7s[i7] -= vol
+        if i7s[i7] < 0:
+            i7s_empty.add(i7)
+            i7s[i7] += vol
+            continue
+        i5s[i5] -= vol
+        if i5s[i5] < 0:
+            i5s_emtpy.add(i5)
+            i5s[i5] += vol
+            continue
+
+        bc_info_pairs.append((i7,i5))
+        used_bc_pairs.add((i7[0],i5[0]))
     #i5gen = (x[:3] for cnt, xs in zip(alloc, i5s) for x in [xs]*cnt)
     #res = list(zip(i7gen, i5gen))
-    print(res)
-    resset = frozenset(tuple(x[0] for x in xs) for xs in res)
-    assert len(resset)==wellcount # all i7-i5 pairs are unique
-    return res
+    print(bc_info_pairs, file=sys.stderr)
+    return bc_info_pairs
+    #resset = frozenset(tuple(x[0] for x in xs) for xs in res)
+    #assert len(resset)==wellcount # all i7-i5 pairs are unique
+    #return res
+
+
+def generate_miseq_samplesheet(xname, fmtmiseq, ngid, s3tab, verbose):
+    """ Now that we have all the required info, generate the Illumina Miseq samplesheet, which drives the sequencing """
+    fnmiseq = fmtmiseq.format(ngid)
+    with open(fnmiseq, "wt", newline='') as dstfd:
+        dstfd.write("""[Header],,,,,,,,,,
+IEMFileVersion,4,,,,,,,,,
+Investigator Name,,,,,,,,,,
+Experiment Name,{xname},,,,,,,,,
+Date,,,,,,,,,,
+Workflow,GenerateFASTQ,,,,,,,,,
+Application,FASTQ Only,,,,,,,,,
+Assay,Nextera XT,,,,,,,,,
+Description,Mouse genotyping,,,,,,,,,
+Chemistry,Amplicon,,,,,,,,,
+,,,,,,,,,,
+[Reads],,,,,,,,,,
+151,,,,,,,,,,
+151,,,,,,,,,,
+,,,,,,,,,,
+[Settings],,,,,,,,,,
+ReverseComplement,0,,,,,,,,,
+Adapter,,,,,,,,,,
+,,,,,,,,,,
+[Data],,,,,,,,,,
+""".format(xname=xname))
+        hdr = "Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,I5_Index_ID,index2,Sample_Project,Description".split(',')
+        dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
+        dst.writerow(hdr)
+        try:
+            gen =((r.pcrplate+'_'+padwell(r.pcrwell), r.mouseBarcode, '', '',
+                   r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data)
+        except AttributeError:
+            gen =((r.pcrplate+'_'+padwell(r.pcrwell), r.sampleBarcode, '', '',
+                   r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data)
+
+        dst.writerows(gen)
+    if verbose:
+        print('created:', fnmiseq)
+
+       
 
     
 def main():
@@ -663,6 +730,12 @@ def main():
     grp3.add_argument('-i', '--i7i5', help='i7i5 plate survey filename.')
     grp3.add_argument('-x', '--xname', default=defxname, help="experiment name - used in MiSeq file (default={})".format(defxname))
     args = parser.parse_args()
+    # protect plate barcode inputs
+    try:
+        args.taq = [file_io.guard_pbc(t) for t in args.taq]
+    except file_io.ExistingGuardError as e:
+        print(e, file=sys.stderr)
+    
     
     def getdir(path):
         "find the work directory - looks in $NGSGENO and locality of program if the current directory isn't suitable."
@@ -818,6 +891,7 @@ def main():
             
         bcvol = 175 # nanolitres
         bcalloc = i7i5alloc_rot(bcvol, len(s2tab.data))
+        print(bcalloc, file=sys.stderr)
         
         def mks3rec(s2rec, bcrec):
             return 
@@ -851,47 +925,15 @@ def main():
         if args.verbose:
             print('created:', fndst)
             
-        # MiSeq file
-        fnmiseq = fmtmiseq.format(ngid)
-        with open(fnmiseq, "wt", newline='') as dstfd:
-            dstfd.write("""[Header],,,,,,,,,,
-IEMFileVersion,4,,,,,,,,,
-Investigator Name,,,,,,,,,,
-Experiment Name,{xname},,,,,,,,,
-Date,,,,,,,,,,
-Workflow,GenerateFASTQ,,,,,,,,,
-Application,FASTQ Only,,,,,,,,,
-Assay,Nextera XT,,,,,,,,,
-Description,Mouse genotyping,,,,,,,,,
-Chemistry,Amplicon,,,,,,,,,
-,,,,,,,,,,
-[Reads],,,,,,,,,,
-151,,,,,,,,,,
-151,,,,,,,,,,
-,,,,,,,,,,
-[Settings],,,,,,,,,,
-ReverseComplement,0,,,,,,,,,
-Adapter,,,,,,,,,,
-,,,,,,,,,,
-[Data],,,,,,,,,,
-""".format(xname=args.xname))
-            hdr = "Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,I5_Index_ID,index2,Sample_Project,Description".split(',')
-            dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
-            dst.writerow(hdr)
-            gen =((r.pcrplate+'_'+padwell(r.pcrwell), '', '', '',
-                   r.i7name, r.i7bc,
-                   r.i5name, r.i5bc,
-                   'NGStest') for r in s3tab.data)
-            dst.writerows(gen)
-        if args.verbose:
-            print('created:', fnmiseq)
-
+        # MiSeq file - experiment name, name format, ngid(dir), s3 data, verbosity 
+        generate_miseq_samplesheet(args.xname, fmtmiseq, ngid, s3tab, verbose=args.verbose)
+        
         import stage2report as s2r
         fns3 = "Stage3.html"
-        s2r.output(fns3, s3tab.tt._fields, s3tab.data,custom=args.custom)    
+        s2r.build_report(fns3, s3tab.tt._fields, s3tab.data,is_custom=args.custom)    
         if args.verbose:
             print('created:', fns3)
-    
+
     return   
 
 if __name__ == '__main__':

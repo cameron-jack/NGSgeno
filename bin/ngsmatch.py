@@ -317,13 +317,13 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
         rfn= "*{}-{}_*_R1_*.fastq.gz".format(wr['pcrplate'], echo.padwell(wr['pcrwell']))
         fn1s = glob.glob(os.path.join("raw", rfn))
         if not fn1s:
-            print(f"no data for {'-'.join((wr['pcrplate'], wr['pcrwell']))}")
+            print(f"no data for {fn1s}")
             with lock_r:
                 results.append((tuple(wr.values()),log))
             return
             
         if len(fn1s)>1:
-            print(f"too many reads files for {'-'.join((wr['pcrplate'], wr['pcrwell']))}")
+            print(f"too many reads files for pattern{rfn}")
             print(f"   R1 files= {fn1s}")
             with lock_r:
                 results.append((tuple(wr.values()),log))
@@ -580,7 +580,7 @@ def main():
         WRec = collections.namedtuple("WRec", hdr)
         wdata = sorted((WRec(*r) for r in src), key=lambda x:(x.pcrplate, x.pcrwell[0], int(x.pcrwell[1:]), x.primer))
 
-                                                 
+    print(wdata, file=sys.stderr)                                          
     logging.info(f"{len(wdata)} sample wells to process.")
         
     ## get a set of assay family names - family name ends with first underscore char  
@@ -766,7 +766,7 @@ def main():
                 if args.custom:
                     complete_results[(r[0][9],int(r[0][10][1:]),r[0][10][0])] = r[0]
                 else:
-                    complete_results[(r[0][15],r[0][16][1:],int(r[0][16][0]))] = r[0]
+                    complete_results[(r[0][15],int(r[0][16][1:]),r[0][16][0])] = r[0]
                 
             for i,k in enumerate(sorted(complete_results.keys())):
                 dst.writerow(complete_results[k])

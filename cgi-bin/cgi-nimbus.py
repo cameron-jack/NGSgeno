@@ -8,7 +8,7 @@
 @last_edit:
 @edit_comment: 
 
-Application Stage 1 webpage.
+Application Stage 1 (Nimbus) webpage.
 Display a form for creating Stage 1 Nimbus picklists files.
 This should validate ear-punch plate barcodes before doing submit action?
 Should check valid DNA plate barcode if there are any EP barcodes?
@@ -21,7 +21,8 @@ import glob
 #import cgi
 import cgitb
 
-nimbus2 = "/cgi-bin/cgi-nimbus2.py"
+stage1 = "/cgi-bin/cgi-nimbus.py"
+stage2 = "/cgi-bin/cgi-echo.py"
 
 html = """
 <html>
@@ -32,12 +33,12 @@ html = """
 <body style="padding: 20px;">
   <h1>NGS Genotyping pipelines (Mouse &amp; Custom)</h1>
   <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
-    <h2>Mouse pipeline - Stage 1</h2>
+    <h2>Mouse pipeline - Stage 1: Nimbus</h2>
     <p>Stage 1 writes picklist files for the Nimbus robot to tranfer material from 
     96-well ear-punch plates to a 384-well DNA sample plate for use in the Echo robot.
     New mouse projects will get a "run" folder created for them which will be today's date prefixed by "mouse_".
     </p>
-    <form action="{stage1}" method="get">
+    <form action="{stage}" method="get">
       <p>Please provide the following information:</p>
         {eps}
         <br>
@@ -47,7 +48,7 @@ html = """
         <input type="submit" value="Create Nimbus Picklist" style="border-color:red"/>
     </form>
     <hr>
-    <form action="{stage1}" method="get">
+    <form action="{stage}" method="get">
         <h2>Custom sample pipeline - Stage 1</h2>
         <p>To run the custom sample pipeline, you must first create a custom "run" folder (these MUST be prefixed with "custom_") within the NGSgeno 
         folder for your project. You then need to copy the required files there: Sample file - max 4 plates per file!(CSV), 
@@ -116,7 +117,7 @@ def main():
     epx = '\n\t'.join(epfmt.format(i) for i in range(1,5))
 
     optform = ''
-    global nimbus2
+    global stage2
     wdirs = [d for d in os.listdir() if (d.startswith('mouse_') or d.startswith('custom_')) and os.path.isdir(d)]
     #wdirs = sorted(jsonfiles, reverse=True)
     if wdirs:
@@ -127,11 +128,11 @@ def main():
                 {}
             </select><br>""".format(dx)
         optform = """  <p> </p>
-          <form action="{stage1}" method="get">
+          <form action="{stage}" method="get">
               {optall}
               <input type="submit" value="Go to MiSeq run" />
-          </form>""".format(stage1=nimbus2, optall=optmiseq)
-    print(html.format(options=optx, optany=optform, eps=epx, stage1=nimbus2 ))
+          </form>""".format(stage=stage2, optall=optmiseq)
+    print(html.format(options=optx, optany=optform, eps=epx, stage=stage2 ))
     return
 
 if __name__=="__main__":

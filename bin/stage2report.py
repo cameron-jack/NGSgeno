@@ -3,8 +3,8 @@
 """
 @created June 2020
 @author: Bob Buckley and Cameron Jack
-@version: 0.12
-@version_comment:
+@version: 0.13
+@version_comment: support guarded barcodes
 @last_edit:
 @edit_comment:
 
@@ -18,11 +18,12 @@ defcsv = "Stage2.csv"
 
 #import os
 #import glob
-#import sys
+import sys
 import csv
 import argparse
 import itertools
 import collections
+import file_io
 
 # Template for the HTML file
 fmtReport = """
@@ -157,8 +158,10 @@ def makelabel(x, n):
     return '\\n'.join((x[0], ' '.join((x[1], x[n], pct+'%')))), x[1], pct
 
 
-def output(filename, hdr, data, custom=False):
-    """ output the HTML reports, custom==True for custom sample pipeline runs """
+def build_report(filename, hdr, data, is_custom=False):
+    """ output the HTML reports, is_custom==True for custom sample pipeline runs.
+        Assumes input data is guarded
+    """
     dnaplates = sorted(set(x.dnaplate for x in data))
     dnadata = dict((dnabc, dict((w, list(g)) for w, g in 
             itertools.groupby(filter(lambda x:x.dnaplate==dnabc, data), key=lambda x: x.dnawell))) for dnabc in dnaplates)
@@ -169,52 +172,99 @@ def output(filename, hdr, data, custom=False):
     ch = []
     figno = 0
     
-    def mklabdna(rs, custom=False):
+    def mklabdna(rs, is_custom=False):
+        """ default to WARNING of missing barcodes rather than failing completely """
         segs = ["Well: "+rs[0].dnawell+" from EP well: "+rs[0].EPwell]
-        if custom:
-            segs.append('sampleBarcode: '+rs[0].sampleBarcode)
+        if is_custom:
+            try:
+                segs.append('sampleBarcode: '+file_io.unguard_cbc(rs[0].sampleBarcode))
+            except file_io.UnguardedBarcodeError:
+                print('WARNING! Unguarded custom barcode:', rs[0].sampleBarcode, file=sys.stderr)
+                segs.append('sampleBarcode: '+rs[0].sampleBarcode)               
         else:
-            segs.append("mouseBarcode: "+rs[0].mouseBarcode)
+            try:
+                segs.append("mouseBarcode: "+file_io.unguard_mbc(rs[0].mouseBarcode))
+            except file_io.UnguardedBarcodeError:
+                print('WARNING! Unguarded Musterer barcode:', rs[0].mouseBarcode, file=sys.stderr)
+                segs.append('mouseBarcode: '+rs[0].mouseBarcode)
             segs.append("strain: "+rs[0].strainName)
-        segs.append("assay primers: "+', '.join(r.pcrplate+'-'+r.pcrwell+"="+r.primer for r in rs))
+        try:
+            segs.append("assay primers: "+', '.join((file_io.unguard_pbc(r.pcrplate)+'-'+r.pcrwell+"="+r.primer for r in rs)))
+        except file_io.UnguardedBarcodeError as e:
+            print('WARNING! Unguarded PCR plate barcode:', e, file=sys.stderr)
+            segs.append("assay primers: "+', '.join((r.pcrplate+'-'+r.pcrwell+"="+r.primer for r in rs)))
         return '; '.join(segs)
     
     for pn in dnaplates:
         # print("DNA/Sample Plate", pn, "has", len(dnadata[pn]), "wells.")
         figno += 1
-        fs.append(makefigure(figno, "DNA/Sqample Plate "+pn))
+        try:
+            fs.append(makefigure(figno, "DNA/Sample Plate "+file_io.unguard_pbc(pn)))
+        except file_io.UnguardedBarcodeError:
+            print('WARNING! Unguarded DNA/Sample plate barcode:',pn, file=sys.stderr)
+            fs.append(makefigure(figno, "DNA/Sample Plate "+pn))
         wdict = dnadata[pn]
         argx = [
-                 ("lightblue", "Sample", [(None, ord('P')-ord(w[0]), int(w[1:])-1, mklabdna(wdict[w],custom)) for w in wdict.keys()]),
-                 ("white", "empty", [(None, r, c, chr(ord('P')-r)+str(c+1)+'; empty') for c in range(24) for r in range(16) if chr(ord('P')-r)+str(c+1) not in wdict]),
-               ] 
-        ch.append(makeplate(figno, argx, title="DNA/Sample Plate "+pn))
+                 ("lightblue", "Sample", [(None, ord('P')-ord(w[0]), int(w[1:])-1, mklabdna(wdict[w],is_custom)) for w in wdict.keys()]),
+                 ("white", "empty", [(None, r, c, chr(ord('P')-r)+str(c+1)+'; empty') \
+                        for c in range(24) for r in range(16) if chr(ord('P')-r)+str(c+1) not in wdict]),
+               ]
+        try:
+            ch.append(makeplate(figno, argx, title="DNA/Sample Plate "+file_io.unguard_pbc(pn)))
+        except file_io.UnguardedBarcodeError:
+            print('WARNING! Unguarded DNA/Sample plate barcode:', pn, file=sys.stderr)
+            ch.append(makeplate(figno, argx, title="DNA/Sample Plate "+pn))
         
-    def mklab(r, custom=False):
+    def mklab(r, is_custom=False):
         """ Make column labels """
         segs = ["Well: "+r.pcrwell]
-        if custom:
-            segs.append('sampleBarcode: '+r.sampleBarcode)
+        if is_custom:
+            try:
+                segs.append('sampleBarcode: '+file_io.unguard_cbc(r.sampleBarcode))
+            except file_io.UnguardedBarcodeError as e:
+                print('WARNING! Unguarded sample barcode:',e.message ,file=sys.stderr)
+                segs.append('sampleBarcode: '+r.sampleBarcode)
         else:
-            segs.append('mouseBarcode: '+r.mouseBarcode)
+            try:
+                segs.append('mouseBarcode: '+file_io.unguard_mbc(r.mouseBarcode))
+            except file_io.UnguardedBarcodeError as e:
+                print('WARNING! Unguarded Musterer barcode:', e.message,file=sys.stderr)
+                segs.append('mouseBarcode: '+r.mouseBarcode)
             segs.append('strain: '+r.strainName)
             if r.mouseAssays!=r.primer:
                 segs.append("Musterer assays: "+r.mouseAssays)            
         segs.append("assay: "+r.primer)
-        segs.append("DNA plate, well: "+r.dnaplate+', '+r.dnawell)
-        segs.append("EP plate, well: "+r.EPplate+", "+r.EPwell)
+        try:
+            segs.append("DNA plate, well: "+file_io.unguard_pbc(r.dnaplate)+', '+r.dnawell)
+        except file_io.UnguardedBarcodeError as e:
+            print('WARNING! Unguarded DNA plate barcode:', e.message, file=sys.stderr)
+            segs.append("DNA plate, well: "+r.dnaplate+', '+r.dnawell)
+        try:    
+            segs.append("EP plate, well: "+file_io.unguard_pbc(r.EPplate)+", "+r.EPwell)
+        except file_io.UnguardedBarcodeError as e:
+            print('WARNING! Unguarded EP plate barcode:', e.message, file=sys.stderr)
+            segs.append("EP plate, well: "+r.EPplate+", "+r.EPwell)
         return '; '.join(segs)
               
     for pn in pcrplates:
         # print("PCR Plate", pn, "has", len(pcrdata[pn]), "wells.")
         figno += 1
-        fs.append(makefigure(figno, "PCR Plate "+pn))
+        try:
+            fs.append(makefigure(figno, "PCR Plate "+file_io.unguard_pbc(pn)))
+        except file_io.UnguardedBarcodeError:
+            print('WARNING! Unguarded PCR plate barcode:', pn, file=sys.stderr)
+            fs.append(makefigure(figno, "PCR Plate "+pn))
+
         welz = set((ord('P')-ord(x.pcrwell[0]), int(x.pcrwell[1:])-1) for x in pcrdata[pn])
         argx = [
-                 ("lightgreen", "Sample", [(None, ord('P')-ord(x.pcrwell[0]), int(x.pcrwell[1:])-1, mklab(x,custom)) for x in pcrdata[pn]]),
+                 ("lightgreen", "Sample", [(None, ord('P')-ord(x.pcrwell[0]), int(x.pcrwell[1:])-1, mklab(x,is_custom)) for x in pcrdata[pn]]),
                  ("white", "empty", [(None, r, c, chr(ord('P')-r)+str(c+1)+'; empty') for c in range(24) for r in range(16) if (r,c) not in welz]),
                 ]
-        ch.append(makeplate(figno, argx, title="PCR Plate "+pn))
+        try:
+            ch.append(makeplate(figno, argx, title="PCR Plate "+file_io.unguard_pbc(pn)))
+        except file_io.UnguardedBarcodeError:
+            print('WARNING! Unguarded PCR plate barcode:', pn, file=sys.stderr)
+            ch.append(makeplate(figno, argx, title="PCR Plate "+pn))
             
     tablefmt = """<table>
     {hdr}
@@ -233,9 +283,10 @@ def output(filename, hdr, data, custom=False):
                 charts = '\n'.join(ch),
                 table = table),
               file=dst)
-    return
+
 
 def main():
+    """ Read Stage2.csv or Stage3.csv and create HTML report """
     global defrpt, defcsv
     parse = argparse.ArgumentParser(description="NGS Genotyping - Summary Report Program")
     parse.add_argument("-r", "--report", default=defrpt, help="name of summary report (HTML file) default="+defrpt)
@@ -244,14 +295,17 @@ def main():
     args = parse.parse_args()
     
     # read the CSV file
+    data = []
     with open(args.csv) as srcfd:
         src = csv.reader(srcfd, dialect="unix")
         hdr = next(src)
         Rec = collections.namedtuple('Rec', hdr)
-        data = [Rec(*x) for x in src]
+        while(src):
+            fields = [f.strip() for f in next(src)]  # input from CSV should be guarded
+            data.append(Rec(*fields))
         
-    output(args.report, hdr, data, custom=args.custom)
-    return
+    build_report(args.report, hdr, data, is_custom=args.custom)
+
 
 if __name__=="__main__":
      main()

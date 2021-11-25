@@ -7,4 +7,4 @@ cd %NGS%
 
 start /d %NGS% python -m http.server --cgi %port% 
 
-MicrosoftEdge http://localhost:9123/cgi-bin/cgi-nimbus1.py
+MicrosoftEdge http://localhost:9123/cgi-bin/cgi-nimbus.py

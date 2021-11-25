@@ -23,6 +23,9 @@ The output format is CSV
 The output asks the Nimbus Robot to tranfer a sample from each well of 
 the sample plates to a well in a 384-well DNA plate. 
 This is the first stage of the NGS Genotyping pipeline.
+
+Sample barcodes should remain guarded
+Plate barcodes need to be written out as unguarded so that they can match result of barcode scanners
 """
 
 # can we validate barcode entry widgets as GUI focus leaves them, and colour their background accordingly?
@@ -38,6 +41,7 @@ import tkinter.filedialog as fd
 import tkinter.messagebox as mb  
 import requests
 from musterer import getPlate_app
+import file_io
 
 #import xlrd
 #import xlwt
@@ -47,8 +51,6 @@ import primercheck
 assayMethod = "NGS" 
 
 app = None # global!
-
-
 
 
 def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
@@ -63,7 +65,8 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
     It needs the name of an output file and ear-punch data for each plate.
     Output - creates Nimbus_bc.csv and Stage1-P_bc.csv files
     """
-    
+    if not file_io.is_guarded_pbc(tgtid):
+        tgtid = file_io.guard_pbc(tgtid)
     # use common code to read library files
     global assayMethod
     pl = primercheck.PrimerLookup(fnmm=fnmm, fnpp=fnpp, fnref=fnref)
@@ -75,7 +78,7 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
         genold = (mt for ma in gx for mt in pl.mmdict.get(ma, [ma]))
         return mouse_assays, sorted(frozenset(x.split('_',1)[0] for xs in (genold, ngsassays) for x in xs))
     # basic validation
-    tgtfn = 'Nimbus'+tgtid+'.csv'
+    tgtfn = 'Nimbus-'+tgtid+'.csv'
     fnstg = 'Stage1-P'+tgtid+'.csv'
     # rn - row number in Nimbus picklist file - Nimbus needs this
     # wn - count the number of wells needed in the DNA plate
@@ -105,7 +108,7 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
                     nwix = r+str(c) # well index
                     nwixm = r+str(c).zfill(2) # Musterer well ID
                     # nimbus needs non-empty Mouse Barcode so use '0' for 'empty'
-                    mbc = str(wells[nwixm]["mouseBarcode"]) if nwixm in wells else '0'
+                    mbc = file_io.guard_mbc(str(wells[nwixm]["mouseBarcode"])) if nwixm in wells else '0'
                     rn += 1
                     rd = [rn, pbc, nwix, mbc]
                     dstpl.writerow(rd)
@@ -128,8 +131,10 @@ def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None
     Process custom sample-plate data, to produce a workfile for the BRF's Nimbus robot.
     
     It needs the name of an output file and sample data for each plate.
-    tgtid = barcode or name of target output files
+    tgtid = barcode or name of target output files, which should be guarded already
     """
+    if not file_io.is_guarded_pbc(tgtid):
+        tgtid = file_io.guard_pbc(tgtid)
     # use common code to read library files
     global assayMethod
     pl = primercheck.PrimerLookup(fnmm=custom_assay_fn, fnpp=custom_primer_fn)
@@ -141,7 +146,7 @@ def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None
         genold = (mt for ma in gx for mt in pl.mmdict.get(ma, [ma]))
         return mouse_assays, sorted(frozenset(x.split('_',1)[0] for xs in (genold, ngsassays) for x in xs))
     # basic validation
-    tgtfn = 'Nimbus'+tgtid+'.csv'
+    tgtfn = 'Nimbus-'+tgtid+'.csv'
     fnstg = 'Stage1-P'+tgtid+'.csv'
     # rn - row number in Nimbus picklist file - Nimbus needs this
     # wn - count the number of wells needed in the DNA plate

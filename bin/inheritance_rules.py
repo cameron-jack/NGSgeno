@@ -91,12 +91,12 @@ def test_true_mut(sire_gt, dam_gt):
         MUT x MUT is 100 % and HET x MUT is 50% of the offspring.
     """
     if sire_gt == 'mut/mut':  # mut sire
-        if dam_gt == 'mut/mut' or dam_gt == 'wt/mut' or dam_gt == 'mut/wt':
+        if dam_gt in {'mut/mut', 'wt/mut', 'mut/wt'}:
             return True
         else:
             return False
-    elif sire_gt == 'mut/wt' or sire_gt == 'wt/mut':  # het sire
-        if dam_gt == 'mut/mut' or dam_gt == 'wt/mut' or dam_gt == 'mut/wt':
+    elif sire_gt in {'mut/wt', 'wt/mut', 'mut/y', 'y/mut'}:  # het sire
+        if dam_gt in {'mut/mut', 'wt/mut', 'mut/wt'}: # het mother is also plausible
             return True
         else:
             return False
@@ -165,15 +165,14 @@ def test_true_XY_wt(msex, sire_gt, dam_gt):
         Fail = if Mother is MUT AND Father is WT OR wt/Y
     """
     if msex == 'f':
-        if dam_gt == 'wt/wt' and (sire_gt == 'wt/wt' or sire_gt == 'wt/y'):
+        if dam_gt == 'wt/wt' and sire_gt in {'wt/wt', 'wt/y'}:
             return True
-        if (dam_gt == 'mut/wt' or dam_gt == 'wt/mut') and (sire_gt =='wt' or sire_gt == 'wt/y'):
+        if dam_gt in {'mut/wt', 'wt/mut'} and sire_gt in {'wt/wt', 'wt/y'}:
             return True
         return False
     elif msex == 'm':
-        if dam_gt == 'wt/wt' or dam_gt == 'mut/wt' or dam_gt == 'wt/mut':
-            if sire_gt == 'wt/wt' or sire_gt == 'wt/y' or sire_gt == 'mut':
-                return True
+        if dam_gt in {'wt/wt', 'mut/wt', 'wt/mut'} and sire_gt in {'wt/wt', 'wt/y', 'mut'}:
+            return True
         return False
     return False
 
@@ -222,13 +221,11 @@ def test_true_XY_mut(msex, sire_gt, dam_gt):
     Alternatively, Pass if Mother is HET or MUT, Fail if Mother is WT. No check for genotype of father required.
     """
     if msex == 'f':
-        if sire_gt == 'wt/wt' or sire_gt == 'wt/y':
-            return False
-        elif (sire_gt == 'mut/mut' or sire_gt == 'mut/y') and dam_gt == 'wt/wt':
+        if sire_gt in {'wt/wt', 'wt/y', 'y/wt'} or dam_gt == 'wt/wt':
             return False
         return True
     elif msex == 'm':
-        if dam_gt == 'wt/wt':
+        if dam_gt == 'wt/wt' or sire_gt in {'wt/wt', 'wt/y', 'y/wt'}:
             return False
         return True
 

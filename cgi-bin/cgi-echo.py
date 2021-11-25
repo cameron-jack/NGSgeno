@@ -3,8 +3,8 @@
 """
 @created: Aug 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.12
-@version_comment: 
+@version: 0.13
+@version_comment: barcode protection introduced - all barcodes are now end-protected strings
 @last_edit: 2021-07-12
 @edit_comment: 
 
@@ -24,6 +24,7 @@ import requests
 import subprocess
 import collections
 import sys
+
 # Ugly hack to find things in ../bin
 from pathlib import Path
 file = Path(__file__).resolve()
@@ -31,11 +32,13 @@ sys.path.append(os.path.join(file.parents[1],'bin'))
 import nimbus
 from musterer import getPlate
 import primercheck
+from file_io import readCustomCSVtoJSON
+import file_io
 
 port=9123
-nimbus2 = "/cgi-bin/cgi-nimbus2.py"
-#stage2  = "/cgi-bin/cgi-stage2.py"
-stage2 = nimbus2
+stage1 = "/cgi-bin/cgi-nimbus.py"
+stage2 = "/cgi-bin/cgi-echo.py"
+stage3 = "/cgi-bin/cgi-analysis.py"
 
 htmlerr = """
 <html>
@@ -53,7 +56,7 @@ htmlerr = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -69,7 +72,7 @@ html1 = """
   <h1>NGS Genotyping pipeline</h1>
   <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
   <h2>Nimbus transfer file(s)</h2>
-  <form action="{stage1}" method="get">
+  <form action="{stage}" method="get">
     <p>Please copy Nimbus output files for the following DNA plate(s):<br>
     <pre>    {bcs}</pre>
     into the work folder: <code>NGSGeno\{ngid}</code><br>
@@ -87,7 +90,7 @@ html1 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -109,7 +112,7 @@ htmlpl1 = """
   <h1>NGS Genotyping pipeline</h1> 
   <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
   <h2>Echo Picklists - part 1</h2>
-  <form action="{stage2}" method="get">
+  <form action="{stage}" method="get">
     <p>This step creates an Echo picklist to transfer DNA from DNA plates to PCR reaction plates: <code>{ebcs}</code></p>
     <p>The run needs {wellcount} wells in {noplates} PCR plates for separate assay samples.
     Please provide barcodes for the PCR plates.</p>
@@ -140,7 +143,7 @@ htmlpl1 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -162,7 +165,7 @@ htmlpl2 = """
   <h1>NGS Genotyping pipeline</h1> 
   <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
   <h2>Echo picklists - part 2</h2>
-  <form action="{stage2}" method="get">
+  <form action="{stage}" method="get">
     <p>Create Echo picklists for sample barcodes and Mytab.</p>
     <p>Create MiSeq file to describe samples for MiSeq run.</p>
     <p>Use the Echo robot to survey your barcode and Mytaq plates. Ensure you upload the
@@ -188,7 +191,7 @@ htmlpl2 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -208,7 +211,7 @@ html3 = """
   the "raw" folder for run {ngid} click the Continue button.</p>
   <p>Note: this step involves a lot of processing so expect to wait a while
   for it to complete.</p>
-  <form action="{stage2}" method="get">
+  <form action="{stage}" method="get">
     <input type="submit" value="Continue" />
     <input style="display: none;" type="text" id="ngid" name="ngid" value="{ngid}" />
     <input type="hidden" id="existing" name="existing" value="{existingDir}"/>
@@ -219,7 +222,7 @@ html3 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -239,7 +242,7 @@ html4 = """
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus1.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -249,46 +252,14 @@ class ProgramFail(Exception):
     pass
 
 def eppfn(bc):
-    return "Plate{}-EP.json".format(bc) # ear-punch plate (filename) format
+    return "Plate-{}-EP.json".format(bc) # ear-punch plate (filename) format
+
+def eppfn_old(bc):
+    return "Plate{}-EP.json".format(bc) # ear-punch plate (filename) format, unguarded name (older)
 
 mustfix = re.compile(r'(,\s*"(mouseBarcode|plateId)":\s*)(\d+)')
 
-def readCustomCSVtoJSON(input_fn):
-    """ read a custom sample manifest with no more than 4x96 well plates! Then return as JSON """
-    data = {}
-    errs = []  # error messages
-    with open(input_fn, 'rt', newline=None) as f:
-        in_csv = csv.reader(f, delimiter=',')
-        for i, row in enumerate(in_csv):
-            #print(row, file=sys.stderr)
-            #print(file=sys.stderr)
-            if i == 0:
-                continue  # header
-            plate = row[1]
-            well = row[2]
-            sampleBarcode = row[3]
-            assays = [a.strip() for a in row[4:]]
-            if plate not in data:
-                if len(data) == 4:
-                    errs.append('Too many input plates specified in experiment file. Max of 4 plates are allowed per file!')
-                    break
-                data[plate] = {'plateId':plate, 'custom':True, 'sampleBarcode':sampleBarcode, 
-                       'wells':[{'wellLocation':well, 'organism':{'sampleId':sampleBarcode, 
-                                'sampleBarcode':sampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a.strip()} \
-                                for a in assays if a.strip() != '']}}]}                  
-            else:
-                if well in data[plate]:
-                    print('duplicate well number', well, 'in plate', plate, file=sys.stderr)
-                    return
-                data[plate]['wells'].append({'wellLocation':well, 'organism':{'sampleId':sampleBarcode, 
-                        'sampleBarcode':sampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a.strip()} \
-                        for a in assays if a.strip() != '']}})
-           
-    pids = data.keys()
-    data = [(data[p],p) for p in sorted(data)]
-    return data, pids, errs
 
-#  
 def main():
     def getinfo():
         inf = glob.glob('*.html')+glob.glob('*.log')
@@ -303,7 +274,7 @@ def main():
     print("Content-Type: text/html")    # HTML is following
     print()                             # blank line, end of headers
     
-    global nimbus2
+    global stage2
     # create new sample if the sample folder isn't present
     from datetime import date
     now = date.today() # get today's date
@@ -341,7 +312,7 @@ def main():
             for line in f:
                 cols = line.strip().split('\t')
                 template_files[cols[0]] = cols[1]
-        #print('cgi-nimbus2:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
+        #print('cgi-echo:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
     global port
     global htmlerr
     dnaBC = ''
@@ -354,11 +325,15 @@ def main():
     else:
         print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>", port=port))
         return
-    if dnaBC:      
+    if dnaBC:
+        dnaBC = dnaBC.strip()
+        if not file_io.is_guarded_pbc(dnaBC):
+            dnaBC = file_io.guard_pbc(dnaBC)
         # Either call getPlate() to get plate data from Musterer, or if custom, get it from a file
         if 'customSamples' in fields:
             # get plate info from file
             pxs, pids, errx = readCustomCSVtoJSON(fields.getfirst('customSamples'))
+            pids = [p if file_io.is_guarded_pbc(p) else file_io.guard_pbc(p) for p in pids]
             #print('pxs:', pxs, file=sys.stderr)
             #print('pids', pids, file=sys.stderr)
             if fields.getfirst('customAssays') in (None, ''):
@@ -366,8 +341,15 @@ def main():
         elif 'ep1' in fields:
             # note - nimbus.getPlate_app calls mb.showerror() and app.setstatus and returns None for errors
             # get plate info from input form and lookup in Musterer or cache
-            pids = [(i, fields.getfirst('ep'+str(i))) for i in range(1,5) if 'ep'+str(i) in fields]
-            pxs = [getPlate(pid) for n, pid in pids]
+            pids = []
+            for i in range(1,5):
+                if 'ep'+str(i) not in fields:
+                    continue
+                p = fields.getfirst('ep'+str(i))
+                if not file_io.is_guarded_pbc(p):
+                    p = file_io.guard_pbc(p)
+                pids.append((i,p))
+            pxs = [getPlate(pid) for n, pid in pids]  # guarded plateIDs
             errx = [e for px, es in pxs for e in es]
             if len(pxs) == 0:
                 print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>", port=port))
@@ -398,7 +380,7 @@ def main():
                 if 'customPrimers' in fields:
                     print('customPrimers\t' + fields.getfirst('customPrimers'), file=outf)  
 
-        #tgtfn = 'Nimbus'+dnaBC+'.csv'
+        #tgtfn = 'Nimbus-'+dnaBC+'.csv'
         if 'customSamples' in fields:
             dnacnt, plist, unk = nimbus.nimbus_custom(dnaBC, plates_data, custom_assay_fn, custom_primer_fn)
         else:
@@ -416,9 +398,9 @@ def main():
             info.append("Please ensure that all required primer description files are present in the work folder.")                    
             info.append("<b>Warning</b>: DNA plate {} - {} Musterer assays do not map to <b>recognised</b> target primer families:\n<pre>\n{}\n</pre>".format(dnaBC, len(unk), "\n".join(unk)))
 
-    nfiles = glob.glob('Nimbus*.csv')
+    nfiles = glob.glob('Nimbus-*.csv')
     # barcodes for Nimbus 384-well plate outputs
-    nbc = frozenset(fn[6:-4] for fn in nfiles)
+    nbc = frozenset(fn.replace('Nimbus-','').replace('.csv','') for fn in nfiles)
     # identify missing Stage1 files.
     missing = [bc for bc in nbc if not os.path.isfile(f"Stage1-P{bc}.html")]
     if missing:
@@ -436,7 +418,7 @@ def main():
     # find the Nimbus output files for each DNA plate.
     efiles = glob.glob('Echo_384_COC_00??_*.csv')
     # pick out the plate barcode from the filename
-    ebc = frozenset(fn[:-4].split('_',5)[4] for fn in efiles)
+    ebc = frozenset(fn.replace('.csv','').split('_',5)[4] for fn in efiles)
     xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
     #print(xbc, nbc, ebc, file=sys.stderr)
     
@@ -445,15 +427,11 @@ def main():
         # Nimbus output files are not present
         global html1
         xinfo = ''.join("<p>{}</p>\n".format(x) for x in info)
-        print(html1.format(bcs='\n    '.join(sorted(xbc)), stage1=nimbus2, ngid=ngid, info1=xinfo, info2=getinfo(), existingDir=ngid, port=port))
+        print(html1.format(bcs='\n    '.join(sorted(xbc)), stage=stage2, ngid=ngid, info1=xinfo, info2=getinfo(), existingDir=ngid, port=port))
         return
     
     def allfiles(fns):
         return all(os.path.isfile(fn) for fn in fns)
-    
-    #library = os.path.join("..", "library")
-    
-    
 
     prsvy_fn = "primer-svy.csv"
     if 'pcr' in fields:
@@ -464,10 +442,10 @@ def main():
         else:
             prs = [template_files['primers']] + fields.getlist('psvy')
         cmd = ["python", os.path.join("..", "bin", "echovolume.py")]+prs+[prsvy_fn]
-        print('cgi-nimbus2:', cmd, file=sys.stderr)
+        print('cgi-echo:', cmd, file=sys.stderr)
         subprocess.run(cmd)
         # expect one only TAQ plate file
-        cmd = ["python", os.path.join("..", "bin", "echo.py"), "--prim", prsvy_fn, \
+        cmd = ["python", os.path.join("..", "bin", "echo_primer.py"), "--prim", prsvy_fn, \
                         "--taq", fields.getfirst('taq'), "--pcr"] + \
                        fields.getlist('pcr')
         if template_files['customPrimers'] != '':
@@ -486,7 +464,7 @@ def main():
         cmd = ['python', os.path.join('..', 'bin', 'echovolume.py')] + [i7i5_fn, fields.getfirst('i7svy'), i7svy]
         #print(cmd, file=sys.stderr)
         subprocess.run(cmd)
-        cmd = ["python", os.path.join("..", "bin", "echo.py"), "--i7i5",
+        cmd = ["python", os.path.join("..", "bin", "echo_barcode.py"), "--i7i5",
                         i7svy, "--taq"] + fields.getlist('taq')
         if template_files['customPrimers'] != '':
             cmd += ['--custom']
@@ -510,7 +488,7 @@ def main():
         
         def platePrimers(bc):
             "reads the Stage1-P*.csv file - return tuple: barcode, set of primers per sample"
-            fn = "Stage1-P{}.csv".format(bc)
+            fn = f"Stage1-P{bc}.csv"
             with open(fn) as srcfd:
                 src = csv.reader(srcfd)
                 hdr = next(src)
@@ -554,7 +532,7 @@ def main():
             taqfmt = '<label for="taq">Mytaq/Water plate {0} barcode:</label>\n\t  <input type="text" id="taq" name="taq" size="8" /><br>'
             taqx ='\n\t'.join(taqfmt.format(i) for i in range(1,tc+1))
             print(htmlpl1.format(ngid=ngid, taq=taq_set, h2o=h2o_set, ebcs=' '.join(sorted(ebc)), 
-                    wellcount=wellcnt, noplates=pc, pcrs=pcrx, tc=tc, taqs=taqx, info=getinfo(), stage2=nimbus2, existingDir=ngid,port=port))
+                    wellcount=wellcnt, noplates=pc, pcrs=pcrx, tc=tc, taqs=taqx, info=getinfo(), stage=stage2, existingDir=ngid,port=port))
             return
         if not allfiles([i7svy]):
             taq, h2o = echo.mytaq2(wellcnt, 2000, 650)
@@ -563,31 +541,33 @@ def main():
             h2o_set = sorted(set([w for w,p in h2o]))
             taqfmt = '<label for="taq">Mytaq/Water plate {0} barcode:</label>\n\t  <input type="text" id="taq" name="taq" size="8" /><br>'
             taqx ='\n\t'.join(taqfmt.format(i) for i in range(1,tc+1))
-            print(htmlpl2.format(ngid=ngid, taq=taq_set, h2o=h2o_set, tc=tc, taqs=taqx, info=getinfo(), stage2=nimbus2, existingDir=ngid,port=port))
+            print(htmlpl2.format(ngid=ngid, taq=taq_set, h2o=h2o_set, tc=tc, taqs=taqx, info=getinfo(), stage=stage2, existingDir=ngid,port=port))
             return
         
-        # the form calls echo.py (indirectly?) then displays the form for collecting MiSeq results
-        # print(html2.format(wellcount=wellcnt, noplates=pc, pcrs=pcrx, stage2=nimbus2, ngid=ngid, info=''.join(info)+getinfo(),port=port))
-        # return
-
+    global stage3
     if not os.path.isdir("raw") and not os.path.isdir("RAW"):
-        print('cgi-nimbus2:', 'No raw FASTQ directory', file=sys.stderr)
+        print('cgi-echo:', 'No raw FASTQ directory', file=sys.stderr)
         global html3 # data analysis & reporting step
-        print(html3.format(ngid=ngid, info=getinfo(), stage2=nimbus2, existingDir=ngid, port=port))
+        print(html3.format(ngid=ngid, info=getinfo(), stage=stage2, existingDir=ngid, port=port))
         return
+    else:
+        if not os.path.isfile("Results.csv"): # we've yet to run the analysis stage
+            print(html3.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, port=port))
+            return
+        else:
+            print(html4.format(ngid=ngid, info=getinfo(), stage=stage2, existingDir=ngid, port=port))
+            return
+    #if not os.path.isfile("Results.csv"):
+    #    print('cgi-echo:', 'Running stage3 FASTQ analysis', file=sys.stderr)
+    #    res = subprocess.run([os.path.join("..", "bin", "stage3.bat"), "Stage3.csv", template_files['ref'], template_files['conv']], capture_output=True)
+    #    # capture output to log file
+    #    with open("match.log", "wt") as dst:
+    #        dst.write(res.stdout.decode('utf-8').replace('\r',''))
+    #        if bool(res.stderr):
+    #            dst.write("============ STDERR =============\n")
+    #            dst.write(res.stderr.decode('utf-8').replace('\r',''))
+    return           
     
-    if not os.path.isfile("Results.csv"):
-        print('cgi-nimbus2:', 'Running stage3 FASTQ analysis', file=sys.stderr)
-        res = subprocess.run([os.path.join("..", "bin", "stage3.bat"), "Stage3.csv", template_files['ref'], template_files['conv']], capture_output=True)
-        # capture output to log file
-        with open("match.log", "wt") as dst:
-            dst.write(res.stdout.decode('utf-8').replace('\r',''))
-            if bool(res.stderr):
-                dst.write("============ STDERR =============\n")
-                dst.write(res.stderr.decode('utf-8').replace('\r',''))
-                
-    print(html4.format(ngid=ngid, info=getinfo(), stage2=nimbus2, port=port))
-    return    
     
 
 if __name__=="__main__":

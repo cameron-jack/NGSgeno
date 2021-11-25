@@ -8,13 +8,13 @@
 @last_edit:
 @edit_comment:
 
-Create SVG plate images, Summary and Result Table HTML files.
+Create SVG plate images, Summary and Result Table HTML files for sequence counts info.
 """
 templatefn = 'ResultPlate.templ' # name of template file!
 rtfn = 'ResultTable.templ'
 
 import os
-import sys
+import sys         
 import csv
 import json
 import collections
