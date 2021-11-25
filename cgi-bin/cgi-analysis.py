@@ -253,8 +253,6 @@ def main():
         #print('cgi-analysis:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
     global port
     global htmlerr
-    
-    
 
     if not os.path.isdir("raw") and not os.path.isdir("RAW"):
         print('cgi-analysis:', 'No raw FASTQ directory', file=sys.stderr)

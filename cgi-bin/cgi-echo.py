@@ -32,7 +32,6 @@ sys.path.append(os.path.join(file.parents[1],'bin'))
 import nimbus
 from musterer import getPlate
 import primercheck
-from file_io import readCustomCSVtoJSON
 import file_io
 
 port=9123
@@ -332,7 +331,10 @@ def main():
         # Either call getPlate() to get plate data from Musterer, or if custom, get it from a file
         if 'customSamples' in fields:
             # get plate info from file
-            pxs, pids, errx = readCustomCSVtoJSON(fields.getfirst('customSamples'))
+            cust_file_contents = 'custom'
+            if 'cust_type' in fields:
+                cust_file_contents = fields.getvalue('cust_type')
+            pxs, pids, errx = file_io.readCustomCSVtoJSON(fields.getfirst('customSamples'), cust_file_contents)
             pids = [p if file_io.is_guarded_pbc(p) else file_io.guard_pbc(p) for p in pids]
             #print('pxs:', pxs, file=sys.stderr)
             #print('pids', pids, file=sys.stderr)
@@ -378,11 +380,8 @@ def main():
                 if 'customAssays' in fields:
                     print('customAssays\t' + fields.getfirst('customAssays'), file=outf)
                 if 'customPrimers' in fields:
-                    print('customPrimers\t' + fields.getfirst('customPrimers'), file=outf)  
-
-        #tgtfn = 'Nimbus-'+dnaBC+'.csv'
-        if 'customSamples' in fields:
-            dnacnt, plist, unk = nimbus.nimbus_custom(dnaBC, plates_data, custom_assay_fn, custom_primer_fn)
+                    print('customPrimers\t' + fields.getfirst('customPrimers'), file=outf)
+            dnacnt, plist, unk = nimbus.nimbus_custom(dnaBC, plates_data, custom_assay_fn, custom_primer_fn, cust_file_contents)
         else:
             dnacnt, plist, unk = nimbus.nimbus(dnaBC, plates_data, fnmm=template_files['assays'],
                     fnpp=template_files['primers'], fnref=template_files['ref'])
@@ -548,7 +547,7 @@ def main():
     if not os.path.isdir("raw") and not os.path.isdir("RAW"):
         print('cgi-echo:', 'No raw FASTQ directory', file=sys.stderr)
         global html3 # data analysis & reporting step
-        print(html3.format(ngid=ngid, info=getinfo(), stage=stage2, existingDir=ngid, port=port))
+        print(html3.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, port=port))
         return
     else:
         if not os.path.isfile("Results.csv"): # we've yet to run the analysis stage

@@ -684,11 +684,11 @@ Adapter,,,,,,,,,,
         dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
         dst.writerow(hdr)
         try:
-            gen =((r.pcrplate+'_'+padwell(r.pcrwell), r.mouseBarcode, '', '',
-                   r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data)
+            gen = [(r.pcrplate+'_'+padwell(r.pcrwell), r.mouseBarcode, '', '',
+                   r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data]
         except AttributeError:
-            gen =((r.pcrplate+'_'+padwell(r.pcrwell), r.sampleBarcode, '', '',
-                   r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data)
+            gen = [(r.pcrplate+'_'+padwell(r.pcrwell), r.sampleBarcode, '', '',
+                   r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data]
 
         dst.writerows(gen)
     if verbose:

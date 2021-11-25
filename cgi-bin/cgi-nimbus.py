@@ -43,9 +43,9 @@ html = """
         {eps}
         <br>
         <label for="dnap">DNA (Echo) plate barcode:</label>
-          <input type="text" id="dnap" name="dnap" size="10" required/><br>
+          <input type="text" id="dnap" name="dnap" size="10" required><br>
         <br>
-        <input type="submit" value="Create Nimbus Picklist" style="border-color:red"/>
+        <input type="submit" value="Create Nimbus Picklist" style="border-color:red">
     </form>
     <hr>
     <form action="{stage}" method="get">
@@ -55,11 +55,21 @@ html = """
         Assay list file (CSV), Custom primer-plate layout (CSV)</p>
         <p>Set project folder (don't type the "custom_" prefix):</p>
         <label style="margin-left:25px;" for="projectDir"><em>custom_</em></label>
-          <input type="text" id="projectDir" name="projectDir" size="40"/><br><br>
+          <input type="text" id="projectDir" name="projectDir" size="40"><br>
+        <p>Custom samples without guarded sample-name` or barcode are of what type:<br>
+        <input type="radio" id="cust_custom" name="cust_type" value="custom" title="Unguarded samples/barcodes should be given custom guards cNNNc">
+          <label for="cust_custom" title="Unguarded samples/barcodes should be given custom guards cNNNc">Custom names/barcodes</label><br>
+        <input type="radio" id="cust_musterer" name="cust_type" value="musterer" 
+            title="Unguarded samples/barcodes should be given Musterer guards mNNNm">
+          <label for="cust_musterer" title="Unguarded samples/barcodes should be given Musterer guards mNNNm">Musterer mouse barcodes</label><br>
+        <input type="radio" id="cust_rodentity" name="cust_type" value="rodentity" 
+            title="Unguarded samples/barcodes should be given Rodentity guards MNNNM">
+          <label for="cust_rodentity" title="Unguarded samples/barcodes should be given Rodentity guards MNNNM">Rodentity mouse barcodes</label><br>
+        </p>
 
         <h3>Select custom sample, assay and primer plate files (CSV format)</h3>
         <p>These will be used instead of the corresponding Musterer information. These files MUST be in the run folder.</p>
-         <label style="margin-left:25px;" for="customSamples">Samples/assays file:</label>
+         <label style="margin-left:25px;" for="customSamples">Manifest (samples/assays) file:</label>
           <input type="file" id="customSamples" name="customSamples" size="80" accept=".csv"/><br><br>
          <label style="margin-left:25px;" for="customAssays">Assay list file:</label>
           <input type="file" id="customAssays" name="customAssays" size="80" accept=".csv"/><br><br>

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
+import csv
 
 """
 @created: Nov 2021
@@ -129,7 +130,7 @@ def guard_rbc(rbc):
         raise ExistingGuardError(f"Rodentity barcode appears to already have custom guards: {rbc}")
     if is_guarded_pbc(rbc):
         raise ExistingGuardError(f"Rodentity barcode appears to already have plate guards: {rbc}")
-    return rbc + 'm'  # Rodentity barcodes already start with 'M'
+    return rbc + 'M'  # Rodentity barcodes already start with 'M'
 
 def guard_cbc(cbc):
     """ Add guards to custom barcode """
@@ -214,7 +215,7 @@ def unguard(bc, silent=False):
 
 ### cgi-echo.py ###
 
-def readCustomCSVtoJSON(input_fn):
+def readCustomCSVtoJSON(input_fn, custom_file_contents='custom'):
     """ read a custom sample manifest with no more than 4x96 well plates! Then return as JSON """
     data = {}
     errs = []  # error messages
@@ -225,11 +226,29 @@ def readCustomCSVtoJSON(input_fn):
             #print(file=sys.stderr)
             if i == 0:
                 continue  # header
-            if all(row == ''):
+            if all(col.strip() == '' for col in row):
                 continue  # blank rows
-            gplate = guard_pbc(row[1].strip())
+            if any(col.strip() == '' and j < 5 for j,col in enumerate(row)):
+                print(f"ERROR. blank manifest entry in entry {i}: {row}", file=sys.stderr)
+                return
+            plt = str(row[1].strip())
+            if is_guarded_pbc(plt):
+                gplate = plt
+            else:
+                gplate = guard_pbc(plt)
             well = row[2].strip()
-            gsampleBarcode = guard_cbc(row[3].strip())
+            smpl = str(row[3].strip())
+            if is_guarded(smpl):
+                gsampleBarcode = smpl
+            elif custom_file_contents == 'custom':
+                gsampleBarcode = guard_cbc(smpl)
+            elif custom_file_contents == 'musterer':
+                gsampleBarcode = guard_mbc(smpl)
+            elif custom_file_contents == 'rodentity':
+                gsampleBarcode = guard_rbc(smpl)
+            else:
+                print(f"ERROR. unknown custom file contents field: {custom_file_contents}", file=sys.stderr)
+                return
             assays = [a.strip() for a in row[4:] if a.strip() != '']
             if gplate not in data:
                 if len(data) == 4:
