@@ -126,17 +126,12 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
     return wn, sorted(frozenset(plist)), sorted(frozenset(unk))
 
 
-def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None, custom_file_contents='custom'):
+def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None):
     """
     Process custom sample-plate data, to produce a workfile for the BRF's Nimbus robot.
     
     It needs the name of an output file and sample data for each plate.
-    tgtid = barcode or name of target output files, which should be guarded already
-    custom_file_contents is one of: 
-        'custom' - unguarded sample names/barcodes which should be given the cNNNc guard
-        'musterer' - unguarded sample barcodes which should be given the mNNNm guard
-        'rodentity' - unguarded sample barcodes which should be given the MNNNM guard
-        
+    tgtid = barcode or name of target output files, which should be guarded already        
     """
     if not file_io.is_guarded_pbc(tgtid):
         tgtid = file_io.guard_pbc(tgtid)

@@ -56,7 +56,7 @@ html = """
         <p>Set project folder (don't type the "custom_" prefix):</p>
         <label style="margin-left:25px;" for="projectDir"><em>custom_</em></label>
           <input type="text" id="projectDir" name="projectDir" size="40"><br>
-        <p>Custom samples without guarded sample-name` or barcode are of what type:<br>
+        <p>Custom samples without guarded sample-name or barcode are of what type:<br>
         <input type="radio" id="cust_custom" name="cust_type" value="custom" title="Unguarded samples/barcodes should be given custom guards cNNNc">
           <label for="cust_custom" title="Unguarded samples/barcodes should be given custom guards cNNNc">Custom names/barcodes</label><br>
         <input type="radio" id="cust_musterer" name="cust_type" value="musterer" 

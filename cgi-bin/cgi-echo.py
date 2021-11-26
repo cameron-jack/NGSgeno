@@ -381,7 +381,7 @@ def main():
                     print('customAssays\t' + fields.getfirst('customAssays'), file=outf)
                 if 'customPrimers' in fields:
                     print('customPrimers\t' + fields.getfirst('customPrimers'), file=outf)
-            dnacnt, plist, unk = nimbus.nimbus_custom(dnaBC, plates_data, custom_assay_fn, custom_primer_fn, cust_file_contents)
+            dnacnt, plist, unk = nimbus.nimbus_custom(dnaBC, plates_data, custom_assay_fn, custom_primer_fn)
         else:
             dnacnt, plist, unk = nimbus.nimbus(dnaBC, plates_data, fnmm=template_files['assays'],
                     fnpp=template_files['primers'], fnref=template_files['ref'])

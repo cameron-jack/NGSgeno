@@ -229,14 +229,17 @@ def readCustomCSVtoJSON(input_fn, custom_file_contents='custom'):
             if all(col.strip() == '' for col in row):
                 continue  # blank rows
             if any(col.strip() == '' and j < 5 for j,col in enumerate(row)):
-                print(f"ERROR. blank manifest entry in entry {i}: {row}", file=sys.stderr)
-                return
+                msg = f"ERROR. blank manifest entry in entry {i}: {row}"
+                print(msg, file=sys.stderr)
+                errs.append(msg)
+                continue
+                # return
             plt = str(row[1].strip())
             if is_guarded_pbc(plt):
                 gplate = plt
             else:
                 gplate = guard_pbc(plt)
-            well = row[2].strip()
+            well = str(row[2]).strip()
             smpl = str(row[3].strip())
             if is_guarded(smpl):
                 gsampleBarcode = smpl
@@ -247,8 +250,9 @@ def readCustomCSVtoJSON(input_fn, custom_file_contents='custom'):
             elif custom_file_contents == 'rodentity':
                 gsampleBarcode = guard_rbc(smpl)
             else:
-                print(f"ERROR. unknown custom file contents field: {custom_file_contents}", file=sys.stderr)
-                return
+                msg = f"ERROR. unknown custom file contents field: {custom_file_contents}"
+                print(mgs, file=sys.stderr)
+                errs.append(msg)
             assays = [a.strip() for a in row[4:] if a.strip() != '']
             if gplate not in data:
                 if len(data) == 4:
