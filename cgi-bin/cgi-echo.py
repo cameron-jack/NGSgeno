@@ -120,7 +120,7 @@ htmlpl1 = """
     <hr>
     <p>This step also creates Echo picklists to transfer target primers, Mytaq and H<sub>2</sub>O
     into the PCR wells.</p>
-    <p>Use the Echo robot to survey your primer plates. Upload the primer plate survey
+    <p>OPTIONAL (Leave this blank except in special circumstances): Use the Echo robot to survey your primer plates. Upload the primer plate survey
     files from the Echo robot into the NGS Gentotyping sample folder for run <code>{ngid}</code>.</p>
           <label>Primer plate -</label><br>
           <label style="margin-left:25px;" for="psvy">survey file:</label>
@@ -167,11 +167,12 @@ htmlpl2 = """
   <form action="{stage}" method="get">
     <p>Create Echo picklists for sample barcodes and Mytab.</p>
     <p>Create MiSeq file to describe samples for MiSeq run.</p>
-    <p>Use the Echo robot to survey your barcode and Mytaq plates. Ensure you upload the
+    <p>OPTIONAL (Leave this blank except in special circumstances): Use the Echo robot to survey your barcode and Mytaq plates. Ensure you upload the
     files from the Echo robot into the NGS Gentotyping sample folder for run {ngid}.</p>
-    <p>Please provide filenames, etc. for the following plates ...</p>
-        <label style="margin-left:25px;" for="i7svy">i7i5 plate survey:</label>
-        <input type="file" id="i7svy" name="i7svy" size="40" /><br>
+    
+    <label style="margin-left:25px;" for="i7svy">i7i5 plate survey:</label>
+      <input type="file" id="i7svy" name="i7svy" size="40" /><br>
+    <input type="hidden" id="i7stage" name="i7stage" value="i7stage" />
           
     <p>Please provide {tc} Mytaq & H<sub>2</sub>O plates with:
         <ol>
@@ -305,6 +306,8 @@ def main():
     template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt"))+\
         glob.glob(os.path.join('..','library', "reference_sequences_*.csv")), reverse=True)[0]
     template_files['conv'] = sorted(glob.glob(os.path.join('..','library', 'NGS_assay_conversions_*.xlsx')), reverse=True)[0]
+    template_files['primer_survey'] = sorted(glob.glob(os.path.join('..','library',"*_platesurvey_fluid_volume_*primerplate.csv")), reverse=True)[0]
+    template_files['i7i5_survey'] = sorted(glob.glob(os.path.join('..','library',"*_platesurvey_fluid_volume_I7I5PLATE.csv")), reverse=True)[0]
     ### load existing custom library info if available
     if os.path.exists('template_files.txt'):
         with open('template_files.txt', 'rt') as f:
@@ -400,6 +403,7 @@ def main():
     nfiles = glob.glob('Nimbus-*.csv')
     # barcodes for Nimbus 384-well plate outputs
     nbc = frozenset(fn.replace('Nimbus-','').replace('.csv','') for fn in nfiles)
+    gnbc = set([fn for fn in nbc if file_io.is_guarded_pbc(fn)])
     # identify missing Stage1 files.
     missing = [bc for bc in nbc if not os.path.isfile(f"Stage1-P{bc}.html")]
     if missing:
@@ -416,8 +420,38 @@ def main():
     
     # find the Nimbus output files for each DNA plate.
     efiles = glob.glob('Echo_384_COC_00??_*.csv')
+
+    # check for Echo files without guards, matching Nimbus files with guards, then fix these files and rename original   
+    for e in efiles:
+        e_plate_parts = e.split('_')
+        e_plate = e.replace('.csv','').split('_')[4]  # plate barcode only
+        e_plate_prefix = '_'.join(e.split('_')[:4])
+        if len(e_plate_parts) > 5:
+            e_plate_suffix = '_'.join(e.split('_')[5:])
+        else:
+            e_plate_suffix = '.csv'
+        if file_io.is_guarded_pbc(e_plate):
+            continue
+        ge_plate = file_io.guard_pbc(e_plate)
+        if ge_plate in gnbc:  # unguarded echo_COC matches guarded Nimbus file
+            e_fn = e_plate_prefix + '_' + e_plate + '_' + e_plate_suffix
+            ge_fn = e_plate_prefix + '_' + ge_plate + '_' + e_plate_suffix
+            with open(e_fn, 'rt') as ef, open(ge_fn, 'wt') as gef:
+                for i, line in enumerate(ef):
+                    if i == 0:
+                        gef.write(line)
+                        continue
+                    cols = line.split(',')
+                    plate_col = cols[1].strip('"')
+                    if not file_io.is_guarded_pbc(plate_col):
+                        cols[1] = '"' + file_io.guard_pbc(plate_col) + '"'
+                    outline = ','.join(cols)
+                    gef.write(outline)
+            os.rename(e, 'original_'+e)        
+    efiles = glob.glob('Echo_384_COC_00??_*.csv')
     # pick out the plate barcode from the filename
     ebc = frozenset(fn.replace('.csv','').split('_',5)[4] for fn in efiles)
+
     xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
     #print(xbc, nbc, ebc, file=sys.stderr)
     
@@ -436,10 +470,15 @@ def main():
     if 'pcr' in fields:
         # from htmlpl1 form - call the echo.py code
         #prs = [x for xs in zip(template_files['customPrimers'], fields.getlist('psvy')) for x in xs]
-        if template_files['customPrimers'] != '':
-            prs = [template_files['customPrimers']] + fields.getlist('psvy')
+        if 'psvy' in fields:
+            psvy_fn = fields.getlist('psvy')
         else:
-            prs = [template_files['primers']] + fields.getlist('psvy')
+            psvy_fn = [template_files['primer_survey']]
+
+        if template_files['customPrimers'] != '':
+            prs = [template_files['customPrimers']] + psvy_fn
+        else:
+            prs = [template_files['primers']] + psvy_fn
         cmd = ["python", os.path.join("..", "bin", "echovolume.py")]+prs+[prsvy_fn]
         print('cgi-echo:', cmd, file=sys.stderr)
         subprocess.run(cmd)
@@ -454,13 +493,15 @@ def main():
 
     #TODO: i5's seem to be uneven in their use
     i7svy = "i7i5-svy.csv"
-    if "i7svy" in fields:
-        # from htmlpl2 form - call the echo.py code
-        # should handle all the other options!!!
+    if "i7stage" in fields:
         # below handles multiple i7i5 plate surveys, but this is overkill
         #prs = [x for xs in zip(fields.getlist('i7i5'), fields.getlist('i7svy')) for x in xs]
         #cmd = ["python", os.path.join("..", "bin", "echovolume.py")]+prs+[i7svy]
-        cmd = ['python', os.path.join('..', 'bin', 'echovolume.py')] + [i7i5_fn, fields.getfirst('i7svy'), i7svy]
+        if "i7svy" in fields:
+            i7i5_survey_fn = fields.getfirst("i7sv")
+        else:
+            i7i5_survey_fn = template_files["i7i5_survey"]
+        cmd = ['python', os.path.join('..', 'bin', 'echovolume.py')] + [i7i5_fn, i7i5_survey_fn, i7svy]
         #print(cmd, file=sys.stderr)
         subprocess.run(cmd)
         cmd = ["python", os.path.join("..", "bin", "echo_barcode.py"), "--i7i5",
