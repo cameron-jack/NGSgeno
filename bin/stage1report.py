@@ -220,13 +220,13 @@ def build_nimbus_reports(plate_bcs, is_custom=False):
             welz = set((ord('H')-ord(x.well[0]), int(x.well[1:])-1) for x in pdata[gpbc])
             if is_custom:
                 argx = [("red", "Sample", [(None, ord('H')-ord(x.well[0]), int(x.well[1:])-1, 
-                                            "Well: "+x.well+'; Sample barcode: '+file_io.unguard_cbc(x.gsid)) for x in pdata[gpbc]]),
-                         ("white", "empty", [(None, r, c, chr(ord('H')-r)+str(c+1)+'; empty') 
+                                            "Well: "+x.well+'; Sample barcode: '+file_io.unguard(x.gsid)) for x in pdata[gpbc]]),
+                         ("white", "empty", [(None, r, c, chr(ord('H')-r)+str(c+1)+'; empty')
                                              for c in range(12) for r in range(8) if (r,c) not in welz])]
             else:
-                argx = [("red", "Sample", [(None, ord('H')-ord(x.well[0]), int(x.well[1:])-1, 
+                argx = [("red", "Sample", [(None, ord('H')-ord(x.well[0]), int(x.well[1:])-1,
                                             "Well: "+x.well+'; Mouse barcode: '+file_io.unguard(x.gmbc, silent=True)) for x in pdata[gpbc]]),
-                         ("white", "empty", [(None, r, c, chr(ord('H')-r)+str(c+1)+'; empty') 
+                         ("white", "empty", [(None, r, c, chr(ord('H')-r)+str(c+1)+'; empty')
                                              for c in range(12) for r in range(8) if (r,c) not in welz])]
 
             ch.append(makeplate(figno, argx, title="Plate "+file_io.unguard_pbc(gpbc)))

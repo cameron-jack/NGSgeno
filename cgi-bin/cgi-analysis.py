@@ -70,8 +70,12 @@ html_analysis = """
   <h1>NGS Genotyping pipeline - Sequencing analysis</h1>
   <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
   <h2>Sequence matching</h2>
+  <h3>Leave these blank to use default files and names</h3>
   <form action="{stage}" method="get">
     <p>
+    <input style="margin-left:25px;" type="checkbox" id="rerun" name="rerun"></input>
+      <label for="rerun"><b>Rerun analysis and overwrite existing</b></label><br>
+    <br>
     <label style="margin-left:25px;" for="stage3file">Stage3 file</label>
       <input type="file" id="stage3file" name="stage3file" size="80" /><br>
     <label style="margin-left:25px;" for="outfile">Output filename</label>
@@ -87,19 +91,12 @@ html_analysis = """
     <br>
     <label style="margin-left:25px;" for="ncpus">Number of task processes to run simultaneously</label>
       <input type="number" min="1" value="4" max="32"></input><br>
-    <label style="margin-left:25px" for="match_cache" title="Leave blank for default Musterer cache">Match cache file</label>
-      <input type="file" id="match_cache" name="match_cache" size="30" title="Leave blank for default Musterer cache"></input><br>
-    <label style="margin-left:25px" for="miss_cache" title="Leave blank for default Musterer miss cache">Miss cache file</label>
-      <input type="file" id="miss_cache" name="miss cache" size="30" title="Leave blank for default Musterer miss cache"></input><br>
-    <input style="margin-left:25px" type="checkbox" id="save_cache_progress" name="save_cache_progress" 
-        title="Useful if exhaustive searching fails before completing"></input>
-      <label for="save_cache_progress" title="Useful if exhaustive searching fails before completing">Save cache progress</label><br>
-    <input style="margin-left:25px" type="checkbox" title="Use when trying new reference sequences"/>
-      <label for="disable_miss_cache" title="Use when trying new reference sequences">Disable miss cache</label><br>
-    <input style="margin-left:25px" type="checkbox" id="verbose" name="verbose"/>
-      <label for="verbose">Verbose - give more detailed debugging info</label><br>
+    <input style="margin-left:25px" type="checkbox" id="clear_caches" name="clear_caches" title="Clear cache files"></input>
+      <label for="clear_caches" title="Clear the caches if you have changed target references">Clear cache files</label><br>
+    <input style="margin-left:25px" type="checkbox" id="debug" name="debug"/>
+      <label for="debug">Debug - give more detailed debugging info</label><br>
     <input style="margin-left:25px" type="checkbox" id="quiet" name="quiet"/>
-      <label for="quiet">Quiet. Run with minimal screen output</label>    
+      <label for="quiet">Quiet. Run with minimal screen output. Normal output is sent to log file instead</label>    
     </p>
     <h2> Genotyping and Sanity Checking</h2>
     <h3> Leave these fields blank for standard mouse runs - it will use defaults for everything!</h3>
@@ -175,10 +172,15 @@ html_results = """
   <h2>{ngid} results</h2>
   {info}
   <p>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-analysis.py?ngid={ngid}&analysis=true'">
+        Show analysis options</button>
+  </p>
+  <p>
     <button onclick="window.history.back();">Back to previous page</button>
   </p>
   <p>
-    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus.py';" value="Start again from first pipeline page">Back to start of pipeline</button>
+    <button onclick="location.href='http://localhost:{port}/cgi-bin/cgi-nimbus.py';" value="Start again from first pipeline page">
+        Back to start of pipeline</button>
   </p>
 </body>
 </html>
@@ -259,8 +261,11 @@ def main():
         global html3 # data analysis & reporting step
         print(html3.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, port=port))
         return
+    if 'analysis' in fields:
+        print(html_analysis.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, port=port))
+        return
     
-    if not os.path.isfile("Results.csv"):
+    if not os.path.isfile("Results.csv") or 'rerun' in fields:
         # parse html_analysis form results
         params = []
 
@@ -268,8 +273,8 @@ def main():
             params.append('-o')
             params.append(fields.getfirst('outfile'))
         else:
-            print(html_analysis.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, port=port))
-            return
+            params.append('-o')
+            params.append('Results.csv')
         if "targets" in fields:
             params.append('-t')
             params.append(fields.getfirst('targets'))
@@ -280,18 +285,10 @@ def main():
         if "ncpus" in fields:
             params.append('-n')
             params.append(fields.getfirst('ncpus'))
-        if "match_cache" in fields:
+        if "clear_caches" in fields:
             params.append('-c')
-            params.append(fields.getfirst('match_cache'))
-        if "miss_cache" in fields:
-            params.append('-m')
-            params.append(fields.getfirst('miss_cache'))
-        if "save_cache_progress" in fields:
-            params.append('-s')
-        if "disable_miss_cache" in fields:
+        if "debug" in fields:
             params.append('-d')
-        if "verbose" in fields:
-            params.append('-v')
         if "quiet" in fields:
             params.append('-q')
         if "stage3file" in fields:
@@ -364,7 +361,7 @@ def main():
                 dst.write(res.stderr.decode('utf-8').replace('\r',''))
         
                 
-    print(html_results.format(ngid=ngid, info=getinfo(), stage=stage3, port=port))
+    print(html_results.format(ngid=ngid, info=getinfo(), stage=stage3, projectDir=ngid, port=port))
     return    
     
 

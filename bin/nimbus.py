@@ -3,8 +3,8 @@
 """
 @created: Oct 2019
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.12
-@version_comment:
+@version: 0.14
+@version_comment: Removes Primercheck
 @last_edit: 
 @edit_comment: 
 
@@ -46,37 +46,34 @@ import file_io
 #import xlrd
 #import xlwt
 
-import primercheck
-
-assayMethod = "NGS" 
-
 app = None # global!
 
 
-def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
+def get_assays(well_info, assay_info):
+        """" 
+        Combine new (first) and old (second) assay names for well. Also return the set of family names for each well.
+        Largely the same as Assay.validate_assay()
+        """
+        all_assays = frozenset([n['assayName'] for n in well_info.get('assays', []) if assay_info.is_ngs(n['assayName'])] +\
+                [n['assayName'] for n in well_info.get('assays', []) if assay_info.is_musterer(n['assayName'])])
+        all_families = frozenset([a.split('_',1)[0] for a in all_assays if a.split('_')[0] in assay_info.all_families])
+        unknown_assays = frozenset([n['assayName'] for n in well_info.get('assays', []) if n['assayName'] not in assay_info.all_assays])
+        return all_assays, all_families, unknown_assays
+
+
+def nimbus(tgtid, platesdata, assay_info):
     """
     Process Musterer punch-plate data to produce a workfile for the BRF's Nimbus robot.
     See nimbus_custom() for custom data version.
-    fnmm - assay_list_<date>.csv file, maps Musterer names to assay/sequence names (custom inputs should
-        have duplicated columns)
-    fnpp - file name primer layout plate 'primer_layout_<date>.csv'
-    fnref - file name reference sequences 'reference_sequences_<date?>.txt or .csv
+    platesdata - from JSON file
+    assay_info - an Assays object from validate_assays.py
     
     It needs the name of an output file and ear-punch data for each plate.
     Output - creates Nimbus_bc.csv and Stage1-P_bc.csv files
     """
     if not file_io.is_guarded_pbc(tgtid):
         tgtid = file_io.guard_pbc(tgtid)
-    # use common code to read library files
-    global assayMethod
-    pl = primercheck.PrimerLookup(fnmm=fnmm, fnpp=fnpp, fnref=fnref)
-    def getassays(winf):
-        "combine old and new assay family names from Musterer"
-        ngsassays = [n['assayName'] for n in winf.get('assays', []) if n['assayMethod']==assayMethod]
-        gx = [n['assayName'] for n in winf.get('assays', []) if n['assayMethod']!=assayMethod and n['assayName'] not in pl.isna]
-        mouse_assays = sorted(frozenset(x for xs in (ngsassays, gx) for x in xs))
-        genold = (mt for ma in gx for mt in pl.mmdict.get(ma, [ma]))
-        return mouse_assays, sorted(frozenset(x.split('_',1)[0] for xs in (genold, ngsassays) for x in xs))
+
     # basic validation
     tgtfn = 'Nimbus-'+tgtid+'.csv'
     fnstg = 'Stage1-P'+tgtid+'.csv'
@@ -113,12 +110,12 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
                     rd = [rn, pbc, nwix, mbc]
                     dstpl.writerow(rd)
                     if nwixm in wells:
-                        winf = wells[nwixm]
-                        mouse_assays, mouse_assayFamilies = getassays(wells[nwixm])
-                        unk += [mouse_assayFamily for mouse_assayFamily in mouse_assayFamilies if mouse_assayFamily not in pl.pfdict]
+                        well_info = wells[nwixm]
+                        mouse_assays, mouse_assayFamilies, unknown_assays = get_assays(well_info, assay_info)
+                        unk += unknown_assays
                         if mouse_assayFamilies:
                             xtras = {"mouseAssays": ';'.join(mouse_assays), "assayFamilies": ';'.join(mouse_assayFamilies)}
-                            xtra = [xtras[k] if k in xtras else winf.get(k, '') for k in stghdr[4:]]
+                            xtra = [xtras[k] if k in xtras else well_info.get(k, '') for k in stghdr[4:]]
                             dststg.writerow(rd+xtra)
                             wn += 1
                             plist += mouse_assayFamilies
@@ -126,7 +123,7 @@ def nimbus(tgtid, platesdata, fnmm=None,fnpp=None, fnref=None):
     return wn, sorted(frozenset(plist)), sorted(frozenset(unk))
 
 
-def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None):
+def nimbus_custom(tgtid, platesdata, assay_info):
     """
     Process custom sample-plate data, to produce a workfile for the BRF's Nimbus robot.
     
@@ -135,16 +132,7 @@ def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None
     """
     if not file_io.is_guarded_pbc(tgtid):
         tgtid = file_io.guard_pbc(tgtid)
-    # use common code to read library files
-    global assayMethod
-    pl = primercheck.PrimerLookup(fnmm=custom_assay_fn, fnpp=custom_primer_fn)
-    def getassays(well_info):
-        "combine old and new assay family names from Musterer"
-        ngsassays = [n['assayName'] for n in well_info.get('assays', []) if n['assayMethod']==assayMethod]
-        gx = [n['assayName'] for n in well_info.get('assays', []) if n['assayMethod']!=assayMethod and n['assayName'] not in pl.isna]
-        mouse_assays = sorted(frozenset(x for xs in (ngsassays, gx) for x in xs))
-        genold = (mt for ma in gx for mt in pl.mmdict.get(ma, [ma]))
-        return mouse_assays, sorted(frozenset(x.split('_',1)[0] for xs in (genold, ngsassays) for x in xs))
+
     # basic validation
     tgtfn = 'Nimbus-'+tgtid+'.csv'
     fnstg = 'Stage1-P'+tgtid+'.csv'
@@ -184,8 +172,8 @@ def nimbus_custom(tgtid, platesdata, custom_assay_fn=None, custom_primer_fn=None
                     dstpl.writerow(rd)
                     if nwixm in wells:
                         well_info = wells[nwixm]
-                        mouse_assays, mouse_assayFamilies = getassays(well_info)
-                        unk += [maf for maf in mouse_assayFamilies if maf not in pl.pfdict]
+                        mouse_assays, mouse_assayFamilies, unknown_assays = get_assays(well_info, assay_info)
+                        unk += unknown_assays
                         if mouse_assayFamilies:
                             xtras = {"assays": ';'.join(mouse_assays), "assayFamilies": ';'.join(mouse_assayFamilies)}
                             xtra = [xtras[k] if k in xtras else well_info.get(k, '') for k in stghdr[4:]]

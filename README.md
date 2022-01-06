@@ -20,6 +20,12 @@ Requests
 
 ## Changelog:
 
+Pipeline version: 0.14
+* Replaced primercheck.py with validate_assays.py - Only checks against the assay list 
+  (not primer plate), and generates list of required primers
+* Additional protection aganst unguarded Nimbus output barcodes (creates guarded Echo_COC files)
+* Creates guarded copy of custom manifest if it isn't already guarded
+
 Pipeline version: 0.13
 * New analysis (stage 3) interface for running ngsmatch.py and gt_mice.py
 * barcode protection for Musterer mnnnm, Rodentity MnnnM, custom cnnnc, plate pnnnp

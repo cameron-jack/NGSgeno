@@ -217,7 +217,9 @@ def unguard(bc, silent=False):
 ### cgi-echo.py ###
 
 def readCustomCSVtoJSON(input_fn, custom_file_contents='custom'):
-    """ read a custom sample manifest with no more than 4x96 well plates! Then return as JSON """
+    """ read a custom sample manifest with no more than 4x96 well plates! Then return as JSON 
+        Creates a copy of the original manifest with guarded barcodes.
+    """
     data = {}
     errs = []  # error messages
     guarded_fn = input_fn.replace('.csv','_guarded.csv')

@@ -31,13 +31,15 @@ file = Path(__file__).resolve()
 sys.path.append(os.path.join(file.parents[1],'bin'))
 import nimbus
 from musterer import getPlate
-import primercheck
+import validate_assays
 import file_io
 
 port=9123
 stage1 = "/cgi-bin/cgi-nimbus.py"
 stage2 = "/cgi-bin/cgi-echo.py"
 stage3 = "/cgi-bin/cgi-analysis.py"
+
+nl = '\n'
 
 htmlerr = """
 <html>
@@ -315,6 +317,11 @@ def main():
                 cols = line.strip().split('\t')
                 template_files[cols[0]] = cols[1]
         #print('cgi-echo:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
+    else:
+         with open('template_files.txt', 'wt') as outf:
+            for key in template_files:
+                print(key + '\t' + template_files[key], file=outf)
+
     global port
     global htmlerr
     dnaBC = ''
@@ -331,18 +338,33 @@ def main():
         dnaBC = dnaBC.strip()
         if not file_io.is_guarded_pbc(dnaBC):
             dnaBC = file_io.guard_pbc(dnaBC)
-        # Either call getPlate() to get plate data from Musterer, or if custom, get it from a file
+
+        # check if we have custom fields from interface
         if 'customSamples' in fields:
+            template_files['customSamples'] = fields.getfirst('customSamples')
+        if 'customAssays' in fields:
+            template_files['customAssays'] = fields.getfirst('customAssys')
+        if 'customPrimers' in fields:
+            template_files['customPrimers'] = fields.getfirst('customPrimers')
+        with open('template_files.txt', 'wt') as outf:
+            for key in template_files:
+                print(key + '\t' + template_files[key], file=outf)
+                
+        # Either call getPlate() to get plate data from Musterer, or if custom, get it from a file
+        if 'customSamples' in template_files:
             # get plate info from file
             cust_file_contents = 'custom'
             if 'cust_type' in fields:
                 cust_file_contents = fields.getvalue('cust_type')
-            pxs, pids, errx = file_io.readCustomCSVtoJSON(fields.getfirst('customSamples'), cust_file_contents)
+            pxs, pids, errx = file_io.readCustomCSVtoJSON(template_files['customSamples'], cust_file_contents)
             pids = [p if file_io.is_guarded_pbc(p) else file_io.guard_pbc(p) for p in pids]
+            if len(pxs) == 0:
+                print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>", port=port))
+                return
             #print('pxs:', pxs, file=sys.stderr)
             #print('pids', pids, file=sys.stderr)
-            if fields.getfirst('customAssays') in (None, ''):
-                errx.append('Custom assay list file required')
+            plates_data = [(n, px[0]['plateId'], px[0]) for n,px in enumerate(pxs)]
+
         elif 'ep1' in fields:
             # note - nimbus.getPlate_app calls mb.showerror() and app.setstatus and returns None for errors
             # get plate info from input form and lookup in Musterer or cache
@@ -359,47 +381,30 @@ def main():
             if len(pxs) == 0:
                 print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>", port=port))
                 return
+            plates_data = [(n, pid, px) for (n, pid), (px, err) in zip(pids, pxs)]
+
         if errx: # any errors - report them
             errs = "    <p>\n"+"<br>\n    ".join(errx)+"\n    </p>"
             print(htmlerr.format(errs=errs, port=port))
             return
-        if 'customSamples' in fields:
-            plates_data = [(n, px[0]['plateId'], px[0]) for n,px in enumerate(pxs)]
+
+        # load assay list
+        if 'customAssays' in template_files:
+            assay_info = validate_assays.Assays(template_files['customAssays'])
         else:
-            plates_data = [(n, pid, px) for (n, pid), (px, err) in zip(pids, pxs)]
+            assay_info = validate_assays.Assays(template_files['assays'])
+        valid_assays, invalid_assays = assay_info.validate_assays(plates_data)
+        info.append(f"<b>Warning</b>: DNA plate {dnaBC} - {len(invalid_assays)} Musterer assays do not map to <b>recognised</b> "+\
+            f"target primer families:{nl}<pre>{nl}{nl.join(invalid_assays)}{nl}</pre>")
+        info.append(f"<b>The following assays will be used:</b>{nl}<pre>{nl.join(valid_assays)}{nl}</pre>")
+
+        # prepare Nimbus files
+        if 'customSamples' in template_files:
+            dnacnt, plist, unk = nimbus.nimbus_custom(dnaBC, plates_data, assay_info)
+        else:
+            dnacnt, plist, unk = nimbus.nimbus(dnaBC, plates_data, assay_info)
         #print("Plates_data", plates_data, file=sys.stderr)
-        
-        # error checks - len(plates_data)>0
-        custom_assay_fn = None
-        if 'customAssays' in fields:
-            custom_assay_fn = fields.getfirst('customAssays')
-        custom_primer_fn = None
-        if 'customPrimers' in fields:
-            custom_primer_fn = fields.getfirst('customPrimers')
             
-        if 'customSamples' in fields:
-            with open('template_files.txt', 'wt') as outf:
-                print('customSamples\t' + fields.getfirst('customSamples'), file=outf)
-                if 'customAssays' in fields:
-                    print('customAssays\t' + fields.getfirst('customAssays'), file=outf)
-                if 'customPrimers' in fields:
-                    print('customPrimers\t' + fields.getfirst('customPrimers'), file=outf)
-            dnacnt, plist, unk = nimbus.nimbus_custom(dnaBC, plates_data, custom_assay_fn, custom_primer_fn)
-        else:
-            dnacnt, plist, unk = nimbus.nimbus(dnaBC, plates_data, fnmm=template_files['assays'],
-                    fnpp=template_files['primers'], fnref=template_files['ref'])
-
-        # save "state" of custom resources to file
-        
-
-        # acnt = len(plist)
-        # infostr = ("Nimbus file for DNA plate ID {} uses {} wells.<br>".format(dnaBC, dnacnt) +  
-        #           " {} wells will be used for assays in PCR plates.<br><br>".format(acnt))
-        # info.append(infostr)
-        if unk:
-            info.append("Please ensure that all required primer description files are present in the work folder.")                    
-            info.append("<b>Warning</b>: DNA plate {} - {} Musterer assays do not map to <b>recognised</b> target primer families:\n<pre>\n{}\n</pre>".format(dnaBC, len(unk), "\n".join(unk)))
-
     nfiles = glob.glob('Nimbus-*.csv')
     # barcodes for Nimbus 384-well plate outputs
     nbc = frozenset(fn.replace('Nimbus-','').replace('.csv','') for fn in nfiles)
@@ -412,7 +417,7 @@ def main():
         # print("nbc =", ' '.join(nbc))
         # print("missing =", ' '.join(missing))
         # should catch and report output
-        if 'customSamples' in fields:
+        if 'customSamples' in template_files:
              subprocess.run(["python", os.path.join("..", "bin", "stage1report.py"), '--custom']+missing)
         else:
             subprocess.run(["python", os.path.join("..", "bin", "stage1report.py")]+missing)
@@ -511,7 +516,8 @@ def main():
         cmd += ["--"]+sorted(ebc)
         subprocess.run(cmd) 
 
-   
+    # TODO: shift this later - we don't know the primer layout at the start of the pipeline, but we do need the PrimerUse.csv file
+    # TODO: we should only compare against the assay list, not the primer plate layout file (in the Musterer pipeline)
     # collect data for Stage 2 run
     # need to work out the number of PCR plates required.
     # Create input entries for the required number of plates.
@@ -521,23 +527,26 @@ def main():
         # determine the number of PCR plates needed
         # maybe add reports - no. occupied DNA wells, no. assays per plate, ...
         
+        # load assay list - might be already loaded, but should be fine
         if 'customAssays' in template_files:
-            prm = primercheck.PrimerLookup(fnmm=template_files['customAssays'], fnpp=template_files['customPrimers'])
+            assay_info = validate_assays.Assays(template_files['customAssays'])
         else:
-            prm = primercheck.PrimerLookup(fnmm=template_files['assays'], fnpp=template_files['primers'])
+            assay_info = validate_assays.Assays(template_files['assays'])
         
-        def platePrimers(bc):
+        def platePrimers(bc, assay_info):
             "reads the Stage1-P*.csv file - return tuple: barcode, set of primers per sample"
             fn = f"Stage1-P{bc}.csv"
             with open(fn) as srcfd:
                 src = csv.reader(srcfd)
                 hdr = next(src)
                 prmidx = hdr.index("assayFamilies")
-                res = [frozenset(p for f in map(str.strip, xs[prmidx].split(';')) if f for p in prm.pfdict.get(f, [])) for xs in src ]
+                p_list = [p.strip() for xs in src for p in xs[prmidx].split(';')]
+                res = [frozenset(p for p in p_list if p in assay_info.all_assays)]
+                #res = [frozenset(p for p in xs in src for f in map(str.strip, xs[prmidx].split(';')) if p in assay_info.all_assays)]
             return bc, res
       
         # prepare the primer summary at this point - all Stage1-P*.csv files should be present the last time we get here.
-        tabdata = [platePrimers(bc) for bc in sorted(ebc)]
+        tabdata = [platePrimers(bc, assay_info) for bc in sorted(ebc)]
         cx = collections.Counter(p for bc, pss in tabdata for ps in pss for p in ps)
         with open("PrimerUse.csv", "wt", newline='') as dstfd:
             dst = csv.writer(dstfd)
