@@ -3,10 +3,10 @@
 """
 @created: Nov 2021
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.13
-@version_comment: First implementation 
-@last_edit: 2021-11-04
-@edit_comment: created
+@version: 0.14
+@version_comment: Refined interface 
+@last_edit: 2022-01-07
+@edit_comment: Various refinements to options
 
 Application Webpage for post-sequencing analysis
 Need to support match counting of new reference sequences for trialing probes
@@ -32,11 +32,13 @@ file = Path(__file__).resolve()
 sys.path.append(os.path.join(file.parents[1],'bin'))
 
 # add any /bin imports here
+from util import get_mouse_ref, TemplateFiles
 
 port=9123
 stage1 = "/cgi-bin/cgi-nimbus.py"
 stage2 = "/cgi-bin/cgi-echo.py"
 stage3 = "/cgi-bin/cgi-analysis.py"
+
 
 htmlerr = """
 <html>
@@ -60,6 +62,7 @@ htmlerr = """
 </html>
 """.strip()
 
+
 html_analysis = """
 <html>
 <head> 
@@ -70,14 +73,10 @@ html_analysis = """
   <h1>NGS Genotyping pipeline - Sequencing analysis</h1>
   <div style="border: 2px solid black; border-radius: 10px; padding:10px; width: 600px;">
   <h2>Sequence matching</h2>
-  <h3>Leave these blank to use default files and names</h3>
+  <h3>Leave these blank to use pipeline defaults</h3>
   <form action="{stage}" method="get">
     <p>
-    <input style="margin-left:25px;" type="checkbox" id="rerun" name="rerun"></input>
-      <label for="rerun"><b>Rerun analysis and overwrite existing</b></label><br>
-    <br>
-    <label style="margin-left:25px;" for="stage3file">Stage3 file</label>
-      <input type="file" id="stage3file" name="stage3file" size="80" /><br>
+    {rerun}
     <label style="margin-left:25px;" for="outfile">Output filename</label>
       <input type="text" id="outfile" name="outfile" size="50" value="Results.csv"/><br>
     <br>
@@ -86,8 +85,6 @@ html_analysis = """
     <input style="margin-left:25px;" type="checkbox" id="exhaustive" name="exhaustive"></input>
       <label for="exhaustive">Exhaustive mode. Match every sequence not matter how low the coverage. Slow!</label>
     <br>
-    <label style="margin-left:25px;" for="targets" title="Defaults to library Musterer reference sequences">Target reference file</label>
-      <input type="file" id="targets" name="targets" size="80" title="Defaults to library Musterer reference sequences"/><br>
     <br>
     <label style="margin-left:25px;" for="ncpus">Number of task processes to run simultaneously</label>
       <input type="number" min="1" value="4" max="32"></input><br>
@@ -96,21 +93,18 @@ html_analysis = """
     <input style="margin-left:25px" type="checkbox" id="debug" name="debug"/>
       <label for="debug">Debug - give more detailed debugging info</label><br>
     <input style="margin-left:25px" type="checkbox" id="quiet" name="quiet"/>
-      <label for="quiet">Quiet. Run with minimal screen output. Normal output is sent to log file instead</label>    
+      <label for="quiet">Quiet - run with minimal screen output. Normal output is sent to log file instead</label>
+    <label for="customref">Add a custom reference file for matching custom samples only (OPTIONAL)</label>
+      <input style="margin-left:25px" type="file" id="customref" name="customref"/>
     </p>
     <h2> Genotyping and Sanity Checking</h2>
-    <h3> Leave these fields blank for standard mouse runs - it will use defaults for everything!</h3>
     <p>                                               
-    <label style="margin-left:25px;" for="conversions" title="Defaults to library NGS_assay_conversions.xlsx">Assay conversions file</label>
-      <input type="file" id="conversions" name="conversions" size="80" title="Defaults to library NGS_assay_conversions.xlsx"/><br>
     <label style="margin-left:25px;" for="gtoutfile" title="Defaults to results_gt.csv">Per-row output filename</label>
       <input type="text" id="gtoutfile" name="gtoutfile" size="50" value="results_gt.csv" title="Defaults to results_gt.csv"/><br>
     <label style="margin-left:25px;" for="gtmice" title="Defaults to mice_gts.csv">Per-mouse GTs filename</label>
       <input type="text" id="gtmice" name="gtmice" size="50" value="mice_gts.csv" title="Defaults to mice_gts.csv"/><br>
     <label style="margin-left:25px;" for="gtupload" title="Defaults to mice_uploads.csv">Mouse DB upload filename</label>
       <input type="text" id="gtupload" name="gtupload" size="50" value="mice_uploads.csv" title="Defaults to mice_uploads.csv"/><br>
-    <label style="margin-left:25px;" for="gtconfig" title="Defaults to bin/config.ini">Config file path</label>          
-      <input type="file" id="gtconfig" name="gtconfig" size="80" title="Defaults to bin/config.ini"/><br>
     </p>
     <p>Click the "Continue" button below when done.</p>
     <input type="hidden" id="existing" name="existing" value="{existingDir}"/>
@@ -230,29 +224,13 @@ def main():
 
     #if not os.path.isdir(ngid): # only if dnap is also defined?
     #    os.mkdir(ngid)
-    os.chdir(ngid) # change to working directory
+    os.chdir(ngid) # change to working directory - probably unnecessary
 
     ### Everything below this line happens in the run folder ###
-    try:
-        i7i5_fn = sorted(glob.glob(os.path.join('..','library', 'i7i5_plate_layout_*.csv')), reverse=True)[0]
-    except IndexError:
-        print('Cannot find i7i5_plate_layout_*.csv', file=sys.stderr)
-        exit(1)
+    template_files = TemplateFiles()
 
-    ### set library defaults for assay definitions, primer layout, reference sequences, and old/new assay name conversions
-    template_files = collections.defaultdict(str)
-    template_files['assays'] = sorted(glob.glob(os.path.join('..','library', 'assay_list_*.csv')), reverse=True)[0]
-    template_files['primers'] = sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
-    template_files['ref'] = sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.txt"))+\
-        glob.glob(os.path.join('..','library', "reference_sequences_*.csv")), reverse=True)[0]
-    template_files['conv'] = sorted(glob.glob(os.path.join('..','library', 'NGS_assay_conversions_*.xlsx')), reverse=True)[0]
-    ### load existing custom library info if available
-    if os.path.exists('template_files.txt'):
-        with open('template_files.txt', 'rt') as f:
-            for line in f:
-                cols = line.strip().split('\t')
-                template_files[cols[0]] = cols[1]
-        #print('cgi-analysis:', [(k, template_files[k]) for k in template_files], file=sys.stderr)
+    default_reference = get_mouse_ref()
+    
     global port
     global htmlerr
 
@@ -262,7 +240,14 @@ def main():
         print(html3.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, port=port))
         return
     if 'analysis' in fields:
-        print(html_analysis.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, port=port))
+        rerun = """
+        <input style="margin-left:25px;" type="checkbox" id="rerun" name="rerun"></input>
+        <label for="rerun"><b>Rerun analysis</b> - change output names to avoid overwriting</label><br>
+        <br>
+        """
+        if not os.path.exists("Results.csv"):
+            rerun = ""
+        print(html_analysis.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, rerun=rerun, port=port))
         return
     
     if not os.path.isfile("Results.csv") or 'rerun' in fields:
@@ -275,9 +260,9 @@ def main():
         else:
             params.append('-o')
             params.append('Results.csv')
-        if "targets" in fields:
-            params.append('-t')
-            params.append(fields.getfirst('targets'))
+        #if "targets" in fields:
+        #    params.append('-t')
+        #    params.append(fields.getfirst('targets'))
         if "custom" in fields:
             params.append('--custom')
         if "exhaustive" in fields:
@@ -291,10 +276,10 @@ def main():
             params.append('-d')
         if "quiet" in fields:
             params.append('-q')
-        if "stage3file" in fields:
-            params.append(fields.getfirst("stage3file"))
-        else:
-            params.append('Stage3.csv')
+        #if "stage3file" in fields:
+        #    params.append(fields.getfirst("stage3file"))
+        #else:
+        #params.append('Stage3.csv')
 
         cmd = ["python", os.path.join("..", "bin", "ngsmatch.py")] + params
         print('cgi-analysis:', 'Running stage3 FASTQ analysis:', cmd, file=sys.stderr)
@@ -307,23 +292,6 @@ def main():
                 dst.write(res.stderr.decode('utf-8').replace('\r',''))
     else:
         params = []
-        params.append('-r')  # -r --reference
-        if "targets" in fields:   
-            params.append(fields.getfirst('targets'))
-        else:
-            refs = glob.glob(os.path.join('..','library','reference_sequences_*.fa'))
-            if not refs:
-                refs = glob.glob(os.path.join('..','library','reference_sequences_*.txt'))
-            if not refs:
-                print('No reference/target file found!')
-            else:
-                params.append(refs[-1])  # most recent will be listed last
-        params.append('-c')
-        if "conversions" in fields:
-            params.append(fields.getfirst('conversions'))
-        else:
-            #TODO: get the most recently dated version of this file
-            params.append(os.path.join('..','library','NGS_assay_conversions_20201125.xlsx'))
         params.append('-m')
         if "gtmice" in fields:
             params.append(fields.getfirst('gtmice'))
@@ -334,11 +302,9 @@ def main():
             params.append(fields.getfirst('gtupload'))
         else:
             params.append('mice_uploads.csv')
-        params.append('-k')
         if "gtconfig" in fields:
+            params.append('-k')
             params.append(fields.getfirst('gtconfig'))
-        else:
-            params.append(os.path.join('..','bin','config.ini'))
         params.append('-o')
         if "gtoutfile" in fields:
             params.append(fields.getfirst('gtoutfile'))

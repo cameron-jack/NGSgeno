@@ -5,8 +5,8 @@
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
 @version: 0.15
 @version_comment: Removed cache options. Cache is now in rundir. Removed logging module. Replaced verbose option with debug option.
-@last_edit: 05-01-2022
-@edit_comment: Replaced import from echo with echo_primer
+@last_edit: 12-01-2022
+@edit_comment: Adds a lock (PID) file to prevent restarting during execution
 
 Read a NGS Genotyping Stage3.csv file
 Read an NGS Genotyping reference file containing assay target sequences.
@@ -21,6 +21,8 @@ Match and mismatch caches are employed to massively speed up matching. ~15x?
 Old Bio.pairwise2 algorithm replaced with much faster (~8-9x) Bio.Align
 
 Note logging was removed because it is incompatible with the multiprocessing method employed here.
+
+Needs
 """
 
 import os
@@ -48,6 +50,7 @@ import Bio.SeqIO
 import Bio.Align as Align
 
 from echo_primer import padwell, unpadwell
+from util import TemplateFiles, create_lock_file, check_lock_file, remove_lock_file
 
 bclen = 8 # length of pseudo barcode
 matchcutoff = 1.5 # should control via command line - must be >1.x
@@ -280,8 +283,8 @@ def best_match(match_cnt, s, n, targets, mc, sum_parent=True):
         return False
 
 
-def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, results, lock_c, lock_mc, 
-                 lock_r, exhaustive, sum_parent=True, debug=False):
+def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, results, log, lock_c, lock_mc, 
+                 lock_r, lock_l, exhaustive, sum_parent=True, debug=False):
     """ 
     Worker process that runs bbduk, bbmerge, and matching
     work_block: work block number
@@ -299,7 +302,6 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
   """
     varsep = " // "
     PID = os.getpid()
-    log = []  # hack to get around multiprocess/thread sync issues with log
     if debug:
         msg = f"Executing work block {work_block*len(wrs_od_list)} on process {PID}"
         print(msg, file=sys.stderr)
@@ -314,14 +316,16 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
         rfn= "*{}-{}_*_R1_*.fastq.gz".format(wr['pcrplate'], padwell(wr['pcrwell']))
         fn1s = glob.glob(os.path.join("raw", rfn))
         if not fn1s:
-            log.append(f"no data for {fn1s}")
+            with lock_l:
+                log.append(f"no data for {fn1s}")
             with lock_r:
                 results.append((tuple(wr.values()),log))
             return
             
         if len(fn1s)>1:
-            log.append(f"too many reads files for pattern{rfn}")
-            log.append(f"   R1 files= {fn1s}")
+            with lock_l:
+                log.append(f"too many reads files for pattern{rfn}")
+                log.append(f"   R1 files= {fn1s}")
             with lock_r:
                 results.append((tuple(wr.values()),log))
             return
@@ -333,7 +337,8 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
             
         # find the data file
         if not os.path.isfile(fnr2):
-            log.append(f"missing file: {fnr2}")
+            with lock_l:
+                log.append(f"missing file: {fnr2}")
             with lock_r:
                 results.append((tuple(wr.values()),log))
             return
@@ -372,7 +377,8 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
         else:
             fnm_fmt = fnmfmt.replace('{}.{}','')
             if debug:
-                log.append(f"Skipping cleaning and merging of reads for {fnm_fmt}")
+                with lock_l:
+                    log.append(f"Skipping cleaning and merging of reads for {fnm_fmt}")
             with open(fnlog) as logfile:
                 logdata = logfile.read()
             log1, log2 = logdata.split("======\n", 1)
@@ -393,7 +399,8 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
             joinCount = int(m.group(1))
                 
         if cleanCount!=cleanCount2:
-            log.append(f"Pair count mismatch. {cleanCount} != {cleanCount2}")
+            with lock_l:
+                log.append(f"Pair count mismatch. {cleanCount} != {cleanCount2}")
             with lock_r:
                 results.append((tuple(wr.values()),log))
             return
@@ -405,7 +412,8 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
             seqcnt = collections.Counter(gs)
         mergeCount = sum(seqcnt.values())
         if mergeCount != joinCount:
-            log.append(f"Merged counts mismatch. {mergeCount} != {joinCount}") 
+            with lock_l:
+                log.append(f"Merged counts mismatch. {mergeCount} != {joinCount}") 
             with lock_r:
                 results.append((tuple(wr.values()),log))
             return
@@ -440,10 +448,12 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
         for seq, num in seqcnt.most_common():
             if num >= low_cov_cutoff or exhaustive:
                 if debug:
-                    log.append(f"Processing {wr['pcrplate']} {wr['pcrwell']} on process {PID} with counts {num}")
+                    with lock_l:
+                        log.append(f"Processing {wr['pcrplate']} {wr['pcrwell']} on process {PID} with counts {num}")
                 if seq in mc:
                     if debug:
-                        log.append(f"{PID}: Cache hit {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
+                        with lock_l:
+                            log.append(f"{PID}: Cache hit {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
                     if sum_parent:
                         if varsep in mc[seq]:
                             match_cnt[mc[seq].split(varsep)[0]] += num
@@ -452,32 +462,38 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
                     #cache_hits += 1
                 elif seq in msc:
                     if debug:
-                        log.append(f"{PID}: Miss cache hit {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
+                        with lock_l:
+                            log.append(f"{PID}: Miss cache hit {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
                     match_cnt[msc[seq]] += num
                     #cache_hits += 1
                 elif exact_match(match_cnt, seq, num, prime_targets, mc):
                     if debug:
-                        log.append(f"{PID}: Exact match against prime targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
+                        with lock_l:
+                            log.append(f"{PID}: Exact match against prime targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
                     pass
                 elif exact_match(match_cnt, seq, num, other_targets, mc):
                     if debug:
-                        log.append(f"{PID}: Exact match against other targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
+                        with lock_l:
+                            log.append(f"{PID}: Exact match against other targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
                     #print(f"{PID}: Exact match of {num} counts")
                     #cache_misses += 1
                     pass
                 elif best_match(match_cnt, seq, num, prime_targets, mc):
                     if debug:
-                        log.append(f"{PID}: Inexact match against prime targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
+                        with lock_l:
+                            log.append(f"{PID}: Inexact match against prime targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
                     pass
                 elif best_match(match_cnt, seq, num, other_targets, mc):
                     if debug:
-                        log.append(f"{PID}: Inexact match against other_targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
+                        with lock_l:
+                            log.append(f"{PID}: Inexact match against other_targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
                     #print(f"Inexact match of {num} counts")
                     #cache_misses += 1
                     pass
                 else:
                     if debug:
-                        log.append(f"{PID}: Missed {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
+                        with lock_l:
+                            log.append(f"{PID}: Missed {wr['pcrplate']} {wr['pcrwell']} {num} {seq}")
                     if miss_cache is not None:
                         msc[seq] = seq
                     match_cnt[seq] += num
@@ -507,18 +523,18 @@ def process_well(work_block, wrs_od_list, targets, match_cache, miss_cache, resu
             try:
                 resx = sorted(((match_cnt[key], key) for key in match_cnt if match_cnt[key] >= low_cov_cutoff), reverse=True)
             except TypeError:
-                log.append(f"!!! match_cnt: {match_cnt}", file=sys.stderr)
+                with lock_l:
+                    log.append(f"!!! match_cnt: {match_cnt}", file=sys.stderr)
                 
         else:
             resx = sorted(((match_cnt[key], key) for key in match_cnt), reverse=True)
         res2 = tuple(x for p in resx for x in p)
         retval = tuple((str(x) for x in tuple(wr.values()) + res1 + res2))
-        #print(f"Retval: {(retval, log)}", file=sys.stderr)
         with lock_r:
-            results.append((retval, log))
+            results.append(retval)
         return
     with lock_r:
-        results.append((tuple(wr.values()),log))
+        results.append(tuple(wr.values()))
     return
 
 
@@ -537,7 +553,7 @@ def main():
     parser = argparse.ArgumentParser(description="NGS Reporting Program")
     parser.add_argument("-d", "--debug", action="store_true", help="more reporting/output for debugging purposes")
     #parser.add_argument("-d", "--datadir", default="mclean", help="data directory")
-    parser.add_argument("-t", "--targets", default=None, help="file of targets in FASTA format")
+    #parser.add_argument("-t", "--targets", default=None, help="file of targets in FASTA format")
     # parser.add_argument("-a", "--assays", default=None, help="file linking mice/samples to assay names")
     parser.add_argument('-o','--outfn', default='Results.csv', help='Path to output file name (CSV format)')
     parser.add_argument('-c','--clear_caches',action='store_true', help='Clear match and miss caches in run folder')
@@ -546,14 +562,16 @@ def main():
 
     parser.add_argument('-x','--exhaustive',action='store_true',help='Try to match every sequence, no matter how few counts')
     parser.add_argument('-q','--quiet',action='store_true',help='Run with minimal messages')
-    parser.add_argument('--custom', action='store_true',help='Musterer data columns not present')
-    parser.add_argument("stagefile", default="Stage3.csv", help="NGS genotyping Stage 3 file (default=Stage3.csv")
+    #parser.add_argument('--custom', action='store_true',help='Musterer data columns not present')
+    parser.add_argument('-s','--stagefile', default="Stage3.csv", help="NGS genotyping Stage 3 file (default=Stage3.csv")
     args = parser.parse_args()
 
     print('Run with the following command line options:', file=sys.stderr)
     for arg in vars(args):
         print(arg, getattr(args, arg), file=sys.stderr)
     print('', file=sys.stderr)
+
+    templates = TemplateFiles()
 
     # read the wells data
     start_time = datetime.datetime.now()
@@ -571,21 +589,11 @@ def main():
         ## get a set of assay family names - family name ends with first underscore char  
         #assays = frozenset(r.primer.split('_',1)[0] for r in wdata)
         
-        if not args.targets:
-            ts = [t for rpat in ("*ref*seq*.fa", "*ref*seq*.fasta", "*ref*seq*.txt") for t in glob.glob(os.path.join('..', 'library', rpat))]
-            if not ts: 
-                print("no target reference file found.", file=sys.stderr)
-                raise ProgramFail
-            if len(ts)>1 and not args.quiet:
-                print("Multiple target reference files found:", file=sys.stderr)
-                for t in ts:
-                    print('   '+ str(t), file=sys.stderr)
-                print("use the --targets option to avoid this message.", file=sys.stderr)
-            args.targets = ts[0]
-            print("using targets reference:", args.targets, file=sys.stderr)
         # read the target sequence file into a dictionary of target sequences
-        # make sure there are no lowercase chars in target sequences            
-        with myopen(args.targets) as src:
+        # make sure there are no lowercase chars in target sequences
+         
+        # by default use the mouse reference            
+        with myopen(templates.files['mouse_ref']) as src:
             fadict = dict((x.id, Target(x.id, str(x.seq).upper())) for x in Bio.SeqIO.parse(src, "fasta") if len(x.seq) != 0 and len(x.id) != 0)
         # fagen = ((h, s.upper()) for h,s in fasta.fasta_reader(args.targets))
         # fadict = dict(sorted((x.hdr, x) for x in map(Target, fagen)))
@@ -625,9 +633,11 @@ def main():
                 match_cache = manager.dict()
                 miss_cache = manager.dict()  # just use this as a set
                 results = manager.list()  # at the moment it holds both the main results and the log, but maybe we should split these out?
+                log = manager.list()
                 lock_mc = manager.Lock()  # match_cache locking
                 lock_msc = manager.Lock()  # miss_cache locking
-                lock_r = manager.Lock()  # result cache locking
+                lock_r = manager.Lock()  # result list locking
+                lock_l = manager.Lock()  # log list locking
                 #print(type(match_cache))
                 if args.clear_caches:
                     if os.path.exists("match_cache.jsn"):
@@ -685,8 +695,8 @@ def main():
                         print(f"Adding work to pool... chunk {i*chunksize}, cache size {len(matchc)}, miss cache size {len(missc)}", file=sys.stderr)
                     elif not args.quiet:
                         print(f"Adding work to pool... chunk {i*chunksize}, cache size {len(matchc)}, miss cache disabled", file=sys.stderr)
-                    r1 = pool.apply_async(process_well, (i, chunk, targets, matchc, missc, results, lock_mc, 
-                            lock_msc, lock_r, args.exhaustive, args.debug))
+                    r1 = pool.apply_async(process_well, (i, chunk, targets, matchc, missc, results, log, lock_mc, 
+                            lock_msc, lock_r, lock_l, args.exhaustive, args.debug))
                     reports.append((r1,chunk))
                     #if i%4 == 0 and i != 0:
                     #    time.sleep(2 + chunksize/10)
@@ -733,9 +743,9 @@ def main():
                 for k,r in enumerate(results):
                     # order results by pcrplate and pcrwell
                     if args.custom:
-                        complete_results[(r[0][9],int(r[0][10][1:]),r[0][10][0])] = r[0]
+                        complete_results[(r[9],int(r[10][1:]),r[10][0])] = r
                     else:
-                        complete_results[(r[0][15],int(r[0][16][1:]),r[0][16][0])] = r[0]
+                        complete_results[(r[15],int(r[16][1:]),r[16][0])] = r
                 
                 for i,k in enumerate(sorted(complete_results.keys())):
                     dst.writerow(complete_results[k])
@@ -751,6 +761,12 @@ def main():
    
 if __name__=="__main__":
     try:
+        if check_lock_file():
+            print('Matching process is currently running', file=sys.stderr)
+            exit(2)
+        create_lock_file(overwrite=True)
         main()
+        remove_lock_file()
     except ProgramFail:
-        pass
+        remove_lock_file()
+        exit(1)
