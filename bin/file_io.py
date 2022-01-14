@@ -13,7 +13,7 @@ import os
 @last_edit: 
 @edit_comment: 
 
-Contains all file IO methods that involved barcodes, and are not purely for user reporting or robot inputs. 
+Contains all file IO methods that involved barcodes, that are not purely for user reporting or robot inputs. 
 Trivial file reads which don't involve barcodes should stay with the rest of their functionality for better readability
 
 The following rules must be followed to protect users from typing mistakes and MS Excel weirdness:
@@ -61,6 +61,8 @@ class ExistingGuardError(Exception):
     def __init__(self, message):
         self.message = message
 
+# global - set of all possible guard types
+GUARD_TYPES = set(['m','M','c','p'])
 
 # Confirm guards
 def is_guarded_mbc(mbc):
