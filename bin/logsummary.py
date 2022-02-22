@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 @created Apr 2020
-@author: Bob Buckley
-@version: 0.12
+@author: Bob Buckley, ANU Bioinformatics Consultancy, JCSMR, Australian National University
+@version: 0.15
 @version_comment: 
 @last_edit:
 @edit_comment:

@@ -4,8 +4,8 @@ inheritance_rules.py
 
 @created Nov 2020
 @author: Cameron Jack, cameron.jack@anu.edu.au, ANU Bioinformatics Consultancy
-@version: 0.12
-@version_comment: untested, some cases not implemented
+@version: 0.15
+@version_comment:
 @last_edit:
 @edit_comment: 
 """

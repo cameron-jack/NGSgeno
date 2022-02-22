@@ -2,10 +2,10 @@
 """
 @created Aug 2020
 @author: Bob Buckley and Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.13
-@version_comment:
+@version: 0.15
+@version_comment: *DEPRECATED* remove from next version. Replaced with validate_assays.py
 @last_edit: 
-@edit_comment: file IO has been cleaned up a little
+@edit_comment: 
 
 This code checks assay data (from the "library") for the NGS Geno application
 The challenges are:

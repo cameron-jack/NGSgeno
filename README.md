@@ -20,11 +20,31 @@ Requests
 
 ## Changelog:
 
+Pipeline version: 0.16
+* Initial plan was to allow custom workflows to be added to a mouse pipeline run
+* Now is a complete reworking into an online "application"
+* Replace multiple pipeline pages with a single "Dashboard" interface, with expanding/collapsing sections
+* Never leave the main screen - everything is displayed
+* Incorporates CSS and Javascript for the first time to allow dynamic browser features
+* Refreshes screen on each change
+* Select a "run" folder
+* Compose an "inventory" of samples and plates
+* Plan and track the whole "experiment"
+* Keep a "run log" which allows complete re-running of an experiment
+* There are no longer any "standard" primer plates - all primer plates are built for purpose, after the Nimbus stage concludes
+
+Pipeline version: 0.15
+* Initial attempt to support Musterer mice in custom manifests (running on the mouse pipeline)
+* Incomplete due to changes planned for version 0.16
+* New error handling/reporting code throughout
+
 Pipeline version: 0.14
 * Replaced primercheck.py with validate_assays.py - Only checks against the assay list 
   (not primer plate), and generates list of required primers
 * Additional protection aganst unguarded Nimbus output barcodes (creates guarded Echo_COC files)
 * Creates guarded copy of custom manifest if it isn't already guarded
+* Much improved analysis interface
+* Caches moved to run folder
 
 Pipeline version: 0.13
 * New analysis (stage 3) interface for running ngsmatch.py and gt_mice.py

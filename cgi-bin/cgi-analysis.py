@@ -276,10 +276,6 @@ def main():
             params.append('-d')
         if "quiet" in fields:
             params.append('-q')
-        #if "stage3file" in fields:
-        #    params.append(fields.getfirst("stage3file"))
-        #else:
-        #params.append('Stage3.csv')
 
         cmd = ["python", os.path.join("..", "bin", "ngsmatch.py")] + params
         print('cgi-analysis:', 'Running stage3 FASTQ analysis:', cmd, file=sys.stderr)

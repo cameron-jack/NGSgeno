@@ -4,71 +4,34 @@
 @created: Jan 2022
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 @version: 0.15
-@version_comment: First implementation 
-@last_edit: 2022-01-12
-@edit_comment: Created. Template_files is now a class TemplateFile which seamlessly handles loading state, though you need to save explicitly.
-        A locator for the config.ini file is kept here for all code to share.
+@version_comment: Error handling has changed from custom exception type to simple error message writing
+@last_edit: 2022-02-16
+@edit_comment: 
 
 A collection of code functions and definitions that are used throughout the pipeline
 """
 
 import os
+import sys
 import glob
 import collections
 import platform
 import re
 import subprocess
+import traceback
 from pathlib import PurePath
 
 from file_io import GUARD_TYPES
 
 # Global
 CONFIG_PATH = PurePath('../library/config.ini')
-
-# PID locking for long running stages
-LOCK_FILE = 'ngsgeno.lck'
-def check_lock_file():
-    """ True if PID held by lock file is alive. Original code by oldpride: 
-        https://stackoverflow.com/questions/568271/how-to-check-if-there-exists-a-process-with-a-given-pid-in-python
-    """
-    if os.path.exists(LOCK_FILE):
-        with open(LOCK_FILE, 'rt') as f:
-            pid = f.readline().strip()
-    else:
-        return False
-
-    system = platform.uname().system
-    if re.search('Windows', system, re.IGNORECASE):
-        txt = '"'+f"PID eq {pid}"+'"'
-        out = subprocess.check_output(["tasklist","/fi",txt], shell=True).strip()
-        # b'INFO: No tasks are running which match the specified criteria.'
-
-        if re.search(b'No tasks', out, re.IGNORECASE):
-            return False
-        else:
-            return True
-    else:
-        print(f"unsupported system={system}", file=sys.stderr)
-        return False
-
-def create_lock_file(overwrite=False):
-    if os.path.exists(LOCK_FILE) and not overwrite:
-        print(f"Lock file {LOCK_FILE} aleady exists!", file=sys.stderr)
-        return False
+ERROR_FN = 'error_msg.txt'
     
-    with open(LOCK_FILE, 'wt') as out:
-        out.write(str(os.getpid()))
-    return True
-
-
-def remove_lock_file():
-    if os.path.exists(LOCK_FILE):
-        os.remove(LOCK_FILE)
-        return True
-    else:
-        print(f"No existing lock file {LOCK_FILE} found", file=sys.stderr)
-        return False
-
+def output_error(exc, msg=''):
+    with open(ERROR_FN, 'wt') as f:
+        if msg:
+            f.write(str(msg))
+        f.write(traceback.format_exc())
 
 # File choosers
 def get_mouse_ref():
@@ -445,3 +408,73 @@ class SourcePlates(dict):
                 exit(1)
         self[cx][-1] -= vol
         return self[cx][:-1]+(vol,)
+
+# Apparently never used
+def joiner(tspec1, tspec2):
+    """ join two tables """
+    try:
+        t1, kp1, kv1 = tspec1
+        t2, kp2, kv2 = tspec2
+        ts = t1, t2
+        tspecs = tspec1, tspec2
+        global ttno
+        ttno += 1
+        fx = [ x for t, fp, fv in tspecs for x in fp(t.tt._fields) ]
+        newtype = Table.newtype('_TMP'+str(ttno).zfill(6), fx)
+        fkv = lambda rs: (z for r, kv in zip(rs, (kv1, kv2)) for z in kv(r))
+        for t, fkp, fkv in tspecs:
+            print("in joiner for", type(t.data[0]))
+            print("t.dict", t.__dict__.keys())
+            if t.header:
+                hx = fkv(t.header) 
+                print("  hx =", hx)
+        hx = [ fkv(t.header) for tx in tspecs for t, fkp, fkv in tx ] if all(bool(t.header) for t in ts) else None
+        data = list(join2gen((t1.data, kp1), (t2.data, kp2)))
+        return Table(newtype, map(fkv, data, header=hx))
+    except Exception as exc:
+        output_error(exc, msg='Error in echo_barcode.joiner')
+
+# Apparently never used
+def join2gen(xs, ys):
+    """ a generator that joins two iterables if possible - why? """
+    try:
+        xg, yg = grouper(*xs), grouper(*ys)
+        xk, xvg = next(xg)
+        xvs = list(xvg)
+        print("first xk, xv =", xk, xvs)
+        yk, yvg = next(yg)
+        yvs = list(yvg)
+        print("first yk, yv =", yk, yvs)
+        xp, yp = (xk, xvs), (yk, yvs)
+    
+        while True:
+            (xk, xvs), (yk, yvs) = xp, yp
+            try:
+                if xk<yk:
+                    xp = next(xg)
+                elif xk==yk:
+                    # print("nextpr returns:", (xp, yp))
+                    yl = list(yvs)
+                    for xv in xvs:
+                        for yv in yl:
+                            yield (xv, yv)
+                    xp, yp = next(xg), next(yg)
+                else:
+                    yp = next(yg)
+            except StopIteration:
+                break
+        return
+    except Exception as exc:
+        output_error(exc, msg='Error in echo_barcode.join2gen')
+
+# Apparently never used
+def filler(rs):
+    """ fill blank fields with the value from the previous field - assumes fixed length records """
+    try:
+        rp = itertools.repeat(None)
+        for r in rs:
+            rp = [v if v else vp for v, vp in zip(r, rp)]
+            yield rp
+        return
+    except Exception as exc:
+        output_error(exc, msg='Error in echo_barcode.filler')

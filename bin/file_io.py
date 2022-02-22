@@ -8,8 +8,8 @@ import os
 """
 @created: Nov 2021
 @author: Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
-@version: 0.13
-@version_comment: Module created
+@version: 0.15
+@version_comment: No changes
 @last_edit: 
 @edit_comment: 
 
@@ -216,81 +216,48 @@ def unguard(bc, silent=False):
             print('Possibly unguarded already:',bc, file=sys.stderr)
         return bc
 
+def myopen(fn):
+    """ Bob's function to handle gzip transparently """
+    if fn.endswith('.gz') :
+        return gzip.open(fn, "rt")
+    return open(fn, errors="ignore")
+
 ### cgi-echo.py ###
 
-def readCustomCSVtoJSON(input_fn, custom_file_contents='custom'):
-    """ read a custom sample manifest with no more than 4x96 well plates! Then return as JSON 
-        Creates a copy of the original manifest with guarded barcodes.
-    """
-    data = {}
-    errs = []  # error messages
-    guarded_fn = input_fn.replace('.csv','_guarded.csv')
-    ofh = None
-    if not os.path.exists(guarded_fn):
-        ofh = open(guarded_fn, 'wt')
-        out_csv = csv.writer(ofh, dialect='unix')
-    with open(input_fn, 'rt', newline=None) as f:
-        in_csv = csv.reader(f, delimiter=',')
-        for i, row in enumerate(in_csv):
-            #print(row, file=sys.stderr)
-            #print(file=sys.stderr)
-            if i == 0:
-                if ofh:
-                    out_csv.writerow(row)
-                continue  # header
-            if all(col.strip() == '' for col in row):
-                continue  # blank rows
-            if any(col.strip() == '' and j < 5 for j,col in enumerate(row)):
-                msg = f"ERROR. blank manifest entry in entry {i}: {row}"
-                print(msg, file=sys.stderr)
-                errs.append(msg)
-                continue
-                # return
-            plt = str(row[1].strip())
-            if is_guarded_pbc(plt):
-                gplate = plt
-            else:
-                gplate = guard_pbc(plt)
-            well = str(row[2]).strip()
-            smpl = str(row[3].strip())
-            if is_guarded(smpl):
-                gsampleBarcode = smpl
-            elif custom_file_contents == 'custom':
-                gsampleBarcode = guard_cbc(smpl)
-            elif custom_file_contents == 'musterer':
-                gsampleBarcode = guard_mbc(smpl)
-            elif custom_file_contents == 'rodentity':
-                gsampleBarcode = guard_rbc(smpl)
-            else:
-                msg = f"ERROR. unknown custom file contents field: {custom_file_contents}"
-                print(mgs, file=sys.stderr)
-                errs.append(msg)
 
-            if ofh:
-                out_row = [r for r in row]
-                out_row[1] = gplate
-                out_row[3] = gsampleBarcode
-                out_csv.writerow(out_row)
-            assays = [a.strip() for a in row[4:] if a.strip() != '']
-            if gplate not in data:
-                if len(data) == 4:
-                    errs.append('Too many input plates specified in experiment file. Max of 4 plates are allowed per file!')
-                    break
-                data[gplate] = {'plateId':gplate, 'custom':True, 'sampleBarcode':gsampleBarcode, 
-                       'wells':[{'wellLocation':well, 'organism':{'sampleId':gsampleBarcode, 
-                                'sampleBarcode':gsampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a.strip()} \
-                                for a in assays]}}]}                  
-            else:
-                if well in data[gplate]:
-                    print('duplicate well number', well, 'in plate', gplate, file=sys.stderr)
-                    return
-                data[gplate]['wells'].append({'wellLocation':well, 'organism':{'sampleId':gsampleBarcode, 
-                        'sampleBarcode':gsampleBarcode, 'assays':[{'assayMethod':'NGS','assayName':a.strip()} \
-                        for a in assays]}})
-    
-    if ofh:
-        ofh.close()
-    pids = data.keys()
-    data = [(data[p],p) for p in sorted(data)]
-    return data, pids, errs
 
+
+### Readers and writers for stage interlock CSV files (Nimbus -> Echo -> Analysis)
+
+# Define headers for all stages. These can handle both mouse and custom samples
+stage1_hdr = tuple(['sampleNo', 'samplePlate','sampleWell', 'strainName', 'barcode', 'assays', 'assayFamilies', 
+              'mouseID', 'strainName', 'sex', 'parentLitter', 'parentSequence', 'parentStrain', 'parentDate'])
+stage2_hdr = tuple(list(stage1_hdr) + ['dnaPlate', 'dnaWell', 'primer', 'pcrPlate', 'pcrWell'])
+stage3_hdr = tuple(list(stage2_hdr) + ['i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well'])
+
+#def write_stage1_csv() Is the contents of nimbus.py, so not needed here
+
+
+def read_stage1_csv():
+    """ Called by Stage1report.py, cgi-echo.py and possibly echo_primer.py (currently uses Table() constructor) """
+    pass
+
+def write_stage2_csv():
+    """ Called by echo_primer.py """
+    pass
+
+def read_stage2_csv():
+    """ Called by stage2report.py and echo_barcode.py """
+    pass
+
+def write_stage3_csv():
+    """ Called by echo_barcode.py """
+    pass
+
+def read_stage3_csv():
+    """ Called by ngsmatch.py and stage2_report.py """
+    pass
+
+
+if __name__ == '__main__':
+    pass

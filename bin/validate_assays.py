@@ -3,8 +3,8 @@
 @created Dec 2021
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 @version: 0.15
-@version_comment:
-@last_edit: 2022-01-13
+@version_comment: Error handling updated
+@last_edit: 2022-02-16
 @edit_comment: output in sorted order
 
 This code checks assay data (from the "library") for the NGS Geno application
@@ -21,40 +21,47 @@ import itertools
 import sys
 import argparse
 from collections import Counter
+from util import output_error
 
 class Assays:
     def __init__(self, assay_fn):
-        self.musterer_to_ngs = {}
-        self.ngs_to_musterer = {}
-        self.all_assays = set()
-        self.all_families = set()
-        self.valid_assay_counts = Counter()
-        self.invalid_assay_counts = Counter()
-        with open(assay_fn, 'rt') as f:
-            for i, line in enumerate(f):
-                if i == 0:
-                    continue  # header line
-                assay_names = [n.strip() for n in line.strip().split(',')]
-                if len(assay_names) != 2:
-                    continue  # weird...
-                musterer_name, ngs_name = assay_names
-                self.musterer_to_ngs[musterer_name] = ngs_name
-                self.ngs_to_musterer[ngs_name] = musterer_name
-                self.all_assays.add(musterer_name)
-                self.all_assays.add(ngs_name)
-                self.all_families.add(musterer_name.split('_',1)[0])
-                self.all_families.add(ngs_name.split('_',1)[0])
+        try:
+            self.musterer_to_ngs = {}
+            self.ngs_to_musterer = {}
+            self.all_assays = set()
+            self.all_families = set()
+            self.valid_assay_counts = Counter()
+            self.invalid_assay_counts = Counter()
+            with open(assay_fn, 'rt') as f:
+                for i, line in enumerate(f):
+                    if i == 0:
+                        continue  # header line
+                    assay_names = [n.strip() for n in line.strip().split(',')]
+                    if len(assay_names) != 2:
+                        continue  # weird...
+                    musterer_name, ngs_name = assay_names
+                    self.musterer_to_ngs[musterer_name] = ngs_name
+                    self.ngs_to_musterer[ngs_name] = musterer_name
+                    self.all_assays.add(musterer_name)
+                    self.all_assays.add(ngs_name)
+                    self.all_families.add(musterer_name.split('_',1)[0])
+                    self.all_families.add(ngs_name.split('_',1)[0])
+        except Exception as exc:
+            output_error(exc, msg='Error in validate_assays.Assays.__init__')
 
     def convert_assay(self, query_assay):
         """
         Based on the assay list, if the query matches to the Musterer name, return the NGS name, and vice versa
         """
-        if query_assay in self.musterer_to_ngs:
-            return self.musterer_to_ngs[query_assay]
-        elif query_assay in self.ngs_to_musterer:
-            return self.ngs_to_musterer[query_assay]
-        else:
-            return None
+        try:
+            if query_assay in self.musterer_to_ngs:
+                return self.musterer_to_ngs[query_assay]
+            elif query_assay in self.ngs_to_musterer:
+                return self.ngs_to_musterer[query_assay]
+            else:
+                return None
+        except Exception as exc:
+            output_error(exc, msg='Error in validate_assays.Assays.convert_assay')
 
     def is_musterer(self, query_assay):
         """ True if a Musterer name """
@@ -75,32 +82,36 @@ class Assays:
         Match assay families. Use both names for counters and treat them separately, then combine as NGS only.
         Adds values to self.valid_assays and self.invalid_assays
         """
-        for n, pid, p_data in plates_data: 
-            for well in p_data['wells']:
-                for assay in well['mouse']['assays']:
-                    if 'assayName' in assay:
-                        assay_name = assay['assayName']
-                        family_name = self.to_family(assay_name)
-                        if family_name in self.all_families:
-                            if self.is_musterer(assay_name):
-                                self.valid_assay_counts[self.convert_assay(assay_name)] += 1
+        try:
+            for n, pid, p_data in plates_data: 
+                for well in p_data['wells']:
+                    for assay in well['mouse']['assays']:
+                        if 'assayName' in assay:
+                            assay_name = assay['assayName']
+                            family_name = self.to_family(assay_name)
+                            if family_name in self.all_families:
+                                if self.is_musterer(assay_name):
+                                    self.valid_assay_counts[self.convert_assay(assay_name)] += 1
+                                else:
+                                    self.valid_assay_counts[assay_name] += 1
                             else:
-                                self.valid_assay_counts[assay_name] += 1
-                        else:
-                            if self.is_musterer(assay_name):
-                                self.invalid_assay_counts[self.convert_assay(assay_name)] += 1
-                            else:
-                                self.invalid_assay_counts[assay_name] += 1
-        if valid_fn:
-            with open(valid_fn, 'wt') as out:
-                for vac in sorted(self.valid_assay_counts):
-                    print(vac + ',' + str(self.valid_assay_counts[vac]), file=out)
-        if invalid_fn:
-            with open(invalid_fn, 'wt') as out:
-                for invac in sorted(self.invalid_assay_counts):
-                    print(invac + ',' + str(self.invalid_assay_counts[invac]), file=out)
+                                if self.is_musterer(assay_name):
+                                    self.invalid_assay_counts[self.convert_assay(assay_name)] += 1
+                                else:
+                                    self.invalid_assay_counts[assay_name] += 1
+            if valid_fn:
+                with open(valid_fn, 'wt') as out:
+                    for vac in sorted(self.valid_assay_counts):
+                        print(vac + ',' + str(self.valid_assay_counts[vac]), file=out)
+            if invalid_fn:
+                with open(invalid_fn, 'wt') as out:
+                    for invac in sorted(self.invalid_assay_counts):
+                        print(invac + ',' + str(self.invalid_assay_counts[invac]), file=out)
 
-        return self.valid_assay_counts, self.invalid_assay_counts
+            return self.valid_assay_counts, self.invalid_assay_counts
+        except Exception as exc:
+            output_error(exc, msg='Error in validate_assays.Assay.validate_assays')
+
  
 def main():
     return
