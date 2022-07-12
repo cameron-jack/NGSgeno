@@ -3,9 +3,9 @@
 """
 @created May 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.15
-@version_comments: error handling updated
-@last_edit: 2022-02-16
+@version: 0.16
+@version_comments: adjusted paths relative to app directory
+@last_edit: 2022-04-29
 @edit_comments: 
 
 Produce picklists for NGS Genotyping pipeline for the Echo robot.
@@ -40,11 +40,12 @@ import glob
 import collections
 import itertools
 import argparse
-import file_io
 
-from util import padwell, unpadwell
-from util import Table, CSVTable
-from util import output_error
+import bin.file_io as file_io
+
+from bin.util import padwell, unpadwell
+from bin.util import Table, CSVTable
+from bin.util import output_error
        
     
 class PicklistSrc:
@@ -96,12 +97,12 @@ def file_get_check(fids, fmt):
         dups = [fids[i] for i in range(1, len(fids)) if fids[i] in fids[:i]]
         fx = [fids[i] for i in range(len(fids)) if fids[i] not in fids[:i]]
         if dups:
-            print("Duplicate DNA plate IDs ignored:", ' '.join(dups), file=sys.stderr)    
+            print("Duplicate DNA plate IDs ignored:", ' '.join(dups), file=sys.stdout)    
     
         globs = dict((pid, sorted(glob.glob(fmt.format(pid)))) for pid in fx)
         nofile = [fid for fid, fns in globs.items() if not fns]
         if nofile:
-            print('\n'.join(fmt.format(fid)+': no file found.' for fid in nofile), file=sys.stderr)
+            print('\n'.join(fmt.format(fid)+': no file found.' for fid in nofile), file=sys.stdout)
             exit(1)
         return collections.OrderedDict((fid, sorted(ps)[-1]) for fid, ps in globs.items())
     except Exception as exc:
@@ -155,39 +156,39 @@ def mytaq(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2'):
 def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2', plate_barcodes=None):
     """ declare source wells for a Mytaq & H2O picklist, cycles through each well sequentially """
     try:
-            water_wells = ['A'+c for c in '123']
-            taq_wells = ['B'+c for c in '123']
-            #print("water wells", water_wells, file=sys.stderr)
-            # calculate whether we have enough wells, volumes in nanolitres
-            dv = PicklistSrc.deadvol[plateType]
-            # initial well volume is 2800uL per well in a full 6 well plate
-            transfers_per_well = [(2800-dv)*1000//v for v in (voltaq, volh2o)]
-            max_transfers_per_well = min(transfers_per_well)  # worst case scenario
-            taq_wells_required, water_wells_required = [(wellCount+c-1)//c for c in transfers_per_well]
-            plates_required = (max([taq_wells_required, water_wells_required])//3)+1
-            #print('Plates required:',plates_required, file=sys.stderr)
-            # Water is A1, A2, ... while Mytaq is B3, B2, ...
-            # returns wells: Mytaq list, water list
-            tw_pi = []
-            ww_pi = []
-            transfer_count = 0
-            plate_index = 1  # 1st taq/water plate
-            while transfer_count < wellCount:
-                if transfer_count != 0 and transfer_count%(max_transfers_per_well*3)==0:
-                    plate_index += 1
-                tw = taq_wells[transfer_count%len(taq_wells)]
-                ww = water_wells[transfer_count%len(water_wells)]
-                if not plate_barcodes:
-                    tw_pi.append((tw,plate_index))
-                    ww_pi.append((ww,plate_index))
-                else:
-                    tw_pi.append((tw,plate_barcodes[plate_index-1]))
-                    ww_pi.append((ww,plate_barcodes[plate_index-1]))
-                transfer_count += 1
-            return tw_pi, ww_pi
+        water_wells = ['A'+c for c in '123']
+        taq_wells = ['B'+c for c in '123']
+        #print("water wells", water_wells, file=sys.stdout)
+        # calculate whether we have enough wells, volumes in nanolitres
+        dv = PicklistSrc.deadvol[plateType]
+        # initial well volume is 2800uL per well in a full 6 well plate
+        transfers_per_well = [(2800-dv)*1000//v for v in (voltaq, volh2o)]
+        max_transfers_per_well = min(transfers_per_well)  # worst case scenario
+        taq_wells_required, water_wells_required = [(wellCount+c-1)//c for c in transfers_per_well]
+        plates_required = (max([taq_wells_required, water_wells_required])//3)+1
+        #print('Plates required:',plates_required, file=sys.stdout)
+        # Water is A1, A2, ... while Mytaq is B3, B2, ...
+        # returns wells: Mytaq list, water list
+        tw_pi = []
+        ww_pi = []
+        transfer_count = 0
+        plate_index = 1  # 1st taq/water plate
+        while transfer_count < wellCount:
+            if transfer_count != 0 and transfer_count%(max_transfers_per_well*3)==0:
+                plate_index += 1
+            tw = taq_wells[transfer_count%len(taq_wells)]
+            ww = water_wells[transfer_count%len(water_wells)]
+            if not plate_barcodes:
+                tw_pi.append((tw,plate_index))
+                ww_pi.append((ww,plate_index))
+            else:
+                tw_pi.append((tw,plate_barcodes[plate_index-1]))
+                ww_pi.append((ww,plate_barcodes[plate_index-1]))
+            transfer_count += 1
+        return tw_pi, ww_pi
         #    tw = [taq_wells[i%len(taq_wells)] for i in range(wellCount)]
         #    ww = [water_wells[i%len(water_wells)] for i in range(wellCount)]
-            #print(set(tw), set(ww), file=sys.stderr)
+            #print(set(tw), set(ww), file=sys.stdout)
         #    return tw, ww
     except Exception as exc:
         output_error(exc, msg='Error in echo_primer.mytaq2')
@@ -242,15 +243,15 @@ def main():
     try:
         args.pcr = [file_io.guard_pbc(p) for p in args.pcr]
     except file_io.ExistingGuardError as e:
-        print(e, file=sys.stderr)
+        print(e, file=sys.stdout)
     try:
         args.dna = [file_io.guard_pbc(d) for d in args.dna] 
     except file_io.ExistingGuardError as e:
-        print(e, file=sys.stderr)
+        print(e, file=sys.stdout)
     try:
         args.taq = [file_io.guard_pbc(t) for t in args.taq]
     except file_io.ExistingGuardError as e:
-        print(e, file=sys.stderr)
+        print(e, file=sys.stdout)
 
     
     def getdir(path):
@@ -268,7 +269,7 @@ def main():
             # the following may fail!
             return next(fn for fn in (os.path.normpath(os.path.join(d, args.workdir)) for d in (parent, envopt)) if check(fn))
         except:
-            print("target directory {} not found.\n".format(args.workdir), file=sys.stderr)
+            print("target directory {} not found.\n".format(args.workdir), file=sys.stdout)
             return args.workdir
     
     try:
@@ -297,11 +298,11 @@ def main():
                 for bc, badset in badnimdata:
                     data = ' '.join(sorted(badset))
                     message += "expect barcode = {}, file contains {}\n".format(bc, data)
-                print(message, file=sys.stderr)
+                print(message, file=sys.stdout)
                 raise Exception(message='echo_primer: Inconsistent barcodes in DNA (Nimbus output) file')
         
             dnadict = dict(((x.srcplate, x.srcwell), (x.dstplate, x.dstwell)) for nt in nimbusTables for x in nt.data)
-            #print('<<< DNA dictionary >>>', dnadict, file=sys.stderr)
+            #print('<<< DNA dictionary >>>', dnadict, file=sys.stdout)
             # find and read Stage1 files - see also primercheck.py and its use in cgi-nimbus2.py
             #s1fns = ['Stage1-P{}.csv'.format(dnabc) for dnabc in args.dna]
             #s1type = Table.csvtype(s1fns[0], 'S1Rec')
@@ -367,7 +368,7 @@ def main():
             primer_output_rows = []
             for r in s2tab.data:
                 if r.primer not in primsrc.data:
-                    print('Cannot find', r.primer, 'in known primers', file=sys.stderr)
+                    print('Cannot find', r.primer, 'in known primers', file=sys.stdout)
                     continue
                 # cycle through available primer wells
                 primer_index = primer_uses[r.primer] % len(primsrc.data[r.primer])

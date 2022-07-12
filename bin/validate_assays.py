@@ -2,10 +2,10 @@
 """
 @created Dec 2021
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.15
-@version_comment: Error handling updated
-@last_edit: 2022-02-16
-@edit_comment: output in sorted order
+@version: 0.16
+@version_comment: adjusted paths relative to app directory
+@last_edit: 2022-05-05
+@edit_comment: 
 
 This code checks assay data (from the "library") for the NGS Geno application
 It then outputs a list of primers used and the number of times each one is needed (to aid 
@@ -14,14 +14,9 @@ It also outputs a second list of primers that were not seen in the assay list
 Cannot be run as a script. Program should import the Assays class only.
 """
 
-import os
-import glob
-import csv
-import itertools
-import sys
-import argparse
 from collections import Counter
-from util import output_error
+
+from bin.util import output_error
 
 class Assays:
     def __init__(self, assay_fn):

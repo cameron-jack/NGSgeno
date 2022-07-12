@@ -3,9 +3,9 @@
 """
 @created May 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.15 
-@version_comments: Error handling updated, new combined stage file format
-@last_edit: 2022-02-16
+@version: 0.16
+@version_comments: adjusted paths relative to app directory
+@last_edit: 2022-04-29
 @edit_comments: 
 
 Produce picklists for NGS Genotyping pipeline for the Echo robot.
@@ -34,11 +34,12 @@ import glob
 import collections
 import itertools
 import argparse
-import file_io
-from util import padwell, unpadwell
-from util import Table, CSVTable
-from util import output_error
-import stage2report as s2r
+
+import bin.file_io as file_io
+from bin.util import padwell, unpadwell
+from bin.util import Table, CSVTable
+from bin.util import output_error
+import bin.stage2report as s2r
    
     
 class PicklistSrc:
@@ -131,7 +132,7 @@ def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2', plate_barcodes=No
     try:
         water_wells = ['A'+c for c in '123']
         taq_wells = ['B'+c for c in '123']
-        #print("water wells", water_wells, file=sys.stderr)
+        #print("water wells", water_wells, file=sys.stdout)
         # calculate whether we have enough wells, volumes in nanolitres
         dv = PicklistSrc.deadvol[plateType]
         # initial well volume is 2800uL per well in a full 6 well plate
@@ -139,7 +140,7 @@ def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2', plate_barcodes=No
         max_transfers_per_well = min(transfers_per_well)  # worst case scenario
         taq_wells_required, water_wells_required = [(wellCount+c-1)//c for c in transfers_per_well]
         plates_required = (max([taq_wells_required, water_wells_required])//3)+1
-        #print('Plates required:',plates_required, file=sys.stderr)
+        #print('Plates required:',plates_required, file=sys.stdout)
         # Water is A1, A2, ... while Mytaq is B3, B2, ...
         # returns wells: Mytaq list, water list
         tw_pi = []
@@ -161,7 +162,7 @@ def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2', plate_barcodes=No
         return tw_pi, ww_pi
     #    tw = [taq_wells[i%len(taq_wells)] for i in range(wellCount)]
     #    ww = [water_wells[i%len(water_wells)] for i in range(wellCount)]
-        #print(set(tw), set(ww), file=sys.stderr)
+        #print(set(tw), set(ww), file=sys.stdout)
     #    return tw, ww
     except Exception as exc:
         output_error(exc, msg='Error in echo_barcode.my_taq2')
@@ -304,16 +305,16 @@ def i7i5alloc_rot(vol, wellcount):
         used_bc_pairs = set()
         combos = len(i7_bcs) * len(i5_bcs)
         if combos < wellcount:
-            print(f"Not enough barcode combos {combos} for wells requested {wellcount}", file=sys.stderr)
+            print(f"Not enough barcode combos {combos} for wells requested {wellcount}", file=sys.stdout)
             return
         while len(bc_info_pairs) < wellcount:     
             if len(i7s_empty) == len(i7s):
-                print("i7 wells contain insufficient volume for the number of experiment wells", file=sys.stderr)
-                print(f"Diagnostic. i7s_empty:{i7s_empty},i5s_empty{i5s_empty},used BCs:{len(used_bc_pairs)}", file=sys.stderr)
+                print("i7 wells contain insufficient volume for the number of experiment wells", file=sys.stdout)
+                print(f"Diagnostic. i7s_empty:{i7s_empty},i5s_empty{i5s_empty},used BCs:{len(used_bc_pairs)}", file=sys.stdout)
                 return
             elif len(i5s_empty) == len(i5s):
-                print("i5 wells contain insufficient volume for the number of experimental wells", file=sys.stderr)
-                print(f"Diagnostic. i7s_empty:{i7s_empty},i5s_empty{i5s_empty},used BCs:{len(used_bc_pairs)}", file=sys.stderr)
+                print("i5 wells contain insufficient volume for the number of experimental wells", file=sys.stdout)
+                print(f"Diagnostic. i7s_empty:{i7s_empty},i5s_empty{i5s_empty},used BCs:{len(used_bc_pairs)}", file=sys.stdout)
                 return
             i7 = next(i7gen)
             i5 = next(i5gen)
@@ -339,7 +340,7 @@ def i7i5alloc_rot(vol, wellcount):
             used_bc_pairs.add((i7[0],i5[0]))
         #i5gen = (x[:3] for cnt, xs in zip(alloc, i5s) for x in [xs]*cnt)
         #res = list(zip(i7gen, i5gen))
-        print(bc_info_pairs, file=sys.stderr)
+        print(bc_info_pairs, file=sys.stdout)
         return bc_info_pairs
         #resset = frozenset(tuple(x[0] for x in xs) for xs in res)
         #assert len(resset)==wellcount # all i7-i5 pairs are unique
@@ -428,7 +429,7 @@ def main():
     try:
         args.taq = [file_io.guard_pbc(t) for t in args.taq]
     except file_io.ExistingGuardError as e:
-        print(e, file=sys.stderr)
+        print(e, file=sys.stdout)
     
     
     def getdir(path):
@@ -465,7 +466,7 @@ def main():
             
         bcvol = 175 # nanolitres
         bcalloc = i7i5alloc_rot(bcvol, len(s2tab.data))
-        print(bcalloc, file=sys.stderr)
+        print(bcalloc, file=sys.stdout)
         
         def mks3rec(s2rec, bcrec):
             return 

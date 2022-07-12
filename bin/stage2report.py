@@ -3,9 +3,9 @@
 """
 @created June 2020
 @author: Bob Buckley and Cameron Jack, ANU Bioinformatics Consultancy
-@version: 0.15
-@version_comment: Standardised custom/mouse stage file format. Error handling updated.
-@last_edit:
+@version: 0.16
+@version_comment: adjusted paths relative to app directory
+@last_edit: 2022-04-29
 @edit_comment:
 
 Draw 384-well plates using Chart.js
@@ -23,8 +23,9 @@ import csv
 import argparse
 import itertools
 import collections
-import file_io
-from util import output_error
+
+import bin.file_io as file_io
+from bin.util import output_error
 
 # Template for the HTML file
 fmtReport = """
@@ -187,19 +188,19 @@ def build_report(filename, hdr, data, is_custom=False):
                 try:
                     segs.append('sampleBarcode: '+file_io.unguard_cbc(rs[0].sampleBarcode))
                 except file_io.UnguardedBarcodeError:
-                    print('WARNING! Unguarded custom barcode:', rs[0].sampleBarcode, file=sys.stderr)
+                    print('WARNING! Unguarded custom barcode:', rs[0].sampleBarcode, file=sys.stdout)
                     segs.append('sampleBarcode: '+rs[0].sampleBarcode)               
             else:
                 try:
                     segs.append("mouseBarcode: "+file_io.unguard_mbc(rs[0].mouseBarcode))
                 except file_io.UnguardedBarcodeError:
-                    print('WARNING! Unguarded Musterer barcode:', rs[0].mouseBarcode, file=sys.stderr)
+                    print('WARNING! Unguarded Musterer barcode:', rs[0].mouseBarcode, file=sys.stdout)
                     segs.append('mouseBarcode: '+rs[0].mouseBarcode)
                 segs.append("strain: "+rs[0].strainName)
             try:
                 segs.append("assay primers: "+', '.join((file_io.unguard_pbc(r.pcrplate)+'-'+r.pcrwell+"="+r.primer for r in rs)))
             except file_io.UnguardedBarcodeError as e:
-                print('WARNING! Unguarded PCR plate barcode:', e, file=sys.stderr)
+                print('WARNING! Unguarded PCR plate barcode:', e, file=sys.stdout)
                 segs.append("assay primers: "+', '.join((r.pcrplate+'-'+r.pcrwell+"="+r.primer for r in rs)))
             return '; '.join(segs)
     
@@ -209,7 +210,7 @@ def build_report(filename, hdr, data, is_custom=False):
             try:
                 fs.append(makefigure(figno, "DNA/Sample Plate "+file_io.unguard_pbc(pn)))
             except file_io.UnguardedBarcodeError:
-                print('WARNING! Unguarded DNA/Sample plate barcode:',pn, file=sys.stderr)
+                print('WARNING! Unguarded DNA/Sample plate barcode:',pn, file=sys.stdout)
                 fs.append(makefigure(figno, "DNA/Sample Plate "+pn))
             wdict = dnadata[pn]
             argx = [
@@ -220,7 +221,7 @@ def build_report(filename, hdr, data, is_custom=False):
             try:
                 ch.append(makeplate(figno, argx, title="DNA/Sample Plate "+file_io.unguard_pbc(pn)))
             except file_io.UnguardedBarcodeError:
-                print('WARNING! Unguarded DNA/Sample plate barcode:', pn, file=sys.stderr)
+                print('WARNING! Unguarded DNA/Sample plate barcode:', pn, file=sys.stdout)
                 ch.append(makeplate(figno, argx, title="DNA/Sample Plate "+pn))
         
         def mklab(r, is_custom=False):
@@ -230,13 +231,13 @@ def build_report(filename, hdr, data, is_custom=False):
                 try:
                     segs.append('sampleBarcode: '+file_io.unguard_cbc(r.sampleBarcode))
                 except file_io.UnguardedBarcodeError as e:
-                    print('WARNING! Unguarded sample barcode:',e.message ,file=sys.stderr)
+                    print('WARNING! Unguarded sample barcode:',e.message ,file=sys.stdout)
                     segs.append('sampleBarcode: '+r.sampleBarcode)
             else:
                 try:
                     segs.append('mouseBarcode: '+file_io.unguard_mbc(r.mouseBarcode))
                 except file_io.UnguardedBarcodeError as e:
-                    print('WARNING! Unguarded Musterer barcode:', e.message,file=sys.stderr)
+                    print('WARNING! Unguarded Musterer barcode:', e.message,file=sys.stdout)
                     segs.append('mouseBarcode: '+r.mouseBarcode)
                 segs.append('strain: '+r.strainName)
                 if r.mouseAssays!=r.primer:
@@ -245,12 +246,12 @@ def build_report(filename, hdr, data, is_custom=False):
             try:
                 segs.append("DNA plate, well: "+file_io.unguard_pbc(r.dnaplate)+', '+r.dnawell)
             except file_io.UnguardedBarcodeError as e:
-                print('WARNING! Unguarded DNA plate barcode:', e.message, file=sys.stderr)
+                print('WARNING! Unguarded DNA plate barcode:', e.message, file=sys.stdout)
                 segs.append("DNA plate, well: "+r.dnaplate+', '+r.dnawell)
             try:    
                 segs.append("EP plate, well: "+file_io.unguard_pbc(r.EPplate)+", "+r.EPwell)
             except file_io.UnguardedBarcodeError as e:
-                print('WARNING! Unguarded EP plate barcode:', e.message, file=sys.stderr)
+                print('WARNING! Unguarded EP plate barcode:', e.message, file=sys.stdout)
                 segs.append("EP plate, well: "+r.EPplate+", "+r.EPwell)
             return '; '.join(segs)
               
@@ -260,7 +261,7 @@ def build_report(filename, hdr, data, is_custom=False):
             try:
                 fs.append(makefigure(figno, "PCR Plate "+file_io.unguard_pbc(pn)))
             except file_io.UnguardedBarcodeError:
-                print('WARNING! Unguarded PCR plate barcode:', pn, file=sys.stderr)
+                print('WARNING! Unguarded PCR plate barcode:', pn, file=sys.stdout)
                 fs.append(makefigure(figno, "PCR Plate "+pn))
 
             welz = set((ord('P')-ord(x.pcrwell[0]), int(x.pcrwell[1:])-1) for x in pcrdata[pn])
@@ -271,7 +272,7 @@ def build_report(filename, hdr, data, is_custom=False):
             try:
                 ch.append(makeplate(figno, argx, title="PCR Plate "+file_io.unguard_pbc(pn)))
             except file_io.UnguardedBarcodeError:
-                print('WARNING! Unguarded PCR plate barcode:', pn, file=sys.stderr)
+                print('WARNING! Unguarded PCR plate barcode:', pn, file=sys.stdout)
                 ch.append(makeplate(figno, argx, title="PCR Plate "+pn))
             
         tablefmt = """<table>

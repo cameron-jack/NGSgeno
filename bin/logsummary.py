@@ -3,7 +3,7 @@
 """
 @created Apr 2020
 @author: Bob Buckley, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.15
+@version: 0.16
 @version_comment: 
 @last_edit:
 @edit_comment:
@@ -169,7 +169,7 @@ def main():
 
     fns = glob.glob(os.path.join(args.mergedir, "*.log"))
     
-    print(len(fns), "log files", file=sys.stderr)
+    print(len(fns), "log files", file=sys.stdout)
     datavec = tuple(getvalues(fn) for fn in fns)
     
     # output the CSV file

@@ -3,9 +3,9 @@
 """
 @created: Jan 2022
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.15
-@version_comment: Error handling has changed from custom exception type to simple error message writing
-@last_edit: 2022-02-16
+@version: 0.16
+@version_comment: Adjusted paths for app folder
+@last_edit: 2022-05-05
 @edit_comment: 
 
 A collection of code functions and definitions that are used throughout the pipeline
@@ -15,23 +15,117 @@ import os
 import sys
 import glob
 import collections
-import platform
-import re
 import subprocess
 import traceback
 from pathlib import PurePath
+from collections import defaultdict
 
-from file_io import GUARD_TYPES
+import bin.file_io as file_io 
+from bin.file_io import GUARD_TYPES
+
+### Set up SSL/TLS certificate
+try:
+    from OpenSSL import crypto, SSL
+except:
+    pass
+
+def cert_gen(emailAddress="emailAddress", commonName="commonName", countryName="NT",
+        localityName="localityName", stateOrProvinceName="stateOrProvinceName",
+        organizationName="organizationName", organizationUnitName="organizationUnitName",
+        serialNumber=0, validityStartInSeconds=0, validityEndInSeconds=10*365*24*60*60,
+        KEY_FILE = "private.key", CERT_FILE="selfsigned.crt"):
+    """
+    Generate an SSL/TLS certificate if we don't already have one. Very important as we send passwords around.
+    can look at generated file using openssl:
+        openssl x509 -inform pem -in selfsigned.crt -noout -text
+    """
+   
+    # create a key pair
+    k = crypto.PKey()
+    k.generate_key(crypto.TYPE_RSA, 4096)
+    # create a self-signed cert
+    cert = crypto.X509()
+    cert.get_subject().C = countryName
+    cert.get_subject().ST = stateOrProvinceName
+    cert.get_subject().L = localityName
+    cert.get_subject().O = organizationName
+    cert.get_subject().OU = organizationUnitName
+    cert.get_subject().CN = commonName
+    cert.get_subject().emailAddress = emailAddress
+    cert.set_serial_number(serialNumber)
+    cert.gmtime_adj_notBefore(0)
+    cert.gmtime_adj_notAfter(validityEndInSeconds)
+    cert.set_issuer(cert.get_subject())
+    cert.set_pubkey(k)
+    cert.sign(k, 'sha512')
+    with open(CERT_FILE, "wt") as f:
+        f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert).decode("utf-8"))
+    with open(KEY_FILE, "wt") as f:
+        f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, k).decode("utf-8"))
+
 
 # Global
-CONFIG_PATH = PurePath('../library/config.ini')
+CONFIG_PATH = PurePath('library/config.ini')  # everything is now relative to the app directory
 ERROR_FN = 'error_msg.txt'
+
+# default transfer volumes for liquid handling. These are loaded into each experiment upon creation.
+DNA_VOL = 200
+PRIMER_VOL = 500
+PRIMER_TAQ_VOL = 1000
+PRIMER_WATER_VOL = 300
+BARCODE_VOL = 175
+BARCODE_TAQ_VOL = 2000
+BARCODE_WATER_VOL = 650
+DEAD_VOLS = {'384PP_AQ_BP': 50, '6RES_AQ_BP2': 700*1000}
+CAP_VOLS = {'384PP_AQ_BP': 12*1000, '6RES_AQ_BP2': 2800*1000}
     
 def output_error(exc, msg=''):
     with open(ERROR_FN, 'wt') as f:
         if msg:
-            f.write(str(msg))
+            f.write(exc, str(msg))
         f.write(traceback.format_exc())
+
+row_ordered_96 = []
+for r in [chr(65+i) for i in range(8)]:
+    for c in [str(j+1) for j in range(12)]:
+        row_ordered_96.append(r+c)
+
+row_ordered_384 = []
+for r in [chr(65+i) for i in range(16)]:
+    for c in [str(j+1) for j in range(24)]:
+        row_ordered_384.append(r+c)
+
+col_ordered_96 = []
+for c in [str(j+1) for j in range(12)]:
+    for r in [chr(65+i) for i in range(8)]:
+        col_ordered_96.append(r+c)
+
+col_ordered_384 = []
+for c in [str(j+1) for j in range(24)]:
+    for r in [chr(65+i) for i in range(16)]:
+        col_ordered_384.append(r+c)
+
+nimbus_ordered_96 = []
+for c in [str(j+1) for j in range(12)]:
+    for r in 'ACEGBDFH':
+        nimbus_ordered_96.append(r+c)
+
+
+def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied_wells: list=[]) -> defaultdict:
+    """ 
+    Required input: Experiment.plate_location_sample[plateid] dictionary of locations and samples for a single plate
+            "wells" is a required field.
+    Optional inputs: lists of denied assays and denied wells, which will be ignored in the calculation
+    Output: a dictionary of assays and their usage counts
+    """
+    assay_counts = defaultdict(int)
+    for well in location_sample['wells']:
+        if well not in denied_wells:
+            for assay in location_sample[well]['assays']:
+                if assay not in denied_assays:
+                    assay_counts[assay] += 1
+    return assay_counts
+ 
 
 # File choosers
 def get_mouse_ref():
@@ -77,7 +171,7 @@ class TemplateFiles():
                     cols = line.strip().split('\t')
                     self.files[cols[0]] = cols[1]
         if debug:
-            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stderr)
+            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stdout)
         self.cust_format = None # guard type for custom barcodes. Must be one of file_io.GUARD_TYPES
 
     def save_config(self):
@@ -94,10 +188,10 @@ class TemplateFiles():
                     cols = line.strip().split('\t')
                     self.files[cols[0]] = cols[1]
         else:
-            print("No file found: 'template_files.txt'", file=sys.stderr)
+            print("No file found: 'template_files.txt'", file=sys.stdout)
             return
         if debug:
-            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stderr)
+            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stdout)
 
     def set_mouse_files(self, ref=None, assay_list=None, conversions=None, save=False):
         """ set files specific to the mouse pipeline. If arguments are None, use defaults in library folder.
@@ -109,21 +203,21 @@ class TemplateFiles():
                 self.files['mouse_ref'] = primer_survey
             else:
                 print('Mouse reference sequences file', ref, 'not found! Using default:', 
-                        self.files['mouse_ref'], file=sys.stderr)    
+                        self.files['mouse_ref'], file=sys.stdout)    
         # mouse valid assay list
         self.files['mouse_assay_list'] = get_mouse_assaylist()
         if assay_list:
             if os.path.exists(assay_list):
                 self.files['mouse_assay_list'] = assay_list
             else:
-                print('Assay list file', assay_list, 'not found! Using default:', self.files['mouse_assay_list'], file=sys.stderr)
+                print('Assay list file', assay_list, 'not found! Using default:', self.files['mouse_assay_list'], file=sys.stdout)
         self.files['mouse_conversions'] = get_mouse_conversions()
         # mouse assay old/new conversions
         if conversions:
             if os.path.exists(conversions):
                 self.files['mouse_conversions'] = conversions
             else:
-                print('Conversions file', conversions, 'not found! Using default:', self.files['mouse_conversions'], file=sys.stderr)
+                print('Conversions file', conversions, 'not found! Using default:', self.files['mouse_conversions'], file=sys.stdout)
         if save:
             self.save_config()
 
@@ -133,17 +227,17 @@ class TemplateFiles():
             if os.path.exists(manifest):
                 self.files['cust_manifest'] = manifest
             else:
-                print('Custom manifest file', manifest, 'not found! No custom manifest set', file=sys.stderr)
+                print('Custom manifest file', manifest, 'not found! No custom manifest set', file=sys.stdout)
         if assays:
             if os.path.exists(assays):
                 self.files['cust_assay_list'] = assays
             else:
-                print('Custom assay list file', assays, 'not found! No custom assay list set', file=sys.stderr)
+                print('Custom assay list file', assays, 'not found! No custom assay list set', file=sys.stdout)
         if ref:
             if os.path.exists(ref):
                 self.files['cust_ref'] = cust_ref
             else:
-                print('Custom reference sequence file', ref, 'not found! No custom reference set', file=sys.stderr)   
+                print('Custom reference sequence file', ref, 'not found! No custom reference set', file=sys.stdout)   
         if save:
             self.save_config()
 
@@ -151,7 +245,7 @@ class TemplateFiles():
         """ sets the default interpretation of unguarded barcodes """
         if format not in GUARD_TYPES:
             print('Guard type not recognised for custom manifest format', format,
-                    'defaulting to',self.cust_format, file=sys.stderr)
+                    'defaulting to',self.cust_format, file=sys.stdout)
         else:
             self.cust_format = format
     
@@ -162,13 +256,13 @@ class TemplateFiles():
             if os.path.exists(primer_plate):
                 self.files['primer_plate'] = primer_plate
             else:
-                print('Primer plate layout', primer_plate,'not found! Using default:', self.files['primer_plate'], file=sys.stderr)
+                print('Primer plate layout', primer_plate,'not found! Using default:', self.files['primer_plate'], file=sys.stdout)
         self.files['i7i5_plate'] = get_mouse_i7i5_layout()
         if i7i5_plate:
             if os.path.exists(i7i5_plate):
                 self.files['i7i5_plate'] = i7i5_plate
             else:
-                print('i7i5 barcode plate layout', i7i5_plate,'not found! Using default:', self.files['i7i5_plate'], file=sys.stderr)
+                print('i7i5 barcode plate layout', i7i5_plate,'not found! Using default:', self.files['i7i5_plate'], file=sys.stdout)
         if save:
             self.save_config()
 
@@ -179,13 +273,13 @@ class TemplateFiles():
             if os.path.exists(primer_survey):
                 self.files['primer_survey'] = primer_survey
             else:
-                print('Primer survey file', primer_survey, 'not found! Using default:', self.files['primer_survey'], file=sys.stderr)
+                print('Primer survey file', primer_survey, 'not found! Using default:', self.files['primer_survey'], file=sys.stdout)
         self.files['i7i5_survey'] = get_mouse_i7i5_survey()
         if i7i5_survey:
             if os.path.exists(i7i5_survey):
                 self.files['i7i5_survey'] = i7i5_survey
             else:
-                print('i7i5 barcode survey file', i7i5_survey, 'not found! Using default:', self.files['i7i5_survey'], file=sys.stderr)
+                print('i7i5 barcode survey file', i7i5_survey, 'not found! Using default:', self.files['i7i5_survey'], file=sys.stdout)
         if save:
             self.save_config()
          
@@ -404,7 +498,7 @@ class SourcePlates(dict):
         while self[cx][-1] < self.deadvol[self[cx][1]]+vol:
             self[cx].shift() # remove depleted wells
             if not self[cx]:
-                print("run out of "+cx, file=sys.stderr)
+                print("run out of "+cx, file=sys.stdout)
                 exit(1)
         self[cx][-1] -= vol
         return self[cx][:-1]+(vol,)

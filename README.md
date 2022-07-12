@@ -6,13 +6,17 @@ Integrates robotic sample preparation and Illumin Miseq DNA sequencing of amplic
 
 BBtools https://jgi.doe.gov/data-and-tools/bbtools/
 Java https://www.java.com/en/download/manual.jsp
-Python 3.8 or newer
+Python 3.8 or newer (3.10+ recommended)
 Microsoft Edge is the default browser but this can be changed in ngsrun.bat
 
 Python modules:
-Openpyxl
-Biopython
-Requests
+openpyxl - for reading/writing excel files
+biopython - sequence matching 
+requests - connecting to DBs
+jsonpickle - save/load experiment info
+streamlit - web interface
+st_aggrid - interactive web tables
+pandas - dataframes to support web tables?
 
 ## To do
 * Add column to per-well GT outputs for excess alleles in sequencing
@@ -32,6 +36,7 @@ Pipeline version: 0.16
 * Plan and track the whole "experiment"
 * Keep a "run log" which allows complete re-running of an experiment
 * There are no longer any "standard" primer plates - all primer plates are built for purpose, after the Nimbus stage concludes
+* Requirements file added for dependencies
 
 Pipeline version: 0.15
 * Initial attempt to support Musterer mice in custom manifests (running on the mouse pipeline)

@@ -2,9 +2,9 @@
 """
 @created: Nov 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.15
-@version_comment:
-@last_edit: 
+@version: 0.16
+@version_comment: adjusted paths relative to app directory
+@last_edit: 2022-04-29
 @edit_comment: 
 
 Program to combine Echo Survey files with coreresponding plate description files 
@@ -20,6 +20,7 @@ The final argument is the name of the destination file for the rows of combined 
 import sys
 import csv
 import itertools
+from bin.util import output_error
 
 def takeuntil(predicate, iterable):
     """ like takewhile() but returns last value """
@@ -92,8 +93,8 @@ def main():
     """
     try:
         if len(sys.argv)%2 or len(sys.argv)<4: # we need an odd number of filenames
-            print("usage:", sys.argv[0], "[platedesc survey] ... destination", file=sys.stderr)
-            print("Provided: ", sys.argv, file=sys.stderr)
+            print("usage:", sys.argv[0], "[platedesc survey] ... destination", file=sys.stdout)
+            print("Provided: ", sys.argv, file=sys.stdout)
             sys.exit(1)
     
             # open the destination file (last filename)
@@ -131,7 +132,7 @@ def main():
                     # print("Plate description file =", dscfn)
                     # print("matched wells:", cnt)
                     if missing:
-                         print(len(missing), "missing primer names for wells:", missing, file=sys.stderr)
+                         print(len(missing), "missing primer names for wells:", missing, file=sys.stdout)
                     #     print("wells =", sorted(dictsvy.keys()))
                     # print()
         return

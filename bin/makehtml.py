@@ -3,23 +3,212 @@
 """
 @created: Jul 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy
-@version: 0.15
-@version_comment:
+@version: 0.16
+@version_comment: renamed template files to Windows friendly .tpl
 @last_edit:
 @edit_comment:
 
 Create SVG plate images, Summary and Result Table HTML files for sequence counts info.
 Swap r.assays/r.strainName on custom/mouse data
 """
-templatefn = 'ResultPlate.templ' # name of template file!
-rtfn = 'ResultTable.templ'
+
 
 import os
 import sys         
 import csv
 import json
 import collections
-from util import output_error
+from bin.util import output_error, col_ordered_96, col_ordered_384
+from bin.file_io import unguard
+     
+templatefn = os.path.join('library','ResultPlate.tpl') # name of template file
+rtfn = os.path.join('library','ResultTable.tpl')
+
+def generate_heatmap_html(exp, plate_id, scaling=1.0):
+    """ Given a given plate_id and the experiment it belongs in, generate a heatmap style plate image
+    In future, add options for which things to highlight or scale, etc.
+    Return a string containing html for the heatmap
+    """
+    width = str(int(600*scaling)) + 'px'
+    height = str(int(400*scaling)) + 'px'
+    font_axis = str(int(20*scaling))
+    font_label = str(int(16*scaling))
+    font_popup = str(int(14*scaling))
+    header_str = """
+    <!-- Styles -->
+    <style>
+    #chartdiv {
+      width: WWWWWW;
+      height: HHHHHH;
+      background-color: grey;
+      background-size: 95%;
+      border: 10px;
+      padding: 10px;
+      border-style: solid;
+      border-color: darkgrey;
+      border-radius: 25px;
+      font-family: helvetica;
+    }
+    h1 {
+      font-family: helvetica;
+    }
+    h2 {
+      font-family: helvetica;
+    }
+    p {
+      font-family: helvetica;
+    }
+
+    .lbox{
+      display:inline-block;
+      height: 90vh;
+       width: 59%;
+        background-color: white;
+        overflow: hidden;
+    }
+
+    .rbox{
+      display:inline-block;
+      height: 80vh;
+      width: 39%;
+      transform: translate(0%, -12%);
+      background-color: lightgrey;
+      overflow: scroll;
+      font-size: FPFPFP;
+      font-family: helvetica;
+    }
+
+
+    </style>
+
+    <!-- Resources -->
+    <script src="https://www.amcharts.com/lib/4/core.js"></script>
+    <script src="https://www.amcharts.com/lib/4/charts.js"></script>
+    <script src="https://www.amcharts.com/lib/4/themes/animated.js"></script>
+
+    <!-- Chart code -->
+    <script>
+    am4core.ready(function() {
+
+    // Themes begin
+    am4core.useTheme(am4themes_animated);
+    // Themes end
+
+    var chart = am4core.create("chartdiv", am4charts.XYChart);
+    chart.hiddenState.properties.opacity = 0; // this creates initial fade-in
+
+    chart.maskBullets = false;
+
+    var xAxis = chart.xAxes.push(new am4charts.CategoryAxis());
+    var yAxis = chart.yAxes.push(new am4charts.CategoryAxis());
+
+    xAxis.dataFields.category = "x";
+    yAxis.dataFields.category = "y";
+
+    xAxis.renderer.grid.template.disabled = true;
+    xAxis.renderer.minGridDistance = 50;
+    xAxis.renderer.fontSize=FAFAFA;
+    xAxis.renderer.opposite=true;
+
+
+    yAxis.renderer.grid.template.disabled = true;
+    yAxis.renderer.inversed = true;
+    yAxis.renderer.minGridDistance = 50;
+    yAxis.renderer.fontSize=FAFAFA;
+
+    var series = chart.series.push(new am4charts.ColumnSeries());
+    series.dataFields.categoryX = "x";
+    series.dataFields.categoryY = "y";
+    series.dataFields.value = "value";
+    series.sequencedInterpolation = true;
+    series.defaultState.transitionDuration = 1000;
+
+    // Set up column appearance
+    var column = series.columns.template;
+    column.strokeWidth = 5;
+    column.strokeOpacity = 1;
+    column.stroke = am4core.color("lightgrey");
+    //column.tooltipText = "{y}{x}: {value.workingValue.formatNumber('#.')}";
+    column.tooltipText = "{y}{x}: ID: {barcode}\\nStrain: {strain}\\nAssays: {assays}\\nSex: {sex}\\nObserved GT: {gts}";
+    column.width = am4core.percent(85);
+    column.height = am4core.percent(85);
+    column.column.cornerRadius(60, 60, 60, 60);
+    column.propertyFields.fill = "color";
+
+    // Set up bullet appearance
+    //var bullet1 = series.bullets.push(new am4charts.CircleBullet());
+    //bullet1.circle.propertyFields.radius = "value";
+    //bullet1.circle.fill = am4core.color("#FFF");
+    //bullet1.circle.strokeWidth = 0;
+    //bullet1.circle.fillOpacity = 0.4;
+    //bullet1.interactionsEnabled = false;
+
+    var bullet2 = series.bullets.push(new am4charts.LabelBullet());
+    bullet2.label.text = "{y}{x}";
+    bullet2.label.fill = am4core.color("#000");
+    bullet2.zIndex = 1;
+    bullet2.fontSize = FLFLFL;
+    bullet2.interactionsEnabled = false;
+
+    // define colors
+    var colors = {
+        "empty": "lightgrey",
+        "passed": "#33ff33",
+        "problem": "#ffff33",
+        "failed": "#ff1111",
+        "critical": "#ca0101",
+        "bad": "#e17a2d",
+        "medium": "#e1d92d",
+        "good": "#5dbe24",
+        "verygood": "#0b7d03"
+    };
+    """.replace('WWWWWW',width).replace('HHHHHH',height).replace('FAFAFA',font_axis).replace('FLFLFL', font_label).replace('FPFPFP',font_popup)
+
+    purpose = 'Unknown purpose'
+    if 'purpose' in exp.plate_location_sample[plate_id]:
+        purpose = exp.plate_location_sample[plate_id]['purpose']
+
+    chart_data_str = "chart.data = ["
+    well_entries = []
+    for well in col_ordered_96:
+        entry_str = f'"y" : "{well[0].upper()}", "x" : "{well[1:]}"'
+        if well not in exp.plate_location_sample[plate_id]:
+            entry_str += ', "color" : colors.empty'
+        else:
+            entry_str += ', "color" : colors.passed'
+            sample_data = exp.plate_location_sample[plate_id][well]
+            for field in ['barcode', 'sex', 'strain', 'assays', 'gts']:
+                if field in sample_data:
+                    data = sample_data[field]
+                    if data:
+                        entry_str += f', "{field}" : "{str(data)}"'
+        well_entries.append(entry_str)
+    chart_data_str += '\n{' + '},\n{'.join(well_entries) + '}\n' + '];\n'
+    
+
+    footer_str = """
+    var baseWidth = Math.min(chart.plotContainer.maxWidth, chart.plotContainer.maxHeight);
+    var maxRadius = baseWidth / Math.sqrt(chart.data.length) / 2 - 2; // 2 is jast a margin
+    series.heatRules.push({ min: 10, max: maxRadius, property: "radius", target: bullet1.circle });
+
+    chart.plotContainer.events.on("maxsizechanged", function() {
+        var side = Math.min(chart.plotContainer.maxWidth, chart.plotContainer.maxHeight);
+        bullet1.circle.clones.each(function(clone) {
+            clone.scale = side / baseWidth;
+        })
+    })
+
+    }); // end am4core.ready()
+    </script>
+
+    <!-- HTML -->
+    <body>
+        <h1 align="center">PUPUPU Plate PPPPPP</h1>
+        <div id="chartdiv"></div>
+    </body>
+    """.replace('PUPUPU', purpose).replace('PPPPPP', str(unguard(plate_id, silent=True)))
+
+    return header_str + chart_data_str + footer_str
 
 def rowdata(r):
     # this has to match the headers in the table template file

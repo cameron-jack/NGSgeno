@@ -1,0 +1,7 @@
+openpyxl
+biopython
+requests
+jsonpickle
+streamlit
+st_aggrid
+pandas

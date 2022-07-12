@@ -202,14 +202,14 @@ def build_nimbus_reports(plate_bcs, is_custom=False):
                 for row in src:
                     fields = [field.strip() for field in row]
                     if any(field == '' for field in fields):
-                        print(f"Incomplete sample entry in {nimbus_fn}: {fields}", file=sys.stderr)
+                        print(f"Incomplete sample entry in {nimbus_fn}: {fields}", file=sys.stdout)
                         continue
                     #if not file_io.is_guarded(fields[3]) and not is_old_format:
-                    #    print('WARNING: Possibly unguarded or incorrect sample barcode.', fields[3], file=sys.stderr)
+                    #    print('WARNING: Possibly unguarded or incorrect sample barcode.', fields[3], file=sys.stdout)
                     try:
                         records.append(Rec(*fields))
                     except TypeError:
-                        print('Bogus data line:',fields, file=sys.stderr)
+                        print('Bogus data line:',fields, file=sys.stdout)
                         exit(1)
                 
             plate_set = sorted(set([x.gpbc for x in records]))
@@ -265,14 +265,14 @@ def main():
                 try:
                     guarded_pbcs.append(file_io.guard_pbc(pbc))
                 except TypeException as t_ex:
-                    print(t_ex, file=sys.stderr)
+                    print(t_ex, file=sys.stdout)
                     exit(1)
                 except file_io.EmptyBarcodeError as ebe_ex:
-                    print(ebe_ex, file=sys.stderr)
+                    print(ebe_ex, file=sys.stdout)
                     exit(1)
                 except file_io.ExistingGuardError as ege_ex:
                     # We might want to check if they already have plate guards and let them through
-                    print(ege_ex, file=sys.stderr)
+                    print(ege_ex, file=sys.stdout)
                     exit(1)
         build_nimbus_reports(guarded_pbcs, is_custom=args.custom)
     except Exception as exc:
