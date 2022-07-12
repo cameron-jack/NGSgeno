@@ -522,7 +522,7 @@ def main():
                             barcodes_remain, barcodes_avail, barcode_vol_okay = st.session_state['experiment'].get_barcode_remaining_available_volume(assay_usage=assay_usage)
                         else:
                             reactions, primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
-                                0,{},0,0,0,0 # 'NA', 'NA', 'NA', 'NA', 'NA', 'NA'
+                                0,{},0,0,0,0 
                             barcodes_remain, barcodes_avail, barcode_vol_okay =\
                                     st.session_state['experiment'].get_barcode_remaining_available_volume()
                         primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
