@@ -22,7 +22,7 @@ import sys
 import cgi
 import cgitb
 import subprocess
-from cgi_util import port, nl, stage1, stage2, stage3, getinfo, match_nimbus_to_echo_files
+from cgi_util import port, nl, stage1, stage2, stage3, getinfo 
 
 # Ugly hack to find things in ../bin
 from pathlib import Path
@@ -32,7 +32,7 @@ sys.path.append(os.path.join(file.parents[1],'bin'))
 from musterer import get_plate
 import validate_assays
 import file_io
-from util import TemplateFiles, output_error
+from util import TemplateFiles, output_error, match_nimbus_to_echo_files
 import nimbus
 
 
@@ -368,8 +368,8 @@ def main():
                 if len(pxs) == 0:
                     print(htmlerr.format(errs="    <p>\n"+"No samples found, did you enter any plate barcodes?"+"\n    </p>", port=port))
                     return
-                #print('pxs:', pxs, file=sys.stderr)
-                #print('pids', pids, file=sys.stderr)
+                #print('pxs:', pxs, file=sys.stdout)
+                #print('pids', pids, file=sys.stdout)
                 plates_data = [(n, px[0]['plateId'], px[0]) for n,px in enumerate(pxs)]
 
             elif 'ep1' in fields:
@@ -410,7 +410,7 @@ def main():
                 dnacnt, plist, unk = nimbus.nimbus_custom(dnaBC, plates_data, assay_info)
             else:
                 dnacnt, plist, unk = nimbus.nimbus(dnaBC, plates_data, assay_info)
-            #print("Plates_data", plates_data, file=sys.stderr)
+            #print("Plates_data", plates_data, file=sys.stdout)
             
         # now wait for the user to identify the Nimbus output file(s)
         xbc = match_nimbus_to_echo_files(templates)
@@ -468,7 +468,7 @@ def main():
         pcrx = '\n\t'.join(pcrfmt.format(i) for i in range(1,pc+1))
     else:
         # should never get here
-        print('Error in cgi-nimbus.py - no selection made', file=sys.stderr)
+        print('Error in cgi-nimbus.py - no selection made', file=sys.stdout)
 
 if __name__=="__main__":
     try:

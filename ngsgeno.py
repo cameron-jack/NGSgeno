@@ -56,6 +56,8 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250):
     Returns:
         dict: The selected row
     """
+    if 'view_box_size' in st.session_state:
+        grid_height = st.session_state['view_box_size']
     options = GridOptionsBuilder.from_dataframe(
         df, enableRowGroup=True, enableValue=True, enablePivot=True
     )
@@ -132,6 +134,82 @@ def delete_entries(exp, entries):
     print('delete_entries ran')
 
 
+def display_reaction_stats(assay_usage, show_general=True, show_primers=True):
+    if assay_usage:
+        primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
+                st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
+        reactions = sum([v for v in assay_usage.values()])
+        barcodes_remain, barcodes_avail, barcode_vol_okay = st.session_state['experiment'].get_barcode_remaining_available_volume(assay_usage=assay_usage)
+    else:
+        reactions, primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
+            0,{},0,0,0,0 
+        barcodes_remain, barcodes_avail, barcode_vol_okay =\
+                st.session_state['experiment'].get_barcode_remaining_available_volume()
+    primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
+    if show_general:
+        with st.expander('Required components: primers, barcodes, taq and water:', expanded=True):
+            taq_water_avail_PCR1 = st.session_state['experiment'].get_taq_water_avail(1)
+            taq_water_avail_PCR2 = st.session_state['experiment'].get_taq_water_avail(2)
+            req_cols = st.columns([5,2,5,2,5,2,5,2])
+            if 'assay_filter' not in st.session_state:
+                st.session_state['assay_filter'] = 1
+            if st.session_state['assay_filter'] == 1:
+                req_cols[6].button('Filter assays', key='assay_filter_button', disabled=True)
+                unfilter_assays = req_cols[7].button('Unfilter assays', key='assay_unfilter_button')
+                if unfilter_assays:
+                    st.session_state['assay_filter'] = 0
+            req_cols[0].write('Required reaction wells')
+            req_cols[1].write(str(reactions))
+            req_cols[2].write('Required PCR plates')
+            req_cols[3].write(str(ceil(reactions/384)))
+            req_cols[4].write('PCR1 required taq volume')
+            req_cols[5].write(str(primer_taq_vol/1000)+' ul')
+            req_cols[6].write('PCR1 available taq volume')
+            req_cols[7].write(str(taq_water_avail_PCR1[0]/1000)+' ul')
+            req_cols[0].write('PCR1 required water volume')
+            req_cols[1].write(str(primer_water_vol/1000)+' ul')
+            req_cols[2].write('PCR1 available water volume')
+            req_cols[3].write(str(taq_water_avail_PCR1[1]/1000)+' ul')
+            req_cols[0].write('PCR2 required taq volume')
+            req_cols[1].write(str(barcode_taq_vol/1000)+' ul')
+            req_cols[2].write('PCR2 available taq volume')
+            req_cols[3].write(str(taq_water_avail_PCR2[0]/1000)+' ul')
+            req_cols[4].write('PCR2 required water volume')
+            req_cols[5].write(str(barcode_water_vol/1000)+' ul')
+            req_cols[6].write('PCR2 available water volume')
+            req_cols[7].write(str(taq_water_avail_PCR2[1]/1000)+' ul')
+            req_cols[0].write('Barcode pairs remaining')
+            req_cols[1].write(str(barcodes_remain))
+            req_cols[2].write('Barcode pairs available')
+            req_cols[3].write(str(barcodes_avail))
+            req_cols[4].write('Barcode vols sufficient')
+            req_cols[5].write(str(barcode_vol_okay))
+            
+    if show_primers:
+        with st.expander('Required/available primer volumes', expanded=False):
+            primer_names = set(primer_vols.keys())
+            #print(f"{primer_names=}")
+            assay_columns = st.columns([2,1,1,1,2,1,1,1,2,1,1,1])
+            assay_columns[0].write('Primer')
+            assay_columns[1].write('Uses')
+            assay_columns[2].write('Volume ul')
+            assay_columns[3].write('Avail ul')
+            assay_columns[4].write('Primer')
+            assay_columns[5].write('Uses')
+            assay_columns[6].write('Volume ul')
+            assay_columns[7].write('Avail ul')
+            assay_columns[8].write('Primer')
+            assay_columns[9].write('Uses')
+            assay_columns[10].write('Volume ul')
+            assay_columns[11].write('Avail ul')
+            for k,p in enumerate(sorted(primer_names)):
+                r = (k*4)%12  # horizontal offset
+                assay_columns[r+0].write(p)
+                assay_columns[r+1].write(assay_usage.get(p,0))
+                assay_columns[r+2].write(primer_vols.get(p,0)/1000)
+                assay_columns[r+3].write(primer_avail_vols.get(p,0)/1000)
+
+
 def clear_widget(*keys):
     for k in keys:
         if k in st.session_state:
@@ -152,7 +230,8 @@ def clear_widget(*keys):
 def main():
     st.set_page_config(page_icon="ngsg_icon.png", page_title="NGS Genotyping Pipeline", initial_sidebar_state="expanded", layout="wide")
     # Remove whitespace from the top of the page and sidebar
-    st.markdown("""
+    st.markdown(
+        """
         <style>
                .css-18e3th9 {
                     padding-top: 0rem;
@@ -160,19 +239,36 @@ def main():
                     padding-left: 5rem;
                     padding-right: 5rem;
                 }
+                header {visibility: hidden;}
+                footer {visibility: hidden;}
         </style>
         """, unsafe_allow_html=True)
+    padding = 0
+    st.markdown(f""" <style>
+    .reportview-container .main .block-container{{
+        padding-top: {padding}rem;
+        padding-right: {padding}rem;
+        padding-left: {padding}rem;
+        padding-bottom: {padding}rem;
+    }} </style> """, unsafe_allow_html=True)
     #This is a workaround from https://www.codegrepper.com/code-examples/python/streamlit+sidebar+width
     st.markdown(
         """
         <style>
+        div.block-container {padding-top:0rem;}
         [data-testid="stSidebar"][aria-expanded="true"] > div:first-child {
-            width: 450px;
+            width: 400px;
+            top: 0rem;
+            padding-top: 0rem;
+            height: 100vh;
         }
         [data-testid="stSidebar"][aria-expanded="false"] > div:first-child {
-            width: 500px;
-            margin-left: -500px;
+            width: 400px;
+            top: 0rem;
+            padding-top: 0rem;
+            margin-left: -400px;
         }
+         
         </style>
         """,
         unsafe_allow_html=True)
@@ -407,7 +503,7 @@ def main():
             view_plate_layout = view_col3.button('Plate Layout', key='3v')
             view_assay_explorer = view_col4.button('Assay Explorer', key='4v')
             view_log_viewer = view_col5.button('Log Viewer', key='5v')
-            view_resize = view_resize_col.number_input('',min_value=10, max_value=1000, value=250, step=20)
+            st.session_state['view_box_size'] = view_resize_col.number_input('',min_value=10, max_value=1000, value=250, step=20)
             
             ### Update the visual indicators first
             # We could save a lot of code by just creating new buttons with '.' symbols then overwriting with the
@@ -513,71 +609,89 @@ def main():
                                                     args=(st.session_state['experiment'], selection['selected_rows']))
                                             if delete_button:
                                                 st.experimental_rerun()
-                    with st.expander('Required components: primers, barcodes, taq and water:', expanded=True):
-                        assay_usage = st.session_state['experiment'].get_assay_usage()
-                        if assay_usage:
-                            primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
-                                    st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
-                            reactions = sum([v for v in assay_usage.values()])
-                            barcodes_remain, barcodes_avail, barcode_vol_okay = st.session_state['experiment'].get_barcode_remaining_available_volume(assay_usage=assay_usage)
-                        else:
-                            reactions, primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
-                                0,{},0,0,0,0 
-                            barcodes_remain, barcodes_avail, barcode_vol_okay =\
-                                    st.session_state['experiment'].get_barcode_remaining_available_volume()
-                        primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
-                        taq_water_avail_PCR1 = st.session_state['experiment'].get_taq_water_avail(1)
-                        taq_water_avail_PCR2 = st.session_state['experiment'].get_taq_water_avail(2)
+                    assay_usage = st.session_state['experiment'].get_assay_usage()
+                    display_reaction_stats(assay_usage=assay_usage)
+                    #with st.expander('Required components: primers, barcodes, taq and water:', expanded=True):
+                        
+                    #    if assay_usage:
+                    #        primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
+                    #                st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
+                    #        reactions = sum([v for v in assay_usage.values()])
+                    #        barcodes_remain, barcodes_avail, barcode_vol_okay = st.session_state['experiment'].get_barcode_remaining_available_volume(assay_usage=assay_usage)
+                    #    else:
+                    #        reactions, primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
+                    #            0,{},0,0,0,0 
+                    #        barcodes_remain, barcodes_avail, barcode_vol_okay =\
+                    #                st.session_state['experiment'].get_barcode_remaining_available_volume()
+                    #    primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
+                    #    taq_water_avail_PCR1 = st.session_state['experiment'].get_taq_water_avail(1)
+                    #    taq_water_avail_PCR2 = st.session_state['experiment'].get_taq_water_avail(2)
 
-                        req_cols = st.columns([5,2,5,2,5,2,5,2])
-                        req_cols[0].write('Required reaction wells')
-                        req_cols[1].write(str(reactions))
-                        req_cols[2].write('Required PCR plates')
-                        req_cols[3].write(str(ceil(reactions/384)))
-                        req_cols[4].write('PCR1 required taq volume')
-                        req_cols[5].write(str(primer_taq_vol/1000)+' ul')
-                        req_cols[6].write('PCR1 available taq volume')
-                        req_cols[7].write(str(taq_water_avail_PCR1[0]/1000)+' ul')
-                        req_cols[0].write('PCR1 required water volume')
-                        req_cols[1].write(str(primer_water_vol/1000)+' ul')
-                        req_cols[2].write('PCR1 available water volume')
-                        req_cols[3].write(str(taq_water_avail_PCR1[1]/1000)+' ul')
-                        req_cols[0].write('PCR2 required taq volume')
-                        req_cols[1].write(str(barcode_taq_vol/1000)+' ul')
-                        req_cols[2].write('PCR2 available taq volume')
-                        req_cols[3].write(str(taq_water_avail_PCR2[0]/1000)+' ul')
-                        req_cols[4].write('PCR2 required water volume')
-                        req_cols[5].write(str(barcode_water_vol/1000)+' ul')
-                        req_cols[6].write('PCR2 available water volume')
-                        req_cols[7].write(str(taq_water_avail_PCR2[1]/1000)+' ul')
-                        req_cols[0].write('Barcode pairs remaining')
-                        req_cols[1].write(str(barcodes_remain))
-                        req_cols[2].write('Barcode pairs available')
-                        req_cols[3].write(str(barcodes_avail))
-                        req_cols[4].write('Barcode vols sufficient')
-                        req_cols[5].write(str(barcode_vol_okay))
-                    with st.expander('Required/available primer volumes', expanded=False):
-                        primer_names = set(primer_vols.keys())
-                        print(f"{primer_names=}")
-                        assay_columns = st.columns(12)
-                        assay_columns[0].write('Primer')
-                        assay_columns[1].write('Uses')
-                        assay_columns[2].write('Volume ul')
-                        assay_columns[3].write('Avail ul')
-                        assay_columns[4].write('Primer')
-                        assay_columns[5].write('Uses')
-                        assay_columns[6].write('Volume ul')
-                        assay_columns[7].write('Avail ul')
-                        assay_columns[8].write('Primer')
-                        assay_columns[9].write('Uses')
-                        assay_columns[10].write('Volume ul')
-                        assay_columns[11].write('Avail ul')
-                        #for k,p in enumerate(sorted(primer_names)):
-                        #    r = k%3  # horizontal offset
-                        #    assay_columns[r+0].write(p)
-                        #    assay_columns[r+1].write(assay_usage[p])
-                        #    assay_columns[r+2].write(primer_vols[p])
-                        #    assay_columns[r+3].write(primer_avail_vols[p])
+                    #    req_cols = st.columns([5,2,5,2,5,2,5,2])
+                    #    if 'assay_filter' not in st.session_state:
+                    #        st.session_state['assay_filter'] = 1
+                    #    if st.session_state['assay_filter'] == 1:
+                    #        req_cols[6].button('Filter assays', key='assay_filter_button', disabled=True)
+                    #        unfilter_assays = req_cols[7].button('Unfilter assays', key='assay_unfilter_button')
+                    #        if unfilter_assays:
+                    #            st.session_state['assay_filter'] = 0
+                    #    req_cols[0].write('Required reaction wells')
+                    #    req_cols[1].write(str(reactions))
+                    #    req_cols[2].write('Required PCR plates')
+                    #    req_cols[3].write(str(ceil(reactions/384)))
+                    #    req_cols[4].write('PCR1 required taq volume')
+                    #    req_cols[5].write(str(primer_taq_vol/1000)+' ul')
+                    #    req_cols[6].write('PCR1 available taq volume')
+                    #    req_cols[7].write(str(taq_water_avail_PCR1[0]/1000)+' ul')
+                    #    req_cols[0].write('PCR1 required water volume')
+                    #    req_cols[1].write(str(primer_water_vol/1000)+' ul')
+                    #    req_cols[2].write('PCR1 available water volume')
+                    #    req_cols[3].write(str(taq_water_avail_PCR1[1]/1000)+' ul')
+                    #    req_cols[0].write('PCR2 required taq volume')
+                    #    req_cols[1].write(str(barcode_taq_vol/1000)+' ul')
+                    #    req_cols[2].write('PCR2 available taq volume')
+                    #    req_cols[3].write(str(taq_water_avail_PCR2[0]/1000)+' ul')
+                    #    req_cols[4].write('PCR2 required water volume')
+                    #    req_cols[5].write(str(barcode_water_vol/1000)+' ul')
+                    #    req_cols[6].write('PCR2 available water volume')
+                    #    req_cols[7].write(str(taq_water_avail_PCR2[1]/1000)+' ul')
+                    #    req_cols[0].write('Barcode pairs remaining')
+                    #    req_cols[1].write(str(barcodes_remain))
+                    #    req_cols[2].write('Barcode pairs available')
+                    #    req_cols[3].write(str(barcodes_avail))
+                    #    req_cols[4].write('Barcode vols sufficient')
+                    #    req_cols[5].write(str(barcode_vol_okay))
+                    #    if 'assay_filter' not in st.session_state:
+                    #        st.session_state['assay_filter'] = 1
+                    #    if st.session_state['assay_filter'] == 1:
+                    #        req_cols[6].button('Filter assays', key='assay_filter_button', disabled=True)
+                    #        unfilter_assays = req_cols[7].button('Unfilter assays', key='assay_unfilter_button')
+                    #        if unfilter_assays:
+                    #            st.session_state['assay_filter'] = 0
+
+
+                    #with st.expander('Required/available primer volumes', expanded=False):
+                    #    primer_names = set(primer_vols.keys())
+                    #    print(f"{primer_names=}")
+                    #    assay_columns = st.columns(12)
+                    #    assay_columns[0].write('Primer')
+                    #    assay_columns[1].write('Uses')
+                    #    assay_columns[2].write('Volume ul')
+                    #    assay_columns[3].write('Avail ul')
+                    #    assay_columns[4].write('Primer')
+                    #    assay_columns[5].write('Uses')
+                    #    assay_columns[6].write('Volume ul')
+                    #    assay_columns[7].write('Avail ul')
+                    #    assay_columns[8].write('Primer')
+                    #    assay_columns[9].write('Uses')
+                    #    assay_columns[10].write('Volume ul')
+                    #    assay_columns[11].write('Avail ul')
+                    #    for k,p in enumerate(sorted(primer_names)):
+                    #        r = k%3  # horizontal offset
+                    #        assay_columns[r+0].write(p)
+                    #        assay_columns[r+1].write(assay_usage[p])
+                    #        assay_columns[r+2].write(primer_vols[p])
+                    #        assay_columns[r+3].write(primer_avail_vols[p])
 
 
             elif st.session_state['view option'] == 2:
@@ -622,7 +736,11 @@ def main():
                 # display the experiment log and let the user filter the view in a number of ways
                 with st.container():
                     df = pd.DataFrame(st.session_state['experiment'].get_log(30))
-                    st.dataframe(df)
+                    if 'view_box_size' in st.session_state:
+                        height = st.session_state['view_box_size']
+                    else:
+                        height = 250
+                    st.dataframe(df, height=height)
 
         with st.container():
             with st.expander('Add reference sequences, assay lists, primer plates, barcode plate', expanded=False):
@@ -923,6 +1041,41 @@ def main():
                 st.subheader('Primer plates')
                 with st.expander('Primer plate details'):
                     pass
+                nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+                available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
+                missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
+                if missing_nims:
+                    for mn in missing_nims:
+                        st.write('Expected Nimbus output file ' + mn)
+                    st.markdown('<h3>Upload Nimbus output files</h3>', unsafe_allow_html=True)
+                    if 'nim_upload' not in st.session_state:
+                        st.session_state['nim_upload'] = ''
+                    nim_outputs = st.file_uploader('Nimbus output files "Echo_384_COC_0001_...csv"', type='csv', 
+                            accept_multiple_files=True, help='You can upload more than one file at once')
+                    if nim_outputs: # and nim_outputs != st.session_state['nim_upload']:
+                        #st.session_state['nim_uploads'] = nim_outputs
+                        for nim_output in nim_outputs:
+                            #print(f"{nim_output.name=}")
+                            fp = st.session_state['experiment'].get_exp_fp(nim_output.name)
+                            print(f"Copying {fp} to experiment folder")
+                            with open(fp, 'wt') as outf:
+                                #print(nim_output.getvalue().decode("utf-8"))
+                                outf.write(nim_output.getvalue().decode("utf-8").replace('\r\n','\n'))
+                if available_nimbus:
+                    included_DNA_plates = set()
+                    for nim in available_nimbus:
+                        inc = st.checkbox('Nimbus DNA plate for Echo (PCR1 assay) picklist generation', nim, value=True, key='chk_box_'+nim)
+                        if inc:
+                            included_DNA_plates.add(nim)
+                    assay_usage = st.session_state['experiment'].get_assay_usage(dna_plate_list=included_DNA_plates)
+                    display_reaction_stats(assay_usage)
+                    
+
+
+                    
+                    
+                        
+
         if st.session_state['pipe_stage'] == 4:  # echo barcodes
             pass
 

@@ -39,6 +39,7 @@ import bin.file_io as file_io
 from bin.util import CAP_VOLS, DEAD_VOLS, output_error, padwell, unpadwell, row_ordered_96, row_ordered_384, calc_plate_assay_usage
 from bin.util import DNA_VOL, PRIMER_VOL, PRIMER_TAQ_VOL, PRIMER_WATER_VOL, BARCODE_VOL, BARCODE_TAQ_VOL, BARCODE_WATER_VOL
 from bin.nimbus import read_custom_csv_to_json, nimbus_gen
+from bin.echo_primer import generate_echo_PCR1_picklist
 
 EXP_FN = 'experiment.json'
         
@@ -483,37 +484,41 @@ class Experiment():
             d['Sample PID4'] = ''
          
             #d['Well counts'] = {'c':0,'m':0,'r':0}
-            d['Unique samples'] = set()
-            d['Unique assays'] = set()
+            d['Custom samples'] = 0
+            d['Rodentity samples'] = 0
+            #d['All primers required'] = 0
+            #d['Unique samples'] = set()
+            #d['Unique assays'] = set()
+            
             for i, sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
                 d['Sample PID'+str(i+1)] = file_io.unguard_pbc(sample_pid)
                 for info in (self.plate_location_sample[sample_pid][well] for well in self.plate_location_sample[sample_pid]['wells']):
                     samp_barcode = info['barcode']     
 
                     if file_io.is_guarded_cbc(samp_barcode):
-                        #d['Well counts']['c'] += 1
+                        d['Custom samples'] += 1
                         total_well_counts['c'] += 1
-                    elif file_io.is_guarded_mbc(samp_barcode):
-                        #d['Well counts']['m'] += 1
-                        total_well_counts['m'] += 1  
+                    #elif file_io.is_guarded_mbc(samp_barcode):
+                    #    d[' counts']['m'] += 1
+                    #    total_well_counts['m'] += 1  
                     elif file_io.is_guarded_rbc(samp_barcode):
-                        #d['Well counts']['r'] += 1
+                        d['Rodentity samples'] += 1
                         total_well_counts['r'] += 1   
-                    for assay in info['assays']:
-                        d['Unique assays'].add(assay)
-                        total_unique_assays.add(assay)
+                    #for assay in info['assays']:
+                    #    d['Primers required'].add(assay)
+                    #    total_unique_assays.add(assay)
                     
-                    d['Unique samples'].add(info['barcode'])
+                    #d['Unique samples'].add(info['barcode'])
                     total_unique_samples.add(info['barcode'])
                     
-            d['Unique samples'] = len(d['Unique samples'])
-            d['Unique assays'] = len(d['Unique assays'])
+            #d['Unique samples'] = len(d['Unique samples'])
+            #d['Unique assays'] = len(d['Unique assays'])
             #total_wells += sum(k[v] for k,v in d['Well counts'].items())
             plate_set_summary.append(d)
         plate_set_summary.append({'DNA PID':'Total','Sample PID1':'','Sample PID2':'','Sample PID3':'',
                 #'Sample PID4':'','Well count':total_wells,'Unique samples': len(total_unique_samples),
-                'Sample PID4':'','Unique samples': len(total_unique_samples),
-                'Unique assays': len(total_unique_assays)})
+                'Sample PID4':'','Custom samples': total_well_counts['c'], 'Rodentity samples': total_well_counts['r']})
+                # 'Total assays': len(total_unique_assays)})
         #print(f"{plate_set_summary=}")
         return plate_set_summary
 
@@ -538,22 +543,24 @@ class Experiment():
         """ calculate the remaining free i7i5 barcodes available """
         pass
 
-    def get_assay_usage(self):
+    def get_assay_usage(self, dna_plate_list=[]):
         """ We will want ways to get assay usage from various subsets, but for now do it for everything that 
             has a Nimbus destination plate.
         """
         assay_usage = Counter()
         for dest in self.dest_sample_plates:
+            if dna_plate_list and dest not in dna_plate_list:
+                continue
             for samp in self.dest_sample_plates[dest]:
                 assay_usage.update(calc_plate_assay_usage(self.plate_location_sample[samp]))
         return assay_usage
 
-    def get_volumes_required(self, assay_usage = None):
+    def get_volumes_required(self, assay_usage=None, dna_plate_list=[]):
         """
             Standard usage is to call get_assay_usage() first and pass it to this.
         """
         if not assay_usage:
-            assay_usage = self.get_assay_usage()
+            assay_usage = self.get_assay_usage(dna_plate_list=dna_plate_list)
         reactions = sum([v for v in assay_usage.values()])
 
         primer_taq_vol = reactions * self.transfer_volumes['PRIMER_TAQ_VOL']
@@ -789,6 +796,14 @@ class Experiment():
                             p[well],p['primer'],p['volume']])
                     print(outline, file=fout)
         return True
+
+    def generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates):
+        """
+        Calls echo_primer.generate_echo_PCR1_picklist() to do the work, needs a set of accepted DNA_plates,
+        the final assay list, and a set of destination PCR plate barcodes, taq+water plates, primer plates, primer volumes.
+        """
+        success = generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates)
+
 
     def add_barcode_layouts(self, uploaded_barcode_plates):
         """ add barcode plates with well and barcode columns """

@@ -1,0 +1,13 @@
+[server]
+port=9123
+
+[theme]
+base="light"
+primaryColor = "#FF4B4B"
+backgroundColor = "#FFF7E4"
+textColor = "#00172B"
+font = "sans serif"
+secondaryBackgroundColor = "AED5D8"
+
+[runner]
+fastReruns = true

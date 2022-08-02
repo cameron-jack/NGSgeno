@@ -306,7 +306,7 @@ def main():
         else:
             prs = [templates.files['mouse_primer_layout']] + psvy_fn
         cmd = ["python", os.path.join("..", "bin", "echovolume.py")]+prs+[prsvy_fn]
-        print('cgi-echo:', cmd, file=sys.stderr)
+        print('cgi-echo:', cmd, file=sys.stdout)
         subprocess.run(cmd)
         # expect one only TAQ plate file
         cmd = ["python", os.path.join("..", "bin", "echo_primer.py"), "--prim", prsvy_fn, \
@@ -328,7 +328,7 @@ def main():
         else:
             i7i5_survey_fn = templates.files['i7i5_survey']
         cmd = ['python', os.path.join('..', 'bin', 'echovolume.py')] + [i7i5_fn, i7i5_survey_fn, i7svy]
-        #print(cmd, file=sys.stderr)
+        #print(cmd, file=sys.stdout)
         subprocess.run(cmd)
         cmd = ["python", os.path.join("..", "bin", "echo_barcode.py"), "--i7i5",
                         i7svy, "--taq"] + fields.getlist('taq')
@@ -395,7 +395,7 @@ def main():
         if not allfiles([prsvy_fn]):
             taq, h2o = echo_primer.mytaq2(wellcnt, 1000, 300)
             tc = max(max([p for w,p in h2o]),max([p for t,p in taq]))
-            #print(len(taq), len(h2o), file=sys.stderr)
+            #print(len(taq), len(h2o), file=sys.stdout)
             taq_set = sorted(set([w for w,p in taq]))
             h2o_set = sorted(set([w for w,p in h2o]))
             taqfmt = '<label for="taq">Mytaq/Water plate {0} barcode:</label>\n\t  <input type="text" id="taq" name="taq" size="8" /><br>'
@@ -425,7 +425,7 @@ def main():
         
     global stage3
     if not os.path.isdir("raw") and not os.path.isdir("RAW"):
-        print('cgi-echo:', 'No raw FASTQ directory', file=sys.stderr)
+        print('cgi-echo:', 'No raw FASTQ directory', file=sys.stdout)
         global html3 # data analysis & reporting step
         print(html3.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, port=port))
         return

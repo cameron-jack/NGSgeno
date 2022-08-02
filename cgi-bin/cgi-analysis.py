@@ -235,7 +235,7 @@ def main():
     global htmlerr
 
     if not os.path.isdir("raw") and not os.path.isdir("RAW"):
-        print('cgi-analysis:', 'No raw FASTQ directory', file=sys.stderr)
+        print('cgi-analysis:', 'No raw FASTQ directory', file=sys.stdout)
         global html3 # data analysis & reporting step
         print(html3.format(ngid=ngid, info=getinfo(), stage=stage3, existingDir=ngid, port=port))
         return
@@ -278,7 +278,7 @@ def main():
             params.append('-q')
 
         cmd = ["python", os.path.join("..", "bin", "ngsmatch.py")] + params
-        print('cgi-analysis:', 'Running stage3 FASTQ analysis:', cmd, file=sys.stderr)
+        print('cgi-analysis:', 'Running stage3 FASTQ analysis:', cmd, file=sys.stdout)
         res = subprocess.run(cmd, capture_output=True)
         # capture output to log file
         with open("match.log", "wt") as dst:
@@ -313,7 +313,7 @@ def main():
             params.append('Results.csv')
      
         cmd = ["python", os.path.join("..", "bin", "gt_mice.py")]+params
-        print('Running Genotyping:', cmd, file=sys.stderr)
+        print('Running Genotyping:', cmd, file=sys.stdout)
         res = subprocess.run(cmd, capture_output=True)
         # capture output to log file
         with open("gt_mice.log", "wt") as dst:
