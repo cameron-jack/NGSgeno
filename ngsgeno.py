@@ -751,35 +751,42 @@ def main():
                         if 'reference_upload' not in st.session_state or st.session_state['reference_upload'] != uploaded_reference.name:
                             success = st.session_state['experiment'].add_reference(uploaded_reference)
                             st.session_state['reference_upload'] = uploaded_reference.name
-                            st.experimental_rerun()
-                    # display already uploaded reference file names here
-                with misc_upload_col2:
-                    uploaded_assaylist = st.file_uploader('Upload assay list', key='assaylist_uploader', type=['txt','csv'])
-                    if uploaded_assaylist:
-                        if 'assaylist_upload' not in st.session_state or st.session_state['assaylist_upload'] != uploaded_assaylist.name:
-                            success = st.session_state['experiment'].add_assaylist(uploaded_assaylist)
-                            st.session_state['assaylist_upload'] = uploaded_assaylist.name
-                            st.experimental_rerun()
-                    # display already uploaded assaylist file names here
-                misc_upload_col3, misc_upload_col4 = st.columns(2)
-                with misc_upload_col3:
                     uploaded_primer_layouts = st.file_uploader('Upload primer plate layouts', 
                             key='primer_uploader', type='csv', accept_multiple_files=True)
                     if uploaded_primer_layouts:
                         if 'primer_layouts_upload' not in st.session_state or st.session_state['primer_layouts_upload'] != uploaded_primer_layouts[0].name:
                             success = st.session_state['experiment'].add_primer_layouts(uploaded_primer_layouts)
                             st.session_state['primer_layouts_upload'] = uploaded_primer_layouts[0].name
-                            st.experimental_rerun()
-                    # display already uploaded primer plate file names here
-                with misc_upload_col4:
+                    uploaded_primer_volumes = st.file_uploader('Upload primer plate volumes', key='primer_vol_uploader', type='csv', accept_multiple_files=True)
+                    if uploaded_primer_volumes:
+                        if 'primer_volumes_upload' not in st.session_state or st.session_state['primer_volumes_upload'] != [upv.name for upv in uploaded_primer_volumes]:
+                            success = st.session_state['experiment'].add_primer_volumes(uploaded_primer_volumes)
+                            st.session_state['primer_volumes_upload'] = [upv.name for upv in uploaded_primer_volumes]
+                            
+                with misc_upload_col2:
+                    uploaded_assaylist = st.file_uploader('Upload assay list', key='assaylist_uploader', type=['txt','csv'])
+                    if uploaded_assaylist:
+                        if 'assaylist_upload' not in st.session_state or st.session_state['assaylist_upload'] != uploaded_assaylist.name:
+                            success = st.session_state['experiment'].add_assaylist(uploaded_assaylist)
+                            st.session_state['assaylist_upload'] = uploaded_assaylist.name
+
                     uploaded_barcode_layouts = st.file_uploader('Upload i7i5 barcode plate layout', 
                             key='barcode_uploader', type='csv', accept_multiple_files=True)
                     if uploaded_barcode_layouts:
                         if 'barcode_layout_upload' not in st.session_state or st.session_state['barcode_layout_upload'] != uploaded_barcode_layouts[0].name:
                             success = st.session_state['experiment'].add_barcode_layouts(uploaded_barcode_layouts)
                             st.session_state['barcode_layout_upload'] = uploaded_barcode_layouts[0].name
-                            st.experimental_rerun()
-                    # display already uploaded barcode layout file names here
+                            
+                    uploaded_barcode_volumes = st.file_uploader('Upload i7i5 barcode plate volumes', key='barcode_vol_uploader',
+                            type='csv', accept_multiple_files=True)
+                    if uploaded_barcode_volumes:
+                        if 'barcode_volume_upload' not in st.session_state or \
+                                st.session_state['barcode_volume_upload'] !=\
+                                [ubv.name for ubv in uploaded_barcode_volumes]:
+                            success = st.session_state['experiment'].add_barcode_volumes(uploaded_barcode_volumes)
+                            st.session_state['barcode_volume_upload'] = [ubv.name for ubv in uploaded_barcode_volumes]
+
+
 
 
         if st.session_state['pipe_stage'] == 1:

@@ -624,14 +624,15 @@ class Experiment():
         for pid in self.plate_location_sample:
             if self.plate_location_sample[pid]['purpose'] == 'primers':
                 for well in self.plate_location_sample[pid]['wells']:
-                    primer = self.plate_location_sample[pid][well]['primer']
-                    if primer not in primer_counts:
-                        primer_counts['primer'] = 0
-                    if primer not in primer_vols:
-                        primer_vols['primer'] = 0
-                    primer_counts['primer'] += 1
-                    if 'volume' in self.plate_location_sample[pid][well]:
-                        primer_vols['primer'] += self.plate_location_sample[pid][well]['volume']
+                    if 'primer' in self.plate_location_sample[pid][well]:
+                        primer = self.plate_location_sample[pid][well]['primer']
+                        if primer not in primer_counts:
+                            primer_counts['primer'] = 0
+                        if primer not in primer_vols:
+                            primer_vols['primer'] = 0
+                        primer_counts['primer'] += 1
+                        if 'volume' in self.plate_location_sample[pid][well]:
+                            primer_vols['primer'] += self.plate_location_sample[pid][well]['volume']
         return primer_counts, primer_vols
 
     def get_taq_water_avail(self, echo_stage):
@@ -725,26 +726,31 @@ class Experiment():
             self.log('Error: cannot add primer plates while lock is active.')
             return False
         for uploaded_primer_plate in uploaded_primer_plates:
-            name = uploaded_primer_plate.name
-            if name in self.plate_location_sample:
-                if self.plate_location_sample[name]['purpose'] == 'primers':
-                    self.log(f"Info: Primer file {name} already exists, adding data")
+            PID = uploaded_primer_plate.name.split('_')[0]  # assumes first field is PID
+            if PID in self.plate_location_sample:
+                if self.plate_location_sample[PID]['purpose'] == 'primers':
+                    self.log(f"Info: Primer file {PID} already exists, adding data")
                 else:
-                    self.log(f"Error: Primer file name: {uploaded_primer_plate=} matches "+\
-                        f"existing plate entry of different purpose {self.plate_location_sample[name]}")
+                    self.log(f"Error: Primer file PID: {uploaded_primer_plate=} matches "+\
+                        f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[name] = {'purpose':'primers', 'source':'user', 'wells':set()}
-                self.log(f"Info: Creating new primer plate record for {name}")
+                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set()}
+                self.log(f"Info: Creating new primer plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_primer_plate.getvalue().decode("utf-8"), newline='')
             for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
                 if i == 0:
                     continue  # header
-                well = unpadwell(row[0])
                 if row == '' or row[0] == '' or row[1] == '':
                     continue
-                self.plate_location_sample[name][well] = {'primer': row[1]}
+                well = unpadwell(row[0])
+                if well not in self.plate_location_sample[PID]:
+                    self.plate_location_sample[PID]['wells'].add(well)
+                    self.plate_location_sample[PID][well] = {}
+                print(row[0], row[1])
+                self.plate_location_sample[PID][well]['primer'] = row[1]
+        self.save()
         return True
 
     def add_primer_volumes(self, uploaded_primer_plates):
@@ -753,26 +759,47 @@ class Experiment():
             self.log('Error: cannot add primer plate volumes while lock is active.')
             return False
         for uploaded_primer_plate in uploaded_primer_plates:
-            name = uploaded_primer_plate.name
-            if name in self.plate_location_sample:
-                if self.plate_location_sample[name]['purpose'] == 'primers':
-                    self.log(f"Info: Primer file {name} already exists, adding data")
+            PID = uploaded_primer_plate.name.split('_')[0]  # assumes first field is PID
+            if PID in self.plate_location_sample:
+                if self.plate_location_sample[PID]['purpose'] == 'primers':
+                    self.log(f"Info: Primer file {PID} already exists, adding data")
                 else:
-                    self.log(f"Error: Primer file name: {uploaded_primer_plate=} matches "+\
-                        f"existing plate entry of different purpose {self.plate_location_sample[name]}")
+                    self.log(f"Error: Primer file PID: {uploaded_primer_plate=} matches "+\
+                        f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[name] = {'purpose':'primers', 'source':'user', 'wells':set()}
-                self.log(f"Info: Creating new primer plate record for {name}")
+                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set()}
+                self.log(f"Info: Creating new primer plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_primer_plate.getvalue().decode("utf-8"), newline='')
             for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
                 if i == 0:
+                    if row[0].lower().startswith('date'):
+                        # plate style layout
+                        layout = 'plate'
+                    else:
+                        layout = 'columns'
                     continue  # header
+                if layout == 'plate' and i<4:
+                    continue # header rows
                 if row == '' or row[0] == '' or row[1] == '':
                     continue
-                well = unpadwell(row[0])
-                self.plate_location_sample[name][well] = {'volume': row[1]*1000}
+                if layout == 'plate':
+                    for j,col in enumerate(row):
+                        if j==0:
+                            continue  # row name cell
+                        well = row[0] + str(j)
+                        if well not in self.plate_location_sample[PID]:
+                            self.plate_location_sample[PID]['wells'].add(well)
+                            self.plate_location_sample[PID][well] = {}
+                        self.plate_location_sample[PID][well]['volume'] = int(col)*1000
+                else:
+                    well = unpadwell(row[0])
+                    if well not in self.plate_location_sample[PID]:
+                        self.plate_location_sample[PID]['wells'].add(well)
+                        self.plate_location_sample[PID][well] = {}
+                    self.plate_location_sample[PID][well]['volume'] = int(row[1])*1000
+        self.save()
         return True
 
     def generate_echo_primer_survey(self, primer_survey_filename):
@@ -811,38 +838,40 @@ class Experiment():
             self.log('Error: cannot add barcode plates while lock is active.')
             return False
         for uploaded_barcode_plate in uploaded_barcode_plates:
-            name = uploaded_barcode_plate.name
-            if name in self.plate_location_sample:
-                if self.plate_location_sample[name]['purpose'] == 'i7i5barcodes':
-                    self.log(f"Info: Barcode file {name} already exists, adding data")
+            PID = uploaded_barcode_plate.name.split('_')[0]  # assumes first field is PID
+            if PID in self.plate_location_sample:
+                if self.plate_location_sample[PID]['purpose'] == 'i7i5barcodes':
+                    self.log(f"Info: Barcode file {PID} already exists, adding data")
                 else:
-                    self.log(f"Error: Barcode file name: {uploaded_barcode_plate=} matches "+\
-                        f"existing plate entry of different purpose {self.plate_location_sample[name]}")
+                    self.log(f"Error: Barcode file PID: {uploaded_barcode_plate=} matches "+\
+                        f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[name] = {'purpose': 'i7i5barcodes', 'source':'user', 'wells':set()}
-                self.log(f"Info: Creating new barcode plate record for {name}")
+                self.plate_location_sample[PID] = {'purpose': 'i7i5barcodes', 'source':'user', 'wells':set()}
+                self.log(f"Info: Creating new barcode plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_barcode_plate.getvalue().decode("utf-8"), newline='')
             for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
                 if i == 0 or row == '':
                     continue  # header or blank
                 well = unpadwell(row[0])
-                if well not in self.plate_location_sample[name]:
-                    self.plate_location_sample[name]['wells'].add(well)
-                    self.plate_location_sample[name][well] = {}
-                idt_name = row[1]
-                index = row[2]
-                bc_name = row[3]
-                oligo = row[4]
-                self.plate_location_sample[name][well] = {
-                    'idt_name': idt_name,
-                    'index': index,
-                    'bc_name': bc_name,
-                    'oligo': oligo}
+                if well not in self.plate_location_sample[PID]:
+                    self.plate_location_sample[PID]['wells'].add(well)
+                    self.plate_location_sample[PID][well] = {}
+                    idt_name = row[1]
+                    index = row[2]
+                    bc_name = row[3]
+                    oligo = row[4]
+                    self.plate_location_sample[PID][well]['idt_name'] = idt_name
+                    self.plate_location_sample[PID][well]['index'] = index
+                    self.plate_location_sample[PID][well]['bc_name'] = bc_name
+                    self.plate_location_sample[PID][well]['oligo'] = oligo
+                    
+                
+        self.save()
         return True
 
-    def add_barcode_volumes(self, i7i5_platename, uploaded_barcode_plate):
+    def add_barcode_volumes(self, uploaded_barcode_volumes):
         """ add volume information to a single barcode plate, with a matched, existing plate name.
         To make life fun there are two possible formats:
         Format 1: plate layout (generated through Echo test software)
@@ -852,20 +881,22 @@ class Experiment():
         if self.lock:
             self.log('Error: cannot add barcode plate volumes while lock is active.')
             return False
-        if i7i5_platename not in self.plate_location_sample:
-            self.log(f"Error: {i7i5_platename} not found in known plate list")
-            return False
-        if self.plate_location_sample[i7i5_platename]['purpose'] != 'i7i5barcodes':
-            self.log(f"Error: {i7i5_platename} plate purpose is "+\
-                    f"{self.plate_location_sample[i7i5_platename]['purpose']}, expected 'i7i5barcodes'")
-            return False
+        for uploaded_barcode_volume in uploaded_barcode_volumes:
+            PID = uploaded_barcode_volume.name.split('_')[0]  # assumes first field is PID
+            if PID not in self.plate_location_sample:
+                self.log(f"Info: Adding barcode plate {PID}")
+                self.plate_location_sample[PID] = {'purpose':'i7i5barcodes', 'source':'user', 'wells':set()}
+            if self.plate_location_sample[PID]['purpose'] != 'i7i5barcodes':
+                self.log(f"Error: {PID} plate purpose is "+\
+                        f"{self.plate_location_sample[PID]['purpose']}, expected 'i7i5barcodes'")
+                return False
         
         plate_format = False
-        data = StringIO(uploaded_barcode_plate.getvalue().decode("utf-8"), newline='')
+        data = StringIO(uploaded_barcode_volume.getvalue().decode("utf-8"), newline='')
         hdr_seen = False
         for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
             if i == 0:
-                if row.startswith('Date'):
+                if row[0].lower().startswith('date'):
                     plate_format = True
                 continue
             if plate_format:
@@ -884,7 +915,10 @@ class Experiment():
                     for col, v in zip(hdr[1:], row[1:]):
                         if v:
                             well = unpadwell(row[0]+col)
-                            self.plate_location_sample[i7i5_platename][well]['volume'] = v*1000
+                            self.plate_location_sample[PID]['wells'].add(well)
+                            if well not in self.plate_location_sample[PID]:
+                                self.plate_location_sample[PID][well] = {}
+                            self.plate_location_sample[PID][well]['volume'] = int(v)*1000
             else:                
                 #format 2 - one row per well - well ID in r[3], volume in r[5] or r[6]
                 #if i == 0 and line.startswith('Run ID'):
@@ -897,10 +931,14 @@ class Experiment():
                     hdr_seen = True
                 else:
                     well = unpadwell(row[3])
-                    self.plate_location_sample[i7i5_platename][well]['volume'] = unpadwell(row[5])*1000
-            self.plate_location_sample[i7i5_platename]['Source Plate Name'] = "Source[1]"
-            self.plate_location_sample[i7i5_platename]['Source Plate Barcode'] = i7i5_platename  # might need to be blank
-            self.plate_location_sample[i7i5_platename]['Source Plate Type'] = "384PP_AQ_BP"
+                    self.plate_location_sample[PID]['wells'].add(well)
+                    if well not in self.plate_location_sample[PID]:
+                        self.plate_location_sample[PID][well] = {}
+                    self.plate_location_sample[PID][well]['volume'] = int(row[5])*1000
+            self.plate_location_sample[PID]['Source Plate Name'] = "Source[1]"
+            self.plate_location_sample[PID]['Source Plate Barcode'] = PID  # might need to be blank
+            self.plate_location_sample[PID]['Source Plate Type'] = "384PP_AQ_BP"
+        self.save()
         return True
 
     def generate_echo_i7i5_survey(self, i7i5_survey_filename):

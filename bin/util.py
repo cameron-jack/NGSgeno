@@ -317,6 +317,8 @@ def padwell(w):
 
 def unpadwell(w):
     "Echo software doesn't like well IDs like A01, it wants A1"
+    if len(w) == 2:
+        return w
     return w[0]+w[2] if w[1]=='0' else w
 
 ### Table classes to act like a relational DB
