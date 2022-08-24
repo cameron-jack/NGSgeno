@@ -178,13 +178,17 @@ class Experiment():
             self.dest_sample_plates[dna_plate_id] = sample_plate_ids
             for spid in sample_plate_ids:
                 if spid not in self.plate_location_sample:
-                    self.plate_location_sample[spid] = {'purpose':'Sample','source':'Rodentity', 'wells':set()}
+                    self.plate_location_sample[spid] = {'purpose':'sample','source':'rodentity', 'wells':set()}
                 #print(f"{sample_info=}")
-                for record in sample_info[spid]['wells']:  # "wellLocation", "mouse"    
-                    record['mouse']['barcode'] = file_io.guard_rbc(record['mouse']['barcode'])
+                for record in sample_info[spid]['wells']:  # "wellLocation", "mouse" 
                     pos = unpadwell(record['wellLocation'])
                     self.plate_location_sample[spid]['wells'].add(pos)
-                    self.plate_location_sample[spid][pos] = record['mouse'].copy()
+                    if pos not in self.plate_location_sample[spid]:
+                        self.plate_location_sample[spid][pos] = {}
+                    self.plate_location_sample[spid][pos]['barcode'] = file_io.guard_rbc(record['mouse']['barcode'], silent=True)
+                    self.plate_location_sample[spid][pos]['strain'] = record['mouse']['mouselineName']
+                    self.plate_location_sample[spid][pos]['sex'] = record['mouse']['sex']
+                    self.plate_location_sample[spid][pos]['mouse'] = record['mouse'].copy()
                     # "alleles":[{alleleKey, name, symbol, options:[], assays:[{assayKey, name, method}]}]
                     assays = []
                     assayFamilies = set()
@@ -265,7 +269,7 @@ class Experiment():
             self.dest_sample_plates[dna_plate_id] = sorted(sample_plate_ids)
             for spid in sample_plate_ids:
                 if spid not in self.plate_location_sample:  # should always be the case
-                    self.plate_location_sample[spid] = {'purpose':'Sample','source':'Musterer','wells':set()}
+                    self.plate_location_sample[spid] = {'purpose':'sample','source':'musterer','wells':set()}
                 for record in sample_info:  # 'wellLocation', 'mouse', 'mouseBarcode', 'mouseId'
                     pos = unpadwell(record['wellLocation'])
                     self.plate_location_sample[spid]['wells'].add(pos)
@@ -393,14 +397,14 @@ class Experiment():
                 dest_pid = entry['Dest barcode']
                 source_pid = entry['Plate barcode']
                 well = unpadwell(entry['Well'])
-                assays = [entry[key] for key in entry if 'assay' in key.lower()]
+                assays = [entry[key] for key in entry if 'assay' in key.lower() and entry[key].strip()!='']
                 assayFamilies = set([a.split('_')[0] for a in assays])
                 
                 if dest_pid not in dp_samples:
                     dp_samples[dest_pid] = set()
                 dp_samples[dest_pid].add(source_pid)
                 if source_pid not in self.plate_location_sample:
-                    self.plate_location_sample[source_pid] = {'purpose':'Sample','source':'manifest', 'wells':set()}
+                    self.plate_location_sample[source_pid] = {'purpose':'sample','source':'manifest', 'wells':set()}
                 if well in self.plate_location_sample[source_pid] and self.plate_location_sample[source_pid][well] != {}:
                     self.log(f"Error: duplicate {well=} in {source_pid=}. Continuing...")
 
@@ -595,6 +599,8 @@ class Experiment():
         
         for bpid in barcode_pids:
             for well in self.plate_location_sample[bpid]['wells']:
+                if 'idt_name' not in self.plate_location_sample[bpid][well]:
+                    continue
                 name = self.plate_location_sample[bpid][well]['idt_name']
                 if 'i7F' in name:
                     if name not in fwd_barcode_vols:
@@ -701,28 +707,32 @@ class Experiment():
         self.save()
         return True
 
-    def add_assaylist(self, uploaded_assaylist):
+    def add_assaylists(self, uploaded_assaylists):
         """ mapping of assay to primer name - may not be required in future in this capacity.
         What we really need/want is a list of allowed assays
         """
         if self.locked:
             self.log('Error: cannot add assay list while lock is active.')
             return False
-        if uploaded_assaylist.name in self.primer_assay:
-            self.log(f"Duplicate primer/assay file name: {uploaded_assaylist=}. Overwriting")
-            self.primer_assay[uploaded_assaylist.name] = {}
-        data = StringIO(uploaded_assaylist.getvalue().decode("utf-8"), newline='')
-        for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
-            if i == 0:
-                continue  # header
-            if row == '' or row[0] == '' or row[1] == '':
-                continue
-            self.primer_assay[row[1]] = row[0]
+        for uploaded_assaylist in uploaded_assaylists:
+            data = StringIO(uploaded_assaylist.getvalue().decode("utf-8"), newline='')
+            for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
+                if i == 0:
+                    continue  # header
+                if row == '' or row[0] == '' or row[1] == '':
+                    continue
+                p = row[1]
+                a = row[0]
+                if p in self.primer_assay and self.primer_assay[p] != a:
+                    self.log(f'Warning: Existing primer:assay pair {p}:{self.primer_assay[p]} being overwritten by {p}:{a}')
+                self.primer_assay[row[1]] = row[0]
+        self.log(f"Success: added primer-assay lists: {', '.join([ual.name for ual in uploaded_assaylists])}")
+        self.save()
         return True
 
     def add_primer_layouts(self, uploaded_primer_plates):
         """ add primer plate definition with well and name columnes """
-        if self.lock:
+        if self.locked:
             self.log('Error: cannot add primer plates while lock is active.')
             return False
         for uploaded_primer_plate in uploaded_primer_plates:
@@ -750,28 +760,29 @@ class Experiment():
                     self.plate_location_sample[PID][well] = {}
                 print(row[0], row[1])
                 self.plate_location_sample[PID][well]['primer'] = row[1]
+        self.log(f"Success: added primer layouts from {', '.join([upl.name for upl in uploaded_primer_plates])}")
         self.save()
         return True
 
-    def add_primer_volumes(self, uploaded_primer_plates):
+    def add_primer_volumes(self, uploaded_primer_volumes):
         """ add primer plate volumes with well and volume columns """
         if self.locked:
             self.log('Error: cannot add primer plate volumes while lock is active.')
             return False
-        for uploaded_primer_plate in uploaded_primer_plates:
-            PID = uploaded_primer_plate.name.split('_')[0]  # assumes first field is PID
+        for uploaded_primer_volume in uploaded_primer_volumes:
+            PID = uploaded_primer_volume.name.split('_')[0]  # assumes first field is PID
             if PID in self.plate_location_sample:
                 if self.plate_location_sample[PID]['purpose'] == 'primers':
                     self.log(f"Info: Primer file {PID} already exists, adding data")
                 else:
-                    self.log(f"Error: Primer file PID: {uploaded_primer_plate=} matches "+\
+                    self.log(f"Error: Primer file PID: {uploaded_primer_volume=} matches "+\
                         f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
                 self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set()}
                 self.log(f"Info: Creating new primer plate record for {PID}")
             # load data into plate
-            data = StringIO(uploaded_primer_plate.getvalue().decode("utf-8"), newline='')
+            data = StringIO(uploaded_primer_volume.getvalue().decode("utf-8"), newline='')
             for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
                 if i == 0:
                     if row[0].lower().startswith('date'):
@@ -780,11 +791,10 @@ class Experiment():
                     else:
                         layout = 'columns'
                     continue  # header
-                if layout == 'plate' and i<4:
-                    continue # header rows
-                if row == '' or row[0] == '' or row[1] == '':
-                    continue
+                
                 if layout == 'plate':
+                    if not row or row[0] == '' or row[0][0] not in {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P'}:
+                       continue
                     for j,col in enumerate(row):
                         if j==0:
                             continue  # row name cell
@@ -792,19 +802,20 @@ class Experiment():
                         if well not in self.plate_location_sample[PID]:
                             self.plate_location_sample[PID]['wells'].add(well)
                             self.plate_location_sample[PID][well] = {}
-                        self.plate_location_sample[PID][well]['volume'] = int(col)*1000
+                        self.plate_location_sample[PID][well]['volume'] = float(col)*1000
                 else:
                     well = unpadwell(row[0])
                     if well not in self.plate_location_sample[PID]:
                         self.plate_location_sample[PID]['wells'].add(well)
                         self.plate_location_sample[PID][well] = {}
-                    self.plate_location_sample[PID][well]['volume'] = int(row[1])*1000
+                    self.plate_location_sample[PID][well]['volume'] = float(row[1])*1000
+        self.log(f"Success: added primer volumes from {', '.join([upv.name for upv in uploaded_primer_volumes])}")
         self.save()
         return True
 
     def generate_echo_primer_survey(self, primer_survey_filename):
         """ Generate a primer survey file for use by the Echo. Replaces echovolume.py """
-        if self.lock:
+        if self.locked:
             self.log('Error: cannot generate primer survey file while lock is active.')
             return False
         primer_plates = [self.plate_location_sample[p] for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primers']
@@ -822,6 +833,7 @@ class Experiment():
                     outline = '\t'.join([p['Source Plate Name'],p['Source Plate Barcode'],p['Source Plate Type'],
                             p[well],p['primer'],p['volume']])
                     print(outline, file=fout)
+        self.log(f"Success: written Echo primer survey to {fn}")
         return True
 
     def generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates):
@@ -867,7 +879,7 @@ class Experiment():
                     self.plate_location_sample[PID][well]['bc_name'] = bc_name
                     self.plate_location_sample[PID][well]['oligo'] = oligo
                     
-                
+        self.log(f"Success: added barcode plate layouts from {', '.join([ubp.name for ubp in uploaded_barcode_plates])}")        
         self.save()
         return True
 
@@ -878,7 +890,7 @@ class Experiment():
         Format 2: column layout (generated through Echo main interface)
         Returns True on success
         """
-        if self.lock:
+        if self.locked:
             self.log('Error: cannot add barcode plate volumes while lock is active.')
             return False
         for uploaded_barcode_volume in uploaded_barcode_volumes:
@@ -886,10 +898,12 @@ class Experiment():
             if PID not in self.plate_location_sample:
                 self.log(f"Info: Adding barcode plate {PID}")
                 self.plate_location_sample[PID] = {'purpose':'i7i5barcodes', 'source':'user', 'wells':set()}
-            if self.plate_location_sample[PID]['purpose'] != 'i7i5barcodes':
-                self.log(f"Error: {PID} plate purpose is "+\
-                        f"{self.plate_location_sample[PID]['purpose']}, expected 'i7i5barcodes'")
-                return False
+            else:
+                if self.plate_location_sample[PID]['purpose'] != 'i7i5barcodes':
+                    self.log(f"Error: {PID} plate purpose is "+\
+                            f"{self.plate_location_sample[PID]['purpose']}, expected 'i7i5barcodes'")
+                    return False
+                self.log(f"Info: {PID} exists, appending barcode volumes")
         
         plate_format = False
         data = StringIO(uploaded_barcode_volume.getvalue().decode("utf-8"), newline='')
@@ -903,13 +917,15 @@ class Experiment():
                 # format 1 - volume in r,c plate matrix
                 # matrix format - 2 initial lines, a blank line then a matrix
                 #next(src), next(src) # skip two more lines
-                if ''.join(row).strip() == '':
+                if not row or row[0] == '' or row[0][0] not in {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P'}:
                     continue
+                
                 if not hdr_seen: 
                     hdr = row # first row of matrix - cells contain columns
                     if hdr[0] != '':
                         self.log(f"Error: barcode file format doesn't match expectations")
                     hdr_seen = True
+                    continue
                 else:
                     #assert r[0] # row has row ID (a letter)
                     for col, v in zip(hdr[1:], row[1:]):
@@ -918,7 +934,7 @@ class Experiment():
                             self.plate_location_sample[PID]['wells'].add(well)
                             if well not in self.plate_location_sample[PID]:
                                 self.plate_location_sample[PID][well] = {}
-                            self.plate_location_sample[PID][well]['volume'] = int(v)*1000
+                            self.plate_location_sample[PID][well]['volume'] = float(v)*1000
             else:                
                 #format 2 - one row per well - well ID in r[3], volume in r[5] or r[6]
                 #if i == 0 and line.startswith('Run ID'):
@@ -934,10 +950,11 @@ class Experiment():
                     self.plate_location_sample[PID]['wells'].add(well)
                     if well not in self.plate_location_sample[PID]:
                         self.plate_location_sample[PID][well] = {}
-                    self.plate_location_sample[PID][well]['volume'] = int(row[5])*1000
+                    self.plate_location_sample[PID][well]['volume'] = int(float[5])*1000
             self.plate_location_sample[PID]['Source Plate Name'] = "Source[1]"
             self.plate_location_sample[PID]['Source Plate Barcode'] = PID  # might need to be blank
             self.plate_location_sample[PID]['Source Plate Type'] = "384PP_AQ_BP"
+        self.log(f"Success: added barcode plate volumes from {', '.join([ubv.name for ubv in uploaded_barcode_volumes])}")
         self.save()
         return True
 

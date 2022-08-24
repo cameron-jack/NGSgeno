@@ -112,12 +112,14 @@ def is_guarded(bc):
 
 
 # Add guards to barcodes
-def guard_mbc(mbc):
+def guard_mbc(mbc, silent=False):
     """ Add guards to Musterer barcode """
     mbc = str(mbc).strip()
     if mbc == '':
         raise EmptyBarcodeError(f"Musterer barcode is zero length string!")
     if is_guarded_mbc(mbc):
+        if silent:
+            return mbc
         raise ExistingGuardError(f"Musterer barcode appears to already have Musterer guards: {mbc}")
     if is_guarded_rbc(mbc):
         raise ExistingGuardError(f"Musterer barcode appears to already have Rodentity guards: {mbc}")
@@ -127,7 +129,7 @@ def guard_mbc(mbc):
         raise ExistingGuardError(f"Musterer barcode appears to already have plate guards: {mbc}")
     return 'm' + mbc + 'm'
 
-def guard_rbc(rbc):
+def guard_rbc(rbc, silent=False):
     """ Add guards to Rodentity barcode """
     rbc = str(rbc).strip()
     if rbc == '':
@@ -135,6 +137,8 @@ def guard_rbc(rbc):
     if is_guarded_mbc(rbc):
         raise ExistingGuardError(f"Rodentity barcode appears to already have Musterer guards: {rbc}")
     if is_guarded_rbc(rbc):
+        if silent:
+            return rbc
         raise ExistingGuardError(f"Rodentity barcode appears to already have Rodentity guards: {rbc}")
     if is_guarded_cbc(rbc):
         raise ExistingGuardError(f"Rodentity barcode appears to already have custom guards: {rbc}")
@@ -142,7 +146,7 @@ def guard_rbc(rbc):
         raise ExistingGuardError(f"Rodentity barcode appears to already have plate guards: {rbc}")
     return rbc + 'M'  # Rodentity barcodes already start with 'M'
 
-def guard_cbc(cbc):
+def guard_cbc(cbc, silent=False):
     """ Add guards to custom barcode """
     cbc = str(cbc).strip()
     if cbc == '':
@@ -152,6 +156,8 @@ def guard_cbc(cbc):
     if is_guarded_rbc(cbc):
         raise ExistingGuardError(f"Custom barcode appears to already have Rodentity guards: {cbc}")
     if is_guarded_cbc(cbc):
+        if silent:
+            return cbc
         raise ExistingGuardError(f"Custom barcode appears to already have custom guards: {cbc}")
     if is_guarded_pbc(cbc):
         raise ExistingGuardError(f"Custom barcode appears to already have plate guards: {cbc}")

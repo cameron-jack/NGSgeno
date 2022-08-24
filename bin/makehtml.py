@@ -179,9 +179,12 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
             sample_data = exp.plate_location_sample[plate_id][well]
             for field in ['barcode', 'sex', 'strain', 'assays', 'gts']:
                 if field in sample_data:
-                    data = sample_data[field]
-                    if data:
-                        entry_str += f', "{field}" : "{str(data)}"'
+                    if field in ['assays','gts']:
+                        field_data = '; '.join(sample_data[field])
+                    else:
+                        field_data = sample_data[field]
+                    if field_data:
+                        entry_str += f', "{field}" : "{str(field_data)}"'
         well_entries.append(entry_str)
     chart_data_str += '\n{' + '},\n{'.join(well_entries) + '}\n' + '];\n'
     

@@ -82,7 +82,7 @@ CAP_VOLS = {'384PP_AQ_BP': 12*1000, '6RES_AQ_BP2': 2800*1000}
 def output_error(exc, msg=''):
     with open(ERROR_FN, 'wt') as f:
         if msg:
-            f.write(exc, str(msg))
+            f.write(f"{exc} {msg}")
         f.write(traceback.format_exc())
 
 row_ordered_96 = []
@@ -319,7 +319,11 @@ def unpadwell(w):
     "Echo software doesn't like well IDs like A01, it wants A1"
     if len(w) == 2:
         return w
-    return w[0]+w[2] if w[1]=='0' else w
+    try:
+        well = w[0]+w[2] if w[1]=='0' else w
+    except:
+        print(f"unpadwell failed with {w=}")
+    return well 
 
 ### Table classes to act like a relational DB
 
