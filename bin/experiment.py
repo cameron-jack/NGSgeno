@@ -26,6 +26,7 @@ from io import StringIO
 import datetime
 import json
 from Bio import SeqIO
+from copy import deepcopy
 
 import pandas as pd
 from streamlit import _update_logger
@@ -56,7 +57,7 @@ class Experiment():
 
     All pipeline inputs go here. Logs are housed here. Everything the pipeline needs to operate can be found here.
     All plates are recorded in self.plate_location_sample which is defined by {barcode/name:{well:{info}}}
-    Info must have 'purpose' in {'sample', 'primer', 'dna', 'pcr'}
+    Info must have 'purpose' in {'sample', 'primer', 'dna', 'pcr', 'taq_water'}
     We need functions to link results back to sample
     samples are their own dict structure, separate from plates, which have the form plate_locations[pid] = {well:sample_id}
 
@@ -73,7 +74,8 @@ class Experiment():
         self.unassigned_plates = {1:'', 2:'', 3:'', 4:''}  # plate_id:info - we can import these and then let users edit the results - they aren't checked until added to a plate set
         self.dest_sample_plates = {}  # {dest_pid:[4 sample plate ids]}
         self.plate_location_sample = {}  # pid:{well:sample_dict}  # use this for everything!
-        self.stage = 'new'  # one of 'new', 'nimbus', 'primers', 'barcodes', 'miseq', 'genotyping', 'review'
+        self.deleted_plates = {}  # pid:[list of deleted plates with this pid]
+        self.stage = 'new'  # one of 'new', 'nimbus', 'primers', 'barcodes', 'miseq', 'genotyping', 'review'  <-- probably unnecessary
         ###
         # sample_dict is of the form:
         # All: {"barcode":str, "sex":str, mouseId:int (this could be mouseKey or mouseNumber in Rodentity
@@ -84,7 +86,7 @@ class Experiment():
         # The specific import function should be responsisble for creating the "assays" and "assayFamilies" fields.
         # Note the ugly camel case for assayFamilies - to match headers with this case type
         ###
-        self.taq_plate_barcodes = []
+        
         self.denied_assays = []
         self.denied_primers = []
         self.assay_synonyms = {}  # {source:{reference:alternative}}
@@ -131,8 +133,10 @@ class Experiment():
 
     def get_exp_fp(self, filename):
         """ return the expected experiment path to filename """
-        fp = os.path.join('run_' + self.name, filename)
-        print(f"{fp=}")
+        dirname = self.get_exp_dir()
+        if dirname in filename:
+            return fp
+        fp = os.path.join(dirname, filename)
         return fp
 
    
@@ -188,7 +192,7 @@ class Experiment():
                     self.plate_location_sample[spid][pos]['barcode'] = file_io.guard_rbc(record['mouse']['barcode'], silent=True)
                     self.plate_location_sample[spid][pos]['strain'] = record['mouse']['mouselineName']
                     self.plate_location_sample[spid][pos]['sex'] = record['mouse']['sex']
-                    self.plate_location_sample[spid][pos]['mouse'] = record['mouse'].copy()
+                    self.plate_location_sample[spid][pos]['mouse'] = deepcopy(record['mouse'])
                     # "alleles":[{alleleKey, name, symbol, options:[], assays:[{assayKey, name, method}]}]
                     assays = []
                     assayFamilies = set()
@@ -276,7 +280,7 @@ class Experiment():
                     self.plate_location_sample[spid][pos] = record['mouse'].copy()  # dict
                     self.plate_location_sample[spid][pos]['mouseId'] = record['mouseId']
                     self.plate_location_sample[spid][pos]['barcode'] = file_io.guard_mbc(record['mouseBarcode'])
-                    self.plate_location_sample[spid][pos]['must_assays'] = record['mouse']['assays'].deepcopy()
+                    self.plate_location_sample[spid][pos]['must_assays'] = record['mouse']['assays'].copy()
                     assays = [assay['assayName'] for assay in record['mouse']['assays']]
                     assayFamilies = set([a.split('_')[0] for a in assays])
                     self.plate_location_sample[spid][pos]['assays'] = assays.copy()
@@ -641,15 +645,15 @@ class Experiment():
                             primer_vols['primer'] += self.plate_location_sample[pid][well]['volume']
         return primer_counts, primer_vols
 
-    def get_taq_water_avail(self, echo_stage):
+    def get_taq_water_avail(self):
         """ returns (int) taq and (int) water volumes loaded as available for a given Echo stage (PCR) in nanolitres """
         taq_avail = 0
         water_avail = 0
-        for pid, stage in self.taq_plate_barcodes:
-            if stage == echo_stage:
-                taq_avail += 3* (CAP_VOLS['6RES_AQ_BP2'] - DEAD_VOLS['6RES_AQ_BP2'])
-                water_avail += 3* (CAP_VOLS['6RES_AQ_BP2'] - DEAD_VOLS['6RES_AQ_BP2'])
-        return taq_avail, water_avail
+        pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
+        for pid in pids:
+            taq_avail += 3* (CAP_VOLS['6RES_AQ_BP2'] - DEAD_VOLS['6RES_AQ_BP2'])
+            water_avail += 3* (CAP_VOLS['6RES_AQ_BP2'] - DEAD_VOLS['6RES_AQ_BP2'])
+        return taq_avail, water_avail, pids
 
     def generate_nimbus_inputs(self):
         success = nimbus_gen(self)
@@ -779,7 +783,7 @@ class Experiment():
                         f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set()}
+                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP', 'plate_type':'384PP_AQ_BP'}
                 self.log(f"Info: Creating new primer plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_primer_volume.getvalue().decode("utf-8"), newline='')
@@ -813,36 +817,60 @@ class Experiment():
         self.save()
         return True
 
-    def generate_echo_primer_survey(self, primer_survey_filename):
-        """ Generate a primer survey file for use by the Echo. Replaces echovolume.py """
+    def generate_echo_primer_survey(self, primer_survey_filename='primer-svy.csv'):
+        """ 
+        Generate a primer survey file for use by the Echo. Replaces echovolume.py
+        Not strictly necessary, but the old code reads this file in making the picklists.
+        """
         if self.locked:
             self.log('Error: cannot generate primer survey file while lock is active.')
             return False
-        primer_plates = [self.plate_location_sample[p] for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primers']
+        primer_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primers']
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
                 'primer names pooled', 'volume']
-        if self.name not in primer_survey_filename:
-            fn = os.path.join(self.name, primer_survey_filename)
-        else:
-            fn = primer_survey_filename
+        fn = self.get_exp_fn(primer_survey_filename)
+        if os.path.exists(fn):
+            self.log(f'Warning: overwriting primer survey file {fn}')
         with open(fn, 'wt') as fout:
             print('\t'.join(header)+'\n', file=fout)
-            for p in primer_plates:
+            for i,pid in enumerate(primer_pids):
+                plate=self.plate_location_sample[pid]
                 for well in row_ordered_384:
                     # TODO: correct the columns below
-                    outline = '\t'.join([p['Source Plate Name'],p['Source Plate Barcode'],p['Source Plate Type'],
-                            p[well],p['primer'],p['volume']])
+                    if well not in plate['wells']:
+                        continue
+                    outline = '\t'.join([f"Source[{i}]",file_io.unguard_pbc(pid,silent=True),plate['plate_type'],
+                            well,plate[well]['primer'],plate[well]['volume']])
                     print(outline, file=fout)
         self.log(f"Success: written Echo primer survey to {fn}")
         return True
 
-    def generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates):
+    def generate_echo_PCR1_picklist_interface(self, dna_plates, pcr_plates, taq_water_plates):
         """
         Calls echo_primer.generate_echo_PCR1_picklist() to do the work, needs a set of accepted DNA_plates,
         the final assay list, and a set of destination PCR plate barcodes, taq+water plates, primer plates, primer volumes.
+        Returns True on success
         """
+        for pid in pcr_plates:
+            if pid in self.plate_location_sample:
+                if self.plate_location_sample[pid]['purpose'] != 'pcr':
+                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
+                    return False
+            self.log(f'Warning: existing entry for PCR plate {pid}. This will be overwritten!')
+        success = self.generate_echo_primer_survey(self, dna_plates, pcr_plates, taq_water_plates)
+        if not success:
+            self.log('Failure: failed to generate primer survey file')
+            return False
         success = generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates)
 
+    def delete_plates(self, pids):
+        for pid in pids:
+            if pid in self.plate_location_sample:
+                if pid not in self.deleted_plates:
+                    self.deleted_plates[pid] = []
+                self.deleted_plates[pid].append(deepcopy(self.plate_location_sample[pid]))
+                del self.plate_location_sample[pid]
+            self.log(f'Warning: moved {pid} to deleted plate bin')
 
     def add_barcode_layouts(self, uploaded_barcode_plates):
         """ add barcode plates with well and barcode columns """
@@ -859,7 +887,7 @@ class Experiment():
                         f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[PID] = {'purpose': 'i7i5barcodes', 'source':'user', 'wells':set()}
+                self.plate_location_sample[PID] = {'purpose': 'i7i5barcodes', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP'}
                 self.log(f"Info: Creating new barcode plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_barcode_plate.getvalue().decode("utf-8"), newline='')
@@ -897,7 +925,7 @@ class Experiment():
             PID = uploaded_barcode_volume.name.split('_')[0]  # assumes first field is PID
             if PID not in self.plate_location_sample:
                 self.log(f"Info: Adding barcode plate {PID}")
-                self.plate_location_sample[PID] = {'purpose':'i7i5barcodes', 'source':'user', 'wells':set()}
+                self.plate_location_sample[PID] = {'purpose':'i7i5barcodes', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP'}
             else:
                 if self.plate_location_sample[PID]['purpose'] != 'i7i5barcodes':
                     self.log(f"Error: {PID} plate purpose is "+\
@@ -951,48 +979,69 @@ class Experiment():
                     if well not in self.plate_location_sample[PID]:
                         self.plate_location_sample[PID][well] = {}
                     self.plate_location_sample[PID][well]['volume'] = int(float[5])*1000
-            self.plate_location_sample[PID]['Source Plate Name'] = "Source[1]"
-            self.plate_location_sample[PID]['Source Plate Barcode'] = PID  # might need to be blank
-            self.plate_location_sample[PID]['Source Plate Type'] = "384PP_AQ_BP"
+            self.plate_location_sample[PID]['barcode'] = PID
         self.log(f"Success: added barcode plate volumes from {', '.join([ubv.name for ubv in uploaded_barcode_volumes])}")
         self.save()
         return True
 
-    def generate_echo_i7i5_survey(self, i7i5_survey_filename):
-        """ Generate an i7i5 survey file for use by the Echo. Replaces echovolume.py """
+    def generate_echo_i7i5_survey(self, i7i5_survey_filename='i7i5-svy.csv'):
+        """ 
+        Generate an i7i5 survey file for use by the Echo. Replaces echovolume.py 
+        Not strictly necessary, but the old code reads this file in making the picklists.
+        """
         if self.locked:
             self.log('Error: cannot generate i7i5 barcode survey while lock is active.')
             return False
-        i7i5_plates = [self.plate_location_sample[p] for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'i7i5barcodes']
+        i7i5_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'i7i5barcodes']
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'Source well', 
                 'Name for IDT ordering', 'index', 'Name', 'Oligo * -phosphothioate modif. against exonuclease', 'volume']
-        if self.name not in i7i5_survey_filename:
-            fn = os.path.join(self.name, i7i5_survey_filename)
-        else:
-            fn = i7i5_survey_filename
+        fn = self.get_exp_fp(i7i5_survey_filename)
+        if os.path.exists(fn):
+            self.log(f'Warning: overwriting i7i5 barcode survey file {fn}')
         with open(fn, 'wt') as fout:
             print('\t'.join(header)+'\n', file=fout)
-            for p in i7i5_plates:
+            for i,pid in enumerate(i7i5_pids):
+                plate=self.plate_location_sample[pid]
                 for well in row_ordered_384:
-                    outline = '\t'.join([p['Source Plate Name'],p['Source Plate Barcode'],p['Source Plate Type'],
-                            p[well],p['idt_name'],p['index'],p['bcnode'],p['oligo'],p['volume']])
+                    if well not in plate['wells']:
+                        continue
+                    outline = '\t'.join([f'Source[{i}]',file_io.unguard_pbc(pid,silent=True),plate['plate_type'],
+                            well,plate[well]['idt_name'],plate[well]['index'],plate[well]['bcnode'],
+                            plate[well]['oligo'],plate[well]['volume']])
                     print(outline, file=fout)
+        self.log(f'Success: i7i5 survey file written to {fn}')
         return True
 
-    def add_standard_taqwater_plate(self, plate_barcode, echo_stage=1):  # , purpose): <- they're the same for primer and barcode stages
+    def add_standard_taqwater_plates(self, plate_barcodes):  # <- they're the same for primer and barcode stages
         """ These plates have a fixed layout with water in row A and taq in row B of a 6-well reservoir plate.
         See echo_primer.py or echo_barcode.py mytaq2()
-        We need to store the barcode and whether it's for PCR1 or PCR2
         We may need to also store volumes at some stage, but for now that isn't necessary
         """
         if self.locked:
             self.log('Error: cannot add taq+water plates while lock is active.')
             return False
         try:
-            plate_barcode = file_io.guard_pbc(plate_barcode, silent=True)
-            self.taq_plate_barcodes.append((plate_barcode, echo_stage))
+            for plate_barcode in plate_barcodes:
+                pid = file_io.guard_pbc(plate_barcode, silent=True)
+                if pid in self.plate_location_sample:
+                    if self.plate_location_sample[pid]['purpose'] != 'taq_water':
+                        self.log(f"Error: cannot add taq+water plate {file_io.unguard(pid)}. "+\
+                            f"A plate with this barcode already exists with purpose {self.plate_location_sample[pid]['purpose']}")
+                        return False
+                    else:
+                        self.log(f"Warning: overwriting existing taq/water plate entry with barcode {file_io.unguard(pid)}")
+                else:
+                    self.plate_location_sample[pid] = {}
+                self.plate_location_sample[pid]['purpose'] = 'taq_water'
+                self.plate_location_sample[pid]['wells'] = ['A1','A2','A3','B1','B2','B3']
+                self.plate_location_sample[pid]['A1'] = {'name': 'water', 'volume': CAP_VOLS['6RES_AQ_BP2']}
+                self.plate_location_sample[pid]['A2'] = {'name': 'water', 'volume': CAP_VOLS['6RES_AQ_BP2']}
+                self.plate_location_sample[pid]['A3'] = {'name': 'water', 'volume': CAP_VOLS['6RES_AQ_BP2']}
+                self.plate_location_sample[pid]['B1'] = {'name': 'taq', 'volume': CAP_VOLS['6RES_AQ_BP2']}
+                self.plate_location_sample[pid]['B2'] = {'name': 'taq', 'volume': CAP_VOLS['6RES_AQ_BP2']}
+                self.plate_location_sample[pid]['B3'] = {'name': 'taq', 'volume': CAP_VOLS['6RES_AQ_BP2']}
         except Exception as exc:
-            self.log(f"Error: adding taq+water plate barcode failed {plate_barcode=} for Echo stage {echo_stage=}")
+            self.log(f"Error: adding taq+water plate barcode failed {plate_barcodes=}")
             return False
         return True
 

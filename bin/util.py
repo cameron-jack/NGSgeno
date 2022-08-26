@@ -78,6 +78,7 @@ BARCODE_TAQ_VOL = 2000
 BARCODE_WATER_VOL = 650
 DEAD_VOLS = {'384PP_AQ_BP': 50, '6RES_AQ_BP2': 700*1000}
 CAP_VOLS = {'384PP_AQ_BP': 12*1000, '6RES_AQ_BP2': 2800*1000}
+
     
 def output_error(exc, msg=''):
     with open(ERROR_FN, 'wt') as f:
