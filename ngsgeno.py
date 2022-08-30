@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
+DEPRECATED
 @created: 1 May 2022
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 @version: 0.16
@@ -104,7 +105,7 @@ def create_run_folder(new_run_name):
         if os.path.exists(os.path.join(newpath, EXP_FN)):
             return None, 'Experiment already exists with this name: ' + new_run_name
     print('Generating experiment: ', new_run_name)
-    exp = Experiment(name=new_run_name.lstrip('run_'))
+    exp = Experiment(name=new_run_name[4:])
     return exp, ''
 
 
@@ -754,9 +755,9 @@ def main():
                     uploaded_primer_layouts = st.file_uploader('Upload primer plate layouts', 
                             key='primer_uploader', type='csv', accept_multiple_files=True)
                     if uploaded_primer_layouts:
-                        if 'primer_layouts_upload' not in st.session_state or st.session_state['primer_layouts_upload'] != uploaded_primer_layouts[0].name:
+                        if 'primer_layouts_upload' not in st.session_state or st.session_state['primer_layouts_upload'] != [upl.name for upl in uploaded_primer_layouts]:
                             success = st.session_state['experiment'].add_primer_layouts(uploaded_primer_layouts)
-                            st.session_state['primer_layouts_upload'] = uploaded_primer_layouts[0].name
+                            st.session_state['primer_layouts_upload'] = [upl.name for upl in uploaded_primer_layouts]
                     uploaded_primer_volumes = st.file_uploader('Upload primer plate volumes', key='primer_vol_uploader', type='csv', accept_multiple_files=True)
                     if uploaded_primer_volumes:
                         if 'primer_volumes_upload' not in st.session_state or st.session_state['primer_volumes_upload'] != [upv.name for upv in uploaded_primer_volumes]:
@@ -764,16 +765,16 @@ def main():
                             st.session_state['primer_volumes_upload'] = [upv.name for upv in uploaded_primer_volumes]
                             
                 with misc_upload_col2:
-                    uploaded_assaylist = st.file_uploader('Upload assay list', key='assaylist_uploader', type=['txt','csv'])
-                    if uploaded_assaylist:
-                        if 'assaylist_upload' not in st.session_state or st.session_state['assaylist_upload'] != uploaded_assaylist.name:
-                            success = st.session_state['experiment'].add_assaylist(uploaded_assaylist)
-                            st.session_state['assaylist_upload'] = uploaded_assaylist.name
+                    uploaded_assaylists = st.file_uploader('Upload assay list', key='assaylist_uploader', type=['txt','csv'], accept_multiple_files=True)
+                    if uploaded_assaylists:
+                        if 'assaylist_upload' not in st.session_state or st.session_state['assaylist_upload'] != [ual.name for ual in uploaded_assaylists]:
+                            success = st.session_state['experiment'].add_assaylists(uploaded_assaylists)
+                            st.session_state['assaylist_upload'] = [ual.name for ual in uploaded_assaylists]
 
                     uploaded_barcode_layouts = st.file_uploader('Upload i7i5 barcode plate layout', 
                             key='barcode_uploader', type='csv', accept_multiple_files=True)
                     if uploaded_barcode_layouts:
-                        if 'barcode_layout_upload' not in st.session_state or st.session_state['barcode_layout_upload'] != uploaded_barcode_layouts[0].name:
+                        if 'barcode_layout_upload' not in st.session_state or st.session_state['barcode_layout_upload'] != [ubl.name for ubl in uploaded_barcode_layouts]:
                             success = st.session_state['experiment'].add_barcode_layouts(uploaded_barcode_layouts)
                             st.session_state['barcode_layout_upload'] = uploaded_barcode_layouts[0].name
                             
@@ -852,8 +853,6 @@ def main():
                             success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in exp.unassigned_plates], rod_dp)
                             if not success:
                                 st.markdown('<p style="color:#FF0000">Failed to incorporate plate set. Please read the log.</p>', unsafe_allow_html=True)
-                                if not success:
-                                    st.session_state['view option index'] = len(view_headers)-1
                             else:
                                 st.write('Successfully added plate set')
                                 rod_dp = ''

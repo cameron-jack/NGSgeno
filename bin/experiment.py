@@ -70,7 +70,6 @@ class Experiment():
         self.name = name
         self.description = ''
         self.locked = False  # This is meant to prevent modification to the experiment when True
-        self.app_path = ''  # we reset this on each use, but it's handy place to have it
         self.unassigned_plates = {1:'', 2:'', 3:'', 4:''}  # plate_id:info - we can import these and then let users edit the results - they aren't checked until added to a plate set
         self.dest_sample_plates = {}  # {dest_pid:[4 sample plate ids]}
         self.plate_location_sample = {}  # pid:{well:sample_dict}  # use this for everything!
