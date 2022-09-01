@@ -456,7 +456,7 @@ def main():
             os.chdir(getdir(args.workdir))
     
         ngid = os.path.basename(os.getcwd()) # should be 8 characters -YYYYMMDD
-        pcrfmt = "PCR{{}}-picklist-{}.csv".format(ngid)
+        pcrfmt = "PCR{{}}-picklist_{}.csv".format(ngid)
     
         fnstage2, fnstage3 = "Stage2.csv", "Stage3.csv"
     
@@ -488,14 +488,14 @@ def main():
         # plate barcode for i7i5 plate is unknown
         rowi7 = (("Source[1]", "", '384PP_AQ_BP', r.i7well, ddict[r.pcrplate], r.pcrplate, '384PP_AQ_BP', r.pcrwell, bcvol) for r in s3tab.data)
         rowi5 = (("Source[1]", "", '384PP_AQ_BP', r.i5well, ddict[r.pcrplate], r.pcrplate, '384PP_AQ_BP', r.pcrwell, bcvol) for r in s3tab.data)
-        fnbc = pcrfmt.format("2bc")
+        fnbc = pcrfmt.format("2_barcode")
         mk_picklist(fnbc, (r for rs in (rowi7, rowi5) for r in rs))
         if args.verbose:
             print("created:", fnbc) 
     
         
         # also PCR2 water and Taq
-        fndst = pcrfmt.format("2TaqWater")
+        fndst = pcrfmt.format("2_taqwater")
         mk_mytaq_picklist(fndst, s3tab.data, args.taq, 2000, 650)
         if args.verbose:
             print('created:', fndst)

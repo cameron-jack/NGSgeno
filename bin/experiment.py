@@ -27,6 +27,7 @@ import datetime
 import json
 from Bio import SeqIO
 from copy import deepcopy
+from math import ceil, floor
 
 import pandas as pd
 from streamlit import _update_logger
@@ -550,6 +551,23 @@ class Experiment():
         """ calculate the remaining free i7i5 barcodes available """
         pass
 
+    def add_pcr_plates(self, pcr_plate_list=[]):
+        """
+        Add one or more empty 384-well plates to self.plate_location_sample
+        """
+        for pid in pcr_plate_list:
+            p = file_io.guard_pbc(pid, silent=True)
+            if p in self.plate_location_sample:
+                self.log(f'Error: {p} already in use, skipping')
+                continue
+            self.plate_location_sample[p] = {'purpose':'pcr', 'wells':set(), 'source':'user', 'plate_type':'384PP_AQ_BP'}
+        self.save()
+        return True
+                                                                                            
+    def get_pcr_plates(self):
+        """ return a list of user supplied PCR plate ids """
+        return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'pcr']
+
     def get_assay_usage(self, dna_plate_list=[]):
         """ We will want ways to get assay usage from various subsets, but for now do it for everything that 
             has a Nimbus destination plate.
@@ -581,8 +599,7 @@ class Experiment():
         
     def get_barcode_remaining_available_volume(self, assay_usage=None):
         """
-        Returns the barcode pairs remaining and max available barcode pairs
-        TODO: also return a T/F of whether the volumes are sufficient
+        Returns the barcode pairs remaining, max available barcode pairs, max barcode pairs allowed by volume
         """
         barcode_pids = []
         for pid in self.plate_location_sample:
@@ -595,10 +612,8 @@ class Experiment():
             assay_usage = self.get_assay_usage()
         reactions = sum([v for v in assay_usage.values()])
         
-        fwd_barcode_vols = {}
+        fwd_barcode_vols = {}  # name=[vol, vol, ...]
         rev_barcode_vols = {}
-        fwd_barcode_counts = {}
-        rev_barcode_counts = {}
         
         for bpid in barcode_pids:
             for well in self.plate_location_sample[bpid]['wells']:
@@ -607,24 +622,27 @@ class Experiment():
                 name = self.plate_location_sample[bpid][well]['idt_name']
                 if 'i7F' in name:
                     if name not in fwd_barcode_vols:
-                        fwd_barcode_vols[name] = 0
-                    if name not in fwd_barcode_counts:
-                        fwd_barcode_counts[name] = 0
+                        fwd_barcode_vols[name] = []
                     if 'volume' in self.plate_location_sample[bpid][well]:
-                        fwd_barcode_vols[name] += self.plate_location_sample[bpid][well]['volume']
-                    fwd_barcode_counts[name] += 1
+                        fwd_barcode_vols[name].append(self.plate_location_sample[bpid][well]['volume'])
                 elif 'i5R' in name:
                     if name not in rev_barcode_vols:
-                        rev_barcode_vols[name] = 0
-                    if name not in rev_barcode_counts:
-                        rev_barcode_counts[name] = 0
+                        rev_barcode_vols[name] = []
                     if 'volume' in self.plate_location_sample[bpid][well]:
-                        rev_barcode_vols[name] +=  self.plate_location_sample[bpid][well]['volume']
-                    rev_barcode_counts[name] += 1
+                        rev_barcode_vols[name].append(self.plate_location_sample[bpid][well]['volume'])
                 else:
                     self.log('Unexpected i7i5 barcode name:' + name, level='Warning')
-        max_barcode_pairs = len(fwd_barcode_counts)*len(rev_barcode_counts)
-        return max_barcode_pairs-reactions, max_barcode_pairs, False
+        max_i7F = len(fwd_barcode_vols)
+        max_i5R = len(rev_barcode_vols)
+        reaction_vol_capacity = 0
+        for name in fwd_barcode_vols:
+            # get the number of possible reactions and keep the lower number from possible reactions or possible reaction partners
+            max_reactions = sum([floor((vol-DEAD_VOLS['384PP_AQ_BP'])/self.transfer_volumes['BARCODE_VOL']) for vol in fwd_barcode_vols[name]])
+            reaction_vol_capacity += min(max_reactions, max_i5R)
+        max_barcode_pairs = max_i7F * max_i5R
+
+        return max_barcode_pairs-reactions, max_barcode_pairs, reaction_vol_capacity
+
 
     def get_primers_avail(self):
         """ returns {primer:count}, {primer:vol} from what's been loaded """
@@ -644,7 +662,7 @@ class Experiment():
                             primer_vols['primer'] += self.plate_location_sample[pid][well]['volume']
         return primer_counts, primer_vols
 
-    def get_taq_water_avail(self):
+    def get_taqwater_avail(self):
         """ returns (int) taq and (int) water volumes loaded as available for a given Echo stage (PCR) in nanolitres """
         taq_avail = 0
         water_avail = 0
@@ -653,6 +671,10 @@ class Experiment():
             taq_avail += 3* (CAP_VOLS['6RES_AQ_BP2'] - DEAD_VOLS['6RES_AQ_BP2'])
             water_avail += 3* (CAP_VOLS['6RES_AQ_BP2'] - DEAD_VOLS['6RES_AQ_BP2'])
         return taq_avail, water_avail, pids
+
+    def get_taqwater_plates(self):
+        pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
+        return pids
 
     def generate_nimbus_inputs(self):
         success = nimbus_gen(self)
@@ -698,16 +720,17 @@ class Experiment():
         self.save()
         return True
 
-    def add_reference(self, uploaded_reference):
+    def add_references(self, uploaded_references):
         if self.locked:
             self.log('Error: Cannot add reference sequences while lock is active')
             return False
-        if uploaded_reference.name in self.reference_sequences:
-            # do we warn? Is this an error?
-            self.log(f"Error: Duplicate reference file name: {uploaded_reference.name=} in . Overwriting")
-        seq_itr = SeqIO.parse(uploaded_reference.getvalue().decode("utf-8"), "fasta")
-        self.reference_sequences[uploaded_reference.name] = {s.id:str(s.seq) for s in seq_itr}
-        self.save()
+        for uploaded_reference in uploaded_references:
+            if uploaded_reference.name in self.reference_sequences:
+                # do we warn? Is this an error?
+                self.log(f"Error: Duplicate reference file name: {uploaded_reference.name=} in . Overwriting")
+            seq_itr = SeqIO.parse(uploaded_reference.getvalue().decode("utf-8"), "fasta")
+            self.reference_sequences[uploaded_reference.name] = {s.id:str(s.seq) for s in seq_itr}
+            self.save()
         return True
 
     def add_assaylists(self, uploaded_assaylists):
@@ -748,7 +771,7 @@ class Experiment():
                         f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set()}
+                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP'}
                 self.log(f"Info: Creating new primer plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_primer_plate.getvalue().decode("utf-8"), newline='')
@@ -782,7 +805,7 @@ class Experiment():
                         f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP', 'plate_type':'384PP_AQ_BP'}
+                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP'}
                 self.log(f"Info: Creating new primer plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_primer_volume.getvalue().decode("utf-8"), newline='')
@@ -844,6 +867,12 @@ class Experiment():
         self.log(f"Success: written Echo primer survey to {fn}")
         return True
 
+    def check_ready_echo1(self, dna_plates, pcr_plates, taq_water_plates):
+        """
+        TODO: Should check that everything required to successfully generate PCR1 picklists is available
+        """
+        return True
+
     def generate_echo_PCR1_picklist_interface(self, dna_plates, pcr_plates, taq_water_plates):
         """
         Calls echo_primer.generate_echo_PCR1_picklist() to do the work, needs a set of accepted DNA_plates,
@@ -862,7 +891,28 @@ class Experiment():
             return False
         success = generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates)
 
+    def get_echo_PCR1_picklist_filepaths(self):
+        """
+        Return file paths for PCR1_dna-picklist_XXX.csv, PCR1_primer-picklist_XXX.csv, PCR1_taqwater-picklist_XXX.csv
+        """
+        all_files = os.listdir(self.get_exp_dir())
+        dna_picklist_path = None
+        primer_picklist_path = None
+        taqwater_picklist_path = None
+        for f in all_files:
+            if f.startswith('PCR1_dna-picklist_') and f.endswith('.csv'):
+                dna_picklist_path = self.get_exp_fp(f)
+            elif f.startswith('PCR1_primer-picklist_') and f.endswith('.csv'):
+                primer_picklist_path = self.get_exp_fp(f)
+            elif f.startswith('PCR1_taqwater-picklist_') and f.endswith('.csv'):
+                taqwater_picklist_path = self.get_exp_fp(f)
+        return dna_picklist_path, primer_picklist_path, taqwater_picklist_path
+
+
     def delete_plates(self, pids):
+        """
+        Soft-delete plates with the selected pids
+        """
         for pid in pids:
             if pid in self.plate_location_sample:
                 if pid not in self.deleted_plates:
@@ -1042,6 +1092,7 @@ class Experiment():
         except Exception as exc:
             self.log(f"Error: adding taq+water plate barcode failed {plate_barcodes=}")
             return False
+        self.save()
         return True
 
      

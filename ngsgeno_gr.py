@@ -145,7 +145,7 @@ def display_reaction_stats(assay_usage, show_general=True, show_primers=True):
         primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
                 st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
         reactions = sum([v for v in assay_usage.values()])
-        barcodes_remain, barcodes_avail, barcode_vol_okay = st.session_state['experiment'].get_barcode_remaining_available_volume(assay_usage=assay_usage)
+        barcodes_remain, barcodes_avail, barcode_vol_capacity = st.session_state['experiment'].get_barcode_remaining_available_volume(assay_usage=assay_usage)
 
         #for k,p in enumerate(sorted(primer_names)):
         #    if p != '':
@@ -157,7 +157,7 @@ def display_reaction_stats(assay_usage, show_general=True, show_primers=True):
     else:
         reactions, primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
             0,{},0,0,0,0 
-        barcodes_remain, barcodes_avail, barcode_vol_okay =\
+        barcodes_remain, barcodes_avail, barcode_vol_capacity =\
                 st.session_state['experiment'].get_barcode_remaining_available_volume()
     primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
 
@@ -165,8 +165,7 @@ def display_reaction_stats(assay_usage, show_general=True, show_primers=True):
 
     if show_general:
         with st.expander('Required Componenents for PCR Reactions', expanded=False):
-            taq_water_avail_PCR1 = st.session_state['experiment'].get_taq_water_avail()
-            taq_water_avail_PCR2 = st.session_state['experiment'].get_taq_water_avail()
+            taq_avail, water_avail, pids = st.session_state['experiment'].get_taqwater_avail()           
 
             #Ask Cam about this - filtered vs unfiltered
             #Sometimes doesn't show up..
@@ -193,46 +192,52 @@ def display_reaction_stats(assay_usage, show_general=True, show_primers=True):
             req_cols[1].write(str(reactions))
             req_cols[2].markdown('<h6 style="color:#B1298D">Required PCR plates</h6>', unsafe_allow_html=True)
             req_cols[3].write(str(ceil(reactions/384)))
+            req_cols[0].markdown('<h6 style="color:#000000">User supplied PCR plates</h6>', unsafe_allow_html=True)
+            req_cols[1].write(', '.join([file_io.unguard_pbc(p, silent=True) for p in st.session_state['experiment'].get_pcr_plates()]))
+            req_cols[2].markdown('<h6 style="color:#000000">User supplied taq+water plates</h6>', unsafe_allow_html=True)
+            req_cols[3].write(', '.join([file_io.unguard_pbc(p, silent=True) for p in st.session_state['experiment'].get_taqwater_avail()[2]]))
             st.write('')
 
             #PCR1 componenents - available amounts need taq water plates, still need to implement
             st.markdown('<h6 style="color:#B1298D">PCR 1</h6>', unsafe_allow_html=True)
-            if taq_water_avail_PCR1[0] == 0 or taq_water_avail_PCR1[1] == 0:
+            if taq_avail < primer_taq_vol or water_avail < primer_water_vol:
                 st.markdown('<p style="color:#B92A5D"> Upload taq and water plates to fulfill PCR 1 requirements </p>', unsafe_allow_html=True)
             PCR1_cols = st.columns([6, 4, 6, 4])
             PCR1_cols[0].markdown('**Required water volume**', unsafe_allow_html=True)
             PCR1_cols[1].write(str(primer_water_vol/1000)+' μl')
             PCR1_cols[2].markdown('**Available water volume**')
-            PCR1_cols[3].write(str(taq_water_avail_PCR1[1]/1000)+' μl')
+            PCR1_cols[3].write(str(water_avail/1000)+' μl')
             PCR1_cols[0].markdown('**Required taq volume**')
             PCR1_cols[1].write(str(primer_taq_vol/1000)+' μl')
             PCR1_cols[2].markdown('**Available taq volume**')
-            PCR1_cols[3].write(str(taq_water_avail_PCR1[0]/1000)+' μl')
+            PCR1_cols[3].write(str(taq_avail/1000)+' μl')
             st.write('')
             #PCR 2 components - avail amounts plus barcodes?
+            if taq_avail < (primer_taq_vol + barcode_taq_vol) or water_avail < (primer_water_vol + barcode_water_vol):
+                st.markdown('<p style="color:#B92A5D"> Upload more taq and water plates to fulfill PCR 2 requirements </p>', unsafe_allow_html=True)
             st.markdown('<h6 style="color:#B1298D">PCR 2</h6>', unsafe_allow_html=True)
             PCR2_cols = st.columns([6, 4, 6, 4])
             PCR2_cols[0].markdown('**Required water volume**')
             PCR2_cols[1].write(str(barcode_water_vol/1000)+' μl')
             PCR2_cols[2].markdown('**Available water volume**')
-            PCR2_cols[3].write(str(taq_water_avail_PCR2[1]/1000)+' μl')
+            PCR2_cols[3].write(str(water_avail/1000)+' μl')
             PCR2_cols[0].markdown('**Required taq volume**')
             PCR2_cols[1].write(str(barcode_taq_vol/1000)+' μl')
             PCR2_cols[2].markdown('**Available taq volume**')
-            PCR2_cols[3].write(str(taq_water_avail_PCR2[0]/1000)+' μl')
+            PCR2_cols[3].write(str(taq_avail/1000)+' μl')
             
             #st.write('')
             #st.markdown('<h6 style="color:#B1298D">Barcode Pairs</h6>', unsafe_allow_html=True)
             bar_cols = st.columns([6, 4, 6, 4])
             bar_cols[0].markdown('**Barcode Pairs Remaining**')
             bar_cols[1].write(str(barcodes_remain))
-            bar_cols[2].markdown('**Barcode Pairs Available**')
+            bar_cols[2].markdown('**Max Possible Barcode Pairs**')
             bar_cols[3].write(str(barcodes_avail))
-            bar_cols[0].markdown('**Sufficient Barcode Volumes**')
-            if barcode_vol_okay:
-                bar_cols[1].markdown('<p style="color:green">True</p>', unsafe_allow_html=True)
+            bar_cols[0].markdown('**Barcode Pairs Allowed by Volume**')
+            if barcode_vol_capacity > (barcodes_avail - barcodes_remain):
+                bar_cols[1].markdown('<p style="color:green">'+str(barcode_vol_capacity)+'</p>', unsafe_allow_html=True)
             else:
-                bar_cols[1].markdown('<p style="color:red">False</p>', unsafe_allow_html=True)
+                bar_cols[1].markdown('<p style="color:red">'+str(barcode_vol_capacity)+'</p>', unsafe_allow_html=True)
 
     #Check all the calculations with Cam
     if show_primers:
@@ -615,67 +620,106 @@ def extra_data():
     """
     Home page: load data
 
-    Upload options for extra custom data including reference files, assay lists, primer plates and barcode plates
+    Upload options for extra custom data including reference files, assay lists, primer plates, barcode plates and PCR plates (barcode only)
     """
     with st.container():
-        with st.expander('Upload reference sequences, assay lists, taq and water plates, primer plates, and barcode plates', expanded=False):
+        with st.expander('Upload reference sequences, assay lists, taq and water plates, primer plates, barcode plates, PCR plate barcodes', expanded=False):
 
-            upload_option = st.radio('Upload Options:', ('Custom Reference File', 'Assay List', 'Taq and Water Plates', 'Primer Plates', 'Barcode Plates'))
+            upload_option = st.radio('Upload Options:', ('Custom Reference File', 'Assay List', 'Taq and Water Plates', 
+                    'Primer Plates', 'Barcode Plates', 'PCR Plates (barcodes only)'))
 
             if upload_option == 'Custom Reference File':
-                uploaded_reference = st.file_uploader('Upload custom reference file', key='ref_uploader', type=['txt','fa','fasta'])
-                if uploaded_reference:
-                    if 'reference_upload' not in st.session_state or st.session_state['reference_upload'] != uploaded_reference.name:
-                        success = st.session_state['experiment'].add_reference(uploaded_reference)
-                        st.session_state['reference_upload'] = uploaded_reference.name
+                uploaded_references = st.file_uploader('Upload custom reference file', key='ref_uploader', type=['txt','fa','fasta'], accept_multiple_files=True)
+                if uploaded_references:
+                    # compare list of all names against the previously loaded list. Only runs if the whole file list changes
+                    if 'reference_upload' not in st.session_state or \
+                            st.session_state['reference_upload'] != [upr.name for upr in uploaded_references]:
+                        success = st.session_state['experiment'].add_references(uploaded_references)
+                        # set the list of uploaded files so we don't accidentally add them again
+                        st.session_state['reference_upload'] = [upr.name for upr in uploaded_references]
                 
 
             if upload_option == 'Assay List':
-                uploaded_assaylist = st.file_uploader('Upload assay list', key='assaylist_uploader', type=['txt','csv'])
-                if uploaded_assaylist:
-                    if 'assaylist_upload' not in st.session_state or st.session_state['assaylist_upload'] != uploaded_assaylist.name:
-                        success = st.session_state['experiment'].add_assaylist(uploaded_assaylist)
-                        st.session_state['assaylist_upload'] = uploaded_assaylist.name
+                uploaded_assaylists = st.file_uploader('Upload assay list', key='assaylist_uploader', type=['txt','csv'], accept_multiple_files=True)
+                if uploaded_assaylists:
+                    # compare list of all names against the previously loaded list. Only runs if the whole file list changes
+                    if 'assaylist_upload' not in st.session_state or \
+                            st.session_state['assaylist_upload'] != [upa.name for upa in uploaded_assaylists]:
+                        success = st.session_state['experiment'].add_assaylists(uploaded_assaylists)
+                        # set the list of uploaded files so we don't accidentally add them again
+                        st.session_state['assaylist_upload'] = [upa.name for upa in uploaded_assaylists]
 
             if upload_option == 'Primer Plates':
                 uploaded_primer_layouts = st.file_uploader('Upload primer plate layouts', 
                         key='primer_uploader', type='csv', accept_multiple_files=True)
                 if uploaded_primer_layouts:
-                    if 'primer_layouts_upload' not in st.session_state or st.session_state['primer_layouts_upload'] != uploaded_primer_layouts[0].name:
+                    # compare list of all names against the previously loaded list. Only runs if the whole file list changes
+                    if 'primer_layouts_upload' not in st.session_state or \
+                            st.session_state['primer_layouts_upload'] != [upl.name for upl in uploaded_primer_layouts]:
                         success = st.session_state['experiment'].add_primer_layouts(uploaded_primer_layouts)
-                        st.session_state['primer_layouts_upload'] = uploaded_primer_layouts[0].name
+                        # set the list of uploaded files so we don't accidentally add them again
+                        st.session_state['primer_layouts_upload'] = [upl.name for upl in uploaded_primer_layouts]
                 uploaded_primer_volumes = st.file_uploader('Upload primer plate volumes', key='primer_vol_uploader', type='csv', accept_multiple_files=True)
                 if uploaded_primer_volumes:
-                    if 'primer_volumes_upload' not in st.session_state or st.session_state['primer_volumes_upload'] != [upv.name for upv in uploaded_primer_volumes]:
+                    # compare list of all names against the previously loaded list. Only runs if the whole file list changes
+                    if 'primer_volumes_upload' not in st.session_state or \
+                            st.session_state['primer_volumes_upload'] != [upv.name for upv in uploaded_primer_volumes]:
                         success = st.session_state['experiment'].add_primer_volumes(uploaded_primer_volumes)
+                        # set the list of uploaded files so we don't accidentally add them again
                         st.session_state['primer_volumes_upload'] = [upv.name for upv in uploaded_primer_volumes]
 
             if upload_option == 'Barcode Plates':
                 uploaded_barcode_layouts = st.file_uploader('Upload i7i5 barcode plate layout', 
                         key='barcode_uploader', type='csv', accept_multiple_files=True)
                 if uploaded_barcode_layouts:
-                    if 'barcode_layout_upload' not in st.session_state or st.session_state['barcode_layout_upload'] != uploaded_barcode_layouts[0].name:
+                    # compare list of all names against the previously loaded list. Only runs if the whole file list changes
+                    if 'barcode_layout_upload' not in st.session_state or \
+                            st.session_state['barcode_layout_upload'] != [ubl.name for ubl in uploaded_barcode_layouts]:
                         success = st.session_state['experiment'].add_barcode_layouts(uploaded_barcode_layouts)
-                        st.session_state['barcode_layout_upload'] = uploaded_barcode_layouts[0].name
+                        # set the list of uploaded files so we don't accidentally add them again
+                        st.session_state['barcode_layout_upload'] = [ubl.name for ubl in uploaded_barcode_layouts]
                             
                 uploaded_barcode_volumes = st.file_uploader('Upload i7i5 barcode plate volumes', key='barcode_vol_uploader',
                         type='csv', accept_multiple_files=True)
                 if uploaded_barcode_volumes:
+                    # compare list of all names against the previously loaded list. Only runs if the whole file list changes
                     if 'barcode_volume_upload' not in st.session_state or \
-                            st.session_state['barcode_volume_upload'] !=\
-                            [ubv.name for ubv in uploaded_barcode_volumes]:
+                            st.session_state['barcode_volume_upload'] != [ubv.name for ubv in uploaded_barcode_volumes]:
                         success = st.session_state['experiment'].add_barcode_volumes(uploaded_barcode_volumes)
+                        # set the list of uploaded files so we don't accidentally add them again
                         st.session_state['barcode_volume_upload'] = [ubv.name for ubv in uploaded_barcode_volumes]
 
             #Option to add taq water
             if upload_option == 'Taq and Water Plates':
+                taqwater_barcode = st.text_input('Taq+Water plate barcode', placeholder='Type in the barcode for taq+water plate', key='taq_water_barcode')
+                if taqwater_barcode:
+                    # compare file name against the previously loaded file. Only runs if the file changes
+                    if 'taqwater_barcode_upload' not in st.session_state or \
+                            st.session_state['taqwater_barcode_upload'] != taqwater_barcode:
+                        success = st.session_state['experiment'].add_standard_taqwater_plates([taqwater_barcode])
+                        # set the uploaded file in cache so we don't accidentally add it again
+                        st.session_state['taqwater_barcode_upload'] = taqwater_barcode
+
                 uploaded_taqwater_plates = st.file_uploader('Upload taq and water resevoir plates', 
                         key='taq_water_upload', type='csv', accept_multiple_files=True)
                 if uploaded_taqwater_plates:
+                    # compare list of all names against the previously loaded list. Only runs if the whole file list changes
                     if 'taqwater_upload' not in st.session_state or \
-                        st.session_state['taqwater_upload'] != uploaded_taqwater_plates[0].name:
-                        success = st.session_state['experiment'].add_standard_taqwater_plates(uploaded_taqwater_plates) #not sure if this is right
-                        st.session_state['taqwater_upload'] = uploaded_taqwater_plates[0].name #????????
+                            st.session_state['taqwater_upload'] != [utp.name for utp in uploaded_taqwater_plates]:  
+                        success = st.session_state['experiment'].add_standard_taqwater_plates(uploaded_taqwater_plates)
+                        # set the list of uploaded files so we don't accidentally add them again
+                        st.session_state['taqwater_upload'] = [utp.name for utp in uploaded_taqwater_plates]
+
+            if upload_option == 'PCR Plates (barcodes only)':
+                pcr_plate_barcode = st.text_input('PCR plate barcode', placeholder='Type in the barcode for PCR plate', key='pcr_plate_barcode')
+                if pcr_plate_barcode:
+                    # compare file name against the previously loaded file. Only runs if the file changes
+                    if 'pcr_barcode_upload' not in st.session_state or \
+                            st.session_state['pcr_barcode_upload'] != pcr_plate_barcode:
+                        success = st.session_state['experiment'].add_pcr_plates([pcr_plate_barcode])
+                        # set the uploaded file in cache so we don't accidentally add it again
+                        st.session_state['pcr_barcode_upload'] = pcr_plate_barcode
+
 
 
 
@@ -1009,15 +1053,64 @@ def pipe_stages(exp, stage):
                 st.write('')
                 st.write('')
                 included_DNA_plates = set()
-                st.markdown('<h4 style="color:#0f6b8e;text-align:center">Choose Nimbus plates for Echo (PCR 1 Assay)</h4>', unsafe_allow_html=True)
+                included_PCR_plates = set()
+                included_taqwater_plates = set()
+                st.markdown('<h4 style="color:#0f6b8e;text-align:center">Choose plates for Echo (PCR 1 Assay)</h4>', unsafe_allow_html=True)
                 st.write('')
+                # Arrange available DNA, PCR, and taq+water plates in columns
+                echo1_dna_col, echo1_pcr_col, echo1_taqwater_col = st.columns(3)
                 for nim in available_nimbus:
-                    plate=nim.split('\\')[1].split('.')[0]
-                    inc = st.checkbox(plate, value=False, key='chk_box_'+nim)
-                    if inc:
-                        included_DNA_plates.add(nim)
-                assay_usage = st.session_state['experiment'].get_assay_usage(dna_plate_list=included_DNA_plates)
-                st.write('')
-                display_reaction_stats(assay_usage)
+                    echo_filename=nim.split('\\')[1].split('.')[0]
+                    inc_dna = echo1_dna_col.checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
+                    if inc_dna:
+                        included_DNA_plates.add(echo_filename.split('_')[-2])
+                for pcr_pid in st.session_state['experiment'].get_pcr_plates():
+                    inc_pcr = echo1_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True), value=False, key='chk_box_pcr_'+pcr_pid)
+                    if inc_pcr:
+                        included_PCR_plates.add(pcr_pid)
+                for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
+                    inc_taqwater = echo1_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
+                            value=False, key='chk_box_taqwater_'+taqwater_pid)
+                    if inc_taqwater:
+                        included_taqwater_plates.add(taqwater_pid)
+                #st.write(f"{included_DNA_plates=}")
+                if included_DNA_plates:
+                    assay_usage = st.session_state['experiment'].get_assay_usage(dna_plate_list=included_DNA_plates)
+                    st.write('')
+                    if st.session_state['experiment'].check_ready_echo1(included_DNA_plates, 
+                            included_PCR_plates, included_taqwater_plates):
+                        st.markdown('<h4 style="color:#0f6b8e;text-align:center">Ready to run Echo PCR 1</h4>', unsafe_allow_html=True)
+                        echo_picklist_go = st.button('Generate Echo Picklist', key='echo_pcr1_go_button')
+                        if echo_picklist_go:
+                            success = st.session_state['experiment'].generate_echo_PCR1_picklist_interface(included_DNA_plates,
+                                    included_PCR_plates, included_taqwater_plates)
+                            if success:
+                                dna_picklist_path, primer_picklist_path, taqwater_picklist_path =\
+                                        st.session_state['experiment'].get_echo_PCR1_picklist_filepaths()
+                                echo1_dna_download_col, echo1_primer_download_col, echo1_taqwater_download_col = st.columns(3)
+                                if not dna_picklist_path:
+                                    echo1_dna_download_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                            'No DNA picklist available</h4>', unsafe_allow_html=True)
+                                else:
+                                    echo1_dna_download_col.download_button(label=f"Download {dna_picklist_path}", 
+                                            data=open(dna_picklist_path, 'rt'), file_name=dna_picklist_path, mime='text/csv')
+                                if not primer_picklist_path:
+                                    echo1_primer_download_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                            'No primer picklist available</h4>', unsafe_allow_html=True)
+                                else:
+                                    echo1_primer_download_col.download_button(label=f"Download {primer_picklist_path}", 
+                                            data=open(primer_picklist_path, 'rt'), file_name=primer_picklist_path, mime='text/csv')
+                                if not taqwater_picklist_path:
+                                    echo1_taqwater_download_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                            'No taq+water picklist available</h4>', unsafe_allow_html=True)
+                                else:
+                                    echo1_taqwater_download_col.download_button(label=f"Download {taqwater_picklist_path}", 
+                                            data=open(taqwater_picklist_path, 'rt'), file_name=taqwater_picklist_path, mime='text/csv')
+
+                    display_reaction_stats(assay_usage)
+
+                else:
+                    st.markdown('<h4 style="colour:#FF0000";text-align:center">Please include at least one DNA plate '+\
+                            '(Echo file) to carry on with pipeline</h4>', unsafe_allow_html=True)
                 extra_data()
 

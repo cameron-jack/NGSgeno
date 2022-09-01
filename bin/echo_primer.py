@@ -260,7 +260,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                     exp.plate_location_sample[d]['wells'].add(dest_pos)
                     exp.plate_location_sample[d][dest_pos] = deepcopy(exp.plate_location_sample[source_plate][source_pos])
 
-        pcrfmt = "PCR{{}}-picklist-{}.csv".format(exp.name)
+        pcrfmt = "PCR{{}}-picklist_{}.csv".format(exp.name)
 
         dnafns = file_get_check(dna_bcs, "Echo_384_COC_0001_{0}_?.csv") 
         nimcolmap = (("TRackBC", "dstplate"), ("TPositionId", 'dstwell'), ('SRackBC', 'srcplate'), ('SPositionId', 'srcwell'))
@@ -310,7 +310,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         ddict = dict((pbc, "Destination[{}]".format(i)) for i, pbc in enumerate(pcr_bcs, start=1))
         sdict = dict((pbc, "Source[{}]".format(i))for i, pbc in enumerate(dna_bcs, start=1))
         volume = 200
-        fn = pcrfmt.format("1dna")
+        fn = pcrfmt.format("1_dna")
         gen = ((sdict[r.dnaplate], r.dnaplate, srcPlateType, r.dnawell,
                 ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)
                 for r in s2tab.data)
@@ -320,7 +320,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         # [Source[1]', '', '384PP_AQ_BP', 'H6', 'Destination[1]', '3121', 'Hard Shell 384 well PCR Biorad', 'A1', 500]
         primsrc = PicklistSrc("primer-svy.csv", idx=4) # same name as in cgi-nimbus2.py
         volume = 500        
-        fn = pcrfmt.format("1prim")
+        fn = pcrfmt.format("1_primer")
         depleted = collections.Counter()
         primer_uses = collections.Counter()
         primer_output_rows = []
@@ -355,7 +355,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         
         
         # also PCR1 water and Taq
-        fndst = pcrfmt.format("1TaqWater")
+        fndst = pcrfmt.format("1_taqwater")
         mk_mytaq_picklist(fndst, s2tab.data, taq_bcs, 1000, 300)
         return True
         
@@ -426,7 +426,7 @@ def main():
             os.chdir(getdir(args.workdir))
     
         ngid = os.path.basename(os.getcwd()) # should be 8 characters -YYYYMMDD
-        pcrfmt = "PCR{{}}-picklist-{}.csv".format(ngid)
+        pcrfmt = "PCR{{}}-picklist_{}.csv".format(ngid)
     
         fnstage2 = "Stage2.csv"
         if args.pcr:
@@ -501,7 +501,7 @@ def main():
             ddict = dict((pbc, "Destination[{}]".format(i)) for i, pbc in enumerate(args.pcr, start=1))
             sdict = dict((pbc, "Source[{}]".format(i))for i, pbc in enumerate(args.dna, start=1))
             volume = 200
-            fn = pcrfmt.format("1dna")
+            fn = pcrfmt.format("1_dna")
             gen = ((sdict[r.dnaplate], r.dnaplate, srcPlateType, r.dnawell,
                     ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)
                    for r in s2tab.data)
@@ -511,7 +511,7 @@ def main():
             # [Source[1]', '', '384PP_AQ_BP', 'H6', 'Destination[1]', '3121', 'Hard Shell 384 well PCR Biorad', 'A1', 500]
             primsrc = PicklistSrc("primer-svy.csv", idx=4) # same name as in cgi-nimbus2.py
             volume = 500        
-            fn = pcrfmt.format("1prim")
+            fn = pcrfmt.format("1_primer")
             depleted = collections.Counter()
             primer_uses = collections.Counter()
             primer_output_rows = []
@@ -547,7 +547,7 @@ def main():
                 print('created:', fn)
         
             # also PCR1 water and Taq
-            fndst = pcrfmt.format("1TaqWater")
+            fndst = pcrfmt.format("1_taqwater")
             mk_mytaq_picklist(fndst, s2tab.data, args.taq, 1000, 300)
             if args.verbose:
                 print('created:', fndst)
