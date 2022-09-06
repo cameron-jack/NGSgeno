@@ -161,8 +161,6 @@ def display_reaction_stats(assay_usage, show_general=True, show_primers=True):
                 st.session_state['experiment'].get_barcode_remaining_available_volume()
     primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
 
-
-
     if show_general:
         with st.expander('Required Componenents for PCR Reactions', expanded=False):
             taq_avail, water_avail, pids = st.session_state['experiment'].get_taqwater_avail()           
@@ -790,8 +788,6 @@ def load_data():
                 success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in exp.unassigned_plates], rod_dp)
                 if not success:
                     st.markdown('<p style="color:#FF0000">Failed to incorporate plate set. Please read the log.</p>', unsafe_allow_html=True)
-                    if not success:
-                        st.session_state['view option index'] = len(view_headers)-1
                 else:
                     st.write('Successfully added plate set')
                     rod_dp = ''
@@ -841,7 +837,6 @@ def load_data():
                         success = st.session_state['experiment'].add_manifest(uploaded_file, st.session_state['default_manifest_type'])
                         if not success:
                             st.markdown('<p style="color:#FF0000">Failed to incorporate manifest. Please read the log.</p>', unsafe_allow_html=True)
-                            st.session_state['view option index'] = len(view_headers) -1
                         st.session_state['custom_upload'] = uploaded_file.name
                         st.experimental_rerun()
 
@@ -904,7 +899,6 @@ def load_data():
                     success = st.session_state['experiment'].add_musterer_plate_set(epps,dnap)
                     if not success:
                         st.markdown('<p style="color:#FF0000">Failed to incorporate manifest. Please read the log.</p>', unsafe_allow_html=True)
-                        st.session_state['view option index'] = len(view_headers)-1
                     st.experimental_rerun()
 
             with row2col4:
@@ -956,7 +950,6 @@ def pipe_stages(exp, stage):
                         success = st.session_state['experiment'].generate_nimbus_inputs()
                         if not success:
                             st.markdown('<p style="color:#FF0000">Failed to generate Nimbus files. Please read the log.</p>', unsafe_allow_html=True)
-                            st.session_state['view option index'] = len(view_headers)-1
                         else:
                             nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
                     if nfs:
@@ -994,7 +987,7 @@ def pipe_stages(exp, stage):
                         # list nimbus outputs that we still need
                         st.markdown('<h6 style="color:#8e0f5b">Missing the Nimbus output files:</h6>', unsafe_allow_html=True)
                         nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                        missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
+                        missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
                         mn_str = '</br>'.join(missing_nims)
                         st.markdown(f"<p style='color:#87adc7'>{mn_str}</p>", unsafe_allow_html=True)
                         if 'nim_upload' not in st.session_state:
@@ -1065,12 +1058,12 @@ def pipe_stages(exp, stage):
                     if inc_dna:
                         included_DNA_plates.add(echo_filename.split('_')[-2])
                 for pcr_pid in st.session_state['experiment'].get_pcr_plates():
-                    inc_pcr = echo1_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True), value=False, key='chk_box_pcr_'+pcr_pid)
+                    inc_pcr = echo1_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True), value=True, key='chk_box_pcr_'+pcr_pid)
                     if inc_pcr:
                         included_PCR_plates.add(pcr_pid)
                 for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
                     inc_taqwater = echo1_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
-                            value=False, key='chk_box_taqwater_'+taqwater_pid)
+                            value=True, key='chk_box_taqwater_'+taqwater_pid)
                     if inc_taqwater:
                         included_taqwater_plates.add(taqwater_pid)
                 #st.write(f"{included_DNA_plates=}")

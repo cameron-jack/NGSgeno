@@ -116,68 +116,88 @@ def guard_mbc(mbc, silent=False):
     """ Add guards to Musterer barcode """
     mbc = str(mbc).strip()
     if mbc == '':
-        raise EmptyBarcodeError(f"Musterer barcode is zero length string!")
+        msg = f"Musterer barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
     if is_guarded_mbc(mbc):
         if silent:
             return mbc
-        raise ExistingGuardError(f"Musterer barcode appears to already have Musterer guards: {mbc}")
+        msg = f"Musterer barcode appears to already have Musterer guards: {mbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_rbc(mbc):
-        raise ExistingGuardError(f"Musterer barcode appears to already have Rodentity guards: {mbc}")
+        msg = f"Musterer barcode appears to already have Rodentity guards: {mbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_cbc(mbc):
-        raise ExistingGuardError(f"Musterer barcode appears to already have custom guards: {mbc}")
+        msg = f"Musterer barcode appears to already have custom guards: {mbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_pbc(mbc):
-        raise ExistingGuardError(f"Musterer barcode appears to already have plate guards: {mbc}")
+        msg = f"Musterer barcode appears to already have plate guards: {mbc}"
+        raise ExistingGuardError(msg)
     return 'm' + mbc + 'm'
 
 def guard_rbc(rbc, silent=False):
     """ Add guards to Rodentity barcode """
     rbc = str(rbc).strip()
     if rbc == '':
-        raise EmptyBarcodeError(f"Rodentity barcode is zero length string!")
+        msg = f"Rodentity barcode is zero length string!" 
+        raise EmptyBarcodeError(msg)
     if is_guarded_mbc(rbc):
-        raise ExistingGuardError(f"Rodentity barcode appears to already have Musterer guards: {rbc}")
+        msg = f"Rodentity barcode appears to already have Musterer guards: {rbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_rbc(rbc):
         if silent:
             return rbc
-        raise ExistingGuardError(f"Rodentity barcode appears to already have Rodentity guards: {rbc}")
+        msg = f"Rodentity barcode appears to already have Rodentity guards: {rbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_cbc(rbc):
-        raise ExistingGuardError(f"Rodentity barcode appears to already have custom guards: {rbc}")
+        msg = f"Rodentity barcode appears to already have custom guards: {rbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_pbc(rbc):
-        raise ExistingGuardError(f"Rodentity barcode appears to already have plate guards: {rbc}")
+        msg = f"Rodentity barcode appears to already have plate guards: {rbc}"
+        raise ExistingGuardError(msg)
     return rbc + 'M'  # Rodentity barcodes already start with 'M'
 
 def guard_cbc(cbc, silent=False):
     """ Add guards to custom barcode """
     cbc = str(cbc).strip()
     if cbc == '':
-        raise EmptyBarcodeError(f"Custom barcode is zero length string!")
+        msg = f"Custom barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
     if is_guarded_mbc(cbc):
-        raise ExistingGuardError(f"Custom barcode appears to already have Musterer guards: {cbc}")
+        msg = f"Custom barcode appears to already have Musterer guards: {cbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_rbc(cbc):
-        raise ExistingGuardError(f"Custom barcode appears to already have Rodentity guards: {cbc}")
+        msg = f"Custom barcode appears to already have Rodentity guards: {cbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_cbc(cbc):
         if silent:
             return cbc
-        raise ExistingGuardError(f"Custom barcode appears to already have custom guards: {cbc}")
+        msg = f"Custom barcode appears to already have custom guards: {cbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_pbc(cbc):
-        raise ExistingGuardError(f"Custom barcode appears to already have plate guards: {cbc}")
+        msg = f"Custom barcode appears to already have plate guards: {cbc}"
+        raise ExistingGuardError(msg)
     return 'c' + cbc + 'c'
 
 def guard_pbc(pbc, silent=False):
     """ Add guards to plate barcode, silent ignores already correctly guarded case """
     pbc = str(pbc).strip()
     if pbc == '':
-        raise EmptyBarcodeError(f"Plate barcode is zero length string!")
+        msg = f"Plate barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
     if is_guarded_mbc(pbc):
-        raise ExistingGuardError(f"Plate barcode appears to already have Musterer guards: {pbc}")
+        msg = f"Plate barcode appears to already have Musterer guards: {pbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_rbc(pbc):
-        raise ExistingGuardError(f"Plate barcode appears to already have Rodentity guards: {pbc}")
+        msg = f"Plate barcode appears to already have Rodentity guards: {pbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_cbc(pbc):
-        raise ExistingGuardError(f"Plate barcode appears to already have custom guards: {pbc}")
+        msg = f"Plate barcode appears to already have custom guards: {pbc}"
+        raise ExistingGuardError(msg)
     if is_guarded_pbc(pbc):
         if silent:
             return pbc
-        raise ExistingGuardError(f"Plate barcode appears to already have plate guards: {pbc}")
+        msg = f"Plate barcode appears to already have plate guards: {pbc}"
+        raise ExistingGuardError(msg)
     return 'p' + pbc + 'p'
 
 
@@ -185,41 +205,49 @@ def guard_pbc(pbc, silent=False):
 def unguard_mbc(mbc, silent=False):
     """ remove guards from a Musterer barcode """
     if type(mbc) != str:
-        raise AttributeError(f"Musterer barcode is not a string! {mbc} is type {type(mbc)}")
+        msg = f"Musterer barcode is not a string! {mbc} is type {type(mbc)}"
+        raise AttributeError(msg)
     if not mbc.startswith('m') and not mbc.endswith('m') and silent:  # just return unguarded barcodes as themselves
         return mbc
     if not mbc.startswith('m') or not mbc.endswith('m'):
-        raise UnguardedBarcodeError(f"Musterer barcode guards degraded or missing in: {mbc}")
+        msg = f"Musterer barcode guards degraded or missing in: {mbc}"
+        raise UnguardedBarcodeError(msg)
     return mbc[1:-1]
 
 def unguard_rbc(rbc, silent=False):
     """ remove guards from a Rodentity barcode """
     if type(rbc) != str:
-        raise AttributeError(f"Rodentity barcode is not a string! {rbc} is type {type(rbc)}")
+        msg = f"Rodentity barcode is not a string! {rbc} is type {type(rbc)}"
+        raise AttributeError(msg)
     if not rbc.startswith('r') and not rbc.endswith('r') and silent:  # just return unguarded barcodes as themselves
         return rbc
     if not rbc.startswith('M') or not rbc.endswith('m'):
-        raise UnguardedBarcodeError(f"Musterer barcode guards degraded or missing in: {rbc}")
+        msg = f"Musterer barcode guards degraded or missing in: {rbc}"
+        raise UnguardedBarcodeError(msg)
     return rbc[0:-1]  # Rodentity barcodes keep their 'M' front guard
 
 def unguard_cbc(cbc, silent=False):
     """ remove guards from a custom barcode """
     if type(cbc) != str:
-        raise AttributeError(f"Custom barcode is not a string! {cbc} is type {type(cbc)}")
+        msg = f"Custom barcode is not a string! {cbc} is type {type(cbc)}"
+        raise AttributeError(msg)
     if not cbc.startswith('c') and not cbc.endswith('c') and silent:  # just return unguarded barcodes as themselves
         return cbc
     if not cbc.startswith('c') or not cbc.endswith('c'):
-        raise UnguardedBarcodeError(f"Custom barcode guards degraded or missing in: {cbc}")
+        msg = f"Custom barcode guards degraded or missing in: {cbc}"
+        raise UnguardedBarcodeError(msg)
     return cbc[1:-1]
 
 def unguard_pbc(pbc, silent=False):
     """ remove guards from a plate barcode """
     if type(pbc) != str:
-        raise AttributeError(f"Plate barcode is not a string! {pbc} is type {type(pbc)}")
+        msg = f"Plate barcode is not a string! {pbc} is type {type(pbc)}"
+        raise AttributeError(msg)
     if not pbc.startswith('p') and not pbc.endswith('p') and silent:  # just return unguarded barcodes as themselves
         return pbc
     if not pbc.startswith('p') or not pbc.endswith('p'):
-        raise UnguardedBarcodeError(f"Plate barcode guards degraded or missing in: {pbc}")
+        msg = f"Plate barcode guards degraded or missing in: {pbc}"
+        raise UnguardedBarcodeError(msg)
     return pbc[1:-1]
 
 def unguard(bc, silent=False):
@@ -376,7 +404,7 @@ def match_nimbus_to_echo_files(exp: Experiment) -> tuple(list,list,list):
         nbc = frozenset(PurePath(fn).name.replace('Nimbus-','').replace('.csv','') for fn in nfiles)
         ebc = frozenset(PurePath(fn).name.replace('.csv','').split('_',5)[4] for fn in efiles)
         xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
-        print(f"{nbc=} {ebc=} {xbc=}")
+        #print(f"{nbc=} {ebc=} {xbc=}")
         return nfiles, efiles, xbc
     except Exception as exc:
         exp.log('Problem matching Nimbus to Echo files', level='Error')

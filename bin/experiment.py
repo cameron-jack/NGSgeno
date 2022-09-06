@@ -678,13 +678,13 @@ class Experiment():
 
     def generate_nimbus_inputs(self):
         success = nimbus_gen(self)
-        print("In generate_nimbus_inputs", success)
+        #print("In generate_nimbus_inputs", success)
         return success
 
     def get_nimbus_filepaths(self):
         """ Return the lists of nimbus input files, echo input file (nimbus outputs), 
             and barcodes that are only seen in nimbus """
-        print("In get_nimbus_filepaths")
+        #print("In get_nimbus_filepaths")
         nimbus_input_filepaths, echo_input_paths, xbc = file_io.match_nimbus_to_echo_files(self)
         return nimbus_input_filepaths, echo_input_paths, xbc
 
@@ -701,7 +701,7 @@ class Experiment():
             "Unique assays":15
             }]
             Returns True on success
-        """ 
+        """                                                                                              
         print(f"In remove_entries. {selected_rows=}")
         for row in selected_rows:
             if row['DNA PID'] not in self.dest_sample_plates:
@@ -850,19 +850,23 @@ class Experiment():
         primer_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primers']
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
                 'primer names pooled', 'volume']
-        fn = self.get_exp_fn(primer_survey_filename)
+        fn = self.get_exp_fp(primer_survey_filename)
         if os.path.exists(fn):
             self.log(f'Warning: overwriting primer survey file {fn}')
         with open(fn, 'wt') as fout:
-            print('\t'.join(header)+'\n', file=fout)
+            print(','.join(header), file=fout)
             for i,pid in enumerate(primer_pids):
                 plate=self.plate_location_sample[pid]
                 for well in row_ordered_384:
                     # TODO: correct the columns below
                     if well not in plate['wells']:
                         continue
-                    outline = '\t'.join([f"Source[{i}]",file_io.unguard_pbc(pid,silent=True),plate['plate_type'],
-                            well,plate[well]['primer'],plate[well]['volume']])
+                    if 'primer' not in plate[well]:
+                        continue
+                    if 'volume' not in plate[well]:
+                        continue
+                    outline = ','.join([f"Source[{i+1}]",file_io.unguard_pbc(pid,silent=True),plate['plate_type'],
+                            well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
                     print(outline, file=fout)
         self.log(f"Success: written Echo primer survey to {fn}")
         return True
@@ -885,7 +889,7 @@ class Experiment():
                     self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
                     return False
             self.log(f'Warning: existing entry for PCR plate {pid}. This will be overwritten!')
-        success = self.generate_echo_primer_survey(self, dna_plates, pcr_plates, taq_water_plates)
+        success = self.generate_echo_primer_survey()
         if not success:
             self.log('Failure: failed to generate primer survey file')
             return False
@@ -982,53 +986,50 @@ class Experiment():
                     return False
                 self.log(f"Info: {PID} exists, appending barcode volumes")
         
-        plate_format = False
-        data = StringIO(uploaded_barcode_volume.getvalue().decode("utf-8"), newline='')
-        hdr_seen = False
-        for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
-            if i == 0:
-                if row[0].lower().startswith('date'):
-                    plate_format = True
-                continue
-            if plate_format:
-                # format 1 - volume in r,c plate matrix
-                # matrix format - 2 initial lines, a blank line then a matrix
-                #next(src), next(src) # skip two more lines
-                if not row or row[0] == '' or row[0][0] not in {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P'}:
+            plate_format = False
+            data = StringIO(uploaded_barcode_volume.getvalue().decode("utf-8"), newline='')
+            hdr_seen = False
+            for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
+                if i == 0:
+                    if row[0].lower().startswith('date'):
+                        plate_format = True
                     continue
-                
-                if not hdr_seen: 
-                    hdr = row # first row of matrix - cells contain columns
-                    if hdr[0] != '':
-                        self.log(f"Error: barcode file format doesn't match expectations")
-                    hdr_seen = True
-                    continue
-                else:
-                    #assert r[0] # row has row ID (a letter)
-                    for col, v in zip(hdr[1:], row[1:]):
-                        if v:
-                            well = unpadwell(row[0]+col)
+                if plate_format:
+                    # format 1 - volume in r,c plate matrix
+                    # matrix format - 2 initial lines, a blank line then a matrix
+                    #next(src), next(src) # skip two more lines
+                    if not row or row[0].strip() == '':
+                        continue
+                    elif row[0].strip() == 'A':
+                        hdr_seen = True
+                    elif not hdr_seen:
+                        continue
+                    
+                    plate_row = row[0].strip()
+                    for col, v in enumerate(row):
+                        if col > 0 and v.strip() != '':
+                            well = plate_row+str(col)
                             self.plate_location_sample[PID]['wells'].add(well)
                             if well not in self.plate_location_sample[PID]:
                                 self.plate_location_sample[PID][well] = {}
                             self.plate_location_sample[PID][well]['volume'] = float(v)*1000
-            else:                
-                #format 2 - one row per well - well ID in r[3], volume in r[5] or r[6]
-                #if i == 0 and line.startswith('Run ID'):
-                if row.startswith('[DETAILS]'):
-                    continue
-                if ''.join(row).strip() == '':
-                    continue
-                if not hdr_seen:
-                    self.hdr = row
-                    hdr_seen = True
-                else:
-                    well = unpadwell(row[3])
-                    self.plate_location_sample[PID]['wells'].add(well)
-                    if well not in self.plate_location_sample[PID]:
-                        self.plate_location_sample[PID][well] = {}
-                    self.plate_location_sample[PID][well]['volume'] = int(float[5])*1000
-            self.plate_location_sample[PID]['barcode'] = PID
+                else:                
+                    #format 2 - one row per well - well ID in r[3], volume in r[5] or r[6]
+                    #if i == 0 and line.startswith('Run ID'):
+                    if row.startswith('[DETAILS]'):
+                        continue
+                    if ''.join(row).strip() == '':
+                        continue
+                    if not hdr_seen:
+                        self.hdr = row
+                        hdr_seen = True
+                    else:
+                        well = unpadwell(row[3])
+                        self.plate_location_sample[PID]['wells'].add(well)
+                        if well not in self.plate_location_sample[PID]:
+                            self.plate_location_sample[PID][well] = {}
+                        self.plate_location_sample[PID][well]['volume'] = int(float[5])*1000
+                self.plate_location_sample[PID]['barcode'] = PID
         self.log(f"Success: added barcode plate volumes from {', '.join([ubv.name for ubv in uploaded_barcode_volumes])}")
         self.save()
         return True

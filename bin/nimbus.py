@@ -282,154 +282,155 @@ def get_assays(well_info, assay_info):
         output_error(exc, msg='Error in nimbus.get_assays')
 
 
-def nimbus(dna_plate_id, platesdata, assay_info):
-    """
-    Process Musterer punch-plate data to produce a workfile for the BRF's Nimbus robot.
-    See nimbus_custom() for custom data version.
-    dna_plate_id - the barcode of the output plate
-    platesdata - from JSON file
-    assay_info - an Assays object from validate_assays.py
+#def nimbus(dna_plate_id, platesdata, assay_info):
+#    """
+#    Process Musterer punch-plate data to produce a workfile for the BRF's Nimbus robot.
+#    See nimbus_custom() for custom data version.
+#    dna_plate_id - the barcode of the output plate
+#    platesdata - from JSON file
+#    assay_info - an Assays object from validate_assays.py
     
-    It needs the name of an output file and ear-punch data for each plate.
-    Output - creates Nimbus_bc.csv and Stage1-P_bc.csv files
-    """
-    try:
-        if not file_io.is_guarded_pbc(dna_plate_id):
-            dna_plate_id = file_io.guard_pbc(dna_plate_id)
+#    It needs the name of an output file and ear-punch data for each plate.
+#    Output - creates Nimbus_bc.csv and Stage1-P_bc.csv files
+#    """
+#    try:
+#        if not file_io.is_guarded_pbc(dna_plate_id):
+#            dna_plate_id = file_io.guard_pbc(dna_plate_id)
 
-        # basic validation
-        dna_fn = 'Nimbus-'+dna_plate_id+'.csv'
-        fnstg = 'Stage1-P'+dna_plate_id+'.csv'
-        # rn - row number in Nimbus picklist file - Nimbus needs this
-        # wn - count the number of wells needed in the DNA plate
-        # plist - list of primer families needed for the mice (samples) in the plate
-        # unk - unknown assay family names; names that don't map to a primer family name
-        rn, wn, plist, unk = 0, 0, [], []
-        with open(dna_fn, "wt", newline='') as dstfd1, open(fnstg, "wt", newline='') as dstfd2:
-            nimbus_f  = csv.writer(dstfd1, dialect='unix')
-            # Note: apparently, the Nimbus is extremely particular about column names.
-            nimbus_f.writerow(['Sample no', 'Plate barcode', 'Well', 'Mouse barcode'])
-            stage1_f = csv.writer(dstfd2, dialect='unix')
+#        # basic validation
+#        dna_fn = 'Nimbus-'+dna_plate_id+'.csv'
+#        fnstg = 'Stage1-P'+dna_plate_id+'.csv'
+#        # rn - row number in Nimbus picklist file - Nimbus needs this
+#        # wn - count the number of wells needed in the DNA plate
+#        # plist - list of primer families needed for the mice (samples) in the plate
+#        # unk - unknown assay family names; names that don't map to a primer family name
+#        rn, wn, plist, unk = 0, 0, [], []
+#        with open(dna_fn, "wt", newline='') as dstfd1, open(fnstg, "wt", newline='') as dstfd2:
+#            nimbus_f  = csv.writer(dstfd1, dialect='unix')
+#            # Note: apparently, the Nimbus is extremely particular about column names.
+#            nimbus_f.writerow(['Sample no', 'Plate barcode', 'Well', 'Mouse barcode'])
+#            stage1_f = csv.writer(dstfd2, dialect='unix')
         
-            # hdr = tuple(['sampleNo', 'samplePlate','sampleWell', 'strainName', 'barcode', 'assays', 'assayFamilies', 
-            #      'mouseID', 'strainName', 'sex', 'parentLitter', 'parentSequence', 'parentStrain', 'parentDate'])
+#            # hdr = tuple(['sampleNo', 'samplePlate','sampleWell', 'strainName', 'barcode', 'assays', 'assayFamilies', 
+#            #      'mouseID', 'strainName', 'sex', 'parentLitter', 'parentSequence', 'parentStrain', 'parentDate'])
 
-            stage1_f.writerow(file_io.stage1_hdr)
-            for pbc in sorted(platesdata.keys()):
-                shx = platesdata.get(pbc, None)
-                if not shx:
-                    continue
-                assert 'wells' in shx
-                assert all(k in w for w in shx['wells'] for k in ('mouse', 'wellLocation'))
-                wells = dict((w['wellLocation'], w['mouse']) for w in shx['wells'])
-                # print("Sheet", shx.name) # use status bar
-                for c in sorted(frozenset(int(w[1:]) for w in wells.keys())):
-                    # rows are two blocks of 4 rows in this order - doesn't actually matter
-                    for r in 'ACEGBDFH':
-                        row_data = {field:'' for field in file_io.stage1_hdr}
-                        nwix = r+str(c) # well index
-                        nwixm = r+str(c).zfill(2) # Musterer well ID
-                        # nimbus needs non-empty Mouse Barcode so use '0' for 'empty'
-                        mbc = file_io.guard_mbc(str(wells[nwixm]["mouseBarcode"])) if nwixm in wells else '0'
-                        rn += 1
-                        rd = [rn, pbc, nwix, mbc]
-                        nimbus_f.writerow(rd)
-                        row_data['sampleNo'] = rn
-                        row_data['samplePlate'] = pbc
-                        row_data['sampleWell'] = nwixm
-                        row_data['barcode'] = mbc
-                        if nwixm in wells:
-                            well_info = wells[nwixm]
-                            mouse_assays, mouse_assayFamilies, unknown_assays = get_assays(well_info, assay_info)
-                            unk += unknown_assays
-                            for field in file_io.stage1_hdr:
-                                if 'assay' not in field and field in well_info:
-                                    row_data[field] = well_info[field]
-                            if mouse_assayFamilies:
-                                row_data['assays'] = ';'.join(mouse_assays)
-                                row_data['assayFamilies'] = ';'.join(mouse_assayFamilies)
-                                stage1_f.writerow([row_data[field] for field in file_io.stage1_hdr])
-                                wn += 1
-                                plist += mouse_assayFamilies
+#            stage1_f.writerow(file_io.stage1_hdr)
+#            for pbc in sorted(platesdata.keys()):
+#                shx = platesdata.get(pbc, None)
+#                if not shx:
+#                    continue
+#                assert 'wells' in shx
+#                assert all(k in w for w in shx['wells'] for k in ('mouse', 'wellLocation'))
+#                wells = dict((w['wellLocation'], w['mouse']) for w in shx['wells'])
+#                # print("Sheet", shx.name) # use status bar
+#                for c in sorted(frozenset(int(w[1:]) for w in wells.keys())):
+#                    # rows are two blocks of 4 rows in this order - doesn't actually matter
+#                    for r in 'ACEGBDFH':
+#                        row_data = {field:'' for field in file_io.stage1_hdr}
+#                        nwix = r+str(c) # well index
+#                        nwixm = r+str(c).zfill(2) # Musterer well ID
+#                        # nimbus needs non-empty Mouse Barcode so use '0' for 'empty'
+#                        mbc = file_io.guard_mbc(str(wells[nwixm]["mouseBarcode"])) if nwixm in wells else '0'
+#                        rn += 1
+#                        rd = [rn, pbc, nwix, mbc]
+#                        nimbus_f.writerow(rd)
+#                        row_data['sampleNo'] = rn
+#                        row_data['samplePlate'] = pbc
+#                        row_data['sampleWell'] = nwixm
+#                        row_data['barcode'] = mbc
+#                        if nwixm in wells:
+#                            well_info = wells[nwixm]
+#                            mouse_assays, mouse_assayFamilies, unknown_assays = get_assays(well_info, assay_info)
+#                            unk += unknown_assays
+#                            for field in file_io.stage1_hdr:
+#                                if 'assay' not in field and field in well_info:
+#                                    row_data[field] = well_info[field]
+#                            if mouse_assayFamilies:
+#                                row_data['assays'] = ';'.join(mouse_assays)
+#                                row_data['assayFamilies'] = ';'.join(mouse_assayFamilies)
+#                                stage1_f.writerow([row_data[field] for field in file_io.stage1_hdr])
+#                                wn += 1
+#                                plist += mouse_assayFamilies
                             
-        # return values for use in cgi-nimbus2.py code
-        return wn, sorted(frozenset(plist)), sorted(frozenset(unk))
-    except Exception as exc:
-        output_error(exc, msg='Error in nimbus.nimbus')
+#        # return values for use in cgi-nimbus2.py code
+#        return wn, sorted(frozenset(plist)), sorted(frozenset(unk))
+#    except Exception as exc:
+#        output_error(exc, msg='Error in nimbus.nimbus')
 
 
-def nimbus_custom(dna_plate_id, platesdata, assay_info):
-    """
-    Process custom sample-plate data, to produce a workfile for the BRF's Nimbus robot.
+#def nimbus_custom(dna_plate_id, platesdata, assay_info):
+#    """
+#    Process custom sample-plate data, to produce a workfile for the BRF's Nimbus robot.
     
-    It needs the name of an output file and sample data for each plate.
-    dna_plate_id = barcode or name of target output files, which should be guarded already        
-    """
-    try:
-        if not file_io.is_guarded_pbc(dna_plate_id):
-            dna_plate_id = file_io.guard_pbc(dna_plate_id)
+#    It needs the name of an output file and sample data for each plate.
+#    dna_plate_id = barcode or name of target output files, which should be guarded already        
+#    """
+#    try:
+#        if not file_io.is_guarded_pbc(dna_plate_id):
+#            dna_plate_id = file_io.guard_pbc(dna_plate_id)
 
-        # basic validation
-        dna_fn = 'Nimbus-'+dna_plate_id+'.csv'
-        fnstg = 'Stage1-P'+dna_plate_id+'.csv'
-        # rn - row number in Nimbus picklist file - Nimbus needs this
-        # wn - count the number of wells needed in the DNA plate
-        # plist - list of primer families needed for the samples in the plate
-        # unk - unknown assay family names; names that don't map to a primer family name
-        rn, wn, plist, unk = 0, 0, [], []
-        with open(dna_fn, "wt", newline='') as dstfd1, open(fnstg, "wt", newline='') as dstfd2:
-            nimbus_f  = csv.writer(dstfd1, dialect='unix')
-            # Note: apparently, the Nimbus is extremely particular about column names.
-            nimbus_f.writerow(['Sample no', 'Plate barcode', 'Well', 'Sample barcode'])
-            stage1_f = csv.writer(dstfd2, dialect='unix')
-            #stghdr = ['SampleNo', 'EPplate', 'EPwell', 'sampleBarcode', 'assays', 'assayFamilies']
-            stage1_f.writerow(file_io.stage1_hdr)
-            for pbc in sorted(platesdata):
-                shx = platesdata.get(pbc,None)
-                if not shx:
-                    print('No plate data found for plate', pbc, file=sys.stdout)
-                    continue
-                #assert 'wells' in shx
-                #assert all(k in w for w in shx['wells'] for k in ('organism', 'wellLocation'))
-                wells = dict((w['wellLocation'], w['organism']) for w in shx['wells'])
+#        # basic validation
+#        dna_fn = 'Nimbus-'+dna_plate_id+'.csv'
+#        fnstg = 'Stage1-P'+dna_plate_id+'.csv'
+#        # rn - row number in Nimbus picklist file - Nimbus needs this
+#        # wn - count the number of wells needed in the DNA plate
+#        # plist - list of primer families needed for the samples in the plate
+#        # unk - unknown assay family names; names that don't map to a primer family name
+#        rn, wn, plist, unk = 0, 0, [], []
+#        with open(dna_fn, "wt", newline='') as dstfd1, open(fnstg, "wt", newline='') as dstfd2:
+#            nimbus_f  = csv.writer(dstfd1, dialect='unix')
+#            # Note: apparently, the Nimbus is extremely particular about column names.
+#            nimbus_f.writerow(['Sample no', 'Plate barcode', 'Well', 'Sample barcode'])
+#            stage1_f = csv.writer(dstfd2, dialect='unix')
+#            #stghdr = ['SampleNo', 'EPplate', 'EPwell', 'sampleBarcode', 'assays', 'assayFamilies']
+#            stage1_f.writerow(file_io.stage1_hdr)
+#            for pbc in sorted(platesdata):
+#                shx = platesdata.get(pbc,None)
+#                if not shx:
+#                    print('No plate data found for plate', pbc, file=sys.stdout)
+#                    continue
+#                #assert 'wells' in shx
+#                #assert all(k in w for w in shx['wells'] for k in ('organism', 'wellLocation'))
+#                wells = dict((w['wellLocation'], w['organism']) for w in shx['wells'])
                 
-                for c in sorted(frozenset(int(w[1:]) for w in wells)):
-                    # rows are two blocks of 4 rows in this order - doesn't actually matter
-                    for r in 'ACEGBDFH':
-                        row_data = {field:'' for field in file_io.stage1_hdr}
-                        nwix = r+str(c) # well index
-                        #TODO remove this restriction of wells looking like A01, etc
-                        nwixm = r+str(c).zfill(2) # Sample plate well ID 
-                        # nimbus needs non-empty sample barcode so use '0' for 'empty'
-                        mbc = str(wells[nwixm]["sampleBarcode"]) if nwixm in wells else '0'
-                        rn += 1
-                        rd = [rn, pbc, nwix, mbc]
-                        nimbus_f.writerow(rd)
-                        row_data['sampleNo'] = rn
-                        row_data['samplePlate'] = pbc
-                        row_data['sampleWell'] = nwixm
-                        row_data['barcode'] = mbc
-                        if nwixm in wells:
-                            well_info = wells[nwixm]
-                            mouse_assays, mouse_assayFamilies, unknown_assays = get_assays(well_info, assay_info)
-                            unk += unknown_assays
-                            if 'sampleId' in well_info:
-                                row_data['sampleId'] = well_info['sampleId']
-                            if 'strain' in nwixm:
-                                row_data['strainName'] = well_info['strain']
-                            if 'sex' in nwixm:
-                                row_data['sex'] = well_info['sex']
-                            # in a custom run, the assays must be prescribed in the custom manifest
-                            #if mouse_assayFamilies:
-                                #row_data['assays'] = ';'.join(mouse_assays)
-                                #row_data['assayFamilies'] = ';'.join(mouse_assayFamilies)
-                            stage1_f.writerow([row_data[field] for field in file_io.stage1_hdr])  # assays are written here
-                            wn += 1
-                            plist += mouse_assayFamilies
-        # return values for use in cgi-nimbus2.py code
-        return wn, sorted(frozenset(plist)), sorted(frozenset(unk))
-    except Exception as exc:
-        output_error(exc, msg='Error in nimbus.nimbus_custom')
+#                for c in sorted(frozenset(int(w[1:]) for w in wells)):
+#                    # rows are two blocks of 4 rows in this order - doesn't actually matter
+#                    for r in 'ACEGBDFH':
+#                        row_data = {field:'' for field in file_io.stage1_hdr}
+#                        nwix = r+str(c) # well index
+#                        #TODO remove this restriction of wells looking like A01, etc
+#                        nwixm = r+str(c).zfill(2) # Sample plate well ID 
+#                        # nimbus needs non-empty sample barcode so use '0' for 'empty'
+#                        mbc = str(wells[nwixm]["sampleBarcode"]) if nwixm in wells else '0'
+#                        rn += 1
+#                        rd = [rn, pbc, nwix, mbc]
+#                        nimbus_f.writerow(rd)
+#                        row_data['sampleNo'] = rn
+#                        row_data['samplePlate'] = pbc
+#                        row_data['sampleWell'] = nwixm
+#                        row_data['barcode'] = mbc
+#                        if nwixm in wells:
+#                            well_info = wells[nwixm]
+#                            assays, assayFamilies, unknown_assays = get_assays(well_info, assay_info)
+#                            unk += unknown_assays
+#                            if 'sampleId' in well_info:
+#                                row_data['sampleId'] = well_info['sampleId']
+#                            if 'strain' in nwixm:
+#                                row_data['strainName'] = well_info['strain']
+#                            if 'sex' in nwixm:
+#                                row_data['sex'] = well_info['sex']
+#                            # in a custom run, the assays must be prescribed in the custom manifest
+#                            if assays:
+#                                row_data['assays'] = ';'.join(assays)
+#                            if assayFamilies:
+#                                row_data['assayFamilies'] = ';'.join(assayFamilies)
+#                            stage1_f.writerow([row_data[field] for field in file_io.stage1_hdr])  # assays are written here
+#                            wn += 1
+#                            plist += assayFamilies
+#        # return values for use in cgi-nimbus2.py code
+#        return wn, sorted(frozenset(plist)), sorted(frozenset(unk))
+#    except Exception as exc:
+#        output_error(exc, msg='Error in nimbus.nimbus_custom')
 
 def nimbus_gen(exp):
     """
@@ -495,8 +496,8 @@ def nimbus_gen(exp):
                             row_data['samplePlate'] = pbc
                             row_data['sampleWell'] = pos
                             row_data['sampleBarcode'] = shx[pos]['barcode']
-                            row_data['assays'] = shx[pos]['assays']
-                            row_data['assayFamilies'] = shx[pos]['assayFamilies']
+                            row_data['assays'] = ';'.join(shx[pos]['assays'])
+                            row_data['assayFamilies'] = ';'.join(shx[pos]['assayFamilies'])
                             if 'strain' in shx[pos]:
                                 row_data['strain'] = shx[pos]['strain']
                             else:

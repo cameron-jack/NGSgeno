@@ -19,9 +19,11 @@ import subprocess
 import traceback
 from pathlib import PurePath
 from collections import defaultdict
+import csv
 
 import bin.file_io as file_io 
 from bin.file_io import GUARD_TYPES
+import itertools
 
 ### Set up SSL/TLS certificate
 try:
@@ -76,8 +78,10 @@ PRIMER_WATER_VOL = 300
 BARCODE_VOL = 175
 BARCODE_TAQ_VOL = 2000
 BARCODE_WATER_VOL = 650
-DEAD_VOLS = {'384PP_AQ_BP': 50, '6RES_AQ_BP2': 700*1000}
+DEAD_VOLS = {'384PP_AQ_BP': 2.5*1000, '6RES_AQ_BP2': 250*1000}
 CAP_VOLS = {'384PP_AQ_BP': 12*1000, '6RES_AQ_BP2': 2800*1000}
+PLATE_TYPES = {'Echo6': '6RES_AQ_BP2', 'Echo384': '384PP_AQ_BP',
+               'PCR384': 'Hard Shell 384 well PCR Biorad'}
 
     
 def output_error(exc, msg=''):
@@ -369,7 +373,9 @@ class Table:
     
     @staticmethod
     def newtype(clsname, fields):
-        assert clsname not in Table.tt
+        #assert clsname not in Table.tt
+        if clsname in Table.tt:
+            return clsname
         Table.tt[clsname] = collections.namedtuple(clsname, fields)
         return clsname
     
@@ -393,13 +399,22 @@ class Table:
             assert not missing, "Fields missing from Table type "+clsname+': '+' '.join(missing)
         return Table.newtype(clsname, fields)
     
-    def csvwrite(self, fn):
+    def csvwrite(self, fn, output_plate_guards=False):
+        """ 
+        Check which columns contain plate barcodes, and enforce plate guards or their removal based on output_plate_guards
+        """
         with open(fn, "wt", newline='') as dstfd:
             for r in self.prefix:
                 dstfd.write(r)
             wx = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
+            data = []
+            for row in self.data:
+                if output_plate_guards:  # guard plate barcodes
+                    data.append([str(d) if 'plate barcode' not in h.lower() else file_io.guard_pbc(str(d), silent=True) for (h,d) in zip(self.header, row)])
+                else:  # unguard plate barcodes
+                    data.append([str(d) if 'plate barcode' not in h.lower() else file_io.unguard_pbc(str(d), silent=True) for (h,d) in zip(self.header, row)])
             wx.writerow(self.header)
-            wx.writerows(self.data)
+            wx.writerows(data)
         return
     
     def keyidx(self, key):
@@ -458,10 +473,12 @@ class CSVTable(Table):
     def __init__(self, clsname, filename, hdridx=1, fields=None, selector=None):
         assert hdridx>=0, "hdridx must be non-negative (>=0)"
         self.filename = filename
-        with open(filename, errors="ignore") as src:
+        with open(filename, errors="ignore", newline='') as src:
             prefix = [x for i, x in zip(range(hdridx-1), src)] # read initial lines
+            #print(f"{prefix=}")
             csvrdr = csv.reader(src)
             hdrrow = next(csvrdr) if hdridx else None
+            #print(f"{hdrrow=}")
             if clsname not in Table.tt:
                 assert fields or hdrrow
                 Table.newtype(clsname, fields if fields else hdrrow)

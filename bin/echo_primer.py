@@ -111,26 +111,38 @@ def file_get_check(fids, fmt):
         output_error(exc, msg='Error in echo_primer.file_get_check')
 
 
-def mk_picklist(fndst, rows):
+def mk_picklist(fndst, rows, output_plate_guards=False):
     """ output an Echo picklist given the rows (transfer spec) """
     try:
-        plhdr = "Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,"+\
+        plhdr_str = "Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,"+\
                 "Destination Plate Name,Destination Plate Barcode,Destination Plate Type,"+\
-                "Destination Well,Volume".split(',')
+                "Destination Well,Volume"
+        plhdr = plhdr_str.split(',')
         def rowchk(r):
             "check the length of a row"
             if len(r)!=len(plhdr):
                 print("len(r), len(plhdr) =", (len(r), len(plhdr)))
                 print("r =", r)
-            assert len(r)==len(plhdr)
+                output_error(f"mk_picklist: entry does not match header: {r}")
+                return None
             return r
         with open(fndst, "wt", newline='') as dstfd:
             dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
             dst.writerow(plhdr)
-            dst.writerows(rowchk(r) for r in rows)
+            data = []
+            for row in rows:
+                r = rowchk(row)
+                if not r:
+                    continue
+                if output_plate_guards:  # guard plate barcodes
+                    data.append([str(d) if 'plate barcode' not in h.lower() else file_io.guard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
+                else:  # unguard plate barcodes
+                    data.append([str(d) if 'plate barcode' not in h.lower() else file_io.unguard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
+            dst.writerows(data)
         return
     except Exception as exc:
         output_error(exc, msg='Error in echo_primer.mk_picklist')
+        return
 
 
 def mytaq(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2'):
@@ -218,22 +230,28 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
     """
     Entry point. Takes an experiment instance plus plate barcodes for dna plates, PCR plates, primer plates, taq/water plates.
     """
+    pcr_bcs = []
+    dna_bcs = []
+    taq_bcs = []
     try:
         pcr_bcs = [file_io.guard_pbc(p,silent=True) for p in pcr_plate_bcs]
     except Exception as e:
-        exp.log(e)
+        exp.log(f"{e}")
     try:
         dna_bcs = [file_io.guard_pbc(d,silent=True) for d in dna_plate_bcs] 
     except Exception as e:
-        exp.log(e)
-    try:
-        primer_bcs = [file_io.guard_pbc(p,silent=True) for p in exp.sample_plate_location if p['purpose'] == 'primers']
-    except Exception as e:
-        exp.log(e)
-    try:
+        exp.log(f"{e}")
+    #try:
+    #    Replace this with primer-svy file!
+    #    primer_bcs = [file_io.guard_pbc(p,silent=True) for p in exp.plate_location_sample if p['purpose'] == 'primers']
+    #except Exception as e:
+    #    exp.log(f"{e}")
+    try:                          
         taq_bcs = [file_io.guard_pbc(t) for t in taq_water_bcs]
     except Exception as e:
-        exp.log(e)
+        exp.log(f"{e}")
+
+    primer_survey = exp.get_exp_fp('primer-svy.csv')
 
     # read Nimbus created DNA plates into experiment
     #RecordId	TRackBC	TLabwareId	TPositionId	SRackBC	SLabwareId	SPositionId
@@ -244,21 +262,23 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
             exp.log(f"{d} has no matching Echo_384_COC file from the Nimbus", level='error')
         else:
             with open(fp, 'rt') as f:
-                exp.plate_location_sample[d] = {}
-                exp.plate_location_sample[d]['purpose'] = 'dna'
-                exp.plate_location_sample[d]['wells'] = set()
+                exp.plate_location_sample[d] = {'purpose':'dna','wells':set(),'source':'Nimbus','plate_type':'384PP_AQ_BP'}
                 for i, line in enumerate(f):
                     if i == 0:  # header
                         continue
-                    cols = [c.strip() for c in line.split(',')]
+                    cols = [c.strip().strip('\"') for c in line.split(',')]
                     source_pos = unpadwell(cols[-1])
                     source_plate = cols[-3]
                     dest_plate = cols[1]
                     dest_pos = unpadwell(cols[3])
                     if dest_plate != d:
-                        exp.log(f"{d} doesn't match {dest_plate} as declared in Echo_384_COC file: {fp}", level="error")
+                        exp.log(f"{file_io.unguard_pbc(d, silent=True)} doesn't match {file_io.unguard_pbc(dest_plate, silent=True)} "+\
+                           f"as declared in Echo_384_COC file: {fp}", level="error")
                     exp.plate_location_sample[d]['wells'].add(dest_pos)
-                    exp.plate_location_sample[d][dest_pos] = deepcopy(exp.plate_location_sample[source_plate][source_pos])
+                    try:
+                        exp.plate_location_sample[d][dest_pos] = deepcopy(exp.plate_location_sample[source_plate][source_pos])
+                    except:
+                        print(f"{d=} {dest_pos=} {source_plate=} {source_pos=}")
 
         pcrfmt = "PCR{{}}-picklist_{}.csv".format(exp.name)
 
@@ -277,30 +297,28 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                 message += "expect barcode = {}, file contains {}\n".format(bc, data)
             exp.log(message, level="error")
         dnadict = dict(((x.srcplate, x.srcwell), (x.dstplate, x.dstwell)) for nt in nimbusTables for x in nt.data)    
-        dnas = [CSVTable('S1Rec', 'Stage1-P{}.csv'.format(dnabc)) for dnabc in dna_bcs]
+        dnas = [CSVTable('S1Rec', exp.get_exp_fp('Stage1-P{}.csv'.format(dnabc))) for dnabc in dna_bcs]
         
-        primerTable = CSVTable("PPRec", primer_bcs[0], fields="spn spbc spt well primer volume")
+        primerTable = CSVTable("PPRec", primer_survey, fields="spn spbc spt well primer volume".split(' '))
         primset = sorted(frozenset(x.primer for x in primerTable.data if x.primer != ''))
-        
-        # primer family dict to list of primers within family group
         pfdict = dict((k.strip(), list([p.strip() for p in g])) for k, g in itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
-        
+
         # create record for PCR wells  
         wgenflds =  dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)
-        
         # Is this the plating of DNA samples for each assay? Yes. It is.
-        wgen = [xs+dnadict[(xs.EPplate, xs.EPwell)]+(x,) for xss in dnas for xs in xss.data for f in xs.assayFamilies.split(';') if f in pfdict for x in pfdict[f]]
-
-        # allocate PCR plate wells - leave last 3 empty
-        wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"][:-3]
-        pcrwellgen = ((p, w) for p in pcr_bcs for w in wells)
-        # allocate PCR well for each sample
+        wgen = [xs+dnadict[(xs.samplePlate, xs.sampleWell)]+(x,) for xss in dnas for xs in xss.data \
+                for f in xs.assayFamilies.split(';') if f in pfdict for x in pfdict[f]]
         
+        # allocate PCR plate wells
+        wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"]
+        pcrwellgen = ((p, w) for p in pcr_bcs for w in wells)
+        
+        # allocate PCR well for each sample
         s2flds = wgenflds+('pcrplate', 'pcrwell')
         S2Rec = Table.newtype('S2Rec', s2flds)
         s2tab = Table(S2Rec, ([x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)), headers=s2flds) 
-        # output Stage 2 CSV file - used in Stage 3 below
-        s2tab.csvwrite("Stage2.csv")
+        # output Stage 2 CSV file - used in Stage 3 below - keeping the plate guards for the next stage (to be safe)
+        s2tab.csvwrite(exp.get_exp_fp("Stage2.csv"), output_plate_guards=True)
 
         # PCR1 picklists: DNA/sample, Primer and Taq/H20
     
@@ -309,8 +327,8 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         # sample DNA picklist
         ddict = dict((pbc, "Destination[{}]".format(i)) for i, pbc in enumerate(pcr_bcs, start=1))
         sdict = dict((pbc, "Source[{}]".format(i))for i, pbc in enumerate(dna_bcs, start=1))
-        volume = 200
-        fn = pcrfmt.format("1_dna")
+        volume = exp.transfer_volumes['DNA_VOL']
+        fn = exp.get_exp_fp(pcrfmt.format("1_dna"))
         gen = ((sdict[r.dnaplate], r.dnaplate, srcPlateType, r.dnawell,
                 ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)
                 for r in s2tab.data)
@@ -318,9 +336,9 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         
         # Primer Picklist
         # [Source[1]', '', '384PP_AQ_BP', 'H6', 'Destination[1]', '3121', 'Hard Shell 384 well PCR Biorad', 'A1', 500]
-        primsrc = PicklistSrc("primer-svy.csv", idx=4) # same name as in cgi-nimbus2.py
-        volume = 500        
-        fn = pcrfmt.format("1_primer")
+        primsrc = PicklistSrc(exp.get_exp_fp("primer-svy.csv"), idx=4) # same name as in cgi-nimbus2.py
+        volume = exp.transfer_volumes['PRIMER_VOL']        
+        fn = exp.get_exp_fp(pcrfmt.format("1_primer"))
         depleted = collections.Counter()
         primer_uses = collections.Counter()
         primer_output_rows = []
@@ -355,206 +373,212 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         
         
         # also PCR1 water and Taq
-        fndst = pcrfmt.format("1_taqwater")
-        mk_mytaq_picklist(fndst, s2tab.data, taq_bcs, 1000, 300)
+        fndst = exp.get_exp_fp(pcrfmt.format("1_taqwater"))
+        mk_mytaq_picklist(fndst, s2tab.data, taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], exp.transfer_volumes['PRIMER_WATER_VOL'])
         return True
         
 
-    
 def main():
+    """ 
+    Library only. Call generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs)
     """
-    Main program. Interpret command line.
-    Stage 1: Input DNA plate descriptions (Nimbus output)
-    Stage 2: Check Assays, output PCR1 Echo picklist
-
-    Returns
-    -------
-    None.
-
-    """
-    global args
-    defxname = "NGS experiment"
-    fmtmiseq = "MiSeq-{}.csv"
-    deflib = os.path.join("..", "library")
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-w', '--workdir', default='', help='specify a working directory (default $NGSDIR or $HOME/NGSDIR)')
-    parser.add_argument('-l', '--library', default=deflib, help="library directory (default={}), best left alone".format(deflib))
-    parser.add_argument('-v', '--verbose', action="store_true", help='lots of reporting')
-    parser.add_argument('-t', '--taq', nargs='+', help='Mytaq and water plate survey filename')
-    parser.add_argument('--custom', action='store_true', help='Pipeline is running in custom sample mode')
-    grp2 = parser.add_argument_group('Stage 2 - dna & assays')
-    grp2.add_argument('-p', '--prim', help='primer/assay plate content filename')
-    grp2.add_argument('-d', '--pcr', nargs='+',  help='PCR (destination) plate barcodes')
-    # grp2.add_argument('-r', '--resume', help='i7i5 plate last well used - for example D15,H19.')
-    grp2.add_argument('dna', nargs="+", help='barcode for 1 or more 384-well sample source (DNA - Nimbus output) plates')
-    parser.add_argument('-D', '--dnadiff', action="store_true", help='allow different barcode in DNA files')
-    args = parser.parse_args()
-    try:
-        args.pcr = [file_io.guard_pbc(p) for p in args.pcr]
-    except file_io.ExistingGuardError as e:
-        print(e, file=sys.stdout)
-    try:
-        args.dna = [file_io.guard_pbc(d) for d in args.dna] 
-    except file_io.ExistingGuardError as e:
-        print(e, file=sys.stdout)
-    try:
-        args.taq = [file_io.guard_pbc(t) for t in args.taq]
-    except file_io.ExistingGuardError as e:
-        print(e, file=sys.stdout)
+    pass
 
     
-    def getdir(path):
-        "find the work directory - looks in $NGSGENO and locality of program if the current directory isn't suitable."
-        check = lambda dn: os.path.isdir(dn) and os.path.isdir(os.path.join(dn, args.library))
-        if check(path):
-            return os.path.normpath(path)
-        try:
-            # cwd = os.path.join('..', os.path.basename(os.getcwd()))
-            parent = os.path.dirname(os.path.dirname(sys.argv[0])) # parent of program's directory
-            # directory and a proximate library directory are needed
-            import platform
-            homestr = "USERPROFILE" if platform.system()=="Windows" else "HOME"
-            envopt = os.path.join(os.environ(homestr), os.environ['NGSGENO'] if 'NGSGENO' in os.environ else 'NGSGENO')
-            # the following may fail!
-            return next(fn for fn in (os.path.normpath(os.path.join(d, args.workdir)) for d in (parent, envopt)) if check(fn))
-        except:
-            print("target directory {} not found.\n".format(args.workdir), file=sys.stdout)
-            return args.workdir
+#def main():
+#    """
+#    Main program. Interpret command line.
+#    Stage 1: Input DNA plate descriptions (Nimbus output)
+#    Stage 2: Check Assays, output PCR1 Echo picklist
+
+#    Returns
+#    -------
+#    None.
+
+#    """
+#    global args
+#    defxname = "NGS experiment"
+#    fmtmiseq = "MiSeq-{}.csv"
+#    deflib = os.path.join("..", "library")
+#    parser = argparse.ArgumentParser()
+#    parser.add_argument('-w', '--workdir', default='', help='specify a working directory (default $NGSDIR or $HOME/NGSDIR)')
+#    parser.add_argument('-l', '--library', default=deflib, help="library directory (default={}), best left alone".format(deflib))
+#    parser.add_argument('-v', '--verbose', action="store_true", help='lots of reporting')
+#    parser.add_argument('-t', '--taq', nargs='+', help='Mytaq and water plate survey filename')
+#    parser.add_argument('--custom', action='store_true', help='Pipeline is running in custom sample mode')
+#    grp2 = parser.add_argument_group('Stage 2 - dna & assays')
+#    grp2.add_argument('-p', '--prim', help='primer/assay plate content filename')
+#    grp2.add_argument('-d', '--pcr', nargs='+',  help='PCR (destination) plate barcodes')
+#    # grp2.add_argument('-r', '--resume', help='i7i5 plate last well used - for example D15,H19.')
+#    grp2.add_argument('dna', nargs="+", help='barcode for 1 or more 384-well sample source (DNA - Nimbus output) plates')
+#    parser.add_argument('-D', '--dnadiff', action="store_true", help='allow different barcode in DNA files')
+#    args = parser.parse_args()
+#    try:
+#        args.pcr = [file_io.guard_pbc(p) for p in args.pcr]
+#    except file_io.ExistingGuardError as e:
+#        print(e, file=sys.stdout)
+#    try:
+#        args.dna = [file_io.guard_pbc(d) for d in args.dna] 
+#    except file_io.ExistingGuardError as e:
+#        print(e, file=sys.stdout)
+#    try:
+#        args.taq = [file_io.guard_pbc(t) for t in args.taq]
+#    except file_io.ExistingGuardError as e:
+#        print(e, file=sys.stdout)
+
     
-    try:
-        if args.workdir not in ['', '.']:
-            os.chdir(getdir(args.workdir))
+#    def getdir(path):
+#        "find the work directory - looks in $NGSGENO and locality of program if the current directory isn't suitable."
+#        check = lambda dn: os.path.isdir(dn) and os.path.isdir(os.path.join(dn, args.library))
+#        if check(path):
+#            return os.path.normpath(path)
+#        try:
+#            # cwd = os.path.join('..', os.path.basename(os.getcwd()))
+#            parent = os.path.dirname(os.path.dirname(sys.argv[0])) # parent of program's directory
+#            # directory and a proximate library directory are needed
+#            import platform
+#            homestr = "USERPROFILE" if platform.system()=="Windows" else "HOME"
+#            envopt = os.path.join(os.environ(homestr), os.environ['NGSGENO'] if 'NGSGENO' in os.environ else 'NGSGENO')
+#            # the following may fail!
+#            return next(fn for fn in (os.path.normpath(os.path.join(d, args.workdir)) for d in (parent, envopt)) if check(fn))
+#        except:
+#            print("target directory {} not found.\n".format(args.workdir), file=sys.stdout)
+#            return args.workdir
     
-        ngid = os.path.basename(os.getcwd()) # should be 8 characters -YYYYMMDD
-        pcrfmt = "PCR{{}}-picklist_{}.csv".format(ngid)
+#    try:
+#        if args.workdir not in ['', '.']:
+#            os.chdir(getdir(args.workdir))
     
-        fnstage2 = "Stage2.csv"
-        if args.pcr:
-            # read Nimbus output files - record of DNA samples in 384 well plates
-            # nimcol = "RecordId","TRackBC","TLabwareId","TPositionId","SRackBC","SLabwareId","SPositionId"
-            dnafns = file_get_check(args.dna, "Echo_384_COC_0001_{0}_?.csv")
-            if args.verbose:
-                print("dnafns =", dnafns)
-            nimcolmap = (("TRackBC", "dstplate"), ("TPositionId", 'dstwell'), ('SRackBC', 'srcplate'), ('SPositionId', 'srcwell'))
-            typenim = Table.csvtype(dnafns[args.dna[0]], 'NimRec', hdrmap=nimcolmap)
-            nimbusTables = [CSVTable(typenim, fn) for fid, fn in dnafns.items()]
-            def badnimbc(param):
-                bc, t = param
-                return bc, set(r.dstplate for r in t.data if r.dstplate!=bc)
-            badnimdata = [p for p in map(badnimbc, zip(args.dna, nimbusTables)) if p[1]]
-            if badnimdata and not args.dnadiff:
-                message = "Inconsistent barcode(s) in DNA (Nimbus output) file.\n"
-                for bc, badset in badnimdata:
-                    data = ' '.join(sorted(badset))
-                    message += "expect barcode = {}, file contains {}\n".format(bc, data)
-                print(message, file=sys.stdout)
-                raise Exception(message='echo_primer: Inconsistent barcodes in DNA (Nimbus output) file')
+#        ngid = os.path.basename(os.getcwd()) # should be 8 characters -YYYYMMDD
+#        pcrfmt = "PCR{{}}-picklist_{}.csv".format(ngid)
+    
+#        fnstage2 = "Stage2.csv"
+#        if args.pcr:
+#            # read Nimbus output files - record of DNA samples in 384 well plates
+#            # nimcol = "RecordId","TRackBC","TLabwareId","TPositionId","SRackBC","SLabwareId","SPositionId"
+#            dnafns = file_get_check(args.dna, "Echo_384_COC_0001_{0}_?.csv")
+#            if args.verbose:
+#                print("dnafns =", dnafns)
+#            nimcolmap = (("TRackBC", "dstplate"), ("TPositionId", 'dstwell'), ('SRackBC', 'srcplate'), ('SPositionId', 'srcwell'))
+#            typenim = Table.csvtype(dnafns[args.dna[0]], 'NimRec', hdrmap=nimcolmap)
+#            nimbusTables = [CSVTable(typenim, fn) for fid, fn in dnafns.items()]
+#            def badnimbc(param):
+#                bc, t = param
+#                return bc, set(r.dstplate for r in t.data if r.dstplate!=bc)
+#            badnimdata = [p for p in map(badnimbc, zip(args.dna, nimbusTables)) if p[1]]
+#            if badnimdata and not args.dnadiff:
+#                message = "Inconsistent barcode(s) in DNA (Nimbus output) file.\n"
+#                for bc, badset in badnimdata:
+#                    data = ' '.join(sorted(badset))
+#                    message += "expect barcode = {}, file contains {}\n".format(bc, data)
+#                print(message, file=sys.stdout)
+#                raise Exception(message='echo_primer: Inconsistent barcodes in DNA (Nimbus output) file')
         
-            dnadict = dict(((x.srcplate, x.srcwell), (x.dstplate, x.dstwell)) for nt in nimbusTables for x in nt.data)
-            #print('<<< DNA dictionary >>>', dnadict, file=sys.stdout)
-            # find and read Stage1 files - see also primercheck.py and its use in cgi-nimbus2.py
-            #s1fns = ['Stage1-P{}.csv'.format(dnabc) for dnabc in args.dna]
-            #s1type = Table.csvtype(s1fns[0], 'S1Rec')
-            dnas = [CSVTable('S1Rec', 'Stage1-P{}.csv'.format(dnabc)) for dnabc in args.dna]
+#            dnadict = dict(((x.srcplate, x.srcwell), (x.dstplate, x.dstwell)) for nt in nimbusTables for x in nt.data)
+#            #print('<<< DNA dictionary >>>', dnadict, file=sys.stdout)
+#            # find and read Stage1 files - see also primercheck.py and its use in cgi-nimbus2.py
+#            #s1fns = ['Stage1-P{}.csv'.format(dnabc) for dnabc in args.dna]
+#            #s1type = Table.csvtype(s1fns[0], 'S1Rec')
+#            dnas = [CSVTable('S1Rec', 'Stage1-P{}.csv'.format(dnabc)) for dnabc in args.dna]
     
-            # read primer plate info - including Echo survey 
-            primerTable = CSVTable("PPRec", args.prim, fields="spn spbc spt well primer volume")
-            if args.verbose:
-                print("Loaded primer plate file:", args.prim)
-            primset = sorted(frozenset(x.primer for x in primerTable.data if x.primer != ''))
+#            # read primer plate info - including Echo survey 
+#            primerTable = CSVTable("PPRec", args.prim, fields="spn spbc spt well primer volume")
+#            if args.verbose:
+#                print("Loaded primer plate file:", args.prim)
+#            primset = sorted(frozenset(x.primer for x in primerTable.data if x.primer != ''))
 
-            # primer family dict to list of primers within family group
-            pfdict = dict((k.strip(), list([p.strip() for p in g])) for k, g in itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
+#            # primer family dict to list of primers within family group
+#            pfdict = dict((k.strip(), list([p.strip() for p in g])) for k, g in itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
 
-            # create record for PCR wells  
-            wgenflds =  dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)
+#            # create record for PCR wells  
+#            wgenflds =  dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)
         
-            # Is this the plating of DNA samples for each assay? Yes. It is.
-            wgen = [xs+dnadict[(xs.EPplate, xs.EPwell)]+(x,) for xss in dnas for xs in xss.data for f in xs.assayFamilies.split(';') if f in pfdict for x in pfdict[f]]
-            #print("wgen",wgen)
-            #('9', '80201', 'A2', '105584300122', 'Ahr-fl;Cd79a-cre_MUT;Cd79a-cre_WT;Lef1_MUT;Lef1_WT;Tcf7-fl', 'Ahr-fl;Cd79a-cre;Lef1;Tcf7-fl', '2021090101', 'C1', 'Ahr-fl')
+#            # Is this the plating of DNA samples for each assay? Yes. It is.
+#            wgen = [xs+dnadict[(xs.EPplate, xs.EPwell)]+(x,) for xss in dnas for xs in xss.data for f in xs.assayFamilies.split(';') if f in pfdict for x in pfdict[f]]
+#            #print("wgen",wgen)
+#            #('9', '80201', 'A2', '105584300122', 'Ahr-fl;Cd79a-cre_MUT;Cd79a-cre_WT;Lef1_MUT;Lef1_WT;Tcf7-fl', 'Ahr-fl;Cd79a-cre;Lef1;Tcf7-fl', '2021090101', 'C1', 'Ahr-fl')
         
-            # combine nimbus files if there is more than one
-            # nimbusTable = nimbusTables[0] if len(nimbusTables)==1 else Table(typenim, (x for t in nimbusTables for x in t.data)) # fix multi-tables !!!
-            # could check that TRackBC matches ID in plate file
-            # retrieve mouse data ...
-            #    first get the 96-well plate barcodes
+#            # combine nimbus files if there is more than one
+#            # nimbusTable = nimbusTables[0] if len(nimbusTables)==1 else Table(typenim, (x for t in nimbusTables for x in t.data)) # fix multi-tables !!!
+#            # could check that TRackBC matches ID in plate file
+#            # retrieve mouse data ...
+#            #    first get the 96-well plate barcodes
                
-            # allocate PCR plate wells - leave last 3 empty
-            wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"][:-3]
-            pcrwellgen = ((p, w) for p in args.pcr for w in wells)
-            # allocate PCR well for each sample
+#            # allocate PCR plate wells - leave last 3 empty
+#            wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"][:-3]
+#            pcrwellgen = ((p, w) for p in args.pcr for w in wells)
+#            # allocate PCR well for each sample
         
-            s2flds = wgenflds+('pcrplate', 'pcrwell')
-            S2Rec = Table.newtype('S2Rec', s2flds)
-            s2tab = Table(S2Rec, ([x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)), headers=s2flds) 
-            # output Stage 2 CSV file - used in Stage 3 below
-            s2tab.csvwrite(fnstage2)                            
-            if args.verbose:
-                print("created:", fnstage2) 
+#            s2flds = wgenflds+('pcrplate', 'pcrwell')
+#            S2Rec = Table.newtype('S2Rec', s2flds)
+#            s2tab = Table(S2Rec, ([x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)), headers=s2flds) 
+#            # output Stage 2 CSV file - used in Stage 3 below
+#            s2tab.csvwrite(fnstage2)                            
+#            if args.verbose:
+#                print("created:", fnstage2) 
    
-            # PCR1 picklists: DNA/sample, Primer and Taq/H20
+#            # PCR1 picklists: DNA/sample, Primer and Taq/H20
     
-            dstPlateType = 'Hard Shell 384 well PCR Biorad'
-            srcPlateType = "384PP_AQ_BP"
-            # sample DNA picklist
-            ddict = dict((pbc, "Destination[{}]".format(i)) for i, pbc in enumerate(args.pcr, start=1))
-            sdict = dict((pbc, "Source[{}]".format(i))for i, pbc in enumerate(args.dna, start=1))
-            volume = 200
-            fn = pcrfmt.format("1_dna")
-            gen = ((sdict[r.dnaplate], r.dnaplate, srcPlateType, r.dnawell,
-                    ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)
-                   for r in s2tab.data)
-            mk_picklist(fn, gen)
+#            dstPlateType = 'Hard Shell 384 well PCR Biorad'
+#            srcPlateType = "384PP_AQ_BP"
+#            # sample DNA picklist
+#            ddict = dict((pbc, "Destination[{}]".format(i)) for i, pbc in enumerate(args.pcr, start=1))
+#            sdict = dict((pbc, "Source[{}]".format(i))for i, pbc in enumerate(args.dna, start=1))
+#            volume = 200
+#            fn = pcrfmt.format("1_dna")
+#            gen = ((sdict[r.dnaplate], r.dnaplate, srcPlateType, r.dnawell,
+#                    ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)
+#                   for r in s2tab.data)
+#            mk_picklist(fn, gen)
         
-            # Primer Picklist
-            # [Source[1]', '', '384PP_AQ_BP', 'H6', 'Destination[1]', '3121', 'Hard Shell 384 well PCR Biorad', 'A1', 500]
-            primsrc = PicklistSrc("primer-svy.csv", idx=4) # same name as in cgi-nimbus2.py
-            volume = 500        
-            fn = pcrfmt.format("1_primer")
-            depleted = collections.Counter()
-            primer_uses = collections.Counter()
-            primer_output_rows = []
-            for r in s2tab.data:
-                if r.primer not in primsrc.data:
-                    print('Cannot find', r.primer, 'in known primers', file=sys.stdout)
-                    continue
-                # cycle through available primer wells
-                primer_index = primer_uses[r.primer] % len(primsrc.data[r.primer])
-                primer_output_rows.append(primsrc.data[r.primer][primer_index][:4] +
-                        [ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume])
-                primer_uses[r.primer] += 1
-            # or you can drain each primer well before moving on...
-            #gen = ([f for fs in (primsrc.xfersrc(r.primer, volume, depleted), 
-            #        (ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)) for f in fs]
-            #       for r in s2tab.data)
-            #mk_picklist(fn, gen)
-            mk_picklist(fn, primer_output_rows)
+#            # Primer Picklist
+#            # [Source[1]', '', '384PP_AQ_BP', 'H6', 'Destination[1]', '3121', 'Hard Shell 384 well PCR Biorad', 'A1', 500]
+#            primsrc = PicklistSrc("primer-svy.csv", idx=4) # same name as in cgi-nimbus2.py
+#            volume = 500        
+#            fn = pcrfmt.format("1_primer")
+#            depleted = collections.Counter()
+#            primer_uses = collections.Counter()
+#            primer_output_rows = []
+#            for r in s2tab.data:
+#                if r.primer not in primsrc.data:
+#                    print('Cannot find', r.primer, 'in known primers', file=sys.stdout)
+#                    continue
+#                # cycle through available primer wells
+#                primer_index = primer_uses[r.primer] % len(primsrc.data[r.primer])
+#                primer_output_rows.append(primsrc.data[r.primer][primer_index][:4] +
+#                        [ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume])
+#                primer_uses[r.primer] += 1
+#            # or you can drain each primer well before moving on...
+#            #gen = ([f for fs in (primsrc.xfersrc(r.primer, volume, depleted), 
+#            #        (ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)) for f in fs]
+#            #       for r in s2tab.data)
+#            #mk_picklist(fn, gen)
+#            mk_picklist(fn, primer_output_rows)
 
-            if len(depleted):
-                # Outputting HTML like this seems to display OK - though it shoule be done properly (in cgi-nimbus2.py)
-                print("<h1 style='color: red;'>Warning: depleted primer wells ...</h1>\n<pre>"+"\n".join("{:5d} {}".format(n, pr) for pr, n in depleted.items()), "\n</pre>\n")
-                advice="""You can fix this by clicking the "back" button, 
-                adding the required primer to wells in the primer plate,
-                adding relevant information to the primer description file for this sample,
-                using the Echo robot to re-survey the primer plate and copying the new
-                survey file to the NGSgeno sample folder and choosing the right survey and primer plate
-                description files.<br>Good luck!
+#            if len(depleted):
+#                # Outputting HTML like this seems to display OK - though it shoule be done properly (in cgi-nimbus2.py)
+#                print("<h1 style='color: red;'>Warning: depleted primer wells ...</h1>\n<pre>"+"\n".join("{:5d} {}".format(n, pr) for pr, n in depleted.items()), "\n</pre>\n")
+#                advice="""You can fix this by clicking the "back" button, 
+#                adding the required primer to wells in the primer plate,
+#                adding relevant information to the primer description file for this sample,
+#                using the Echo robot to re-survey the primer plate and copying the new
+#                survey file to the NGSgeno sample folder and choosing the right survey and primer plate
+#                description files.<br>Good luck!
             
-                """
-                print("<p>"+advice+"</p>")
-            if args.verbose:
-                print('created:', fn)
+#                """
+#                print("<p>"+advice+"</p>")
+#            if args.verbose:
+#                print('created:', fn)
         
-            # also PCR1 water and Taq
-            fndst = pcrfmt.format("1_taqwater")
-            mk_mytaq_picklist(fndst, s2tab.data, args.taq, 1000, 300)
-            if args.verbose:
-                print('created:', fndst)
+#            # also PCR1 water and Taq
+#            fndst = pcrfmt.format("1_taqwater")
+#            mk_mytaq_picklist(fndst, s2tab.data, args.taq, 1000, 300)
+#            if args.verbose:
+#                print('created:', fndst)
         
-        return  
-    except Exception as exc:
-        output_error(exc, msg='Error in echo_primer code body')
+#        return  
+#    except Exception as exc:
+#        output_error(exc, msg='Error in echo_primer code body')
 
 
 if __name__ == '__main__':
