@@ -216,10 +216,16 @@ def mk_mytaq_picklist(fn, wells, taq_plate_barcodes, voltaq, volh2o, plateType='
         # mytaq2 return a list of each well and plate for taq wells (tw) and for water wells (ww).
         tw_pbcs, ww_pbcs = mytaq2(well_count, voltaq, volh2o, plate_barcodes=taq_plate_barcodes)
         # now merge the column info together
-        tws = (('Source[1]', bc, plateType, tw) for tw,bc in tw_pbcs)
-        rowstaq = ([x for xs in xss for x in xs]+[voltaq] for xss in zip(tws, (('', w.pcrplate, dstPlateType, w.pcrwell) for w in wells))) 
-        wws = (('Source[1]', bc, plateType, ww) for ww,bc in ww_pbcs)
-        rowsh2o = ([x for xs in xss for x in xs]+[volh2o] for xss in zip(wws, (('', w.pcrplate, dstPlateType, w.pcrwell) for w in wells))) 
+        pcr_bcs = sorted(set([w.pcrplate for w in wells]))
+        tw_bcs = sorted(set([bc for tw,bc in tw_pbcs]))
+        ddict = dict((pbc, "Destination[{}]".format(i)) for i, pbc in enumerate(pcr_bcs, start=1))
+        sdict = dict((pbc, "Source[{}]".format(i))for i, pbc in enumerate(tw_bcs, start=1))
+        
+        #tws = (('Source[1]', bc, plateType, tw) for tw,bc in tw_pbcs)
+        tws = ((sdict[bc], bc, plateType, tw) for tw,bc in tw_pbcs)
+        rowstaq = ([x for xs in xss for x in xs]+[voltaq] for xss in zip(tws, ((ddict[w.pcrplate], w.pcrplate, dstPlateType, w.pcrwell) for w in wells))) 
+        wws = ((sdict[bc], bc, plateType, ww) for ww,bc in ww_pbcs)
+        rowsh2o = ([x for xs in xss for x in xs]+[volh2o] for xss in zip(wws, ((ddict[w.pcrplate], w.pcrplate, dstPlateType, w.pcrwell) for w in wells))) 
         mk_picklist(fn, (x for xs in (rowstaq, rowsh2o) for x in xs))
         return
     except Exception as exc:
@@ -247,7 +253,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
     #except Exception as e:
     #    exp.log(f"{e}")
     try:                          
-        taq_bcs = [file_io.guard_pbc(t) for t in taq_water_bcs]
+        taq_bcs = [file_io.guard_pbc(t, silent=True) for t in taq_water_bcs]
     except Exception as e:
         exp.log(f"{e}")
 
@@ -374,6 +380,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         
         # also PCR1 water and Taq
         fndst = exp.get_exp_fp(pcrfmt.format("1_taqwater"))
+        print(f"end of generate_pcr1 {taq_bcs=}")
         mk_mytaq_picklist(fndst, s2tab.data, taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], exp.transfer_volumes['PRIMER_WATER_VOL'])
         return True
         

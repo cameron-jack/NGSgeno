@@ -883,6 +883,7 @@ class Experiment():
         the final assay list, and a set of destination PCR plate barcodes, taq+water plates, primer plates, primer volumes.
         Returns True on success
         """
+        print(f"Experiment.generate_echo_PCR1 {dna_plates=} {pcr_plates=} {taq_water_plates=}")
         for pid in pcr_plates:
             if pid in self.plate_location_sample:
                 if self.plate_location_sample[pid]['purpose'] != 'pcr':
