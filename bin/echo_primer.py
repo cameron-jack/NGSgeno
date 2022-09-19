@@ -90,25 +90,26 @@ def grouper(xs, kf=lambda x:x[0]):
 global ttno
 ttno = 0
 
-def file_get_check(fids, fmt):
+def file_get_check(exp, fids, fmt):
     """ collect Echo DNA plate file names, match plate ids, remove duplicates """
     try:
         dups = [fids[i] for i in range(1, len(fids)) if fids[i] in fids[:i]]
         fx = [fids[i] for i in range(len(fids)) if fids[i] not in fids[:i]]
         if dups:
-            print("Duplicate DNA plate IDs ignored:", ' '.join(dups), file=sys.stdout)    
+            exp.log(f"Warning: Duplicate DNA plate IDs ignored: {dups}")    
     
         globs = dict((pid, sorted(glob.glob(fmt.format(pid)))) for pid in fx)
         nofile = [fid for fid, fns in globs.items() if not fns]
         if nofile:
-            print('\n'.join(fmt.format(fid)+': no file found.' for fid in nofile), file=sys.stdout)
+            exp.log(f"Error: files not found {', '.join([fmt.format(fid) for fid in fids])}")
             return {}
         return collections.OrderedDict((fid, sorted(ps)[-1]) for fid, ps in globs.items())
     except Exception as exc:
-        output_error(exc, msg='Error in echo_primer.file_get_check')
+        exp.log(f"Error: {exc}")
+        return {}
 
 
-def mk_picklist(fndst, rows, output_plate_guards=False):
+def mk_picklist(exp, fn, rows, output_plate_guards=False):
     """ output an Echo picklist given the rows (transfer spec) """
     try:
         plhdr_str = "Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,"+\
@@ -118,12 +119,10 @@ def mk_picklist(fndst, rows, output_plate_guards=False):
         def rowchk(r):
             "check the length of a row"
             if len(r)!=len(plhdr):
-                print("len(r), len(plhdr) =", (len(r), len(plhdr)))
-                print("r =", r)
-                output_error(f"mk_picklist: entry does not match header: {r}")
+                exp.log(f"Warning: entry does not match expected header format: {r=} {plhdr=}")
                 return None
             return r
-        with open(fndst, "wt", newline='') as dstfd:
+        with open(fn, "wt", newline='') as dstfd:
             dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
             dst.writerow(plhdr)
             data = []
@@ -136,36 +135,41 @@ def mk_picklist(fndst, rows, output_plate_guards=False):
                 else:  # unguard plate barcodes
                     data.append([str(d) if 'plate barcode' not in h.lower() else file_io.unguard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
             dst.writerows(data)
-        return
     except Exception as exc:
-        output_error(exc, msg='Error in echo_primer.mk_picklist')
-        return
+        exp.log(f"Error: {exc}")
+        return False
+    return True
 
 
-def mytaq(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2'):
+#def mytaq(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2'):
+#    """ 
+#    ***DEPRECATED***
+#    Create enough source wells for a Mytaq & H2O picklist, uses the same well until it's empty.
+#    Broken - needs a consistent output with mytaq2
+#    """
+#    try:
+#        wells = [r+c for r in "AB" for c in "123"]
+#        # volumes in nanolitres
+#        dv = PicklistSrc.deadvol[plateType]
+#        # initial well volume is 2800uL per well in a full 6 well plate
+#        # work in nanolitres
+#        wc = [(2800-dv)*1000//v for v in (voltaq, volh2o)]
+#        wct, wcw = [(wellCount+c-1)//c for c in wc]
+#        plates_required = max([wct//3, wcw//3])
+#        # Water is A1, A2, ... while Mytaq is B3, B2, ...
+#        # returns wells: Mytaq list, water list
+#        return wells[-wct:], wells[:wcw], plates_required
+#    except Exception as exc:
+#        output_error(exc, msg='Error in echo_primer.mytaq')
+
+
+def mytaq2(exp, wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2', plate_barcodes=None):
     """ 
-    ***DEPRECATED***
-    Create enough source wells for a Mytaq & H2O picklist, uses the same well until it's empty.
-    Broken - needs a consistent output with mytaq2
+    Declare source wells for a Mytaq & H2O picklist, cycles through each well sequentially (to maximimally spread use)
+    Also used by echo_index.py
     """
-    try:
-        wells = [r+c for r in "AB" for c in "123"]
-        # volumes in nanolitres
-        dv = PicklistSrc.deadvol[plateType]
-        # initial well volume is 2800uL per well in a full 6 well plate
-        # work in nanolitres
-        wc = [(2800-dv)*1000//v for v in (voltaq, volh2o)]
-        wct, wcw = [(wellCount+c-1)//c for c in wc]
-        plates_required = max([wct//3, wcw//3])
-        # Water is A1, A2, ... while Mytaq is B3, B2, ...
-        # returns wells: Mytaq list, water list
-        return wells[-wct:], wells[:wcw], plates_required
-    except Exception as exc:
-        output_error(exc, msg='Error in echo_primer.mytaq')
-
-
-def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2', plate_barcodes=None):
-    """ declare source wells for a Mytaq & H2O picklist, cycles through each well sequentially """
+    tw_pi = []
+    ww_pi = []
     try:
         water_wells = ['A'+c for c in '123']
         taq_wells = ['B'+c for c in '123']
@@ -180,8 +184,7 @@ def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2', plate_barcodes=No
         #print('Plates required:',plates_required, file=sys.stdout)
         # Water is A1, A2, ... while Mytaq is B3, B2, ...
         # returns wells: Mytaq list, water list
-        tw_pi = []
-        ww_pi = []
+        
         transfer_count = 0
         plate_index = 1  # 1st taq/water plate
         while transfer_count < wellCount:
@@ -196,37 +199,39 @@ def mytaq2(wellCount, voltaq, volh2o, plateType='6RES_AQ_BP2', plate_barcodes=No
                 tw_pi.append((tw,plate_barcodes[plate_index-1]))
                 ww_pi.append((ww,plate_barcodes[plate_index-1]))
             transfer_count += 1
-        return tw_pi, ww_pi
-        #    tw = [taq_wells[i%len(taq_wells)] for i in range(wellCount)]
-        #    ww = [water_wells[i%len(water_wells)] for i in range(wellCount)]
-            #print(set(tw), set(ww), file=sys.stdout)
-        #    return tw, ww
+
     except Exception as exc:
-        output_error(exc, msg='Error in echo_primer.mytaq2')
+        exp.log(f"Error: {exc}")
+    return tw_pi, ww_pi
 
 
-def mk_mytaq_picklist(fn, wells, taq_plate_barcodes, voltaq, volh2o, plateType='6RES_AQ_BP2'):
-    """ create a picklist for Mytaq & H2O transfers """
+def mk_mytaq_picklist(exp, fn, wells, taq_plate_barcodes, voltaq, volh2o, plateType='6RES_AQ_BP2'):
+    """ 
+    Create a picklist for Mytaq & H2O transfers 
+    Shared with echo_index.py
+    """
     try:
         dstPlateType = 'Hard Shell 384 well PCR Biorad'
         well_count = len(wells)
         # mytaq2 return a list of each well and plate for taq wells (tw) and for water wells (ww).
-        tw_pbcs, ww_pbcs = mytaq2(well_count, voltaq, volh2o, plate_barcodes=taq_plate_barcodes)
+        tw_pbcs, ww_pbcs = mytaq2(exp, well_count, voltaq, volh2o, plate_barcodes=taq_plate_barcodes)
         # now merge the column info together
         pcr_bcs = sorted(set([w.pcrplate for w in wells]))
         tw_bcs = sorted(set([bc for tw,bc in tw_pbcs]))
         ddict = dict((pbc, "Destination[{}]".format(i)) for i, pbc in enumerate(pcr_bcs, start=1))
         sdict = dict((pbc, "Source[{}]".format(i))for i, pbc in enumerate(tw_bcs, start=1))
         
-        #tws = (('Source[1]', bc, plateType, tw) for tw,bc in tw_pbcs)
-        tws = ((sdict[bc], bc, plateType, tw) for tw,bc in tw_pbcs)
-        rowstaq = ([x for xs in xss for x in xs]+[voltaq] for xss in zip(tws, ((ddict[w.pcrplate], w.pcrplate, dstPlateType, w.pcrwell) for w in wells))) 
-        wws = ((sdict[bc], bc, plateType, ww) for ww,bc in ww_pbcs)
-        rowsh2o = ([x for xs in xss for x in xs]+[volh2o] for xss in zip(wws, ((ddict[w.pcrplate], w.pcrplate, dstPlateType, w.pcrwell) for w in wells))) 
-        mk_picklist(fn, (x for xs in (rowstaq, rowsh2o) for x in xs))
-        return
+        tws = ((sdict[bc], file_io.unguard_pbc(bc, silent=True), plateType, tw) for tw,bc in tw_pbcs)
+        rowstaq = ([x for xs in xss for x in xs]+[voltaq] for xss in \
+                zip(tws, ((ddict[w.pcrplate], file_io.unguard(w.pcrplate, silent=True), dstPlateType, w.pcrwell) for w in wells))) 
+        wws = ((sdict[bc], file_io.unguard_pbc(bc, silent=True), plateType, ww) for ww,bc in ww_pbcs)
+        rowsh2o = ([x for xs in xss for x in xs]+[volh2o] for xss in \
+                zip(wws, ((ddict[w.pcrplate], file_io.unguard(w.pcrplate, silent=True), dstPlateType, w.pcrwell) for w in wells))) 
+        mk_picklist(exp, fn, (x for xs in (rowstaq, rowsh2o) for x in xs))
     except Exception as exc:
-        output_error(exc, msg='Error in echo_primer.mk_mytaq_picklist')
+        exp.log(f"Error: {exc}")
+        return False
+    return True
 
 
 def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs):
@@ -281,7 +286,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
 
             pcrfmt = "PCR{{}}-picklist_{}.csv".format(exp.name)
 
-            dnafns = file_get_check(dna_bcs, "Echo_384_COC_0001_{0}_?.csv") 
+            dnafns = file_get_check(exp, dna_bcs, "Echo_384_COC_0001_{0}_?.csv") 
             nimcolmap = (("TRackBC", "dstplate"), ("TPositionId", 'dstwell'), ('SRackBC', 'srcplate'), ('SPositionId', 'srcwell'))
             typenim = Table.csvtype(dnafns[dna_bcs[0]], 'NimRec', hdrmap=nimcolmap)
             nimbusTables = [CSVTable(typenim, fn) for fid, fn in dnafns.items()]
@@ -331,7 +336,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
             gen = ((sdict[r.dnaplate], r.dnaplate, srcPlateType, r.dnawell,
                     ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)
                     for r in s2tab.data)
-            mk_picklist(fn, gen)
+            mk_picklist(exp, fn, gen)
         
             # Primer Picklist
             # [Source[1]', '', '384PP_AQ_BP', 'H6', 'Destination[1]', '3121', 'Hard Shell 384 well PCR Biorad', 'A1', 500]
@@ -350,20 +355,18 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                 primer_output_rows.append(primsrc.data[r.primer][primer_index][:4] +
                         [ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume])
                 primer_uses[r.primer] += 1
-            # or you can drain each primer well before moving on...
-            #gen = ([f for fs in (primsrc.xfersrc(r.primer, volume, depleted), 
-            #        (ddict[r.pcrplate], r.pcrplate, dstPlateType, r.pcrwell, volume)) for f in fs]
-            #       for r in s2tab.data)
-            #mk_picklist(fn, gen)
-            mk_picklist(fn, primer_output_rows)
+            
+            mk_picklist(exp, fn, primer_output_rows)
 
             # also PCR1 water and Taq
             fndst = exp.get_exp_fp(pcrfmt.format("1_taqwater"))
             print(f"end of generate_pcr1 {taq_bcs=}")
-            mk_mytaq_picklist(fndst, s2tab.data, taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], exp.transfer_volumes['PRIMER_WATER_VOL'])
+            success = mk_mytaq_picklist(exp, fndst, s2tab.data, taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], 
+                    exp.transfer_volumes['PRIMER_WATER_VOL'])
+
 
     except Exception as exc:
-        output_error(exc, msg='Error in echo_barcode main body')
+        exp.log(f"Error: {exc}")
         return False
     
     return True

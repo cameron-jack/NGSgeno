@@ -2,18 +2,19 @@
 # -*- coding: utf-8 -*-
 
 """
-DEPRECATED
 @created: 1 May 2022
 @author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 @version: 0.16
 @version_comment: New streamlit interactive web interface
-@last_edit: 2022-05-16
+@last_edit: 2022-08-29
 @edit_comment:
 
 A web based interactive GUI with Streamlit. Plate and sample barcodes here are unguarded.
 In all other code they must be guarded. We guard them here before we send them to any external function.
 """
 
+from ctypes.wintypes import WIN32_FIND_DATAA
+from msilib.schema import File
 import os
 import sys
 from pathlib import PurePath
@@ -30,9 +31,15 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 from bin.experiment import Experiment, EXP_FN, load_experiment
 from bin.util import output_error
+from bin.util import CAP_VOLS, DEAD_VOLS
 import bin.file_io as file_io
 import bin.db_io as db_io
 from bin.makehtml import generate_heatmap_html
+
+import load_data as ld
+import display_components as dc
+import sidebar_components as sb
+
 
 credits="""
 @created: March 2022
@@ -48,65 +55,7 @@ The GUI interacts with a single Experiment object at one time. Methods are calle
 functionality. The Experiment then deals directly with the pipeline logic.
 """
 
-def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250):
-    """Creates an st-aggrid interactive table based on a dataframe.
 
-    Args:
-        df (pd.DataFrame]): Source dataframe
-
-    Returns:
-        dict: The selected row
-    """
-    if 'view_box_size' in st.session_state:
-        grid_height = st.session_state['view_box_size']
-    options = GridOptionsBuilder.from_dataframe(
-        df, enableRowGroup=True, enableValue=True, enablePivot=True
-    )
-
-    options.configure_side_bar()
-
-    options.configure_selection("multiple", use_checkbox=False, rowMultiSelectWithClick=False, suppressRowDeselection=False)
-    selection = AgGrid(
-        df,
-        enable_enterprise_modules=True,
-        height=grid_height,
-        gridOptions=options.build(),
-        # _available_themes = ['streamlit','light','dark', 'blue', 'fresh','material']
-        theme="fresh",
-        #update_mode=GridUpdateMode.MODEL_CHANGED,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-        allow_unsafe_jscode=True,
-        rowSelection='multiple',
-        selection_mode='multiple',
-        rowMultiSelectWithClick=True,
-    )
-
-    return selection
-
-def get_run_folders():
-    """ return an alphabetically sorted list of run folders, without their run_ prefix """
-        
-    # get run folder names without 'run_'
-    run_folders = [''] + [d[4:] for d in os.listdir(st.session_state['app_path']) if d.startswith('run_') and os.path.isdir(d)]
-    return sorted(run_folders)
-
-
-def create_run_folder(new_run_name):
-    """ returns Experiment or None, and a message string. Requires a full path and generates a new experiment file """
-    newpath = os.path.join(st.session_state['app_path'], new_run_name)
-    print('Attempting to create: ', newpath)
-    if not os.path.exists(newpath):
-        try:
-            os.mkdir(newpath)
-        except Exception as exc:
-            output_error(exc, msg='Could not create new folder: ' + newpath)
-            return None, 'Failed to create new folder: ' + newpath
-    else:
-        if os.path.exists(os.path.join(newpath, EXP_FN)):
-            return None, 'Experiment already exists with this name: ' + new_run_name
-    print('Generating experiment: ', new_run_name)
-    exp = Experiment(name=new_run_name[4:])
-    return exp, ''
 
 
 def st_radio_horizontal(*args, **kwargs):
@@ -117,98 +66,6 @@ def st_radio_horizontal(*args, **kwargs):
         return st.radio(*args, **kwargs)
 
 
-def delete_entries(exp, entries):
-    """ removes data from an experiment, called by buttons """
-    print(f"Debug: (delete_entries) {exp.name=} {entries=}")
-    if exp is None:
-        return
-    if entries: # list
-        for i,entry in enumerate(entries):
-            for key in entry:
-                #print(key)
-                if 'PID' in key and entry[key]:
-                    if not file_io.is_guarded_pbc(entry[key]):
-                        entries[i][key] = file_io.guard_pbc(entry[key])
-        print(f"delete_entries {entries=}")
-        exp.remove_entries(entries)
-        exp.save()
-    print('delete_entries ran')
-
-
-def display_reaction_stats(assay_usage, show_general=True, show_primers=True):
-    if assay_usage:
-        primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
-                st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
-        reactions = sum([v for v in assay_usage.values()])
-        barcodes_remain, barcodes_avail, barcode_vol_okay = st.session_state['experiment'].get_barcode_remaining_available_volume(assay_usage=assay_usage)
-    else:
-        reactions, primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
-            0,{},0,0,0,0 
-        barcodes_remain, barcodes_avail, barcode_vol_okay =\
-                st.session_state['experiment'].get_barcode_remaining_available_volume()
-    primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
-    if show_general:
-        with st.expander('Required components: primers, barcodes, taq and water:', expanded=True):
-            taq_water_avail_PCR1 = st.session_state['experiment'].get_taq_water_avail(1)
-            taq_water_avail_PCR2 = st.session_state['experiment'].get_taq_water_avail(2)
-            req_cols = st.columns([5,2,5,2,5,2,5,2])
-            if 'assay_filter' not in st.session_state:
-                st.session_state['assay_filter'] = 1
-            if st.session_state['assay_filter'] == 1:
-                req_cols[6].button('Filter assays', key='assay_filter_button', disabled=True)
-                unfilter_assays = req_cols[7].button('Unfilter assays', key='assay_unfilter_button')
-                if unfilter_assays:
-                    st.session_state['assay_filter'] = 0
-            req_cols[0].write('Required reaction wells')
-            req_cols[1].write(str(reactions))
-            req_cols[2].write('Required PCR plates')
-            req_cols[3].write(str(ceil(reactions/384)))
-            req_cols[4].write('PCR1 required taq volume')
-            req_cols[5].write(str(primer_taq_vol/1000)+' ul')
-            req_cols[6].write('PCR1 available taq volume')
-            req_cols[7].write(str(taq_water_avail_PCR1[0]/1000)+' ul')
-            req_cols[0].write('PCR1 required water volume')
-            req_cols[1].write(str(primer_water_vol/1000)+' ul')
-            req_cols[2].write('PCR1 available water volume')
-            req_cols[3].write(str(taq_water_avail_PCR1[1]/1000)+' ul')
-            req_cols[0].write('PCR2 required taq volume')
-            req_cols[1].write(str(barcode_taq_vol/1000)+' ul')
-            req_cols[2].write('PCR2 available taq volume')
-            req_cols[3].write(str(taq_water_avail_PCR2[0]/1000)+' ul')
-            req_cols[4].write('PCR2 required water volume')
-            req_cols[5].write(str(barcode_water_vol/1000)+' ul')
-            req_cols[6].write('PCR2 available water volume')
-            req_cols[7].write(str(taq_water_avail_PCR2[1]/1000)+' ul')
-            req_cols[0].write('Barcode pairs remaining')
-            req_cols[1].write(str(barcodes_remain))
-            req_cols[2].write('Barcode pairs available')
-            req_cols[3].write(str(barcodes_avail))
-            req_cols[4].write('Barcode vols sufficient')
-            req_cols[5].write(str(barcode_vol_okay))
-            
-    if show_primers:
-        with st.expander('Required/available primer volumes', expanded=False):
-            primer_names = set(primer_vols.keys())
-            #print(f"{primer_names=}")
-            assay_columns = st.columns([2,1,1,1,2,1,1,1,2,1,1,1])
-            assay_columns[0].write('Primer')
-            assay_columns[1].write('Uses')
-            assay_columns[2].write('Volume ul')
-            assay_columns[3].write('Avail ul')
-            assay_columns[4].write('Primer')
-            assay_columns[5].write('Uses')
-            assay_columns[6].write('Volume ul')
-            assay_columns[7].write('Avail ul')
-            assay_columns[8].write('Primer')
-            assay_columns[9].write('Uses')
-            assay_columns[10].write('Volume ul')
-            assay_columns[11].write('Avail ul')
-            for k,p in enumerate(sorted(primer_names)):
-                r = (k*4)%12  # horizontal offset
-                assay_columns[r+0].write(p)
-                assay_columns[r+1].write(assay_usage.get(p,0))
-                assay_columns[r+2].write(primer_vols.get(p,0)/1000)
-                assay_columns[r+3].write(primer_avail_vols.get(p,0)/1000)
 
 
 def clear_widget(*keys):
@@ -217,16 +74,455 @@ def clear_widget(*keys):
             st.session_state[k] = ''
 
 
-### Lay out the pipeline interface sections
-# 1. Run folder (includes sidebar)
-# 2. Inventory (plates and assays + DB lookup buttons + remaining i7i5 barcodes)
-# 3. Nimbus progress
-# 4. Primer plates + taq/water
-# 5. Add spare samples for barcoding + barcode completion status (plates done/not done)
-# 6. Miseq data available (notice + instructions if not yet complete)
-# 7. Analysis stages
-###
- 
+def pipeline_sb():
+    """
+    Pipeline page
+    Sidebar
+    Drop down box for all of the option for the stages of the pipeline
+    """
+    pipeline_stage = st.sidebar.selectbox("Pipeline Stage", ("Load Data", "1. Nimbus Plates", "2. Echo Primers (PCR 1)", "3. Echo Indexing (PCR 2)", 
+                                                             "4. Miseq", "5. Genotyping", "6. Review"))
+    if pipeline_stage == "Load Data":
+        st.session_state['pipe_stage'] = 1
+
+    if pipeline_stage == "1. Nimbus Plates":
+        st.session_state['pipe_stage'] = 2
+
+    if pipeline_stage == "2. Echo Primers (PCR 1)":
+        st.session_state['pipe_stage'] = 3
+
+    if pipeline_stage == "3. Echo Indexing (PCR 2)":
+        st.session_state['pipe_stage'] = 4
+
+    if pipeline_stage == "4. Miseq":
+        st.session_state['pipe_stage'] = 5
+
+    if pipeline_stage == "5. Genotyping":
+        st.session_state['pipe_stage'] = 6
+
+    if pipeline_stage == "6. Review":
+        st.session_state['pipe_stage'] = 7
+
+
+def pipe_stages(exp, stage):
+    '''
+    Pipeline page
+
+    Goes through each stage of the pipeline, depending on the session state.
+    Args:
+        int stage: st.session_state['pipe_stage']
+    '''
+
+    s1_st = st.container()
+    s2_st = st.container()
+    #s3_st = st.container()
+    s4_st = st.container()
+    
+    
+    if stage == 1:
+        assay_usage = exp.get_assay_usage()
+        data_tab1, data_tab2 = s1_st.tabs(['Load Data', 'View Data'])
+
+
+        with data_tab1:
+            st.markdown('<h5 style="text-align:center;color:#2BA2D0">Table Summary</h5>', unsafe_allow_html=True)
+            dc.data_table(key=1)
+            ld.load_rodentity_data()
+            ld.load_custom_csv()
+            ld.load_database_data()
+            pcr_files_exp = st.expander('Upload PCR files')
+            with pcr_files_exp:
+                ld.upload_pcr_files()
+
+        with data_tab2:
+            table_option = st.selectbox('View Data options',
+                                ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'))
+
+            st.markdown(f'<h5 style="text-align:center;color:#2BA2D0"> Selected: {table_option} </h5>', unsafe_allow_html=True)
+            dc.data_table(key=2, view=table_option)
+
+            pcr_components_exp = st.expander('Required Components for PCR Reactions', expanded=False)
+            with pcr_components_exp:
+                dc.display_pcr_components(assay_usage)
+
+
+            dc.display_primer_components(assay_usage)
+
+    #Nimbus: 96-wells of sample plates to 384-wells of DNA plates
+    if stage == 2:
+        s2_st.markdown('<h2 style="text-align:center;color:#0f6b8e">Nimbus</h2>', unsafe_allow_html=True)
+            
+        if not st.session_state['experiment'].dest_sample_plates:
+            s2_st.markdown('<p style="color:#FF0000">Load data inputs to enable Nimbus input file generation.</p>', unsafe_allow_html=True)
+        else:
+            s2_st.markdown('<h5 style="text-align:center;color:#2BA2D0">Nimbus input files have been generated from your data</h5>', unsafe_allow_html=True)
+            #st.write('Combine 96-well sample plates to 384-well DNA plate.')
+            s2_st.write('')
+            s2_st.write('')
+            nim_tab1, nim_tab2, view_data_tab = s2_st.tabs(["Download", "Upload", "View Data"])
+            
+            
+            #Nimbus files, Echo files?, xbcs    
+            nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+
+            # do we have any Nimbus inputs to generate + download
+            yet_to_run = len(st.session_state['experiment'].dest_sample_plates) - len(nfs)
+            if yet_to_run and yet_to_run > 0: 
+                plates_to_run = [dest_plate for dest_plate in exp.dest_sample_plates if all([dest_plate not in nf for nf in nfs])]
+                plates_to_run_str = '\n'.join(plates_to_run)
+                success = st.session_state['experiment'].generate_nimbus_inputs()
+                if not success:
+                    nim_tab1.markdown('<p style="color:#FF0000">Failed to generate Nimbus files. Please read the log.</p>', unsafe_allow_html=True)
+                else:
+                    nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+
+                #nim_tab1.write(plates_to_run_str)
+                nim_tab2.write(f"{yet_to_run} 96-well plate sets need Nimbus input file generation")
+
+            if nfs:
+                nim_tab1.markdown('<h5 style="text-align:center">1. Download Nimbus input files</h5>', unsafe_allow_html=True)
+                nim_tab1.markdown('<p style="text-align:center">Download the 96-well sample plates as input files for Nimbus to run.</p>', unsafe_allow_html=True)
+                nim_tab1.write('')
+                nim_tab1.write('')
+                _,dl_col1,dl_col2,dl_col3,dl_col4,_=nim_tab1.columns([1,9,6,9,6,1])
+                
+                #Generate file names to download + download buttons
+                for i,nf in enumerate(nfs):
+                    file_name=nf.split('\\')[1]
+
+                    if (i+1) % 2 != 0:
+                        dl_col1.markdown(f"<p style='text-align:left;color:#4b778c;padding:5px'>{file_name}</p>", unsafe_allow_html=True)
+
+                        dl_col2.download_button("Download ", open(nf), file_name=PurePath(nf).name, 
+                                key='nimbus_input'+str(i), help=f"Download Nimbus input file {nf}")
+                
+                    else:
+                        dl_col3.markdown(f"<p style='text-align:left;color:#4b778c;padding:5px''>{file_name}</p>", unsafe_allow_html=True)
+                 
+                        dl_col4.download_button("Download ", open(nf), file_name=PurePath(nf).name, 
+                                key='nimbus_input'+str(i), help=f"Download Nimbus input file {nf}")
+              
+                        
+            #?
+            nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+            print (f"{nfs=} {efs=} {xbcs=}")
+            # Nimbus upload
+            if not efs and not xbcs:
+                nim_tab2.markdown('<h4 style="text-align=center">Awaiting Nimbus output files</h4>', unsafe_allow_html=True)
+            elif efs and not xbcs:
+                nim_tab2.markdown('<h4 style="text-align:center">All Nimbus outputs now uploaded</h4>', unsafe_allow_html=True) 
+            elif xbcs:
+                nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+                missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
+                mn_str = '</br>'.join(missing_nims)
+
+                nim_tab2.markdown('<h5 style="text-align:center">2. Upload Nimbus output files</h5>', unsafe_allow_html=True)
+                nim_tab2.markdown('<p style="text-align:center">Upload the resulting 384-well DNA plate files for Echo.</p>', unsafe_allow_html=True)
+                # list nimbus outputs that we still need
+                nim_tab2.markdown('<h6 style="color:#8e0f5b">Nimbus output files to upload:</h6>', unsafe_allow_html=True)
+                nim_tab2.markdown(f"<p style='color:#87adc7'>{mn_str}</p>", unsafe_allow_html=True)
+
+                if 'nim_upload' not in st.session_state:
+                    st.session_state['nim_upload'] = ''
+                nim_outputs = nim_tab2.file_uploader(' ', type='csv', 
+                        accept_multiple_files=True, help='You can upload more than one file at once')
+                if nim_outputs: # and nim_outputs != st.session_state['nim_upload']:
+                    #st.session_state['nim_uploads'] = nim_outputs
+                    for nim_output in nim_outputs:
+                        #print(f"{nim_output.name=}")
+                        fp = st.session_state['experiment'].get_exp_fp(nim_output.name)
+                        print(f"Copying {fp} to experiment folder")
+                        with open(fp, 'wt') as outf:
+                            #print(nim_output.getvalue().decode("utf-8"))
+                            outf.write(nim_output.getvalue().decode("utf-8").replace('\r\n','\n'))
+                #else:
+                #    st.session_state['nim_uploads'] = ''
+                                    
+                    
+        nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+        if not xbcs:
+            s2_st.markdown('<h4 style="color:#FF0000;text-align:center">Ready to run Echo primer stage</h4>', unsafe_allow_html=True)
+
+
+        with view_data_tab:
+            st.markdown(f'<h5 style="text-align:center;color:#2BA2D0"> Table Summary </h5>', unsafe_allow_html=True)
+            dc.data_table(key=3)
+
+    if stage == 3:
+        #Primer stage
+        s3_st = st.container()
+        s3_title = s3_st.title('')
+        s3_checklist_exp = s3_st.expander('Checklist for Plates', expanded=False)
+        echo1_dna_col, echo1_pcr_col, echo1_taqwater_col = s3_checklist_exp.columns(3)
+        s3_st.write('')
+        s3_st.write('')
+        comp_tab, pcr1_upload_tab, pcr1_download_tab = s3_st.tabs(["PCR Components", "Provide Plates", "Download Picklists"])
+        pcr1_comp1_tab_title = comp_tab.title('')
+        pcr1_upload_tab_title = pcr1_upload_tab.title('')
+        pcr1_upload_cont = pcr1_upload_tab.container()
+        pcr1_download_tab_title = pcr1_download_tab.title('')
+        
+        nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+        missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
+        available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]   
+
+        if available_nimbus:
+            included_DNA_plates = set()
+            included_PCR_plates = set()
+            included_taqwater_plates = set()
+
+            assay_usage = st.session_state['experiment'].get_assay_usage()
+
+            # Arrange available DNA, PCR, and taq+water plates in columns
+            
+            #s3_st.markdown('<h6 style="color:#0f6b8e;text-align:center">Components for PCR 1</h6>', unsafe_allow_html=True)
+            
+            with pcr1_upload_tab:
+                ld.upload_pcr_files(1)
+             
+            #want this to be below the rest of the info but not sure if that's possible
+            #comp_tab.markdown('<h6 style="color:#0f6b8e;text-align:center">Checklist of plates for Echo (PCR 1 Assay)</h6>', unsafe_allow_html=True)
+            #comp_tab.write('')
+            #choose_plates_exp = comp_tab.expander('Plate Selection', expanded=False)
+            
+            echo1_dna_col.markdown('**DNA Plates**')
+            echo1_pcr_col.markdown('**PCR Plates**')
+            echo1_taqwater_col.markdown('**Taq+Water Plates**')
+            #Glitches when clicking - fix
+            for nim in available_nimbus:
+                #Naming system - should look better
+                echo_filename=nim.split('\\')[1].split('.')[0]
+                inc_dna = echo1_dna_col.checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
+                if inc_dna:
+                    included_DNA_plates.add(echo_filename.split('_')[-2])
+                
+
+            for pcr_pid in st.session_state['experiment'].get_pcr_plates():
+                inc_pcr = echo1_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True), value=True, key='chk_box_pcr_'+pcr_pid)
+                if inc_pcr:
+                    included_PCR_plates.add(pcr_pid)
+
+            for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
+                inc_taqwater = echo1_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
+                        value=True, key='chk_box_taqwater_'+taqwater_pid)
+                if inc_taqwater:
+                    included_taqwater_plates.add(taqwater_pid)
+
+
+            #components
+            
+
+
+            #upload buttons
+
+
+            #download buttons
+
+            #st.write(f"{included_DNA_plates=}")
+            if included_DNA_plates:
+                s3_st.write('')
+                
+                assay_usage = st.session_state['experiment'].get_assay_usage(dna_plate_list=included_DNA_plates)
+
+
+                with comp_tab:
+                    dc.display_pcr_components(assay_usage, PCR_stage=1)
+                    dc.display_primer_components(assay_usage)
+                
+                if st.session_state['experiment'].check_ready_echo1(included_DNA_plates, included_PCR_plates, included_taqwater_plates):
+
+                    pcr1_download_tab.markdown('<h5 style="color:#95B7C3;text-align:center">Ready to run Echo PCR 1</h5>', unsafe_allow_html=True)
+                    _,picklist_button_col,_ = pcr1_download_tab.columns([2, 2, 1])
+
+                    echo_picklist_go = picklist_button_col.button('Generate Echo Picklist', key='echo_pcr1_go_button')
+
+                    if echo_picklist_go:
+                        success = st.session_state['experiment'].generate_echo_PCR1_picklist_interface(included_DNA_plates,
+                                included_PCR_plates, included_taqwater_plates)
+                        if success:
+                            dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths =\
+                                    st.session_state['experiment'].get_echo_PCR1_picklist_filepaths()
+                            echo1_dna_download_col, echo1_primer_download_col, echo1_taqwater_download_col = st.columns(3)
+                            if not dna_picklist_paths:
+                                echo1_dna_download_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                        'No DNA picklist available</h4>', unsafe_allow_html=True)
+                            else:
+                                for dpp in dna_picklist_paths:
+                                    echo1_dna_download_col.download_button(label=f"Download {dpp}", 
+                                            data=open(dpp, 'rt'), file_name=dpp, mime='text/csv', key='dna_download_'+dpp)
+                            if not primer_picklist_paths:
+                                echo1_primer_download_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                        'No primer picklist available</h4>', unsafe_allow_html=True)
+                            else:
+                                for ppp in primer_picklist_paths:
+                                    echo1_primer_download_col.download_button(label=f"Download {ppp}", 
+                                            data=open(ppp, 'rt'), file_name=ppp, mime='text/csv', key='primer_download_'+dpp)
+                            if not taqwater_picklist_paths:
+                                echo1_taqwater_download_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                        'No taq+water picklist available</h4>', unsafe_allow_html=True)
+                            else:
+                                for tpp in taqwater_picklist_paths:
+                                    echo1_taqwater_download_col.download_button(label=f"Download {tpp}", 
+                                            data=open(tpp, 'rt'), file_name=tpp, mime='text/csv', key='taqwater_download_'+tpp)
+
+                #display_reaction_stats(assay_usage)
+
+                else:
+                    pcr1_download_tab.markdown('<h5 style="color:#B72572;text-align:center">Please include at least one '+\
+                            'DNA plate (Echo file) to carry on with pipeline</h5>', unsafe_allow_html=True)
+            #extra_data()
+
+        s3_title.markdown('<h2 style="text-align:center;color:#0f6b8e">Echo Primers</h2>', unsafe_allow_html=True)
+        #comp_tab, pcr1_upload_tab, pcr1_download_tab = s3_st.tabs(["PCR Components", "Upload Files", "Download Picklists"])
+        pcr1_comp1_tab_title.markdown('<h4 style="color:#0f6b8e;text-align:left">Components</h4>', unsafe_allow_html=True)
+        pcr1_upload_tab_title.markdown('<h4 style="color:#0f6b8e;text-align:left">Provide Plate Information</h4>', unsafe_allow_html=True)
+
+        pcr1_upload_cont.write('Provide primer plate layout and volumes, taq and water barcodes and PCR plate barcodes.')
+        pcr1_upload_cont.write('')
+        #pcr1_upload_tab.markdown('<h4 style="color:#0f6b8e;text-align:center">Files and barcodes are required for taq and water plates, primer plates</h4>', unsafe_allow_html=True)
+        pcr1_download_tab_title.markdown('<h4 style="color:#0f6b8e;text-align:center">Download the Picklists for Echo</h4>', unsafe_allow_html=True)
+        #primer_plate_detail_exp = s3_st.expander('Primer Plate Details')
+
+        
+        #Missing Nimbus Output Files - add this warning in previous stage? Reduces space...
+        #if missing_nims:
+        #    s3_st.markdown('<h6 style="text-align:left;color:#B92A5D">Missing the Nimbus Output Files:</h6>', unsafe_allow_html=True)
+        #    for mn in missing_nims:
+        #        s3_st.markdown(f'<p style="text-align:left">{mn}</p>', unsafe_allow_html=True)
+        #    s3_st.markdown('<p style="text-align:left;color:#B92A5D">Upload now or continue without them</p>', unsafe_allow_html=True)
+        #    s3_st.write('')
+  
+        #    if 'nim_upload' not in st.session_state:
+        #            st.session_state['nim_upload'] = ''
+        #    nim_outputs = s3_st.file_uploader('Upload Nimbus output files', type='csv', 
+        #            accept_multiple_files=True, help='You can upload more than one file at once')
+
+        #    if nim_outputs: # and nim_outputs != st.session_state['nim_upload']:
+        #        #st.session_state['nim_uploads'] = nim_outputs
+        #        for nim_output in nim_outputs:
+        #            #print(f"{nim_output.name=}")
+        #            fp = st.session_state['experiment'].get_exp_fp(nim_output.name)
+        #            print(f"Copying {fp} to experiment folder")
+        #            with open(fp, 'wt') as outf:
+        #                #print(nim_output.getvalue().decode("utf-8"))
+        #                outf.write(nim_output.getvalue().decode("utf-8").replace('\r\n','\n'))
+
+
+    if stage == 4:
+        s4_title = s4_st.title('')
+        s4_checklist_expander = s4_st.expander('Checklist for Plates', expanded=False)
+        echo2_pcr_col, echo2_index_col, echo2_taqwater_col, echo2_amplicon_col = s4_checklist_expander.columns(4)
+
+        echo2_pcr_col.markdown('**PCR Plates**')
+        echo2_index_col.markdown('**Index Plates**')
+        echo2_taqwater_col.markdown('**Taq/Water Plates**')
+        echo2_amplicon_col.markdown('**Amplicon Plates**')
+
+        nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+        missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
+        available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]   
+
+        if available_nimbus:
+            included_PCR_plates = set()
+            included_taqwater_plates = set()
+            included_index_plates = set()
+            included_amplicon_plates = set()
+
+
+            for pcr_pid in st.session_state['experiment'].get_pcr_plates():
+                inc_pcr = echo2_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True),
+                                                value=True, key='chk_box_pcr_'+pcr_pid)
+                if inc_pcr:
+                    included_PCR_plates.add(pcr_pid)
+
+            for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
+                inc_taqwater = echo2_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
+                        value=True, key='chk_box_taqwater_'+taqwater_pid)
+                if inc_taqwater:
+                    included_taqwater_plates.add(taqwater_pid)
+
+            for index_pid in st.session_state['experiment'].get_index_plates():
+                inc_index = echo2_index_col.checkbox(file_io.unguard_pbc(index_pid, silent=True),
+                                                    value=True, key='chk_box_index_'+index_pid)
+                if inc_index:
+                    included_index_plates.add(index_pid)
+
+            for amplicon_pid in st.session_state['experiment'].get_amplicon_plates():
+                amplicon_index = echo2_amplicon_col.checkbox(file_io.unguard_pbc(amplicon_pid, silent=True), 
+                                                             value=True, key='chk_box_amplicon_'+amplicon_pid)
+                if amplicon_index:
+                    included_amplicon_plates.add(amplicon_pid)
+
+
+
+        
+
+        pcr2_comp_tab, pcr2_upload_tab, pcr2_download_tab = s4_st.tabs(["PCR 2 Components", "Upload Files", "Download Picklists"])
+
+        pcr2_comp_tab.markdown('<h4 style="color:#0f6b8e;text-align:left">Components</h4>', unsafe_allow_html=True)
+        pcr2_upload_tab.markdown('<h4 style="color:#0f6b8e;text-align:left">Provide Plate Information</h4>', unsafe_allow_html=True)
+        pcr2_download_tab.markdown('<h4 style="color:#0f6b8e;text-align:center">Download the Picklists for Indexing (Echo stage 2)</h4>', unsafe_allow_html=True)
+
+        assay_usage = st.session_state['experiment'].get_assay_usage()
+
+        with pcr2_comp_tab:
+            dc.display_pcr_components(assay_usage, PCR_stage=2)
+            #dc.display_primer_components(assay_usage)
+
+        with pcr2_upload_tab:
+            ld.upload_pcr_files(2)
+
+        with pcr2_download_tab:
+            if st.session_state['experiment'].check_ready_echo2(included_PCR_plates, included_taqwater_plates, included_index_plates):
+                pcr2_download_tab.markdown('<h5 style="color:#95B7C3;text-align:center">Ready to run index picklist generation (Echo PCR 2)</h5>', unsafe_allow_html=True)
+                _,picklist_button_col,_ = pcr2_download_tab.columns([2, 2, 1])
+
+                echo_picklist_go = picklist_button_col.button('Generate Echo Picklists', key='echo_pcr2_go_button')
+
+                if echo_picklist_go:  # pcr_plates, index_plates, taq_water_plates, amplicon_plates=None
+                    success = st.session_state['experiment'].generate_echo_PCR2_picklist_interface(included_PCR_plates, 
+                            included_index_plates, included_taqwater_plates, included_amplicon_plates)
+                    if success:
+                        index_picklist_paths, taqwater_picklist_paths, amplicon_picklist_paths =\
+                                st.session_state['experiment'].get_echo_PCR2_picklist_filepaths()
+                        # amplicon_picklist_paths is a list
+                        echo2_index_download_col, echo2_taqwater_download_col, echo2_amplicon_download_col = st.columns(3)
+                        if not index_picklist_paths:
+                            echo2_index_download_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                    'No index picklist available</h4>', unsafe_allow_html=True)
+                        else:
+                            for ipp in index_picklist_paths:
+                                echo2_index_download_col.download_button(label=f"Download {ipp}", data=open(ipp, 'rt'), 
+                                        file_name=ipp, mime='text/csv', key='index_download_'+ipp)
+                        if not amplicon_picklist_paths:
+                            echo2_amplicon_download_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                    'No amplicon picklists available</h4>', unsafe_allow_html=True)
+                        else:
+                            for app in amplicon_picklist_paths:
+                                echo2_amplicon_download_col.download_button(label=f"Download {app}", data=open(app, 'rt'),
+                                        file_name=app, mime='text/csv', key='amplicon_download_'+app)
+                        if not taqwater_picklist_paths:
+                            echo2_taqwater_download_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                    'No taq+water picklist available</h4>', unsafe_allow_html=True)
+                        else:
+                            for tpp in taqwater_picklist_paths:
+                                echo2_taqwater_download_col.download_button(label=f"Download {tpp}", data=open(tpp, 'rt'),
+                                        file_name=tpp, mime='text/csv', key='taqwater_download_'+tpp)
+
+            #display_reaction_stats(assay_usage)
+
+            else:
+                pcr1_download_tab.markdown('<h5 style="color:#B72572;text-align:center">Please include at least one PCR plate, '+\
+                        'one index plate and one taq+water plate to carry on with pipeline</h5>', unsafe_allow_html=True)
+            
+
+
+        s4_title.markdown('<h2 style="text-align:center;color:#0f6b8e">Echo Index</h2>', unsafe_allow_html=True)
+        
+
+
+
+
 
 def main():
     st.set_page_config(page_icon="ngsg_icon.png", page_title="NGS Genotyping Pipeline", initial_sidebar_state="expanded", layout="wide")
@@ -276,823 +572,109 @@ def main():
     
     st.sidebar.title('NGS Genotyping Pipeline')
     st.sidebar.image('ngsg_explorer.png')
-    if 'experiment' in st.session_state and st.session_state['experiment']:
-        st.sidebar.header('Current experiment: '+ st.session_state['experiment'].name)
-    
-    print("Starting NGS Genotyping Explorer")
-    if 'app_path' not in st.session_state:
-        app_path = str(PurePath(os.getcwd()))
-        if 'NGSgeno' not in app_path:
-            st.write('NGSgeno not in application path, please restart the app')
-            st.stop()
-        app_path = app_path.split('NGSgeno')[0] + 'NGSgeno'
-        st.session_state['app_path'] = app_path
-        print('Initialising app path to:', app_path)
+    new_container = st.container()
 
-    os.chdir(os.path.join(st.session_state['app_path']))
-    print("Loading library defaults...")
     if 'experiment' not in st.session_state:
         st.session_state['experiment'] = None
         print('Current experiment set to clear')
+     
+    if 'experiment' in st.session_state:
+        if 'navigation' not in st.session_state:
+            st.session_state['navigation'] = 'load'
 
-    if 'nav_pipe_button' not in st.session_state:
-        st.session_state['nav_pipe_button'] = 'nav'
+        if st.session_state['experiment']:
+            st.session_state['navigation'] = 'pipe'
 
-    if st.session_state['experiment']:
-        sb_col1, sb_col2, sb_col3, sb_col4, sb_col5, sb_col6 = st.sidebar.columns([1,2,1,1,2,1])
-        nav_clicked = sb_col2.button('Navigation', help='Change experiment, or create a new one')
-        if nav_clicked:
-            st.session_state['nav_pipe_button'] = 'nav'
+            exp = st.session_state['experiment']
+            st.sidebar.header('Current experiment: '+ exp.name)
 
-        pipe_clicked = sb_col5.button('Pipeline', help='Work through pipeline stages')
-        if pipe_clicked:
-            st.session_state['nav_pipe_button'] = 'pipe'
+            pipeline_sb()
+            title='Experiment '+ st.session_state['experiment'].name
+            new_container.markdown(f'<h4 style="color:#BED2D6">{title}</h2>', unsafe_allow_html=True)
 
-        if st.session_state['nav_pipe_button'] == 'nav':
-            sb_col1.button('\u25B6', key='nav_pipe_col1_button', disabled=True)
-            sb_col3.button('\u25C0', key='nav_pipe_col3_button', disabled=True)
-            sb_col4.button('.', key='nav_pipe_col4_button', disabled=True)
-            sb_col6.button('.', key='nav_pipe_col6_button', disabled=True)
-        elif st.session_state['nav_pipe_button'] == 'pipe':
-            sb_col4.button('\u25B6', key='nav_pipe_col4_button', disabled=True)
-            sb_col6.button('\u25C0', key='nav_pipe_col6_button', disabled=True)
-            sb_col1.button('.', key='nav_pipe_col1_button', disabled=True)
-            sb_col3.button('.', key='nav_pipe_col3_button', disabled=True)
-            
-        
-
-    ### TODO: get paths for mouse files in the library folder
-    # Preferably load the data once, rather than each time a script is run - maybe need a "refresh library" button?
-
-    # Run build folder navigation, load run folder and experiment
-    if not st.session_state['experiment'] or (st.session_state['experiment'] and st.session_state['nav_pipe_button'] == 'nav'):
-        add_run_folder = st.sidebar.text_input('Create new run folder:')
-        
-        create_run_folder_button = st.sidebar.button(label='Create', key='create_run_folder_button')
-        if add_run_folder and create_run_folder_button:
-            add_run_folder_str = 'run_' + add_run_folder
-            exp, msg = create_run_folder(add_run_folder_str)
-            if exp:
-                exp.save()                                                                      
-                st.session_state['experiment'] = exp
-                st.experimental_rerun()
-            else:
-                if 'already exists' in msg:
-                    st.sidebar.markdown('<p style="color:#FF0000">Folder name already exists</p>', unsafe_allow_html=True)
-                else:
-                    st.markdown('<p style="color:#FF0000">Fatal path error: ' + msg + '</p>', unsafe_allow_html=True)
-
-        try:
-            existing_run_folders = get_run_folders()
-        except Exception as exc:
-            output_error(exc, msg='Cannot locate NGSgeno folder')
-            st.stop()
-
-        ch_exp_folder = st.sidebar.selectbox("Select a run folder to open", existing_run_folders)
-        if ch_exp_folder:
-            if not st.session_state['experiment'] or st.session_state['experiment'].name != ch_exp_folder:   
-                ch_run_folder = 'run_' + ch_exp_folder
-                ch_run_path = os.path.join(st.session_state['app_path'], ch_run_folder)
-                if os.path.exists(ch_run_path):
-                    exp = load_experiment(ch_run_path)
-                    #print(dir(exp))
-                    if not exp:
-                        st.markdown('<p style="color:#FF0000">Could not load experiment from: ' + ch_run_path + '</p>', unsafe_allow_html=True)
-                    elif ch_run_path.endswith(exp.name):
-                        # success!
-                        st.session_state['experiment'] = exp
-                        st.experimental_rerun()
-                    else:
-                        st.markdown('<p style="color:#FF0000">Invalid experiment file in: ' + ch_run_path + '</p>', unsafe_allow_html=True)
-            ch_exp_folder = None
-    
-    if st.session_state['experiment']:               
-        exp = st.session_state['experiment']
-        if 'pipe_stage' not in st.session_state:
-            st.session_state['pipe_stage'] = 1
-            
-        if st.session_state['nav_pipe_button'] == 'nav':
-            if 'lock' not in st.session_state:
-                st.session_state['lock'] = False
-            if 'unlock' not in st.session_state:
-                st.session_state['unlock'] = False
-            if exp.locked:
-                #unlock_button = st.sidebar.button('Unlock experiment', help='Allow modification of experiment again')
-                #if unlock_button and not st.session_state['unlock']:
-                #    st.session_state['unlock'] = True
-                pass
-            else:
-                #lock_button = st.sidebar.button('Lock experiment', help='Freezes the current experiment, preventing further modification')
-                #if lock_button and not st.session_state['lock']:
-                #    st.session_state['lock'] = True
-                pass
-            if st.session_state['unlock']:
-                exp.unlock()
-                st.session_state['unlock'] = False
-            if st.session_state['lock']:
-                exp.lock()
-                st.session_state['lock'] = False
-
-            #if 'nuked' not in st.session_state:
-            #    st.session_state['nuked'] = False
-            #nuke_button = st.sidebar.button('Delete experiment', help='Hides the current experiment from the user interface. Manual retrieval is required')
-            #if nuke_button and not st.session_state['nuked']:
-            #    st.session_state['nuked'] = True
-            #if st.session_state['nuked']:
-            #    st.sidebar.write('Currently not enabled, but in future will hide experiment')
-            #    st.session
-        else: # pipeline stages
-            _,sb_pipe_col1, sb_pipe_col2, sb_pipe_col3,_ = st.sidebar.columns([1,1,8,1,2])
-            #if 'pipe_stage' not in st.session_state:
-            #    st.session_state['pipe_stage'] = 1
-            #    sb_pipe_col1.button('\u25B6', key='1l', disabled=True)
-            #    sb_pipe_col3.button('\u25C0', key='1r', disabled=True)
-            # Load data
-            pipe_load_data_clicked = sb_pipe_col2.button('1. Load data', key='1c')
-            pipe_nimbus_clicked = sb_pipe_col2.button('2. Nimbus 96->384', key='2c')
-            pipe_echo_primers_clicked = sb_pipe_col2.button('3. Echo Primers', key='3c')
-            pipe_echo_barcode_clicked = sb_pipe_col2.button('4. Echo Barcodes', key='4c')
-            pipe_miseq_clicked = sb_pipe_col2.button('5. Miseq', key='5c')
-            pipe_genotyping_clicked = sb_pipe_col2.button('6. Genotyping', key='6c')
-            pipe_review_clicked = sb_pipe_col2.button('7. Review', key='7c')
-            
-            if 'pipe_stage' not in st.session_state or pipe_load_data_clicked:
+            if 'pipe_stage' not in st.session_state:
                 st.session_state['pipe_stage'] = 1
-                sb_pipe_col1.button('\u25B6', key='1l', disabled=True)
-                sb_pipe_col3.button('\u25C0', key='1r', disabled=True)
-            else:
-                sb_pipe_col1.button('.', key='1l', disabled=True)
-                sb_pipe_col3.button('.', key='1r', disabled=True)
             
-            if pipe_nimbus_clicked:
-                st.session_state['pipe_stage'] = 2
-                sb_pipe_col1.button('\u25B6', key='2l', disabled=True)
-                sb_pipe_col3.button('\u25C0', key='2r', disabled=True)
-            else:
-                sb_pipe_col1.button('.', key='2l', disabled=True)
-                sb_pipe_col3.button('.', key='2r', disabled=True)
-            
-            if pipe_echo_primers_clicked:
-                st.session_state['pipe_stage'] = 3
-                sb_pipe_col1.button('\u25B6', key='3l', disabled=True)
-                sb_pipe_col3.button('\u25C0', key='3r', disabled=True)
-            else:
-                sb_pipe_col1.button('.', key='3l', disabled=True)
-                sb_pipe_col3.button('.', key='3r', disabled=True)
-            
-            if pipe_echo_barcode_clicked:
-                st.session_state['pipe_stage'] = 4
-                sb_pipe_col1.button('\u25B6', key='4l', disabled=True)
-                sb_pipe_col3.button('\u25C0', key='4r', disabled=True)
-            else:
-                sb_pipe_col1.button('.', key='4l', disabled=True)
-                sb_pipe_col3.button('.', key='4r', disabled=True)
-            
-            if pipe_miseq_clicked:
-                st.session_state['pipe_stage'] = 5
-                sb_pipe_col1.button('\u25B6', key='5l', disabled=True)
-                sb_pipe_col3.button('\u25C0', key='5r', disabled=True)
-            else:
-                sb_pipe_col1.button('.', key='5l', disabled=True)
-                sb_pipe_col3.button('.', key='5r', disabled=True)
-            
-            if pipe_genotyping_clicked:
-                st.session_state['pipe_stage'] = 6
-                sb_pipe_col1.button('\u25B6', key='6l', disabled=True)
-                sb_pipe_col3.button('\u25C0', key='6r', disabled=True)
-            else:
-                sb_pipe_col1.button('.', key='6l', disabled=True)
-                sb_pipe_col3.button('.', key='6r', disabled=True)
-            
-            if pipe_review_clicked:
-                st.session_state['pipe_stage'] = 7
-                sb_pipe_col1.button('\u25B6', key='7l', disabled=True)
-                sb_pipe_col3.button('\u25C0', key='7r', disabled=True)
-            else:
-                sb_pipe_col1.button('.', key='7l', disabled=True)
-                sb_pipe_col3.button('.', key='7r', disabled=True)
+            #if 'lock' not in st.session_state:
+            #    st.session_state['lock'] = False
+            #if 'unlock' not in st.session_state:
+            #    st.session_state['unlock'] = False
+            #if exp.locked:
+            #    #unlock_button = st.sidebar.button('Unlock experiment', help='Allow modification of experiment again')
+            #    #if unlock_button and not st.session_state['unlock']:
+            #    #    st.session_state['unlock'] = True
+            #    pass
+            #else:
+            #    #lock_button = st.sidebar.button('Lock experiment', help='Freezes the current experiment, preventing further modification')
+            #    #if lock_button and not st.session_state['lock']:
+            #    #    st.session_state['lock'] = True
+            #    pass
+            #if st.session_state['unlock']:
+            #    exp.unlock()
+            #    st.session_state['unlock'] = False
+            #if st.session_state['lock']:
+            #    exp.lock()
+            #    st.session_state['lock'] = False
 
-                    
-   
-    #with st.container():
-    #    with open('heatmap.html', 'rt') as f:
-    #        heatmap_str = f.read()
-    #        components.html(heatmap_str, height=600, scrolling=True)
+            ##if 'nuked' not in st.session_state:
+            ##    st.session_state['nuked'] = False
+            ##nuke_button = st.sidebar.button('Delete experiment', help='Hides the current experiment from the user interface. Manual retrieval is required')
+            ##if nuke_button and not st.session_state['nuked']:
+            ##    st.session_state['nuked'] = True
+            ##if st.session_state['nuked']:
+            ##    st.sidebar.write('Currently not enabled, but in future will hide experiment')
+            ##    st.session
+            #else: # pipeline stages
 
-    if not st.session_state['experiment']:
-        with st.container():
-            st.write('')
-            st.write('')
-            st.header('Please load existing experiment or create a new one')
-    else:
-        with st.container():
-            view_sp1, view_col1, view_sp2, view_col2, view_sp3, view_col3, view_sp4, view_col4, \
-                    view_sp5, view_col5, view_sp6, _, view_resize_col = st.columns([2,8,2,5,2,5,2,6,2,5,2,2,7])
-            view_buttons = [view_col1, view_col2, view_col3, view_col4, view_col5]
-            view_spacers = [view_sp1, view_sp2, view_sp3, view_sp4, view_sp5, view_sp6]
-            for vb in view_buttons:
-                vb.write('.')
-            for vs in view_spacers:
-                vs.write('.')
-            # if 'view_option' not in st.session_state:
-            #    st.session_state['pipe_stage'] = 1
-            #    sb_pipe_col1.button('\u25B6', key='1l', disabled=True)
-            #    sb_pipe_col3.button('\u25C0', key='1r', disabled=True)
-            # Load data
-            view_experiment_summary = view_col1.button('Experiment Summary', key='1v')
-            view_table_editor = view_col2.button('Table Editor', key='2v')
-            view_plate_layout = view_col3.button('Plate Layout', key='3v')
-            view_assay_explorer = view_col4.button('Assay Explorer', key='4v')
-            view_log_viewer = view_col5.button('Log Viewer', key='5v')
-            st.session_state['view_box_size'] = view_resize_col.number_input('',min_value=10, max_value=1000, value=250, step=20)
-            
-            ### Update the visual indicators first
-            # We could save a lot of code by just creating new buttons with '.' symbols then overwriting with the
-            # indicators we want, but this will slow the interface and may make it "blink" more. Instead we update
-            # exactly the elements that need to change.
-            if 'view option' not in st.session_state:
-                st.session_state['view option'] = 1
-                view_sp1.button('\u25B6', key='sp1', disabled=True)
-                view_sp2.button('\u25C0', key='sp2', disabled=True)
-                for i in range(3, len(view_spacers)+1):
-                    view_spacers[i-1].button('.', key='sp'+str(i), disabled=True)
-            elif view_experiment_summary and not st.session_state['view option'] == 1:
-                old_view = st.session_state['view option']
-                st.session_state['view option'] = 1
-                view_sp1.button('\u25B6', key='sp1', disabled=True)
-                view_sp2.button('\u25C0', key='sp2', disabled=True)
-                if old_view == st.session_state['view option'] + 1: # next button
-                    view_sp3.button('.', key='sp3', disabled=True)
-                else:
-                    view_spacers[old_view-1].button('.', key='sp'+str(old_view), disabled=True)
-                    view_spacers[old_view].button('.', key='sp'+str(old_view+1), disabled=True)
-            elif view_table_editor and not st.session_state['view option'] == 2:
-                old_view = st.session_state['view option']
-                st.session_state['view option'] = 2
-                view_sp2.button('\u25B6', key='sp2', disabled=True)
-                view_sp3.button('\u25C0', key='sp3', disabled=True)
-                if old_view == st.session_state['view option'] - 1: # old view was previous button
-                    view_sp1.button('.', key='sp1', disabled=True)            
-                elif old_view == st.session_state['view option'] + 1: # old view was next button
-                    view_sp4.button('.', key='sp4', disabled=True)
-                else:
-                    view_spacers[old_view-1].button('.', key='sp'+str(old_view), disabled=True)
-                    view_spacers[old_view].button('.', key='sp'+str(old_view+1), disabled=True)
-            elif view_plate_layout and not st.session_state['view option'] == 3:
-                old_view = st.session_state['view option']
-                st.session_state['view option'] = 3
-                view_sp3.button('\u25B6', key='sp3', disabled=True)
-                view_sp4.button('\u25C0', key='sp4', disabled=True)
-                if old_view == st.session_state['view option'] - 1: # old view was previous button
-                    view_sp2.button('.', key='sp2', disabled=True)            
-                elif old_view == st.session_state['view option'] + 1: # old view was next button
-                    view_sp5.button('.', key='sp4', disabled=True)
-                else:
-                    view_spacers[old_view-1].button('.', key='sp'+str(old_view), disabled=True)
-                    view_spacers[old_view].button('.', key='sp'+str(old_view+1), disabled=True)
-            elif view_assay_explorer and not st.session_state['view option'] == 4:
-                old_view = st.session_state['view option']
-                st.session_state['view option'] = 4
-                view_sp3.button('\u25B6', key='sp4', disabled=True)
-                view_sp4.button('\u25C0', key='sp5', disabled=True)
-                if old_view == st.session_state['view option'] - 1: # old view was previous button
-                    view_sp2.button('.', key='sp3', disabled=True)            
-                elif old_view == st.session_state['view option'] + 1: # old view was next button
-                    view_sp5.button('.', key='sp6', disabled=True)
-                else:
-                    view_spacers[old_view-1].button('.', key='sp'+str(old_view), disabled=True)
-                    view_spacers[old_view].button('.', key='sp'+str(old_view+1), disabled=True)
-            elif view_log_viewer and not st.session_state['view option'] == 5:
-                old_view = st.session_state['view option']
-                st.session_state['view option'] = 5
-                view_sp3.button('\u25B6', key='sp5', disabled=True)
-                view_sp4.button('\u25C0', key='sp6', disabled=True)
-                if old_view == st.session_state['view option'] - 1: # old view was previous button
-                    view_sp2.button('.', key='sp4', disabled=True)            
-                else:
-                    view_spacers[old_view-1].button('.', key='sp'+str(old_view), disabled=True)
-                    view_spacers[old_view].button('.', key='sp'+str(old_view+1), disabled=True)
+            #    pipeline_sb()
 
-            # now do the logic
-            if st.session_state['view option'] == 1:  # Experiment Summary            
-                selection = []
-                st.session_state['delete_selection'] = False
-                st.session_state['nuke'] = ''
-                if st.session_state['experiment']:
-                    #st.write(st.session_state['experiment'].name)
-                    df = st.session_state['experiment'].inputs_as_dataframe()
-                    if df is None or not isinstance(df, pd.DataFrame):
-                        st.write('No data loaded')
-                    else:
-                        #print(f"{type(df)=}, {df=})")
-                        selection = aggrid_interactive_table(df)
-                        #print(f"{type(selection)=} {selection=}")
-                        with st.container():
-                            if selection['selected_rows']:
-                                rows = selection["selected_rows"]
-                                lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
-                                if lines:
-                                    st.write("You selected:")
-                                    st.write(lines)
-                                    if st.button('DELETE selection', key='delete_button', help='Remove these entries'):
-                                #        st.session_state['delete_selection'] = True
-                                #if st.session_state['delete_selection']:    
-                                        del_col1, del_col2, del_col3 = st.columns([2,1,1])
-                                        with del_col1:
-                                            st.warning("Are you sure you wish to permanently remove these entries?")
-                                        with del_col2:
-                                            mistake_button = st.button("No, it was a mistake!",on_click=delete_entries,
-                                                    args=(st.session_state['experiment'], []))
-                                            if mistake_button:
-                                                st.experimental_rerun()
-                                        with del_col3:
-                                            delete_button = st.button("Yes, DELETE them!",on_click=delete_entries,
-                                                    args=(st.session_state['experiment'], selection['selected_rows']))
-                                            if delete_button:
-                                                st.experimental_rerun()
-                    assay_usage = st.session_state['experiment'].get_assay_usage()
-                    display_reaction_stats(assay_usage=assay_usage)
-                    #with st.expander('Required components: primers, barcodes, taq and water:', expanded=True):
-                        
-                    #    if assay_usage:
-                    #        primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
-                    #                st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
-                    #        reactions = sum([v for v in assay_usage.values()])
-                    #        barcodes_remain, barcodes_avail, barcode_vol_okay = st.session_state['experiment'].get_barcode_remaining_available_volume(assay_usage=assay_usage)
-                    #    else:
-                    #        reactions, primer_vols, primer_taq_vol, primer_water_vol, barcode_taq_vol, barcode_water_vol =\
-                    #            0,{},0,0,0,0 
-                    #        barcodes_remain, barcodes_avail, barcode_vol_okay =\
-                    #                st.session_state['experiment'].get_barcode_remaining_available_volume()
-                    #    primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
-                    #    taq_water_avail_PCR1 = st.session_state['experiment'].get_taq_water_avail(1)
-                    #    taq_water_avail_PCR2 = st.session_state['experiment'].get_taq_water_avail(2)
+            ##Pipeline Stages
 
-                    #    req_cols = st.columns([5,2,5,2,5,2,5,2])
-                    #    if 'assay_filter' not in st.session_state:
-                    #        st.session_state['assay_filter'] = 1
-                    #    if st.session_state['assay_filter'] == 1:
-                    #        req_cols[6].button('Filter assays', key='assay_filter_button', disabled=True)
-                    #        unfilter_assays = req_cols[7].button('Unfilter assays', key='assay_unfilter_button')
-                    #        if unfilter_assays:
-                    #            st.session_state['assay_filter'] = 0
-                    #    req_cols[0].write('Required reaction wells')
-                    #    req_cols[1].write(str(reactions))
-                    #    req_cols[2].write('Required PCR plates')
-                    #    req_cols[3].write(str(ceil(reactions/384)))
-                    #    req_cols[4].write('PCR1 required taq volume')
-                    #    req_cols[5].write(str(primer_taq_vol/1000)+' ul')
-                    #    req_cols[6].write('PCR1 available taq volume')
-                    #    req_cols[7].write(str(taq_water_avail_PCR1[0]/1000)+' ul')
-                    #    req_cols[0].write('PCR1 required water volume')
-                    #    req_cols[1].write(str(primer_water_vol/1000)+' ul')
-                    #    req_cols[2].write('PCR1 available water volume')
-                    #    req_cols[3].write(str(taq_water_avail_PCR1[1]/1000)+' ul')
-                    #    req_cols[0].write('PCR2 required taq volume')
-                    #    req_cols[1].write(str(barcode_taq_vol/1000)+' ul')
-                    #    req_cols[2].write('PCR2 available taq volume')
-                    #    req_cols[3].write(str(taq_water_avail_PCR2[0]/1000)+' ul')
-                    #    req_cols[4].write('PCR2 required water volume')
-                    #    req_cols[5].write(str(barcode_water_vol/1000)+' ul')
-                    #    req_cols[6].write('PCR2 available water volume')
-                    #    req_cols[7].write(str(taq_water_avail_PCR2[1]/1000)+' ul')
-                    #    req_cols[0].write('Barcode pairs remaining')
-                    #    req_cols[1].write(str(barcodes_remain))
-                    #    req_cols[2].write('Barcode pairs available')
-                    #    req_cols[3].write(str(barcodes_avail))
-                    #    req_cols[4].write('Barcode vols sufficient')
-                    #    req_cols[5].write(str(barcode_vol_okay))
-                    #    if 'assay_filter' not in st.session_state:
-                    #        st.session_state['assay_filter'] = 1
-                    #    if st.session_state['assay_filter'] == 1:
-                    #        req_cols[6].button('Filter assays', key='assay_filter_button', disabled=True)
-                    #        unfilter_assays = req_cols[7].button('Unfilter assays', key='assay_unfilter_button')
-                    #        if unfilter_assays:
-                    #            st.session_state['assay_filter'] = 0
+            if 'pipe_stage' not in st.session_state or st.session_state['pipe_stage'] == 1:
+                pipe_stages(exp, 1)
+                st.sidebar.write('')
+                st.sidebar.write('')
+                st.sidebar.markdown('<p style="color:#8AB1BD">Or change experiment</p>', unsafe_allow_html=True)
+
+                #gotta change logic so that this load still
+                sb.folder_sb()
+        
+            #Nimbus
+            if st.session_state['pipe_stage'] == 2:
+                pipe_stages(exp, 2)
+                   
+            #Echo primers   
+            if st.session_state['pipe_stage'] == 3:
+                pipe_stages(exp, 3)
+
+  
+            if st.session_state['pipe_stage'] == 4:  # echo barcodes
+                pipe_stages(exp, 4)
+
+            if st.session_state['pipe_stage'] == 5:  # Miseq
+                pipe_stages(exp, 5)
+
+            if st.session_state['pipe_stage'] == 6:  # Genotyping
+                pipe_stages(exp, 6)
+
+            if st.session_state['pipe_stage'] == 7:  # Review
+                pipe_stages(exp, 7)
 
 
-                    #with st.expander('Required/available primer volumes', expanded=False):
-                    #    primer_names = set(primer_vols.keys())
-                    #    print(f"{primer_names=}")
-                    #    assay_columns = st.columns(12)
-                    #    assay_columns[0].write('Primer')
-                    #    assay_columns[1].write('Uses')
-                    #    assay_columns[2].write('Volume ul')
-                    #    assay_columns[3].write('Avail ul')
-                    #    assay_columns[4].write('Primer')
-                    #    assay_columns[5].write('Uses')
-                    #    assay_columns[6].write('Volume ul')
-                    #    assay_columns[7].write('Avail ul')
-                    #    assay_columns[8].write('Primer')
-                    #    assay_columns[9].write('Uses')
-                    #    assay_columns[10].write('Volume ul')
-                    #    assay_columns[11].write('Avail ul')
-                    #    for k,p in enumerate(sorted(primer_names)):
-                    #        r = k%3  # horizontal offset
-                    #        assay_columns[r+0].write(p)
-                    #        assay_columns[r+1].write(assay_usage[p])
-                    #        assay_columns[r+2].write(primer_vols[p])
-                    #        assay_columns[r+3].write(primer_avail_vols[p])
+    if not st.session_state['experiment'] or (st.session_state['experiment'] and st.session_state['navigation'] == 'load'):
+        #st.session_state['experiment'] = None
+        new_container.write('')
+        new_container.write('')
+        new_container.markdown('<h2 style="text-align:center;color:#154c79">Please load existing experiment or create a new one</h2>', unsafe_allow_html=True)
+
+        sb.folder_sb()
 
 
-            elif st.session_state['view option'] == 2:
-                # show plates in table form and let the user edit them to fix minor mistakes
-                pass
-            elif st.session_state['view option'] == 3:
-                plate_input = st.text_input('Plate ID to view', key='plate_input1')
-                if plate_input:
-                    plate_id = file_io.guard_pbc(plate_input)
-                    if plate_id in st.session_state['experiment'].plate_location_sample:
-                        heatmap_str = generate_heatmap_html(st.session_state['experiment'], plate_id, scaling=1.2)
-                        #with open("debug.html", 'wt') as outf:
-                        #    print(heatmap_str, file=outf)
-                        components.html(heatmap_str, height=700, scrolling=True)
-                    else:
-                        st.markdown('<p style="color:#FF0000">Plate barcode not found in experiment</p>', unsafe_allow_html=True)
-                # let user choose plates and then display them as a plate layout with well contents on hover
-                # plate_col1, plate_col2 = st.columns(2)
-                # for plate in st.session_state['experiment'].plate_location_sample:
-                #    break
-                # heatmap_str = generate_heatmap_html(plate_id, st.session_state['experiment'], scaling=1)
-                # components.html(heatmap_str, height=600, scrolling=True)
-            elif st.session_state['view option'] == 4:  # Assay explorer
-                # display allowed and denied assays, missing assays, used assays, etc.
-                assay_col1, assay_col2, assay_col3, assay_col4, assay_col5 = st.columns(5)
-                with assay_col1:
-                    pass
-                    #rodentity_assays_avail = st.session_state['experiment'].get_rodentity_assays_avail()
-                    #st.write('Rodentity assays available')
-                    #for a in rodentity_assays_avail:
-                    #    st.write(a)
-                with assay_col2:
-                    pass
-                with assay_col3:
-                    pass
-                with assay_col4:
-                    pass
-                with assay_col5:
-                    pass
-                
-            elif st.session_state['view option'] == 5:
-                # display the experiment log and let the user filter the view in a number of ways
-                with st.container():
-                    df = pd.DataFrame(st.session_state['experiment'].get_log(30))
-                    if 'view_box_size' in st.session_state:
-                        height = st.session_state['view_box_size']
-                    else:
-                        height = 250
-                    st.dataframe(df, height=height)
-
-        with st.container():
-            with st.expander('Add reference sequences, assay lists, primer plates, barcode plate', expanded=False):
-                misc_upload_col1, misc_upload_col2 = st.columns(2)
-                with misc_upload_col1:
-                    uploaded_reference = st.file_uploader('Upload custom reference file', key='ref_uploader', type=['txt','fa','fasta'])
-                    if uploaded_reference:
-                        if 'reference_upload' not in st.session_state or st.session_state['reference_upload'] != uploaded_reference.name:
-                            success = st.session_state['experiment'].add_reference(uploaded_reference)
-                            st.session_state['reference_upload'] = uploaded_reference.name
-                    uploaded_primer_layouts = st.file_uploader('Upload primer plate layouts', 
-                            key='primer_uploader', type='csv', accept_multiple_files=True)
-                    if uploaded_primer_layouts:
-                        if 'primer_layouts_upload' not in st.session_state or st.session_state['primer_layouts_upload'] != [upl.name for upl in uploaded_primer_layouts]:
-                            success = st.session_state['experiment'].add_primer_layouts(uploaded_primer_layouts)
-                            st.session_state['primer_layouts_upload'] = [upl.name for upl in uploaded_primer_layouts]
-                    uploaded_primer_volumes = st.file_uploader('Upload primer plate volumes', key='primer_vol_uploader', type='csv', accept_multiple_files=True)
-                    if uploaded_primer_volumes:
-                        if 'primer_volumes_upload' not in st.session_state or st.session_state['primer_volumes_upload'] != [upv.name for upv in uploaded_primer_volumes]:
-                            success = st.session_state['experiment'].add_primer_volumes(uploaded_primer_volumes)
-                            st.session_state['primer_volumes_upload'] = [upv.name for upv in uploaded_primer_volumes]
-                            
-                with misc_upload_col2:
-                    uploaded_assaylists = st.file_uploader('Upload assay list', key='assaylist_uploader', type=['txt','csv'], accept_multiple_files=True)
-                    if uploaded_assaylists:
-                        if 'assaylist_upload' not in st.session_state or st.session_state['assaylist_upload'] != [ual.name for ual in uploaded_assaylists]:
-                            success = st.session_state['experiment'].add_assaylists(uploaded_assaylists)
-                            st.session_state['assaylist_upload'] = [ual.name for ual in uploaded_assaylists]
-
-                    uploaded_barcode_layouts = st.file_uploader('Upload i7i5 barcode plate layout', 
-                            key='barcode_uploader', type='csv', accept_multiple_files=True)
-                    if uploaded_barcode_layouts:
-                        if 'barcode_layout_upload' not in st.session_state or st.session_state['barcode_layout_upload'] != [ubl.name for ubl in uploaded_barcode_layouts]:
-                            success = st.session_state['experiment'].add_barcode_layouts(uploaded_barcode_layouts)
-                            st.session_state['barcode_layout_upload'] = uploaded_barcode_layouts[0].name
-                            
-                    uploaded_barcode_volumes = st.file_uploader('Upload i7i5 barcode plate volumes', key='barcode_vol_uploader',
-                            type='csv', accept_multiple_files=True)
-                    if uploaded_barcode_volumes:
-                        if 'barcode_volume_upload' not in st.session_state or \
-                                st.session_state['barcode_volume_upload'] !=\
-                                [ubv.name for ubv in uploaded_barcode_volumes]:
-                            success = st.session_state['experiment'].add_barcode_volumes(uploaded_barcode_volumes)
-                            st.session_state['barcode_volume_upload'] = [ubv.name for ubv in uploaded_barcode_volumes]
+    
+       
+    #folder_sb()
 
 
-
-
-        if st.session_state['pipe_stage'] == 1:
-            with st.container():
-                _, title_col, _ = st.columns([1,1,1])
-                title_col.subheader('Load sample plate data')
-                with st.expander('Add data from Rodentity JSON files',expanded=True):
-                    # C1: upload, C2: four slots plus 'X' remove, C3: dest plate; "accept" button
-                    col_r1, col_r2, col_r3= st.columns(3)
-                    rod_dp = ''
-                    plates_to_clear = [False, False, False, False]
-                    rod_up_disabled = False  # disable uploading more plates until space available
-                    exp = st.session_state['experiment']
-                    #print(f"{exp.unassigned_plates=}")
-                    #if 'prev_rod_upload' in st.session_state:
-                    #    print(f"{st.session_state['prev_rod_upload']=}")
-                    #if 'rod_dp_key' in st.session_state:
-                    #    print(f"{st.session_state['rod_dp_key']=}")
-                    if all(exp.unassigned_plates[k] for k in exp.unassigned_plates):
-                        rod_up_disabled = True
-                
-                    with col_r1:
-                        rodentity_epp = st.file_uploader('Rodentity JSON file', type='json', disabled=rod_up_disabled)
-                        if rodentity_epp:
-                            rodentity_plate_name = file_io.guard_pbc(rodentity_epp.name.rstrip('.json'))
-                            if 'prev_rod_upload' not in st.session_state or \
-                                st.session_state['prev_rod_upload'] != rodentity_plate_name:
-                                if rodentity_epp.name.rstrip('.json') in exp.unassigned_plates:
-                                    print('We see this already')
-                                else: 
-                                    for k in sorted(exp.unassigned_plates):
-                                        if not exp.unassigned_plates[k]:
-                                            exp.unassigned_plates[k] = rodentity_plate_name
-                                            # Save a copy we can edit and reload
-                                            fn = os.path.join('run_'+exp.name, db_io._eppfn_r(rodentity_plate_name))
-                                            with open(fn, 'wt') as outf:
-                                                outf.write(rodentity_epp.getvalue().decode("utf-8"))
-                                            print('here', k)
-                                            st.session_state['prev_rod_upload'] = rodentity_plate_name
-                                            st.experimental_rerun()          
-                    with col_r2:
-                        st.write('Checkboxes required for clearing plate IDs')
-                    
-                        for i,p in enumerate(plates_to_clear):
-                            plates_to_clear[i] = st.checkbox(f"P{str(i+1)}: {file_io.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
-                                    help='Click the checkbox to allow a set plate ID to be cleared', key='check'+str(i+1))
-                    with col_r3:
-                        accept_disabled = False
-                        rod_dp = st.text_input('Destination plate barcode', max_chars=20, key='rod_dp_key')
-                        if rod_dp and any(exp.unassigned_plates):
-                            rod_dp = file_io.guard_pbc(rod_dp, silent=True)
-                            if rod_dp in st.session_state['experiment'].dest_sample_plates or \
-                                    rod_dp in st.session_state['experiment'].plate_location_sample or \
-                                    rod_dp in st.session_state['experiment'].unassigned_plates:
-                                st.markdown('<p style="color:#FF0000">Destination plate barcode already in use: ' +\
-                                        file_io.unguard_pbc(rod_dp) + '</p>', unsafe_allow_html=True)
-                        else:
-                            accept_disabled = True
-
-                        accept_rod_button = st.button('Accept', help='Read and confirm plates', 
-                                disabled=accept_disabled, key='accept_rod_button_key')
-                        if accept_rod_button:
-                            success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in exp.unassigned_plates], rod_dp)
-                            if not success:
-                                st.markdown('<p style="color:#FF0000">Failed to incorporate plate set. Please read the log.</p>', unsafe_allow_html=True)
-                            else:
-                                st.write('Successfully added plate set')
-                                rod_dp = ''
-                                exp.unassigned_plates = {1:'',2:'',3:'',4:''}
-                                clear_widget(('rod_dp_key','prev_rod_upload', ))
-                                plates_to_clear = [False, False, False, False]
-                                accept_rod_button = False
-                                exp.save()
-                                st.experimental_rerun()
-                        clear_disabled = True
-                        for i,plate in enumerate(plates_to_clear):
-                            if plate and exp.unassigned_plates[i+1]:
-                                clear_disabled = False
-                                break  # only need to enable the button once
-                        clear_plates_button = st.button('Clear IDs', help='Clear selected Rodentity plate IDs', disabled=clear_disabled)
-                        cpb_activated = False
-                        if clear_plates_button:
-                            for i, plate in enumerate(plates_to_clear):
-                                if plate and exp.unassigned_plates[i+1]:
-                                    if 'prev_rod_upload' in st.session_state:
-                                        if st.session_state['prev_rod_upload'] == plate:
-                                            st.session_state['prev_rod_upload'] = ''
-                                    exp.unassigned_plates[i+1] = ''
-                                    plates_to_clear[i] = False
-                                    cpb_activated = True
-                            clear_plates_button = False
-                            if cpb_activated:
-                                exp.save()
-                                st.experimental_rerun()
-
-
-            with st.container():
-                with st.expander('Add data from a custom manifest CSV file', expanded=True):
-                    col_m1, col_m2 = st.columns(2)
-                    st.session_state['default_manifest_type'] = 'c'
-                    with col_m1:
-                        manifest_choice = st.radio('The default contents of my manifest file (if not declared) are', 
-                                ['Custom', 'Rodentity mouse', 'Musterer mouse'])
-                        if manifest_choice == 'Rodentity mouse':
-                            st.session_state['default_manifest_type'] = 'r'
-                        elif manifest_choice == 'Musterer mouse':
-                            st.session_state['default_manifest_type'] = 'm'
-                    with col_m2:
-                        uploaded_file = st.file_uploader('', type='csv')
-                        if uploaded_file:
-                            if 'custom_upload' not in st.session_state or st.session_state['custom_upload'] != uploaded_file.name:
-                                success = st.session_state['experiment'].add_manifest(uploaded_file, st.session_state['default_manifest_type'])
-                                if not success:
-                                    st.markdown('<p style="color:#FF0000">Failed to incorporate manifest. Please read the log.</p>', unsafe_allow_html=True)
-                                    st.session_state['view option index'] = len(view_headers) -1
-                                st.session_state['custom_upload'] = uploaded_file.name
-                                st.experimental_rerun()
-
-            # Add data to experiment
-            with st.container():
-                with st.expander('Add data from database'):
-                    #st.subheader('Add mouse plate set')
-                    row1col1, row1col2, row1col3, row1col4 = st.columns(4)
-                    epp1 = ''
-                    epp2 = ''
-                    epp3 = ''
-                    epp4 = ''
-                    dnap = ''
-                    with row1col1:
-                        epp1_str = st.text_input(label='', placeholder='Ear punch plate 1 barcode', key='epp1_input').strip()
-                        if epp1_str:
-                            try:
-                                epp1 = file_io.guard_pbc(epp1_str)
-                            except Exception as exc:
-                                output_error(exc, msg="Ear punch plate 1 barcode")         
-                    with row1col2:
-                        epp2_str = st.text_input(label='', placeholder='Ear punch plate 2 barcode', key='epp2_input').strip()
-                        if epp2_str:
-                            try:
-                                epp2 = file_io.guard_pbc(epp2_str)
-                            except Exception as exc:
-                                output_error(exc, msg="Ear punch plate 2 barcode")              
-                    with row1col3:
-                        epp3_str = st.text_input(label='', placeholder='Ear punch plate 3 barcode', key='epp3_input').strip()
-                        if epp3_str:
-                            try:
-                                epp3 = file_io.guard_pbc(epp3_str)
-                            except Exception as exc:
-                                output_error(exc, msg="Ear punch plate 3 barcode")          
-                    with row1col4:
-                        epp4_str = st.text_input(label='', placeholder='Ear punch plate 4 barcode', key='epp4_input').strip()
-                        if epp4_str:
-                            try:
-                                epp4 = file_io.guard_pbc(epp4_str)
-                            except Exception as exc:
-                                output_error(exc, msg="Ear punch plate 4 barcode")      
-                
-                    row2col1, row2col2, row2col3, row2col4 = st.columns(4)
-                    with row2col1:
-                        dnap_str = st.text_input(label='', placeholder='DNA plate barcode', key='dnap_input').strip()
-                        if dnap_str:
-                            try:
-                                dnap = file_io.guard_pbc(dnap_str)
-                            except Exception as exc:
-                                output_error(exc, msg="DNA plate barcode")
-                    # nothing in row2col2
-                    with row2col3:
-                        st.markdown('')
-                        st.markdown('')
-                        add_musterer_button = st.button('Search Musterer')
-                        if add_musterer_button:
-                            epps = [epp.strip() for epp in [epp1,epp2,epp3,epp4] if epp.strip() != '']
-                            for epp in epps:
-                                success = db_io.get_plate_musterer(st.session_state['experiment'].name, epp, True)
-                            success = st.session_state['experiment'].add_musterer_plate_set(epps,dnap)
-                            if not success:
-                                st.markdown('<p style="color:#FF0000">Failed to incorporate manifest. Please read the log.</p>', unsafe_allow_html=True)
-                                st.session_state['view option index'] = len(view_headers)-1
-                            st.experimental_rerun()
-
-                    with row2col4:
-                        st.markdown('')
-                        st.markdown('')
-                        
-            
-        if st.session_state['pipe_stage'] == 2:
-            with st.container():
-                _, title_col, _ = st.columns([1,5,1])
-                title_col.subheader('Nimbus: combine 96-well sample plates to 384-well DNA plate')
-                if not st.session_state['experiment'].dest_sample_plates:
-                    st.markdown('<p style="color:#FF0000">Load data inputs to enable Nimbus input file generation.</p>', unsafe_allow_html=True)
-                else:
-                    nim_col1, nim_col2, nim_col3 = st.columns(3)
-                    nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                    with nim_col1:
-                        # do we have any Nimbus inputs to generate + download
-                        yet_to_run = len(st.session_state['experiment'].dest_sample_plates) - len(nfs)
-                        if yet_to_run:
-                            st.write(f"{yet_to_run} 96-well plate sets need Nimbus input file generation")
-                            plates_to_run = [dest_plate for dest_plate in exp.dest_sample_plates if all([dest_plate not in nf for nf in nfs])]
-                            plates_to_run_str = '\n'.join(plates_to_run)
-                            st.write(plates_to_run_str)
-                            success = st.session_state['experiment'].generate_nimbus_inputs()
-                            if not success:
-                                st.markdown('<p style="color:#FF0000">Failed to generate Nimbus files. Please read the log.</p>', unsafe_allow_html=True)
-                                st.session_state['view option index'] = len(view_headers)-1
-                            else:
-                                nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                        if nfs:
-                            st.markdown('<h3>Download Nimbus input files</h3>', unsafe_allow_html=True)
-                            for i,nf in enumerate(nfs):
-                                st.download_button(f"{nf}", open(nf), file_name=PurePath(nf).name, 
-                                        key='nimbus_input'+str(i), help=f"Download Nimbus input file {nf}")
-                        
-                    with nim_col2:
-                        nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                        print (f"{nfs=} {efs=} {xbcs=}")
-                        # Nimbus upload
-                        if not efs and not xbcs:
-                            st.markdown('<h3>Awaiting Nimbus output files</h3>', unsafe_allow_html=True)
-                        elif efs and not xbcs:
-                            st.markdown('<h3>All Nimbus outputs now uploaded</h3>', unsafe_allow_html=True) 
-                        elif xbcs:
-                            st.markdown('<h3>Upload Nimbus output files</h3>', unsafe_allow_html=True)
-                            if 'nim_upload' not in st.session_state:
-                                st.session_state['nim_upload'] = ''
-                            nim_outputs = st.file_uploader('Nimbus output files "Echo_384_COC_0001_...csv"', type='csv', 
-                                    accept_multiple_files=True, help='You can upload more than one file at once')
-                            if nim_outputs: # and nim_outputs != st.session_state['nim_upload']:
-                                #st.session_state['nim_uploads'] = nim_outputs
-                                for nim_output in nim_outputs:
-                                    #print(f"{nim_output.name=}")
-                                    fp = st.session_state['experiment'].get_exp_fp(nim_output.name)
-                                    print(f"Copying {fp} to experiment folder")
-                                    with open(fp, 'wt') as outf:
-                                        #print(nim_output.getvalue().decode("utf-8"))
-                                        outf.write(nim_output.getvalue().decode("utf-8").replace('\r\n','\n'))
-                            #else:
-                            #    st.session_state['nim_uploads'] = ''
-                                    
-                    with nim_col3:
-                        # list nimbus outputs that we still need
-                        st.markdown('<h3>Missing Nimbus outputs:</h3>', unsafe_allow_html=True)
-                        nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                        missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
-                        mn_str = '</br>'.join(missing_nims)
-                        st.markdown(f"<p>{mn_str}</p>", unsafe_allow_html=True)
-                nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                if not xbcs:
-                    _, msg_col, _ = st.columns([1,1,1])
-                    msg_col.markdown('<h3 style="color:#FF0000">Ready to run Echo primer stage</h3>', unsafe_allow_html=True)
-                            
-                    
-                
-        if st.session_state['pipe_stage'] == 3:  # echo primers
-            with st.container():
-                st.subheader('Primer plates')
-                with st.expander('Primer plate details'):
-                    pass
-                nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
-                missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
-                if missing_nims:
-                    for mn in missing_nims:
-                        st.write('Expected Nimbus output file ' + mn)
-                    st.markdown('<h3>Upload Nimbus output files</h3>', unsafe_allow_html=True)
-                    if 'nim_upload' not in st.session_state:
-                        st.session_state['nim_upload'] = ''
-                    nim_outputs = st.file_uploader('Nimbus output files "Echo_384_COC_0001_...csv"', type='csv', 
-                            accept_multiple_files=True, help='You can upload more than one file at once')
-                    if nim_outputs: # and nim_outputs != st.session_state['nim_upload']:
-                        #st.session_state['nim_uploads'] = nim_outputs
-                        for nim_output in nim_outputs:
-                            #print(f"{nim_output.name=}")
-                            fp = st.session_state['experiment'].get_exp_fp(nim_output.name)
-                            print(f"Copying {fp} to experiment folder")
-                            with open(fp, 'wt') as outf:
-                                #print(nim_output.getvalue().decode("utf-8"))
-                                outf.write(nim_output.getvalue().decode("utf-8").replace('\r\n','\n'))
-                if available_nimbus:
-                    included_DNA_plates = set()
-                    for nim in available_nimbus:
-                        inc = st.checkbox('Nimbus DNA plate for Echo (PCR1 assay) picklist generation', nim, value=True, key='chk_box_'+nim)
-                        if inc:
-                            included_DNA_plates.add(nim)
-                    assay_usage = st.session_state['experiment'].get_assay_usage(dna_plate_list=included_DNA_plates)
-                    display_reaction_stats(assay_usage)
-                    
-
-
-                    
-                    
-                        
-
-        if st.session_state['pipe_stage'] == 4:  # echo barcodes
-            pass
-
-        if st.session_state['pipe_stage'] == 5:  # Miseq
-            pass
-
-        if st.session_state['pipe_stage'] == 6:  # Genotyping
-            pass
-
-        if st.session_state['pipe_stage'] == 7:  # Review
-            pass
 
         
 
@@ -1118,26 +700,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

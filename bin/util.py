@@ -15,7 +15,6 @@ import os
 import sys
 import glob
 import collections
-import subprocess
 import traceback
 from pathlib import PurePath
 from collections import defaultdict
@@ -75,11 +74,12 @@ DNA_VOL = 200
 PRIMER_VOL = 500
 PRIMER_TAQ_VOL = 1000
 PRIMER_WATER_VOL = 300
-BARCODE_VOL = 175
-BARCODE_TAQ_VOL = 2000
-BARCODE_WATER_VOL = 650
-DEAD_VOLS = {'384PP_AQ_BP': 2.5*1000, '6RES_AQ_BP2': 250*1000}
-CAP_VOLS = {'384PP_AQ_BP': 12*1000, '6RES_AQ_BP2': 2800*1000}
+INDEX_VOL = 175
+INDEX_TAQ_VOL = 2000
+INDEX_WATER_VOL = 650
+DEAD_VOLS = {'384PP_AQ_BP': 2.5*1000, '6RES_AQ_BP2': 250*1000, 'Hard Shell 384 well PCR Biorad': 2.5*1000}
+CAP_VOLS = {'384PP_AQ_BP': 12*1000, '6RES_AQ_BP2': 2800*1000, 'Hard Shell 384 well PCR Biorad': 12*1000}
+# convenient name to exact plate model mapping
 PLATE_TYPES = {'Echo6': '6RES_AQ_BP2', 'Echo384': '384PP_AQ_BP',
                'PCR384': 'Hard Shell 384 well PCR Biorad'}
 
@@ -156,137 +156,138 @@ def get_mouse_i7i5_survey():
     return sorted(glob.glob(os.path.join('..','library',"*_platesurvey_fluid_volume_I7I5PLATE.csv")), reverse=True)[0]
 
 # I/O for template_files.txt which stores the current pipeline configuration
-class TemplateFiles():
-    """
-    Tracks information on the following file paths (when available)
-    mouse pipeline files:
-    mouse_ref - defaults to library .fa or.txt (.fa takes precedence)
-    assay_list - defaults to library
-    conversions - defaults to library (this file may on borrowed time thanks to Rodentity)
+# DEPRECATED
+#class TemplateFiles():
+#    """
+#    Tracks information on the following file paths (when available)
+#    mouse pipeline files:
+#    mouse_ref - defaults to library .fa or.txt (.fa takes precedence)
+#    assay_list - defaults to library
+#    conversions - defaults to library (this file may on borrowed time thanks to Rodentity)
 
-    custom pipeline files:
+#    custom pipeline files:
 
-    """
-    def __init__(self, debug=False):
-        """ initialise with values from file, if it exists """
-        self.files = collections.defaultdict(str)
-        if os.path.exists('template_files.txt'):
-            with open('template_files.txt', 'rt') as f:
-                for line in f:
-                    cols = line.strip().split('\t')
-                    self.files[cols[0]] = cols[1]
-        if debug:
-            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stdout)
-        self.cust_format = None # guard type for custom barcodes. Must be one of file_io.GUARD_TYPES
+#    """
+#    def __init__(self, debug=False):
+#        """ initialise with values from file, if it exists """
+#        self.files = collections.defaultdict(str)
+#        if os.path.exists('template_files.txt'):
+#            with open('template_files.txt', 'rt') as f:
+#                for line in f:
+#                    cols = line.strip().split('\t')
+#                    self.files[cols[0]] = cols[1]
+#        if debug:
+#            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stdout)
+#        self.cust_format = None # guard type for custom barcodes. Must be one of file_io.GUARD_TYPES
 
-    def save_config(self):
-        """ save configuration to template_files.txt """
-        with open('template_files.txt', 'wt') as outf:
-            for key in self.files:
-                print(key + '\t' + self.files[key], file=outf)
+#    def save_config(self):
+#        """ save configuration to template_files.txt """
+#        with open('template_files.txt', 'wt') as outf:
+#            for key in self.files:
+#                print(key + '\t' + self.files[key], file=outf)
  
-    def load_config(self, debug=False):
-        """ load existing template file info if available """
-        if os.path.exists('template_files.txt'):
-            with open('template_files.txt', 'rt') as f:
-                for line in f:
-                    cols = line.strip().split('\t')
-                    self.files[cols[0]] = cols[1]
-        else:
-            print("No file found: 'template_files.txt'", file=sys.stdout)
-            return
-        if debug:
-            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stdout)
+#    def load_config(self, debug=False):
+#        """ load existing template file info if available """
+#        if os.path.exists('template_files.txt'):
+#            with open('template_files.txt', 'rt') as f:
+#                for line in f:
+#                    cols = line.strip().split('\t')
+#                    self.files[cols[0]] = cols[1]
+#        else:
+#            print("No file found: 'template_files.txt'", file=sys.stdout)
+#            return
+#        if debug:
+#            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stdout)
 
-    def set_mouse_files(self, ref=None, assay_list=None, conversions=None, save=False):
-        """ set files specific to the mouse pipeline. If arguments are None, use defaults in library folder.
-            variables are prefixed with mouse_ and operate on m or M guarded barcodes """
-        # mouse reference sequence file
-        self.files['mouse_ref'] = get_mouse_ref()
-        if ref:
-            if os.path.exists(ref):
-                self.files['mouse_ref'] = primer_survey
-            else:
-                print('Mouse reference sequences file', ref, 'not found! Using default:', 
-                        self.files['mouse_ref'], file=sys.stdout)    
-        # mouse valid assay list
-        self.files['mouse_assay_list'] = get_mouse_assaylist()
-        if assay_list:
-            if os.path.exists(assay_list):
-                self.files['mouse_assay_list'] = assay_list
-            else:
-                print('Assay list file', assay_list, 'not found! Using default:', self.files['mouse_assay_list'], file=sys.stdout)
-        self.files['mouse_conversions'] = get_mouse_conversions()
-        # mouse assay old/new conversions
-        if conversions:
-            if os.path.exists(conversions):
-                self.files['mouse_conversions'] = conversions
-            else:
-                print('Conversions file', conversions, 'not found! Using default:', self.files['mouse_conversions'], file=sys.stdout)
-        if save:
-            self.save_config()
+#    def set_mouse_files(self, ref=None, assay_list=None, conversions=None, save=False):
+#        """ set files specific to the mouse pipeline. If arguments are None, use defaults in library folder.
+#            variables are prefixed with mouse_ and operate on m or M guarded barcodes """
+#        # mouse reference sequence file
+#        self.files['mouse_ref'] = get_mouse_ref()
+#        if ref:
+#            if os.path.exists(ref):
+#                self.files['mouse_ref'] = primer_survey
+#            else:
+#                print('Mouse reference sequences file', ref, 'not found! Using default:', 
+#                        self.files['mouse_ref'], file=sys.stdout)    
+#        # mouse valid assay list
+#        self.files['mouse_assay_list'] = get_mouse_assaylist()
+#        if assay_list:
+#            if os.path.exists(assay_list):
+#                self.files['mouse_assay_list'] = assay_list
+#            else:
+#                print('Assay list file', assay_list, 'not found! Using default:', self.files['mouse_assay_list'], file=sys.stdout)
+#        self.files['mouse_conversions'] = get_mouse_conversions()
+#        # mouse assay old/new conversions
+#        if conversions:
+#            if os.path.exists(conversions):
+#                self.files['mouse_conversions'] = conversions
+#            else:
+#                print('Conversions file', conversions, 'not found! Using default:', self.files['mouse_conversions'], file=sys.stdout)
+#        if save:
+#            self.save_config()
 
-    def set_custom_files(self, manifest=None, assays=None, ref=None, save=False):
-        """ set files specific to the custom pipeline, variables have prefix cust_ and work with 'custom' guarded prefices """
-        if manifest:
-            if os.path.exists(manifest):
-                self.files['cust_manifest'] = manifest
-            else:
-                print('Custom manifest file', manifest, 'not found! No custom manifest set', file=sys.stdout)
-        if assays:
-            if os.path.exists(assays):
-                self.files['cust_assay_list'] = assays
-            else:
-                print('Custom assay list file', assays, 'not found! No custom assay list set', file=sys.stdout)
-        if ref:
-            if os.path.exists(ref):
-                self.files['cust_ref'] = cust_ref
-            else:
-                print('Custom reference sequence file', ref, 'not found! No custom reference set', file=sys.stdout)   
-        if save:
-            self.save_config()
+#    def set_custom_files(self, manifest=None, assays=None, ref=None, save=False):
+#        """ set files specific to the custom pipeline, variables have prefix cust_ and work with 'custom' guarded prefices """
+#        if manifest:
+#            if os.path.exists(manifest):
+#                self.files['cust_manifest'] = manifest
+#            else:
+#                print('Custom manifest file', manifest, 'not found! No custom manifest set', file=sys.stdout)
+#        if assays:
+#            if os.path.exists(assays):
+#                self.files['cust_assay_list'] = assays
+#            else:
+#                print('Custom assay list file', assays, 'not found! No custom assay list set', file=sys.stdout)
+#        if ref:
+#            if os.path.exists(ref):
+#                self.files['cust_ref'] = cust_ref
+#            else:
+#                print('Custom reference sequence file', ref, 'not found! No custom reference set', file=sys.stdout)   
+#        if save:
+#            self.save_config()
 
-    def set_custom_file_format(self, format):
-        """ sets the default interpretation of unguarded barcodes """
-        if format not in GUARD_TYPES:
-            print('Guard type not recognised for custom manifest format', format,
-                    'defaulting to',self.cust_format, file=sys.stdout)
-        else:
-            self.cust_format = format
+#    def set_custom_file_format(self, format):
+#        """ sets the default interpretation of unguarded barcodes """
+#        if format not in GUARD_TYPES:
+#            print('Guard type not recognised for custom manifest format', format,
+#                    'defaulting to',self.cust_format, file=sys.stdout)
+#        else:
+#            self.cust_format = format
     
-    def set_layout_files(self, primer_plate=None, i7i5_plate=None, save=False):
-        """ set layout files for Echo robot processing - primers and barcodes which are shared across runs """
-        self.files['primer_plate'] = get_mouse_primer_layout()
-        if primer_plate:
-            if os.path.exists(primer_plate):
-                self.files['primer_plate'] = primer_plate
-            else:
-                print('Primer plate layout', primer_plate,'not found! Using default:', self.files['primer_plate'], file=sys.stdout)
-        self.files['i7i5_plate'] = get_mouse_i7i5_layout()
-        if i7i5_plate:
-            if os.path.exists(i7i5_plate):
-                self.files['i7i5_plate'] = i7i5_plate
-            else:
-                print('i7i5 barcode plate layout', i7i5_plate,'not found! Using default:', self.files['i7i5_plate'], file=sys.stdout)
-        if save:
-            self.save_config()
+#    def set_layout_files(self, primer_plate=None, i7i5_plate=None, save=False):
+#        """ set layout files for Echo robot processing - primers and barcodes which are shared across runs """
+#        self.files['primer_plate'] = get_mouse_primer_layout()
+#        if primer_plate:
+#            if os.path.exists(primer_plate):
+#                self.files['primer_plate'] = primer_plate
+#            else:
+#                print('Primer plate layout', primer_plate,'not found! Using default:', self.files['primer_plate'], file=sys.stdout)
+#        self.files['i7i5_plate'] = get_mouse_i7i5_layout()
+#        if i7i5_plate:
+#            if os.path.exists(i7i5_plate):
+#                self.files['i7i5_plate'] = i7i5_plate
+#            else:
+#                print('i7i5 barcode plate layout', i7i5_plate,'not found! Using default:', self.files['i7i5_plate'], file=sys.stdout)
+#        if save:
+#            self.save_config()
 
-    def set_survey_files(self, primer_survey=None, i7i5_survey=None, save=False):
-        """ set plate survey files for Echo robot processing - primers and barcodes which are shared across runs """
-        self.files['primer_survey'] = get_mouse_primer_survey()
-        if primer_survey:
-            if os.path.exists(primer_survey):
-                self.files['primer_survey'] = primer_survey
-            else:
-                print('Primer survey file', primer_survey, 'not found! Using default:', self.files['primer_survey'], file=sys.stdout)
-        self.files['i7i5_survey'] = get_mouse_i7i5_survey()
-        if i7i5_survey:
-            if os.path.exists(i7i5_survey):
-                self.files['i7i5_survey'] = i7i5_survey
-            else:
-                print('i7i5 barcode survey file', i7i5_survey, 'not found! Using default:', self.files['i7i5_survey'], file=sys.stdout)
-        if save:
-            self.save_config()
+#    def set_survey_files(self, primer_survey=None, i7i5_survey=None, save=False):
+#        """ set plate survey files for Echo robot processing - primers and barcodes which are shared across runs """
+#        self.files['primer_survey'] = get_mouse_primer_survey()
+#        if primer_survey:
+#            if os.path.exists(primer_survey):
+#                self.files['primer_survey'] = primer_survey
+#            else:
+#                print('Primer survey file', primer_survey, 'not found! Using default:', self.files['primer_survey'], file=sys.stdout)
+#        self.files['i7i5_survey'] = get_mouse_i7i5_survey()
+#        if i7i5_survey:
+#            if os.path.exists(i7i5_survey):
+#                self.files['i7i5_survey'] = i7i5_survey
+#            else:
+#                print('i7i5 barcode survey file', i7i5_survey, 'not found! Using default:', self.files['i7i5_survey'], file=sys.stdout)
+#        if save:
+#            self.save_config()
          
 
 # Item/attribute selection macros - used for Table selections
@@ -488,111 +489,111 @@ class CSVTable(Table):
         return
 
 
-# Apparently never used
-class EchoSurvey(Table):
-    "Echo Survey file"
-    def __init__(self, filename):
-        name = 'EchoSurvey'
-        if name not in Table.tt:
-            # Echo Plate Survey file headers
-            # Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,Survey Fluid Height,Survey Fluid Volume,Current Fluid Volume,Fluid Composition,Fluid Units,Fluid Type,Survey Status
-            clsname = self.newtype(name, 'srcname srcbc srctype srcwell height volume currvolume composition units ftype status'.split())
-        with open(filename, errors="ignore") as src:
-            lx = list(src)
-        hdrlen = next(n for n, line in enumerate(lx, start=1) if line.startswith('[DETAILS]'))
-        self.tail = lx[-5:]
-        csvrdr = csv.reader(lx[hdrlen:-5])
-        Table.__init__(self, clsname, data=csvrdr, header=next(csvrdr), prefix=lx[:hdrlen])
-        return
+## Apparently never used
+#class EchoSurvey(Table):
+#    "Echo Survey file"
+#    def __init__(self, filename):
+#        name = 'EchoSurvey'
+#        if name not in Table.tt:
+#            # Echo Plate Survey file headers
+#            # Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,Survey Fluid Height,Survey Fluid Volume,Current Fluid Volume,Fluid Composition,Fluid Units,Fluid Type,Survey Status
+#            clsname = self.newtype(name, 'srcname srcbc srctype srcwell height volume currvolume composition units ftype status'.split())
+#        with open(filename, errors="ignore") as src:
+#            lx = list(src)
+#        hdrlen = next(n for n, line in enumerate(lx, start=1) if line.startswith('[DETAILS]'))
+#        self.tail = lx[-5:]
+#        csvrdr = csv.reader(lx[hdrlen:-5])
+#        Table.__init__(self, clsname, data=csvrdr, header=next(csvrdr), prefix=lx[:hdrlen])
+#        return
 
-# Apparently never used
-class SourcePlates(dict):
-    deadvol = { '384PP_AQ_BP': 50, '6RES_AQ_BP2': 700 } # Echo dead volume for plate types 
-    def __init__(self, pairs):
-        "add contents and build contents dictionary"
-        for table, contents in pairs:
-            wdict = dict((r.srcwell.strip(), [r.srcbc.strip(), r.srctype.strip(), r.srcwell.strip(), r.volume.strip()]) for r in table.data)
-            def kf(x):
-                return x[0]
-            for c, g in itertools.groupby(sorted(contents), key=kf):
-                self[c]= [wdict[w] for w in g]
-        return
-    def source(self, cx, vol):
-        ""
-        while self[cx][-1] < self.deadvol[self[cx][1]]+vol:
-            self[cx].shift() # remove depleted wells
-            if not self[cx]:
-                print("run out of "+cx, file=sys.stdout)
-                exit(1)
-        self[cx][-1] -= vol
-        return self[cx][:-1]+(vol,)
+## Apparently never used
+#class SourcePlates(dict):
+#    deadvol = { '384PP_AQ_BP': 50, '6RES_AQ_BP2': 700 } # Echo dead volume for plate types 
+#    def __init__(self, pairs):
+#        "add contents and build contents dictionary"
+#        for table, contents in pairs:
+#            wdict = dict((r.srcwell.strip(), [r.srcbc.strip(), r.srctype.strip(), r.srcwell.strip(), r.volume.strip()]) for r in table.data)
+#            def kf(x):
+#                return x[0]
+#            for c, g in itertools.groupby(sorted(contents), key=kf):
+#                self[c]= [wdict[w] for w in g]
+#        return
+#    def source(self, cx, vol):
+#        ""
+#        while self[cx][-1] < self.deadvol[self[cx][1]]+vol:
+#            self[cx].shift() # remove depleted wells
+#            if not self[cx]:
+#                print("run out of "+cx, file=sys.stdout)
+#                exit(1)
+#        self[cx][-1] -= vol
+#        return self[cx][:-1]+(vol,)
 
-# Apparently never used
-def joiner(tspec1, tspec2):
-    """ join two tables """
-    try:
-        t1, kp1, kv1 = tspec1
-        t2, kp2, kv2 = tspec2
-        ts = t1, t2
-        tspecs = tspec1, tspec2
-        global ttno
-        ttno += 1
-        fx = [ x for t, fp, fv in tspecs for x in fp(t.tt._fields) ]
-        newtype = Table.newtype('_TMP'+str(ttno).zfill(6), fx)
-        fkv = lambda rs: (z for r, kv in zip(rs, (kv1, kv2)) for z in kv(r))
-        for t, fkp, fkv in tspecs:
-            print("in joiner for", type(t.data[0]))
-            print("t.dict", t.__dict__.keys())
-            if t.header:
-                hx = fkv(t.header) 
-                print("  hx =", hx)
-        hx = [ fkv(t.header) for tx in tspecs for t, fkp, fkv in tx ] if all(bool(t.header) for t in ts) else None
-        data = list(join2gen((t1.data, kp1), (t2.data, kp2)))
-        return Table(newtype, map(fkv, data, header=hx))
-    except Exception as exc:
-        output_error(exc, msg='Error in echo_barcode.joiner')
+## Apparently never used
+#def joiner(tspec1, tspec2):
+#    """ join two tables """
+#    try:
+#        t1, kp1, kv1 = tspec1
+#        t2, kp2, kv2 = tspec2
+#        ts = t1, t2
+#        tspecs = tspec1, tspec2
+#        global ttno
+#        ttno += 1
+#        fx = [ x for t, fp, fv in tspecs for x in fp(t.tt._fields) ]
+#        newtype = Table.newtype('_TMP'+str(ttno).zfill(6), fx)
+#        fkv = lambda rs: (z for r, kv in zip(rs, (kv1, kv2)) for z in kv(r))
+#        for t, fkp, fkv in tspecs:
+#            print("in joiner for", type(t.data[0]))
+#            print("t.dict", t.__dict__.keys())
+#            if t.header:
+#                hx = fkv(t.header) 
+#                print("  hx =", hx)
+#        hx = [ fkv(t.header) for tx in tspecs for t, fkp, fkv in tx ] if all(bool(t.header) for t in ts) else None
+#        data = list(join2gen((t1.data, kp1), (t2.data, kp2)))
+#        return Table(newtype, map(fkv, data, header=hx))
+#    except Exception as exc:
+#        output_error(exc, msg='Error in echo_barcode.joiner')
 
-# Apparently never used
-def join2gen(xs, ys):
-    """ a generator that joins two iterables if possible - why? """
-    try:
-        xg, yg = grouper(*xs), grouper(*ys)
-        xk, xvg = next(xg)
-        xvs = list(xvg)
-        print("first xk, xv =", xk, xvs)
-        yk, yvg = next(yg)
-        yvs = list(yvg)
-        print("first yk, yv =", yk, yvs)
-        xp, yp = (xk, xvs), (yk, yvs)
+## Apparently never used
+#def join2gen(xs, ys):
+#    """ a generator that joins two iterables if possible - why? """
+#    try:
+#        xg, yg = grouper(*xs), grouper(*ys)
+#        xk, xvg = next(xg)
+#        xvs = list(xvg)
+#        print("first xk, xv =", xk, xvs)
+#        yk, yvg = next(yg)
+#        yvs = list(yvg)
+#        print("first yk, yv =", yk, yvs)
+#        xp, yp = (xk, xvs), (yk, yvs)
     
-        while True:
-            (xk, xvs), (yk, yvs) = xp, yp
-            try:
-                if xk<yk:
-                    xp = next(xg)
-                elif xk==yk:
-                    # print("nextpr returns:", (xp, yp))
-                    yl = list(yvs)
-                    for xv in xvs:
-                        for yv in yl:
-                            yield (xv, yv)
-                    xp, yp = next(xg), next(yg)
-                else:
-                    yp = next(yg)
-            except StopIteration:
-                break
-        return
-    except Exception as exc:
-        output_error(exc, msg='Error in echo_barcode.join2gen')
+#        while True:
+#            (xk, xvs), (yk, yvs) = xp, yp
+#            try:
+#                if xk<yk:
+#                    xp = next(xg)
+#                elif xk==yk:
+#                    # print("nextpr returns:", (xp, yp))
+#                    yl = list(yvs)
+#                    for xv in xvs:
+#                        for yv in yl:
+#                            yield (xv, yv)
+#                    xp, yp = next(xg), next(yg)
+#                else:
+#                    yp = next(yg)
+#            except StopIteration:
+#                break
+#        return
+#    except Exception as exc:
+#        output_error(exc, msg='Error in echo_barcode.join2gen')
 
-# Apparently never used
-def filler(rs):
-    """ fill blank fields with the value from the previous field - assumes fixed length records """
-    try:
-        rp = itertools.repeat(None)
-        for r in rs:
-            rp = [v if v else vp for v, vp in zip(r, rp)]
-            yield rp
-        return
-    except Exception as exc:
-        output_error(exc, msg='Error in echo_barcode.filler')
+## Apparently never used
+#def filler(rs):
+#    """ fill blank fields with the value from the previous field - assumes fixed length records """
+#    try:
+#        rp = itertools.repeat(None)
+#        for r in rs:
+#            rp = [v if v else vp for v, vp in zip(r, rp)]
+#            yield rp
+#        return
+#    except Exception as exc:
+#        output_error(exc, msg='Error in echo_barcode.filler')

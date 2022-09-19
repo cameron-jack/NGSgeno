@@ -67,7 +67,7 @@ class ExistingGuardError(Exception):
         self.message = message
 
 # global - set of all possible guard types
-GUARD_TYPES = set(['m','M','c','p'])
+GUARD_TYPES = set(['m','r','c','p', 'a'])
 
 # Confirm guards
 def is_guarded_mbc(mbc):
@@ -78,9 +78,9 @@ def is_guarded_mbc(mbc):
     return False
 
 def is_guarded_rbc(rbc):
-    """ Return True if Rodentity barcode is correctly guarded (MNNNNNm), else False """
+    """ Return True if Rodentity barcode is correctly guarded (rNNNNNr), else False """
     rbc = str(rbc)
-    if rbc.startswith('M') and rbc.endswith('m'):
+    if rbc.startswith('r') and rbc.endswith('r'):
         return True
     return False
 
@@ -98,6 +98,13 @@ def is_guarded_pbc(pbc):
         return True
     return False
 
+def is_guarded_abc(abc):
+    """ Return True if amplicon sample barcode is correctly guarded, else False """
+    abc = str(abc)
+    if abc.startswith('a') and abc.endswith('a'):
+        return True
+    return False
+
 def is_guarded(bc):
     """ generic check of guard status """
     if is_guarded_mbc(bc):
@@ -107,6 +114,8 @@ def is_guarded(bc):
     elif is_guarded_cbc(bc):
         return True
     elif is_guarded_pbc(bc):
+        return True
+    elif is_guarded_abc(bc):
         return True
     return False
 
@@ -154,7 +163,7 @@ def guard_rbc(rbc, silent=False):
     if is_guarded_pbc(rbc):
         msg = f"Rodentity barcode appears to already have plate guards: {rbc}"
         raise ExistingGuardError(msg)
-    return rbc + 'M'  # Rodentity barcodes already start with 'M'
+    return 'r' + rbc + 'r'  # Rodentity barcodes already start with 'M'
 
 def guard_cbc(cbc, silent=False):
     """ Add guards to custom barcode """
@@ -193,12 +202,39 @@ def guard_pbc(pbc, silent=False):
     if is_guarded_cbc(pbc):
         msg = f"Plate barcode appears to already have custom guards: {pbc}"
         raise ExistingGuardError(msg)
+    if is_guarded_abc(pbc):
+        msg = f"Plate barcode appears to already have amplicon guards: {pbc}"
     if is_guarded_pbc(pbc):
         if silent:
             return pbc
         msg = f"Plate barcode appears to already have plate guards: {pbc}"
         raise ExistingGuardError(msg)
     return 'p' + pbc + 'p'
+
+def guard_abc(abc, silent=False):
+    """ Add guards to amplicon sample barcodes, silent ignores already correctly guarded case """
+    abc = str(abc).strip()
+    if abc == '':
+        msg = f"Amplicon sample barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(abc):
+        msg = f"Amplicon sample barcode appears to already have Musterer guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(abc):
+        msg = f"Amplicon sample barcode appears to already have Rodentity guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(abc):
+        msg = f"Amplicon sample barcode appears to already have custom guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(abc):
+        msg = f"Amplicon sample barcode appears to already have plate guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(abc):
+        if silent:
+            return abc
+        msg = f"Amplicon sample barcode appears to already have amplicon guards: {abc}"
+        raise ExistingGuardError(msg)
+    return 'a' + abc + 'a'
 
 
 # Unguard barcodes
@@ -221,10 +257,10 @@ def unguard_rbc(rbc, silent=False):
         raise AttributeError(msg)
     if not rbc.startswith('r') and not rbc.endswith('r') and silent:  # just return unguarded barcodes as themselves
         return rbc
-    if not rbc.startswith('M') or not rbc.endswith('m'):
+    if not rbc.startswith('r') or not rbc.endswith('r'):
         msg = f"Musterer barcode guards degraded or missing in: {rbc}"
         raise UnguardedBarcodeError(msg)
-    return rbc[0:-1]  # Rodentity barcodes keep their 'M' front guard
+    return rbc[1:-1]  # Rodentity barcodes keep their 'M' prefix
 
 def unguard_cbc(cbc, silent=False):
     """ remove guards from a custom barcode """
@@ -250,6 +286,18 @@ def unguard_pbc(pbc, silent=False):
         raise UnguardedBarcodeError(msg)
     return pbc[1:-1]
 
+def unguard_abc(abc, silent=False):
+    """ remove guards from an amplicon sample barcode """
+    if type(abc) != str:
+        msg = f"Amplicon sample barcode is not a string! {abc} is type {type(abc)}"
+        raise AttributeError(msg)
+    if not abc.startswith('a') and not abc.endswith('a') and silent:  # just return unguarded barcodes as themselves
+        return abc
+    if not abc.startswith('a') or not abc.endswith('a'):
+        msg = f"Amplicon sample barcode guards degraded or missing in: {abc}"
+        raise UnguardedBarcodeError(msg)
+    return abc[1:-1]
+
 def unguard(bc, silent=False):
     """ shortcut, for when we don't know what kind of guarding we have but need to remove it for output """
     if is_guarded_mbc(bc):
@@ -260,6 +308,8 @@ def unguard(bc, silent=False):
         return unguard_cbc(bc)
     elif is_guarded_pbc(bc):
         return unguard_pbc(bc)
+    elif is_guarded_abc(bc):
+        return unguard_abc(bc)
     else:
         if not silent:
             print('Possibly unguarded already:',bc, file=sys.stdout)
