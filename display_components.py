@@ -11,11 +11,8 @@
 
 Display methods for the main GUI pipeline. Methods in include data_table, display_pcr_componenent, display_pcr_componenent 
 as well as aggrid_interactive_table and delete_entries
-
 """
 
-from ctypes.wintypes import WIN32_FIND_DATAA
-from msilib.schema import File
 import os
 import sys
 from pathlib import PurePath
@@ -93,30 +90,34 @@ def delete_entries(exp, entries):
     print('delete_entries ran')
 
 
-def data_table(key, view='Summary'):
+def data_table(key, options=False, table_option=None):
     """
     Shows the loaded data in a table.
     Args:
         key (Any): key for the table so that it is a unique widget, if there's more than one in a page
-        view ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'): Different options for viewing the data
+        options (bool): Shows different options for table view in a selectbox if True
+        table_option (str): If options is False, can choose a table_option instead ('Summary', 'Edit Table', 
+        'Plate View', 'Explore Assays', 'View Log)
 
     Need to fix the delete selection part - clicking no should reset the table view. Also deleting the entry doesn't affect the pipeline further down.
     """
 
-    #Need to rearrange
-    table_container = st.container()
-    log_container = st.container()
-    plate_view_container = st.container()
-    explore_assay_container = st.container()
-    view_log_container = st.container()
+    data_container = st.container()
 
-    assay_col1, assay_col2, assay_col3, assay_col4, assay_col5 = explore_assay_container.columns(5)
+    if options==True:
+        table_option = data_container.selectbox('View Data options',
+                                ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'), key='select' + key )
+    elif options==False and table_option is None:
+        table_option = 'Summary'
 
-    exp = st.session_state['experiment']
+    data_table_title = data_container.title('')
+    data_table_title.markdown(f'<h5 style="text-align:center;color:#7eaecc">{table_option}</h5>', unsafe_allow_html=True)
+
+    #exp = st.session_state['experiment']
 
     #Experiment summary - table
 
-    if view == 'Summary':
+    if table_option == 'Summary':
         selection = []
         st.session_state['nuke'] = ''
 
@@ -139,8 +140,8 @@ def data_table(key, view='Summary'):
                 if 'previous_delete_group_selection' not in st.session_state:
                     st.session_state['previous_delete_group_selection'] = None
                 if lines and st.session_state['previous_delete_group_selection'] != lines:
-                    table_container.markdown(f"**You selected {lines}**")
-                    del_col1, del_col2, del_col3, _ = table_container.columns([2,1,1,4])
+                    data_container.markdown(f"**You selected {lines}**")
+                    del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
                     del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
                     delete_button = del_col2.button("Yes",on_click=delete_entries, 
                             args=(st.session_state['experiment'], selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
@@ -158,18 +159,19 @@ def data_table(key, view='Summary'):
                         st.session_state['previous_delete_group_selection'] = None
                         st.experimental_rerun()
 
-    elif view == 'Edit Table':
+    elif table_option == 'Edit Table':
         # Show plates in table form and let the user edit them to fix minor mistakes
         pass
 
     #Show a visual of the plates
-    elif view == 'Plate View':
+    elif table_option == 'Plate View':
         plate_ids = []
-        for pid in exp.plate_location_sample:
-            plate_ids.append(pid.strip('p'))
-        #plate_view_container.write(pids)
-        plate_selectbox = plate_view_container.selectbox('Plate ID to view', plate_ids, key=key)
-        #plate_input = plate_view_container.text_input('Plate ID to view', key='plate_input1')
+        for pid in st.session_state['experiment'].plate_location_sample:
+            plate_ids.append(file_io.unguard(pid))
+
+        #Let user choose which plate to view
+        plate_selectbox = data_container.selectbox('Plate ID to view', plate_ids, key=key)
+        #plate_input = data_container.text_input('Plate ID to view', key='plate_input1')
         if plate_selectbox:
             plate_id = file_io.guard_pbc(plate_selectbox)
             if plate_id in st.session_state['experiment'].plate_location_sample:
@@ -178,7 +180,7 @@ def data_table(key, view='Summary'):
                 #    print(heatmap_str, file=outf)
                 components.html(heatmap_str, height=700, scrolling=True)
             else:
-                plate_view_container.markdown('<p style="color:#FF0000">Plate barcode not found in experiment</p>', unsafe_allow_html=True)
+                data_container.markdown('<p style="color:#FF0000">Plate barcode not found in experiment</p>', unsafe_allow_html=True)
         # let user choose plates and then display them as a plate layout with well contents on hover
         # plate_col1, plate_col2 = st.columns(2)
         # for plate in st.session_state['experiment'].plate_location_sample:
@@ -186,7 +188,9 @@ def data_table(key, view='Summary'):
         # heatmap_str = generate_heatmap_html(plate_id, st.session_state['experiment'], scaling=1)
         # components.html(heatmap_str, height=600, scrolling=True)
 
-    elif view == 'Explore Assays':  # Assay explorer
+    elif table_option == 'Explore Assays':
+        assay_col1, assay_col2, assay_col3, assay_col4, assay_col5 = data_container.columns(5)
+          # Assay explorer
         # display allowed and denied assays, missing assays, used assays, etc.
         with assay_col1:
             pass
@@ -203,14 +207,14 @@ def data_table(key, view='Summary'):
         with assay_col5:
             pass
                 
-    elif view == 'View Log':
+    elif table_option == 'View Log':
         # display the experiment log and let the user filter the view in a number of ways
         df = pd.DataFrame(st.session_state['experiment'].get_log(30))
         if 'view_box_size' in st.session_state:
             height = st.session_state['view_box_size']
         else:
             height = 250
-        log_container.dataframe(df, height=height)
+        data_container.dataframe(df, height=height)
 
 
 def display_pcr_components(assay_usage, PCR_stage='all'):
@@ -225,6 +229,7 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
     
     #pcr_components_exp = st.expander('Required Componenents for PCR Reactions', expanded=False)
     pcr_components_container = st.container()
+    comp_warning = pcr_components_container.empty()
     _,filter_col1,_,filter_col2, _ = pcr_components_container.columns([1,5,1,5,1])
     col_size = [6, 4, 6, 4]
     req_cols = pcr_components_container.columns(col_size)
@@ -260,30 +265,33 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
     user_supplied_taqwater = ', '.join([file_io.unguard_pbc(p, silent=True) for p in st.session_state['experiment'].get_taqwater_avail()[2]])
 
     #Wells and plates
-    req_cols[0].markdown('<h6 style="color:#B1298D">Required reaction wells</h6>', unsafe_allow_html=True)
+    req_cols[0].markdown('**Number of required PCR plates**', unsafe_allow_html=True)
+    req_cols[1].write(str(required_wells))
+    req_cols[0].markdown('**Number of required reaction wells**', unsafe_allow_html=True)
     req_cols[1].write(str(reactions))
-
-    req_cols[2].markdown('<h6 style="color:#B1298D">Required PCR plates</h6>', unsafe_allow_html=True)
-    req_cols[3].write(str(required_wells))
-
-    req_cols[0].markdown('<h6 style="color:#000000">User supplied PCR plates</h6>', unsafe_allow_html=True)
-    req_cols[1].write(user_supplied_PCR)
-
-    req_cols[2].markdown('<h6 style="color:#000000">User supplied taq+water plates</h6>', unsafe_allow_html=True)
-    req_cols[3].write(user_supplied_taqwater)
-
+    req_cols[2].markdown('**User supplied PCR plates**', unsafe_allow_html=True)
+    if user_supplied_PCR:
+        req_cols[3].write(user_supplied_PCR)
+    else:
+        req_cols[3].write('None')
+    req_cols[2].markdown('**User supplied taq/water plates**', unsafe_allow_html=True)
+    if user_supplied_PCR:
+        req_cols[3].write(user_supplied_taqwater)
+    else:
+        req_cols[3].write('None')
     pcr_components_container.write('')
 
 
     #PCR1 and PCR2 taq and water 
     taq_avail_vol = taq_avail/1000
     water_avail_vol = water_avail/1000
+    pcr_staged = pcr_components_container.empty()
 
     if PCR_stage == 1 or PCR_stage == 'all':
         #PCR1 componenents
-        pcr_components_container.markdown('<h6 style="color:#B1298D">PCR 1</h6>', unsafe_allow_html=True)
+        #pcr_components_container.markdown('<h6 style="color:#B1298D">PCR 1</h6>', unsafe_allow_html=True)
         if taq_avail < primer_taq_vol or water_avail < primer_water_vol:
-            pcr_components_container.markdown('<p style="color:#B92A5D"> Upload more taq and water plates to fulfill PCR 1 requirements </p>', unsafe_allow_html=True)
+            comp_warning.markdown('<p style="color:#B92A5D"> Upload more taq and water plates to fulfill PCR 1 requirements </p>', unsafe_allow_html=True)
     
         PCR1_cols = pcr_components_container.columns(col_size)
 
@@ -305,7 +313,7 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
         pcr_components_container.markdown('<h6 style="color:#B1298D">PCR 2</h6>', unsafe_allow_html=True)
     
         if taq_avail < (primer_taq_vol + index_taq_vol) or water_avail < (primer_water_vol + index_water_vol):
-            pcr_components_container.markdown('<p style="color:#B92A5D"> Upload more taq and water plates to fulfill PCR 2 requirements </p>', unsafe_allow_html=True)
+            comp_warning.markdown('<p style="color:#B92A5D"> Upload more taq and water plates to fulfill PCR 2 requirements </p>', unsafe_allow_html=True)
     
         PCR2_cols = pcr_components_container.columns(col_size)
 

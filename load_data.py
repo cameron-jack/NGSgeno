@@ -13,8 +13,6 @@ A web based interactive GUI with Streamlit. Plate and sample barcodes here are u
 In all other code they must be guarded. We guard them here before we send them to any external function.
 """
 
-from ctypes.wintypes import WIN32_FIND_DATAA
-from msilib.schema import File
 import os
 import sys
 from pathlib import PurePath
@@ -35,7 +33,6 @@ from bin.util import CAP_VOLS, DEAD_VOLS
 import bin.file_io as file_io
 import bin.db_io as db_io
 from bin.makehtml import generate_heatmap_html
-
 
 credits="""
 @created: March 2022
