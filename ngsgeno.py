@@ -135,18 +135,22 @@ def folder_sb():
 
     run_folder = ftab2.selectbox("Select a run folder to open", existing_run_folders)
 
+    error_msg_area = st.sidebar.empty()
+    error_msg = None
+
     if add_run_folder and create_run_folder_button:
         add_run_folder_str = 'run_' + add_run_folder
         exp, msg = create_run_folder(add_run_folder_str)
         if exp:
             exp.save()                                                                      
             st.session_state['experiment'] = exp
+            add_run_folder = None
             st.experimental_rerun()
         else:
             if 'already exists' in msg:
-                st.markdown('<p style="color:#FF0000">Folder name already exists</p>', unsafe_allow_html=True)
+                error_msg = "Folder name already exists"
             else:
-                st.markdown('<p style="color:#FF0000">Fatal path error: ' + msg + '</p>', unsafe_allow_html=True)
+                error_msg = "Fatal path error: " + msg
 
     if run_folder:
         if st.session_state['experiment'] == None or st.session_state['experiment'].name != run_folder:
@@ -157,15 +161,20 @@ def folder_sb():
                 
                 #print(dir(exp))
                 if not exp:
-                    st.markdown('<p style="color:#FF0000">Could not load experiment from: ' + ch_run_path + '</p>', unsafe_allow_html=True)
+                    error_msg = "Could not load experiment from: "+ ch_run_path
                 elif ch_run_path.endswith(exp.name):
                     # success!
                     st.session_state['experiment'] = exp
                     st.write(exp)
                     st.experimental_rerun()
                 else:
-                    st.markdown('<p style="color:#FF0000">Invalid experiment file in: ' + ch_run_path + '</p>', unsafe_allow_html=True)
+                    error_msg = "Invalid experiment file in: " + ch_run_path
+    
         ch_exp_folder = None
+
+    if error_msg:
+        error_msg_area.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>', unsafe_allow_html=True)
+        
 
 
 def main():
@@ -214,9 +223,10 @@ def main():
         """,
         unsafe_allow_html=True)
     
-    st.sidebar.title('NGS Genotyping Pipeline')
+    sidebar_title = st.sidebar.title('')
+    sidebar_title.write("NGS Genotyping Pipeline")
     st.sidebar.image('ngsg_explorer.png')
-    new_container = st.container()
+    main_container = st.container()
 
     if 'experiment' not in st.session_state:
         st.session_state['experiment'] = None
@@ -234,7 +244,7 @@ def main():
 
             pipeline_sb()
             title='Experiment '+ st.session_state['experiment'].name
-            new_container.markdown(f'<h4 style="color:#BED2D6">{title}</h2>', unsafe_allow_html=True)
+            main_container.markdown(f'<h4 style="color:#BED2D6">{title}</h2>', unsafe_allow_html=True)
 
             if 'pipe_stage' not in st.session_state:
                 st.session_state['pipe_stage'] = 1
@@ -275,41 +285,44 @@ def main():
             ##Pipeline Stages
 
                 if 'pipe_stage' not in st.session_state or st.session_state['pipe_stage'] == 1:
-                    pipe_stages(exp, 1)
+                    
                     st.sidebar.write('')
                     st.sidebar.write('')
                     st.sidebar.markdown('<p style="color:#8AB1BD">Or change experiment</p>', unsafe_allow_html=True)
-
+                    print('*****')
                     #gotta change logic so that this load still
                     folder_sb()
+                    #dc.data_table(key='Test')
+                    #something in data table
+                    pipe_stages(1)
             
                 #Nimbus
                 if st.session_state['pipe_stage'] == 2:
-                    pipe_stages(exp, 2)
+                    pipe_stages(2)
                     
                 #Echo primers   
                 if st.session_state['pipe_stage'] == 3:
-                    pipe_stages(exp, 3)
+                    pipe_stages(3)
 
     
                 if st.session_state['pipe_stage'] == 4:  # echo barcodes
-                    pipe_stages(exp, 4)
+                    pipe_stages(4)
 
                 if st.session_state['pipe_stage'] == 5:  # Miseq
-                    pipe_stages(exp, 5)
+                    pipe_stages(5)
 
                 if st.session_state['pipe_stage'] == 6:  # Genotyping
-                    pipe_stages(exp, 6)
+                    pipe_stages(6)
 
                 if st.session_state['pipe_stage'] == 7:  # Review
-                    pipe_stages(exp, 7)
+                    pipe_stages(7)
 
 
     if not st.session_state['experiment'] or (st.session_state['experiment'] and st.session_state['navigation'] == 'load'):
         #st.session_state['experiment'] = None
-        new_container.write('')
-        new_container.write('')
-        new_container.markdown('<h2 style="text-align:center;color:#154c79">Please load existing experiment or create a new one</h2>', unsafe_allow_html=True)
+        main_container.write('')
+        main_container.write('')
+        main_container.markdown('<h2 style="text-align:center;color:#154c79">Please load existing experiment or create a new one</h2>', unsafe_allow_html=True)
 
         folder_sb()
 

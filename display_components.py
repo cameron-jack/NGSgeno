@@ -48,17 +48,20 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
     options = GridOptionsBuilder.from_dataframe(
         df, enableRowGroup=True, enableValue=True, enablePivot=True
     )
-
+    #print('aggrid1', st.session_state['experiment'].name)
+    
     options.configure_side_bar()
+    #st.write(df)
 
-    options.configure_selection("multiple", use_checkbox=False, rowMultiSelectWithClick=False, suppressRowDeselection=False)
+    options.configure_selection("multiple", use_checkbox=False, \
+                rowMultiSelectWithClick=False, suppressRowDeselection=False)
     selection = AgGrid(
         df,
         enable_enterprise_modules=True,
         height=grid_height,
         gridOptions=options.build(),
         # _available_themes = ['streamlit','light','dark', 'blue', 'fresh','material']
-        theme="streamlit",
+        theme="alpine",
         #update_mode=GridUpdateMode.MODEL_CHANGED,
         update_mode=GridUpdateMode.SELECTION_CHANGED,
         key=key,
@@ -99,14 +102,16 @@ def data_table(key, options=False, table_option=None):
         table_option (str): If options is False, can choose a table_option instead ('Summary', 'Edit Table', 
         'Plate View', 'Explore Assays', 'View Log)
 
-    Need to fix the delete selection part - clicking no should reset the table view. Also deleting the entry doesn't affect the pipeline further down.
+    Need to fix the delete selection part - clicking no should reset the table view. 
+    Also deleting the entry doesn't affect the pipeline further down.
     """
 
     data_container = st.container()
 
     if options==True:
         table_option = data_container.selectbox('View Data options',
-                                ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'), key='select' + key )
+                                ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'),\
+                                             key='select' + str(key))
     elif options==False and table_option is None:
         table_option = 'Summary'
 
@@ -122,8 +127,6 @@ def data_table(key, options=False, table_option=None):
         st.session_state['nuke'] = ''
 
         #st.session_state['delete_selection'] = False
-
-        
         if st.session_state['experiment']:
             #st.write(st.session_state['experiment'].name)
             df = st.session_state['experiment'].inputs_as_dataframe()
@@ -133,31 +136,31 @@ def data_table(key, options=False, table_option=None):
                 #print(f"{type(df)=}, {df=})")
                 selection = aggrid_interactive_table(df, key=key)
             #print(f"{type(selection)=} {selection=}")
-            if selection['selected_rows']:
-                # only do the code below if this is a fresh selection
-                rows = selection["selected_rows"]
-                lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
-                if 'previous_delete_group_selection' not in st.session_state:
-                    st.session_state['previous_delete_group_selection'] = None
-                if lines and st.session_state['previous_delete_group_selection'] != lines:
-                    data_container.markdown(f"**You selected {lines}**")
-                    del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
-                    del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                    delete_button = del_col2.button("Yes",on_click=delete_entries, 
-                            args=(st.session_state['experiment'], selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
-                    mistake_button = del_col3.button("No",on_click=delete_entries, args=(st.session_state['experiment'], []), 
-                            key="keep " + str(key), help=f"Keep {lines}")
+            # if selection['selected_rows']:
+            #     # only do the code below if this is a fresh selection
+            #     rows = selection["selected_rows"]
+            #     lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
+            #     if 'previous_delete_group_selection' not in st.session_state:
+            #         st.session_state['previous_delete_group_selection'] = None
+            #     if lines and st.session_state['previous_delete_group_selection'] != lines:
+            #         data_container.markdown(f"**You selected {lines}**")
+            #         del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
+            #         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
+            #         delete_button = del_col2.button("Yes",on_click=delete_entries, 
+            #                 args=(st.session_state['experiment'], selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
+            #         mistake_button = del_col3.button("No",on_click=delete_entries, args=(st.session_state['experiment'], []), 
+            #                 key="keep " + str(key), help=f"Keep {lines}")
                     
-                    if mistake_button:
-                        st.session_state['previous_delete_group_selection'] = lines
-                        lines = None
-                        selection['selected_rows'] = None
-                        st.experimental_rerun()
-                    elif delete_button:
-                        selection['selected_rows'] = None
-                        lines = None
-                        st.session_state['previous_delete_group_selection'] = None
-                        st.experimental_rerun()
+            #         if mistake_button:
+            #             st.session_state['previous_delete_group_selection'] = lines
+            #             lines = None
+            #             selection['selected_rows'] = None
+            #             st.experimental_rerun()
+            #         elif delete_button:
+            #             selection['selected_rows'] = None
+            #             lines = None
+            #             st.session_state['previous_delete_group_selection'] = None
+            #             st.experimental_rerun()
 
     elif table_option == 'Edit Table':
         # Show plates in table form and let the user edit them to fix minor mistakes
@@ -180,13 +183,15 @@ def data_table(key, options=False, table_option=None):
                 #    print(heatmap_str, file=outf)
                 components.html(heatmap_str, height=700, scrolling=True)
             else:
-                data_container.markdown('<p style="color:#FF0000">Plate barcode not found in experiment</p>', unsafe_allow_html=True)
+                plate_barcode_error_msg = "Plate barcode not found in experiment"
         # let user choose plates and then display them as a plate layout with well contents on hover
         # plate_col1, plate_col2 = st.columns(2)
         # for plate in st.session_state['experiment'].plate_location_sample:
         #    break
         # heatmap_str = generate_heatmap_html(plate_id, st.session_state['experiment'], scaling=1)
         # components.html(heatmap_str, height=600, scrolling=True)
+        plate_barcode_error = data_container.markdown(f'<p style="color:#FF0000">{plate_barcode_error_msg}</p>',\
+                unsafe_allow_html=True)
 
     elif table_option == 'Explore Assays':
         assay_col1, assay_col2, assay_col3, assay_col4, assay_col5 = data_container.columns(5)
@@ -261,8 +266,10 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
             st.session_state['assay_filter'] = 1
 
     required_wells = ceil(reactions/AFTER_NIM_WELLS)
-    user_supplied_PCR = ', '.join([file_io.unguard_pbc(p, silent=True) for p in st.session_state['experiment'].get_pcr_plates()])
-    user_supplied_taqwater = ', '.join([file_io.unguard_pbc(p, silent=True) for p in st.session_state['experiment'].get_taqwater_avail()[2]])
+    user_supplied_PCR = ', '.join([file_io.unguard_pbc(p, silent=True)\
+                 for p in st.session_state['experiment'].get_pcr_plates()])
+    user_supplied_taqwater = ', '.join([file_io.unguard_pbc(p, silent=True)\
+                 for p in st.session_state['experiment'].get_taqwater_avail()[2]])
 
     #Wells and plates
     req_cols[0].markdown('**Number of required PCR plates**', unsafe_allow_html=True)
@@ -291,7 +298,8 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
         #PCR1 componenents
         #pcr_components_container.markdown('<h6 style="color:#B1298D">PCR 1</h6>', unsafe_allow_html=True)
         if taq_avail < primer_taq_vol or water_avail < primer_water_vol:
-            comp_warning.markdown('<p style="color:#B92A5D"> Upload more taq and water plates to fulfill PCR 1 requirements </p>', unsafe_allow_html=True)
+            comp_warning.markdown('<p style="color:#B92A5D">'\
+                    'Upload more taq and water plates to fulfill PCR 1 requirements </p>', unsafe_allow_html=True)
     
         PCR1_cols = pcr_components_container.columns(col_size)
 
@@ -313,7 +321,8 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
         pcr_components_container.markdown('<h6 style="color:#B1298D">PCR 2</h6>', unsafe_allow_html=True)
     
         if taq_avail < (primer_taq_vol + index_taq_vol) or water_avail < (primer_water_vol + index_water_vol):
-            comp_warning.markdown('<p style="color:#B92A5D"> Upload more taq and water plates to fulfill PCR 2 requirements </p>', unsafe_allow_html=True)
+            comp_warning.markdown('<p style="color:#B92A5D">'\
+                    'Upload more taq and water plates to fulfill PCR 2 requirements </p>', unsafe_allow_html=True)
     
         PCR2_cols = pcr_components_container.columns(col_size)
 

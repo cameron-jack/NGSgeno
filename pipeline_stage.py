@@ -49,7 +49,7 @@ The GUI interacts with a single Experiment object at one time. Methods are calle
 functionality. The Experiment then deals directly with the pipeline logic.
 """
 
-def pipe_stages(exp, stage):
+def pipe_stages(stage):
     '''
     Goes through each stage of the pipeline, depending on the session state.
     Args:
@@ -63,18 +63,18 @@ def pipe_stages(exp, stage):
     
     
     if stage == 1:
+        
         pipe_title.markdown('<h2 style="text-align:center;color:#0f6b8e">Load Data</h2>',\
                  unsafe_allow_html=True)
         load_data_tab, view_data_tab = pipe_container.tabs(['Load Data', 'View Data'])
 
         assay_usage = st.session_state['experiment'].get_assay_usage()
 
-        with load_data_tab:
-            data_table(key='1a')
+        with load_data_tab:            
             ld.load_rodentity_data()
             ld.load_custom_csv()
             ld.load_database_data()
-            
+            #data_table(key='1a')
             # pcr_files_exp = st.expander('Upload PCR files')
             # with pcr_files_exp:
             #     ld.upload_pcr_files()
