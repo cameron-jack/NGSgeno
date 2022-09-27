@@ -137,7 +137,7 @@ def pipe_stages(exp, stage):
                                 ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'))
 
             st.markdown(f'<h5 style="text-align:center;color:#2BA2D0"> Selected: {table_option} </h5>', unsafe_allow_html=True)
-            dc.data_table(key=2, view=table_option)
+            dc.data_table(key=2)
 
             pcr_components_exp = st.expander('Required Components for PCR Reactions', expanded=False)
             with pcr_components_exp:
