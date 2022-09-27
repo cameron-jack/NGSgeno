@@ -57,3 +57,6 @@ __pycache__
 /20210301
 /20210228
 /20210224
+/run_*
+/NGS_env
+error_msg.txt
