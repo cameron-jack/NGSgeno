@@ -3,5 +3,6 @@ biopython
 requests
 jsonpickle
 streamlit
-st_aggrid
+streamlit_aggrid
 pandas
+extra_streamlit_components

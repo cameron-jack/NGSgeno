@@ -166,9 +166,9 @@ def makelabel(x, n):
     return '\\n'.join((x[0], ' '.join((x[1], x[n], pct+'%')))), x[1], pct
 
 
-def build_report(filename, hdr, data, is_custom=False):
-    """ output the HTML reports, is_custom==True for custom sample pipeline runs.
-        Assumes input data is guarded
+def build_report(exp, filename, hdr, data):
+    """ 
+    Output the HTML reports. Assumes input data is guarded
     """
     try:
         dnaplates = sorted(set(x.dnaplate for x in data))
@@ -186,21 +186,22 @@ def build_report(filename, hdr, data, is_custom=False):
             segs = ["Well: "+rs[0].dnawell+" from EP well: "+rs[0].EPwell]
             if is_custom:
                 try:
-                    segs.append('sampleBarcode: '+file_io.unguard_cbc(rs[0].sampleBarcode))
-                except file_io.UnguardedBarcodeError:
-                    print('WARNING! Unguarded custom barcode:', rs[0].sampleBarcode, file=sys.stdout)
+                    segs.append('sampleBarcode: '+file_io.unguard_cbc(rs[0].sampleBarcode, silent=True))
+                except file_io.UnguardedBarcodeError as exc:
+                    exp.log(f"Error: {exc}")
+                    exp.log(f"Warning: Unguarded custom barcode: {rs[0].sampleBarcode}")
                     segs.append('sampleBarcode: '+rs[0].sampleBarcode)               
             else:
                 try:
                     segs.append("mouseBarcode: "+file_io.unguard_mbc(rs[0].mouseBarcode))
                 except file_io.UnguardedBarcodeError:
-                    print('WARNING! Unguarded Musterer barcode:', rs[0].mouseBarcode, file=sys.stdout)
+                    exp.log(f"Warning: Unguarded Musterer barcode: {rs[0].mouseBarcode}")
                     segs.append('mouseBarcode: '+rs[0].mouseBarcode)
                 segs.append("strain: "+rs[0].strainName)
             try:
                 segs.append("assay primers: "+', '.join((file_io.unguard_pbc(r.pcrplate)+'-'+r.pcrwell+"="+r.primer for r in rs)))
             except file_io.UnguardedBarcodeError as e:
-                print('WARNING! Unguarded PCR plate barcode:', e, file=sys.stdout)
+                exp.log(f"Warning: Unguarded PCR plate barcode: {e}")
                 segs.append("assay primers: "+', '.join((r.pcrplate+'-'+r.pcrwell+"="+r.primer for r in rs)))
             return '; '.join(segs)
     

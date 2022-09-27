@@ -18,7 +18,7 @@ from ctypes.wintypes import WIN32_FIND_DATAA
 from msilib.schema import File
 import os
 import sys
-from pathlib import PurePath
+from pathlib import PurePath, Path
 import itertools
 from math import fabs, factorial, floor, ceil
 from io import StringIO
@@ -205,7 +205,7 @@ def data_table(key, view='Summary'):
                 
     elif view == 'View Log':
         # display the experiment log and let the user filter the view in a number of ways
-        df = pd.DataFrame(st.session_state['experiment'].get_log(30))
+        df = pd.DataFrame(st.session_state['experiment'].get_log(30), columns=exp.get_log_header())
         if 'view_box_size' in st.session_state:
             height = st.session_state['view_box_size']
         else:
@@ -397,3 +397,44 @@ def display_primer_components(assay_usage, show_primers=True):
 
             avail_col[r+0].write(p)
             avail_col[r+1].write(primer_avail_vols.get(p,0)/1000)
+
+
+def st_directory_picker(label='Selected directory:', initial_path=Path(), searched_file_types=['fastq','fastq.gz','fq','fq.gz']):
+    """
+    Streamlit being JS/AJAX has no ability to select a directory. This is for server paths only.
+    Initial code by Aidin Jungo here: https://github.com/aidanjungo/StreamlitDirectoryPicker
+    Cannot be used inside an st.column as it produces its own columns.
+    """
+    if "path" not in st.session_state:
+        st.session_state['path'] = initial_path.absolute()
+
+    st.text_input(label, st.session_state['path'])
+    subdirectories = [f.stem for f in st.session_state['path'].iterdir() if f.is_dir() \
+            and (not f.stem.startswith(".") and not f.stem.startswith("__"))]
+    contains_files = [f.name for f in st.session_state['path'].iterdir() if f.is_file() \
+            and any([f.name.endswith(sft) for sft in searched_file_types])]
+
+    col1, col2, col3, _ = st.columns([1, 3, 1, 5])
+    
+    with col1:
+        st.markdown("Back")
+        if st.button("⬅️") and "path" in st.session_state:
+            st.session_state['path'] = st.session_state['path'].parent
+            st.experimental_rerun()
+
+    with col2:   
+        if subdirectories:
+            st.session_state['new_dir'] = st.selectbox("Subdirectories", sorted(subdirectories))
+        else:
+            st.markdown("#")
+            st.markdown("<font color='#FF0000'>No subdir</font>", unsafe_allow_html=True)
+
+    with col3:
+        if subdirectories:
+            st.markdown("Select")
+            if st.button("➡️") and "path" in st.session_state:
+                st.session_state['path'] = Path(st.session_state['path'], st.session_state['new_dir'])
+                st.experimental_rerun()
+    st.markdown(f'<h5 style="color:#000000">Contains {len(contains_files)} files of type {",".join(searched_file_types)}</h5>', unsafe_allow_html=True)
+
+    return st.session_state['path']

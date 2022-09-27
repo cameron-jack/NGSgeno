@@ -17,10 +17,11 @@ from ctypes.wintypes import WIN32_FIND_DATAA
 from msilib.schema import File
 import os
 import sys
-from pathlib import PurePath
+from pathlib import PurePath, Path
 import itertools
 from math import fabs, factorial, floor, ceil
 from io import StringIO
+from shutil import copy2
 
 import pandas as pd
 
@@ -35,6 +36,7 @@ from bin.util import CAP_VOLS, DEAD_VOLS
 import bin.file_io as file_io
 import bin.db_io as db_io
 from bin.makehtml import generate_heatmap_html
+import display_components as dc
 
 
 credits="""
@@ -338,28 +340,26 @@ def upload_pcr_files(PCR_stage = 'all'):
     upload_col2.write('')
     upload_col2.write('')
 
-    uploaded_reference = upload_col1.file_uploader('Upload Custom Reference File', \
-        key='ref_uploader', type=['txt','fa','fasta'])
+    uploaded_references = upload_col1.file_uploader('Upload Custom Reference File', \
+        key='ref_uploader', type=['txt','fa','fasta'], accept_multiple_files=True)
 
     uploaded_assaylists = upload_col2.file_uploader('Upload Assay List', \
         key='assaylist_uploader', type=['txt','csv'], accept_multiple_files=True)
 
 
     # compare list of all names against the previously loaded list. Only runs if the whole file list changes
-    if uploaded_reference:
+    if uploaded_references:
         if 'reference_upload' not in st.session_state or \
-                    st.session_state['reference_upload'] != [upr.name for upr in uploaded_references]:
+                st.session_state['reference_upload'] != [upr.name for upr in uploaded_references]:
             success = st.session_state['experiment'].add_references(uploaded_references)
             # set the list of uploaded files so we don't accidentally add them again
             st.session_state['reference_upload'] = [upr.name for upr in uploaded_references]
-
         
     if uploaded_assaylists:
         if 'assaylist_upload' not in st.session_state or \
             st.session_state['assaylist_upload'] != [ual.name for ual in uploaded_assaylists]:
             success = st.session_state['experiment'].add_assaylists(uploaded_assaylists)
             st.session_state['assaylist_upload'] = [ual.name for ual in uploaded_assaylists]
-
          
     if taqwater_barcode:
         if 'taqwater_barcode_upload' not in st.session_state or \
@@ -471,3 +471,23 @@ def upload_pcr_files(PCR_stage = 'all'):
     #                    success = st.session_state['experiment'].add_pcr_plates([pcr_plate_barcode])
     #                    # set the uploaded file in cache so we don't accidentally add it again
     #                    st.session_state['pcr_barcode_upload'] = pcr_plate_barcode
+
+def upload_miseq_fastqs(exp):
+    st.markdown('<h4 style="color:#000000">Add Miseq FASTQ files to experiment</h4>', unsafe_allow_html=True)
+    fastq_path = dc.st_directory_picker("Select location of Miseq FASTQ files")
+    fastq_files = [f for f in fastq_path.glob('*.fastq*')] + [f for f in fastq_path.glob('*.fq*')]
+    if len(fastq_files) > 0:
+        st.write(f"1. {str(fastq_files[0])}")
+        if len(fastq_files) > 1:
+            st.write(f"...")
+            st.write(f"{len(fastq_files)}. {str(fastq_files[-1])}")
+    import_fastqs = st.button('Import FASTQs')
+    file_field = st.empty()
+    copy_progress = st.progress(0)
+    if import_fastqs and len(fastq_files) > 0:
+        for i,fp in enumerate(fastq_files):
+            file_field.markdown(f'<hr5>Copying {fp} to experiment</h5>', unsafe_allow_html=True)
+            copy_progress.progress(i/len(fastq_files))
+            copy2(fp, exp.get_raw_dirpath())
+        file_field.markdown('<h5>Done</h5>', unsafe_allow_html=True)
+        copy_progress.progress(100)

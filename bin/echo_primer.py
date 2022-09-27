@@ -286,7 +286,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
 
             pcrfmt = "PCR{{}}-picklist_{}.csv".format(exp.name)
 
-            dnafns = file_get_check(exp, dna_bcs, "Echo_384_COC_0001_{0}_?.csv") 
+            dnafns = file_get_check(exp, dna_bcs, exp.get_exp_fp("Echo_384_COC_0001_{0}_?.csv"))
             nimcolmap = (("TRackBC", "dstplate"), ("TPositionId", 'dstwell'), ('SRackBC', 'srcplate'), ('SPositionId', 'srcwell'))
             typenim = Table.csvtype(dnafns[dna_bcs[0]], 'NimRec', hdrmap=nimcolmap)
             nimbusTables = [CSVTable(typenim, fn) for fid, fn in dnafns.items()]
