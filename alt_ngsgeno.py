@@ -5,6 +5,7 @@ from pathlib import PurePath
 import itertools
 from math import fabs, factorial, floor, ceil
 from io import StringIO
+from xml.etree.ElementInclude import include
 
 import pandas as pd
 
@@ -47,31 +48,86 @@ def create_run_folder(newpath):
     exp = Experiment(name=newpath.lstrip('run_'))
     return exp, ''
 
+#generalise for index stage..
 def generate_picklist(DNA_plates, PCR_plates, taqwater_plates):
-    error_msgs = {}
-    dna_picklist_path = primer_picklist_path = taqwater_picklist_path = None
-    if DNA_plates:
-        assay_usage = st.session_state['experiment'].get_assay_usage(dna_plate_list=DNA_plates)
+    picklist_file_col, picklist_btn_col = st.columns(2)
+    if st.session_state['experiment'].check_ready_echo1(DNA_plates, PCR_plates, taqwater_plates):
+        success = st.session_state['experiment'].generate_echo_PCR1_picklist_interface(DNA_plates,\
+                PCR_plates, taqwater_plates)
+                        
+        if success:
+            dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths =\
+                st.session_state['experiment'].get_echo_PCR1_picklist_filepaths()
 
-        if st.session_state['experiment'].check_ready_echo1(DNA_plates, PCR_plates, taqwater_plates):
-
-            success = st.session_state['experiment'].generate_echo_PCR1_picklist_interface(DNA_plates,\
-                    PCR_plates, taqwater_plates)
-                            
-            if success:
-                dna_picklist_path, primer_picklist_path, taqwater_picklist_path =\
-                    st.session_state['experiment'].get_echo_PCR1_picklist_filepaths()
-
-                if not dna_picklist_path:
-                    error_msgs['dna'] = 'No DNA picklist available'
-                if not primer_picklist_path:
-                    error_msgs['primer'] = 'No primer picklist available'
-                if not taqwater_picklist_path:
-                    error_msgs['taqwater'] = 'No taq/water picklist available'
+            if not dna_picklist_paths:
+                            picklist_file_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                                    'No DNA picklist available</h4>', unsafe_allow_html=True)
             else:
-                error_msgs['no_dna'] = 'Include at least one DNA plate to generate picklist'
+                for dpp in dna_picklist_paths:
+                    dpp_file = dpp.split('/')[1]
+                    picklist_file_col.markdown(\
+                                f'<p style="text-align:right;color:#4b778c;padding:5px">{dpp_file}</p>',\
+                            unsafe_allow_html=True)
+                    picklist_btn_col.download_button(label=f"Download", 
+                            data=open(dpp, 'rt'), file_name=dpp, mime='text/csv', key='dna_download_'+dpp)
+
+            if not primer_picklist_paths:
+                picklist_file_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                        'No primer picklist available</h4>', unsafe_allow_html=True)
+            else:
+                for ppp in primer_picklist_paths:
+                    ppp_file = ppp.split('/')[1]
+                    picklist_file_col.markdown(\
+                                f'<p style="text-align:right;color:#4b778c;padding:5px">{ppp_file}</p>',\
+                                unsafe_allow_html=True)
+                    picklist_btn_col.download_button(label=f"Download", 
+                            data=open(ppp, 'rt'), file_name=ppp, mime='text/csv', key='primer_download_'+dpp)
+            
+            if not taqwater_picklist_paths:
+                picklist_file_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
+                        'No taq+water picklist available</h4>', unsafe_allow_html=True)
+            else:
+                for tpp in taqwater_picklist_paths:
+                    tpp_file = tpp.split('/')[1]
+                    picklist_file_col.markdown(\
+                                f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_file}</p>',\
+                                unsafe_allow_html=True)
+                    picklist_btn_col.download_button(label=f"Download", 
+                            data=open(tpp, 'rt'), file_name=tpp, mime='text/csv', key='taqwater_download_'+tpp)
+
+
+#generalise for index stage
+def plate_checklist_expander(available_nimbus):
+    included_DNA_plates = set()
+    included_PCR_plates = set()
+    included_taqwater_plates = set()
+    checklist_col = st.columns(3)
+
+    checklist_col[0].markdown('**DNA Plates**')
+    checklist_col[1].markdown('**PCR Plates**')
+    checklist_col[2].markdown('**Taq/Water Plates**')
+
+    assay_usage = st.session_state['experiment'].get_assay_usage()
+
+    for nim in available_nimbus:
+        echo_filename=nim.split('/')[1].split('.')[0]
+        inc_dna = checklist_col[0].checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
+        if inc_dna:
+            included_DNA_plates.add(echo_filename.split('_')[-2])
     
-    return dna_picklist_path, primer_picklist_path, taqwater_picklist_path, error_msgs
+    for pcr_pid in st.session_state['experiment'].get_pcr_plates():
+        inc_pcr = checklist_col[1].checkbox(file_io.unguard_pbc(pcr_pid, silent=True),\
+                        value=True, key='chk_box_pcr_'+pcr_pid)
+        if inc_pcr:
+            included_PCR_plates.add(pcr_pid)
+
+    for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
+        inc_taqwater = checklist_col[2].checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
+                    value=True, key='chk_box_taqwater_'+taqwater_pid)
+        if inc_taqwater:
+            included_taqwater_plates.add(taqwater_pid)
+    
+    return included_DNA_plates, included_PCR_plates, included_taqwater_plates
             
 
 def main():
@@ -139,9 +195,6 @@ def main():
         error_msg_area.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
                  unsafe_allow_html=True)
 
-
-    
-    
     if st.session_state['experiment']:
         exp = st.session_state['experiment']
 
@@ -172,8 +225,8 @@ def main():
             nimbus_title = ''
 
             nimbus_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="Download", description=""),
-                stx.TabBarItemData(id=2, title="Upload", description=""),
+                stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
+                stx.TabBarItemData(id=2, title="Upload", description="Nimbus output files"),
                 stx.TabBarItemData(id=3, title="View Data", description="")
             ], default=1)
 
@@ -195,9 +248,6 @@ def main():
                     nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
 
                 nim_tab2_title = str(yet_to_run) + " 96-well plate sets need Nimbus input file generation"
-
-            if nfs:
-                nimbus_title = "Nimbus Input Files"
 
             nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
             
@@ -246,7 +296,6 @@ def main():
                     #     st.markdown(f'<p style="text-align:center;color:#17754d">{file_name}</p>', unsafe_allow_html=True)
                 elif xbcs:
                     nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                    nim_tab2_title = "Upload Nimbus output files"
                     missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
                     files_str = '</br>'.join(missing_nims)
 
@@ -264,13 +313,13 @@ def main():
                                 outf.write(nim_output.getvalue().decode("utf-8").replace('\r\n','\n'))
         
     
-                nim_tab2_title_area.markdown(f'<h5 style="text-align:center;color:#f63366">{nim_tab2_title}</h5>',\
-                                unsafe_allow_html=True)
-                if files_str:
-                    nim_upload_area.markdown(f'<p style="text-align:center;color:#4b778c">{files_str}</p>',\
-                            unsafe_allow_html=True)
+                # nim_tab2_title_area.markdown(f'<h5 style="text-align:center;color:#f63366">{nim_tab2_title}</h5>',\
+                #                 unsafe_allow_html=True)
+                # if files_str:
+                #     nim_upload_area.markdown(f'<p style="text-align:center;color:#4b778c">{files_str}</p>',\
+                #             unsafe_allow_html=True)
 
-
+            #view data
             if nimbus_tab == '3':
                 data_table(key='nimbus', options=True)
         
@@ -281,89 +330,77 @@ def main():
                 stx.TabBarItemData(id=2, title="Upload", description=""),
                 stx.TabBarItemData(id=3, title="Generate Picklists", description="")
             ], default=1)
-
-            dna_picklist_path = primer_picklist_path = taqwater_picklist_path = None
-            error_msgs = {}
+            
+            nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+            available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
 
             if primer_tab == '1':
                 primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
-                echo1_dna_col, echo1_pcr_col, echo1_taqwater_col = primer_checklist_exp.columns(3)
-                echo1_dna_col.markdown('**DNA Plates**')
-                echo1_pcr_col.markdown('**PCR Plates**')
-                echo1_taqwater_col.markdown('**Taq/Water Plates**')
-
+                
                 nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
                 missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
                 available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
                 
                 if available_nimbus:
-                    included_DNA_plates = set()
-                    included_PCR_plates = set()
-                    included_taqwater_plates = set()
+                    with primer_checklist_exp:
+                        included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
+                                    plate_checklist_expander(available_nimbus)
 
-                    for nim in available_nimbus:
-                        echo_filename=nim.split('/')[1].split('.')[0]
-                        inc_dna = echo1_dna_col.checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
-                        if inc_dna:
-                            included_DNA_plates.add(echo_filename.split('_')[-2])
+                    # included_DNA_plates = set()
+                    # included_PCR_plates = set()
+                    # included_taqwater_plates = set()
+
+                    # assay_usage = st.session_state['experiment'].get_assay_usage()
+
+                    # for nim in available_nimbus:
+                    #     echo_filename=nim.split('/')[1].split('.')[0]
+                    #     inc_dna = echo1_dna_col.checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
+                    #     if inc_dna:
+                    #         included_DNA_plates.add(echo_filename.split('_')[-2])
                     
-                    for pcr_pid in st.session_state['experiment'].get_pcr_plates():
-                        inc_pcr = echo1_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True),\
-                                     value=True, key='chk_box_pcr_'+pcr_pid)
-                        if inc_pcr:
-                            included_PCR_plates.add(pcr_pid)
+                    # for pcr_pid in st.session_state['experiment'].get_pcr_plates():
+                    #     inc_pcr = echo1_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True),\
+                    #                  value=True, key='chk_box_pcr_'+pcr_pid)
+                    #     if inc_pcr:
+                    #         included_PCR_plates.add(pcr_pid)
 
-                    for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
-                        inc_taqwater = echo1_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
-                                    value=True, key='chk_box_taqwater_'+taqwater_pid)
-                        if inc_taqwater:
-                            included_taqwater_plates.add(taqwater_pid)
+                    # for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
+                    #     inc_taqwater = echo1_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
+                    #                 value=True, key='chk_box_taqwater_'+taqwater_pid)
+                    #     if inc_taqwater:
+                    #         included_taqwater_plates.add(taqwater_pid)
                     
                     if included_DNA_plates:
-                        dna_picklist_path, primer_picklist_path, taqwater_picklist_path, error_msgs = \
-                            generate_picklist(included_DNA_plates, included_PCR_plates, included_PCR_plates)
-                    
-                assay_usage = st.session_state['experiment'].get_assay_usage()
-                display_pcr_components(assay_usage, 1)
-
+                        assay_usage = st.session_state['experiment'].get_assay_usage(dna_plate_list=included_DNA_plates)
+                        #assay_usage = st.session_state['experiment'].get_assay_usage()
+                        display_pcr_components(assay_usage, 1)
+                
 
             if primer_tab == '2':
+                primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                
                 upload_pcr_files(1)
 
+                if available_nimbus:
+                    with primer_checklist_exp:
+                        included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
+                                    plate_checklist_expander(available_nimbus)
+
             if primer_tab == '3':
-                _,picklist_button_col,_ = st.columns([2, 2, 1])
-                echo1_dna_download_col, echo1_primer_download_col, echo1_taqwater_download_col = st.columns(3)
+                primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                if available_nimbus:
+                    with primer_checklist_exp:
+                        included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
+                                    plate_checklist_expander(available_nimbus)
 
-                echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',\
-                                         key='echo_pcr1_go_button')
+                    if included_DNA_plates:
+                        _,picklist_button_col,_ = st.columns([2, 2, 1])
 
-                if echo_picklist_go:
-                    #more tweaking to be done
+                        echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',\
+                                    key='echo_pcr1_go_button')
 
-                    if 'no_dna' in error_msgs:
-                        st.markdown(f'{error_msgs.no_dna}', unsafe_allow_html=True)
-
-                    if dna_picklist_path:
-                        echo1_dna_download_col.download_button(label=f"Download {dna_picklist_path}",\
-                                            data=open(dna_picklist_path, 'rt'), file_name=dna_picklist_path,\
-                                                    mime='text/csv')
-                    elif 'dna' in error_msgs:
-                        echo1_dna_download_col.markdown(f'{error_msgs.dna}', unsafe_allow_html=True)
-
-                    if primer_picklist_path:
-                        echo1_primer_download_col.download_button(label=f"Download {primer_picklist_path}", 
-                                            data=open(primer_picklist_path, 'rt'), file_name=primer_picklist_path,\
-                                                    mime='text/csv')
-                    elif 'primer' in error_msgs:
-                        echo1_primer_download_col.markdown(f'{error_msgs.primer}', unsafe_allow_html=True)
-
-                    if taqwater_picklist_path:
-                        echo1_taqwater_download_col.download_button(label=f"Download {taqwater_picklist_path}", 
-                                            data=open(taqwater_picklist_path, 'rt'), file_name=taqwater_picklist_path,\
-                                                    mime='text/csv')
-                    elif 'taqwater' in error_msgs:
-                        echo1_taqwater_download_col.markdown(f'{error_msgs.taqwater}', unsafe_allow_html=True)
-
+                        if echo_picklist_go:
+                            generate_picklist(included_DNA_plates, included_PCR_plates, included_taqwater_plates)
 
         #Index PCR
         if pipeline_stage == 3:

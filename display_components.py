@@ -9,8 +9,8 @@
 @last_edit: 2022-08-29
 @edit_comment:
 
-Display methods for the main GUI pipeline. Methods in include data_table, display_pcr_componenent, display_pcr_componenent 
-as well as aggrid_interactive_table and delete_entries
+Display methods for the main GUI pipeline. Methods in include data_table, display_pcr_componenent,
+display_pcr_componenent as well as aggrid_interactive_table and delete_entries
 """
 
 import os
@@ -222,28 +222,29 @@ def data_table(key, options=False, table_option=None):
         data_container.dataframe(df, height=height)
 
 
-def display_pcr_components(assay_usage, PCR_stage='all'):
+def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     """
-    Expander widget that shows the required componenents for each PCR reaction, including wells, PCR plates, taq+water plates, index pairs 
+    Expander widget that shows the required componenents for each PCR reaction, 
+    including wells, PCR plates, taq+water plates, index pairs 
     Args:
         assay_usage: from Experiment.get_assay_usage
-        PCR_stage(1, 2, 'all'): 1 = Echo Primer stage, 2 = Echo Indexing, all = Both
+        PCR_stage (1, 2): 1 = Echo Primer stage, 2 = Echo Indexing
+        show_general (bool): if True show all of the general information for PCR reactions,
+        including user supplied plates.  
     
     """
     AFTER_NIM_WELLS = 384
+    pcr_comps_area = st.container()
     
-    #pcr_components_exp = st.expander('Required Componenents for PCR Reactions', expanded=False)
-    pcr_components_container = st.container()
-    comp_warning = pcr_components_container.empty()
-    _,filter_col1,_,filter_col2, _ = pcr_components_container.columns([1,5,1,5,1])
+    _,filter_col1,_,filter_col2, _ = pcr_comps_area.columns([1,5,1,5,1])
     col_size = [6, 4, 6, 4]
-    req_cols = pcr_components_container.columns(col_size)
-
+    
     if assay_usage:
         primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
                 st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
         reactions = sum([v for v in assay_usage.values()])
-        index_remain, index_avail, index_vol_capacity = st.session_state['experiment'].get_index_remaining_available_volume(assay_usage=assay_usage)
+        index_remain, index_avail, index_vol_capacity =\
+                     st.session_state['experiment'].get_index_remaining_available_volume(assay_usage=assay_usage)
         
     else:
         reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
@@ -252,94 +253,75 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
                 st.session_state['experiment'].get_index_remaining_available_volume()
 
     taq_avail, water_avail, pids = st.session_state['experiment'].get_taqwater_avail()
-
-    if 'assay_filter' not in st.session_state:
-        st.session_state['assay_filter'] = 1
-
-        filter_assays = filter_col1.button('Filter assays', key='assay_filter_button', disabled=True)
-        unfilter_assays = filter_col2.button('Unfilter assays', key='assay_unfilter_button')
-
-        if unfilter_assays:
-            st.session_state['assay_filter'] = 0
-
-        if filter_assays:
+    
+    if show_general:
+        if 'assay_filter' not in st.session_state:
             st.session_state['assay_filter'] = 1
 
-    required_wells = ceil(reactions/AFTER_NIM_WELLS)
-    user_supplied_PCR = ', '.join([file_io.unguard_pbc(p, silent=True)\
-                 for p in st.session_state['experiment'].get_pcr_plates()])
-    user_supplied_taqwater = ', '.join([file_io.unguard_pbc(p, silent=True)\
-                 for p in st.session_state['experiment'].get_taqwater_avail()[2]])
+            filter_assays = filter_col1.button('Filter assays', key='assay_filter_button', disabled=True)
+            unfilter_assays = filter_col2.button('Unfilter assays', key='assay_unfilter_button')
 
-    #Wells and plates
-    req_cols[0].markdown('**Number of required PCR plates**', unsafe_allow_html=True)
-    req_cols[1].write(str(required_wells))
-    req_cols[0].markdown('**Number of required reaction wells**', unsafe_allow_html=True)
-    req_cols[1].write(str(reactions))
-    req_cols[2].markdown('**User supplied PCR plates**', unsafe_allow_html=True)
-    if user_supplied_PCR:
-        req_cols[3].write(user_supplied_PCR)
-    else:
-        req_cols[3].write('None')
-    req_cols[2].markdown('**User supplied taq/water plates**', unsafe_allow_html=True)
-    if user_supplied_PCR:
-        req_cols[3].write(user_supplied_taqwater)
-    else:
-        req_cols[3].write('None')
-    pcr_components_container.write('')
+            if unfilter_assays:
+                st.session_state['assay_filter'] = 0
 
+            if filter_assays:
+                st.session_state['assay_filter'] = 1
+
+        required_wells = ceil(reactions/AFTER_NIM_WELLS)
+        user_supplied_PCR = ', '.join([file_io.unguard_pbc(p, silent=True)\
+                    for p in st.session_state['experiment'].get_pcr_plates()])
+        user_supplied_taqwater = ', '.join([file_io.unguard_pbc(p, silent=True)\
+                    for p in st.session_state['experiment'].get_taqwater_avail()[2]])
+
+        comp_warning_area = pcr_comps_area.empty()
+        comp_warning = ''
+
+        req_cols = pcr_comps_area.columns(col_size)
+        #Wells and plates
+        req_cols[0].markdown('**Number of required PCR plates**', unsafe_allow_html=True)
+        req_cols[1].write(str(required_wells))
+        req_cols[0].markdown('**Number of required reaction wells**', unsafe_allow_html=True)
+        req_cols[1].write(str(reactions))
+        req_cols[2].markdown('**User supplied PCR plates**', unsafe_allow_html=True)
+        if user_supplied_PCR:
+            req_cols[3].write(user_supplied_PCR)
+        else:
+            req_cols[3].write('None')
+        req_cols[2].markdown('**User supplied taq/water plates**', unsafe_allow_html=True)
+        if user_supplied_PCR:
+            req_cols[3].write(user_supplied_taqwater)
+        else:
+            req_cols[3].write('None')
+        pcr_comps_area.write('')
 
     #PCR1 and PCR2 taq and water 
     taq_avail_vol = taq_avail/1000
     water_avail_vol = water_avail/1000
-    pcr_staged = pcr_components_container.empty()
 
-    if PCR_stage == 1 or PCR_stage == 'all':
-        #PCR1 componenents
-        #pcr_components_container.markdown('<h6 style="color:#B1298D">PCR 1</h6>', unsafe_allow_html=True)
+    pcr_cols = pcr_comps_area.columns(col_size)
+
+    if PCR_stage == 1:
         if taq_avail < primer_taq_vol or water_avail < primer_water_vol:
-            comp_warning.markdown('<p style="color:#B92A5D">'\
-                    'Upload more taq and water plates to fulfill PCR 1 requirements </p>', unsafe_allow_html=True)
-    
-        PCR1_cols = pcr_components_container.columns(col_size)
+            comp_warning = 'Provide more taq and water plates to fulfill PCR 1 requirements'
 
-        PCR1_cols[0].markdown('**Required water volume**', unsafe_allow_html=True)
-        PCR1_cols[1].write(str(primer_water_vol/1000)+' μl')
+        required_water_vol_str = str(primer_water_vol/1000) + ' μl'
+        water_avail_vol_str = str(water_avail_vol)+' μl'
+        required_taq_vol_str = str(primer_taq_vol/1000)+' μl'
+        avail_taq_vol_str = str(taq_avail_vol)+' μl'
 
-        PCR1_cols[2].markdown('**Available water volume**')
-        PCR1_cols[3].write(str(water_avail_vol)+' μl')
 
-        PCR1_cols[0].markdown('**Required taq volume**')
-        PCR1_cols[1].write(str(primer_taq_vol/1000)+' μl')
-
-        PCR1_cols[2].markdown('**Available taq volume**')
-        PCR1_cols[3].write(str(taq_avail_vol)+' μl')
-        pcr_components_container.write('')
-
-    if PCR_stage == 2 or PCR_stage == 'all':
-        #PCR 2 components
-        pcr_components_container.markdown('<h6 style="color:#B1298D">PCR 2</h6>', unsafe_allow_html=True)
-    
+    if PCR_stage == 2:
         if taq_avail < (primer_taq_vol + index_taq_vol) or water_avail < (primer_water_vol + index_water_vol):
-            comp_warning.markdown('<p style="color:#B92A5D">'\
-                    'Upload more taq and water plates to fulfill PCR 2 requirements </p>', unsafe_allow_html=True)
+            comp_warning = "Upload more taq and water plates to fulfill PCR 2 requirements"
     
-        PCR2_cols = pcr_components_container.columns(col_size)
+        PCR2_cols = pcr_comps_area.columns(col_size)
+        
+        required_water_vol_str = str(index_water_vol/1000)+ ' μl'
+        water_avail_vol_str = str(water_avail_vol) + ' μl'
+        required_taq_vol_str = str(index_taq_vol/1000)+ ' μl'
+        avail_taq_vol_str = str(taq_avail_vol)+ ' μl'
 
-        PCR2_cols[0].markdown('**Required water volume**')
-        PCR2_cols[1].write(str(index_water_vol/1000)+' μl')
-
-        PCR2_cols[2].markdown('**Available water volume**')
-        PCR2_cols[3].write(str(water_avail_vol)+' μl')
-
-        PCR2_cols[0].markdown('**Required taq volume**')
-        PCR2_cols[1].write(str(index_taq_vol/1000)+' μl')
-
-        PCR2_cols[2].markdown('**Available taq volume**')
-        PCR2_cols[3].write(str(taq_avail_vol)+' μl')
-    
-        #Index
-        index_cols = pcr_components_container.columns(col_size)
+        index_cols = pcr_comps_area.columns(col_size)
 
         if index_vol_capacity > (index_avail - index_remain):
             index_pairs_allowed = '<p style="color:green">'+str(index_vol_capacity)+'</p>'
@@ -352,6 +334,17 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
         index_cols[3].write(str(index_avail))
         index_cols[0].markdown('**Index Pairs Allowed by Volume**')
         index_cols[1].markdown(index_pairs_allowed, unsafe_allow_html=True)
+
+    pcr_cols[0].markdown('**Required water volume**')
+    pcr_cols[1].write(required_water_vol_str)
+    pcr_cols[2].markdown('**Available water volume**')
+    pcr_cols[3].write(water_avail_vol_str)
+    pcr_cols[0].markdown('**Required taq volume**')
+    pcr_cols[1].markdown(required_taq_vol_str)
+    pcr_cols[2].markdown('**Available taq volume**')
+    pcr_cols[3].write(avail_taq_vol_str)
+
+    comp_warning_area.markdown(f'<p style="color:#B92A5D">{comp_warning}</p>', unsafe_allow_html=True)
 
 
 def display_primer_components(assay_usage, show_primers=True):
