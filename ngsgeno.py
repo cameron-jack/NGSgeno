@@ -13,14 +13,11 @@ A web based interactive GUI with Streamlit. Plate and sample barcodes here are u
 In all other code they must be guarded. We guard them here before we send them to any external function.
 """
 
-from ctypes.wintypes import WIN32_FIND_DATAA
-from msilib.schema import File
 import os
-import sys
 from pathlib import PurePath
-import itertools
 from math import fabs, factorial, floor, ceil
 from io import StringIO
+from shutil import copy2
 
 import pandas as pd
 
@@ -35,6 +32,7 @@ from bin.util import CAP_VOLS, DEAD_VOLS
 import bin.file_io as file_io
 import bin.db_io as db_io
 from bin.makehtml import generate_heatmap_html
+from bin.ngsmatch import match_alleles
 
 import load_data as ld
 import display_components as dc
@@ -144,7 +142,6 @@ def pipe_stages(exp, stage):
             pcr_components_exp = st.expander('Required Components for PCR Reactions', expanded=False)
             with pcr_components_exp:
                 dc.display_pcr_components(assay_usage)
-
 
             dc.display_primer_components(assay_usage)
 
@@ -519,9 +516,87 @@ def pipe_stages(exp, stage):
 
         s4_title.markdown('<h2 style="text-align:center;color:#0f6b8e">Echo Index</h2>', unsafe_allow_html=True)
         
+    if stage == 5:
+        # Miseq
+        st.title('Miseq')
+        st.markdown('<h5 style="color:#2BA2D0;text-align:center">Your samples are reading for sequencing</h5>',\
+                 unsafe_allow_html=True)
+        st.write('')
+        st.write('')
+        s5_download_tab, s5_seq_tab = st.tabs(["Miseq samplesheet", "Upload sequence files"])
+        s5_download_tab.markdown('<h4 style="color:#0f6b8e;text-align:center">Download Miseq samplesheet</h4>',\
+                 unsafe_allow_html=True)
+        s5_download_tab.write('')
+        _, miseq_col1, miseq_col2, _ =  s5_download_tab.columns([2,1,1,2])
+        for fp in exp.get_miseq_samplesheets():
+            miseq_col1.markdown(f'<strong style="color:#486e7a">{fp}</strong>', unsafe_allow_html=True)
+            download_miseq = miseq_col2.button(label='Download', key='dnld_samplesheet_'+str(fp))
 
+        with s5_seq_tab:
+            ld.upload_miseq_fastqs(exp)
 
+    if stage == 6:
+        # Allele calling
+        s4_title = s4_st.title('Allele calling')
+        #s6_seq_tab, s6_alleles_tab = st.tabs(["Upload sequence files", "Call alleles"])
 
+        if 'test_status' in st.session_state and st.session_state['test_status'] == 'upload':
+            s6_seq_tab, s6_alleles_tab, s6_view_tab = st.tabs(["Upload sequence files", "Call alleles", "View"])
+            with s6_seq_tab:
+                st.write('')
+                ld.upload_miseq_fastqs(exp)
+                st.session_state['test_status'] = None
+        elif 'test_status' in st.session_state and st.session_state['test_status'] == 'call':
+            with s6_alleles_tab:
+                num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
+                num_cpus = st.number_input(label="Number of processes to run simultaneously (defaults to # of CPUs)", value=os.cpu_count())
+                exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
+                clear_lock = st.checkbox("Clear process lock")
+                do_matching = st.button("Run allele calling")
+                if do_matching:
+                    match_alleles(exp, ncpus=num_cpus, chunk_size=num_unique_seq, exhaustive=exhaustive_mode,
+                            stagefile=exp.get_exp_fp("Stage3.csv"), force_restart=clear_lock)
+                    do_matching = None
+                st.session_state['test_status'] = None
+        elif 'test_status' in st.session_state and st.session_state['test_status'] == 'view':
+            with s6_view_tab:
+                st.session_state['test_status'] = 'view'
+                table_option = st.selectbox('View Data options',
+                        ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'))
+
+                st.markdown(f'<h5 style="text-align:center;color:#2BA2D0"> Selected: {table_option} </h5>', unsafe_allow_html=True)
+                dc.data_table(key=2, view=table_option)
+                st.session_state['test_status'] = None
+        else:
+            st.session_state['test_status'] = None
+            s6_seq_tab, s6_alleles_tab, s6_view_tab = st.tabs(["Upload sequence files", "Call alleles", "View data"])
+            with s6_seq_tab:
+                st.session_state['test_status'] = 'upload'
+                st.write('')
+                ld.upload_miseq_fastqs(exp)
+                st.session_state['test_status'] = None
+
+            with s6_alleles_tab:
+                st.session_state['test_status'] = 'call'
+                num_unique_seq = st.text_input("Number of unique sequences per work unit", "1")
+                num_cpus = st.number_input(label="Number of processes to run simultaneously (defaults to # of CPUs)", value=os.cpu_count())
+                exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
+                clear_lock = st.checkbox("Clear process lock")
+                do_matching = st.button("Run allele calling")
+                if do_matching:
+                    match_alleles(exp, ncpus=num_cpus, chunk_size=num_unique_seq, exhaustive=exhaustive_mode,
+                            stagefile=exp.get_exp_fp("Stage3.csv"), force_restart=clear_lock)
+                    do_matching = None
+                st.session_state['test_status'] = None
+
+            with s6_view_tab:
+                st.session_state['test_status'] = 'view'
+                table_option = st.selectbox('View Data options',
+                        ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'))
+
+                st.markdown(f'<h5 style="text-align:center;color:#2BA2D0"> Selected: {table_option} </h5>', unsafe_allow_html=True)
+                dc.data_table(key=2, view=table_option)
+                st.session_state['test_status'] = None
 
 
 def main():

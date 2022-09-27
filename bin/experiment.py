@@ -28,6 +28,8 @@ import json
 from Bio import SeqIO
 from copy import deepcopy
 from math import ceil, floor
+from pathlib import Path
+import inspect
 
 import pandas as pd
 from streamlit import _update_logger
@@ -66,6 +68,15 @@ class Experiment():
     wells are always unpadded. Echo needs unpadded wells, possibly Miseq?
 
     Do we read raw inputs and then offer the ability to manually correct them? Maybe only the manifests...
+    
+    How to track usage of wells and not accidentally drain a well twice if we regenerate earlier files?
+    Transaction tracking:
+        - "generate" methods, which create fixed outputs (and usually modify state) should create a "transaction".
+        - Use a list (stack) to track transactions
+        - Only one instance of a generate method's use can exist in the list for the same set of inputs and outputs
+        - Because it is ordered, we can "rewind" to this location.
+        - Transactions store all plate modifications (i.e. +/- volume changes)
+        
     """
     def __init__(self, name):
         """ set up defaults, an experiment name is required, should match folder name less then run_ prefix """
@@ -131,6 +142,38 @@ class Experiment():
             return fp
         fp = os.path.join(dirname, filename)
         return fp
+
+    def get_raw_dirpath(self):
+        """ 
+        Return the absolute path to the where raw fastq files should be stored
+        Create it if it doesn't exist
+        """
+        dp = self.get_exp_fp('raw')
+        if not os.path.exists(dp):
+            os.mkdir(dp)
+        return dp
+
+    def get_clean_dirpath(self):
+        """
+        Return the absolute path to the where cleaned fastq files should be stored
+        Create it if it doesn't exist
+        """
+        dp = self.get_exp_fp('clean')
+        if not os.path.exists(dp):
+            os.mkdir(dp)
+        return dp
+
+    def get_merged_dirpath(self):
+        """
+        Return the absolute path to the where cleaned, merged fastq files should be stored
+        Create it if it doesn't exist
+        """
+        dp = self.get_exp_fp('merged')
+        if not os.path.exists(dp):
+            os.mkdir(dp)
+        return dp
+
+
 
    
     def add_rodentity_plate_set(self, sample_plate_ids, dna_plate_id):
@@ -708,16 +751,36 @@ class Experiment():
         return True
 
     def add_references(self, uploaded_references):
+        """
+        read in reference (target) IDs and sequences
+        """
         if self.locked:
             self.log('Error: Cannot add reference sequences while lock is active')
+            self.save()
             return False
         for uploaded_reference in uploaded_references:
             if uploaded_reference.name in self.reference_sequences:
-                # do we warn? Is this an error?
-                self.log(f"Error: Duplicate reference file name: {uploaded_reference.name=} in . Overwriting")
-            seq_itr = SeqIO.parse(uploaded_reference.getvalue().decode("utf-8"), "fasta")
-            self.reference_sequences[uploaded_reference.name] = {s.id:str(s.seq) for s in seq_itr}
-            self.save()
+                self.log(f"Warning: Duplicate reference file name: {uploaded_reference.name=} in . Overwriting")
+            try:
+                with StringIO(uploaded_reference.getvalue().decode()) as sio:
+                    self.reference_sequences[uploaded_reference.name] = {str(seqitr.id):str(seqitr.seq) for seqitr in SeqIO.parse(sio, "fasta")}
+            except UnicodeDecodeError:
+                try:
+                    with StringIO(uploaded_reference.getvalue().decode('utf-8')) as sio:
+                        self.reference_sequences[uploaded_reference.name] = {str(seqitr.id):str(seqitr.seq) for seqitr in SeqIO.parse(sio, "fasta")}
+                except UnicodeDecodeError:
+                    try:
+                        with StringIO(uploaded_reference.getvalue().decode('latin-1')) as sio:
+                            self.reference_sequences[uploaded_reference.name] = {str(seqitr.id):str(seqitr.seq) for seqitr in SeqIO.parse(sio, "fasta")}
+                    except UnicodeDecodeError:
+                        try:
+                            with StringIO(uploaded_reference.getvalue().decode('ISO-8859')) as sio:
+                                self.reference_sequences[uploaded_reference.name] = {str(seqitr.id):str(seqitr.seq) for seqitr in SeqIO.parse(sio, "fasta")}
+                        except Exception as exc:
+                            self.log(f"Error: Couldn't parse reference file {uploaded_reference.name} {exc}")
+                            return False
+            self.log(f'Success: uploaded {len(self.reference_sequences[uploaded_reference.name])} reference sequences from {uploaded_reference.name}')
+        self.save()
         return True
 
     def add_assaylists(self, uploaded_assaylists):
@@ -1244,6 +1307,11 @@ class Experiment():
         self.save()
         return True
 
+    def get_miseq_samplesheets(self):
+        """ return the MiSeq-XXX.csv samplesheet, if it exists """
+        miseq_fps = Path(self.get_exp_dir()).glob('MiSeq-*.csv')
+        return miseq_fps
+
      
     def save(self):
         """ save experiment details to self.name/experiment.json, returns True on success and False on fail. Assumes the correct working directory """
@@ -1263,7 +1331,10 @@ class Experiment():
         now = datetime.datetime.now()
         t = f"{now:%Y-%m-%d %H:%M}"
         func = sys._getframe(1).f_code.co_name
+        func_line = inspect.getframeinfo(sys._getframe(1)).lineno
         caller = sys._getframe(2).f_code.co_name
+        caller_line = inspect.getframeinfo(sys._getframe(2)).lineno
+
         # levels are: Debug/Info/Warning/Error/Critical/Success/Begin/End/Success/Failure
         if not level:
             if message.lower().startswith('d:') or message.lower().startswith('debug:'):
@@ -1315,9 +1386,12 @@ class Experiment():
 
         #if level == '':
         #    level = 'Debug'
-        self.log_entries.append([t, func, caller, level, message])
+        self.log_entries.append([t, func, func_line, caller, caller_line, level, message])
         if (now - self.log_time).seconds > 10 or level in ['Error', 'Critical', 'End', 'Success', 'Failure']:
             self.save()
+
+    def get_log_header(self):
+        return ['Time', 'Function name', 'Func line', 'Calling function', 'Call line', 'Level', 'Message']
 
     def get_log(self, num_entries=10):
         """ return a chunk of the log. -1 gives everything """
