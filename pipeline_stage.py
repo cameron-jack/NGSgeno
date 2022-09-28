@@ -31,6 +31,7 @@ from bin.util import CAP_VOLS, DEAD_VOLS
 import bin.file_io as file_io
 import bin.db_io as db_io
 from bin.makehtml import generate_heatmap_html
+from bin.ngsmatch import match_alleles
 
 import load_data as ld
 from display_components import data_table, display_pcr_components, display_primer_components
@@ -252,8 +253,9 @@ def pipe_stages(stage):
             echo1_dna_col.markdown('**DNA Plates**')
             echo1_pcr_col.markdown('**PCR Plates**')
             echo1_taqwater_col.markdown('**Taq+Water Plates**')
-            
+            #Glitches when clicking - fix
             for nim in available_nimbus:
+                #Naming system - should look better
                 echo_filename=nim.split('/')[1].split('.')[0]
                 inc_dna = echo1_dna_col.checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
                 if inc_dna:
@@ -261,13 +263,12 @@ def pipe_stages(stage):
                 
 
             for pcr_pid in st.session_state['experiment'].get_pcr_plates():
-                inc_pcr = echo1_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True), value=True,\
-                             key='chk_box_pcr_'+pcr_pid)
+                inc_pcr = echo1_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True), value=True, key='chk_box_pcr_'+pcr_pid)
                 if inc_pcr:
                     included_PCR_plates.add(pcr_pid)
 
             for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
-                inc_taqwater = echo1_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True),\
+                inc_taqwater = echo1_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
                         value=True, key='chk_box_taqwater_'+taqwater_pid)
                 if inc_taqwater:
                     included_taqwater_plates.add(taqwater_pid)
@@ -283,8 +284,7 @@ def pipe_stages(stage):
                     display_pcr_components(assay_usage, PCR_stage=1)
                     display_primer_components(assay_usage)
                 
-                if st.session_state['experiment'].check_ready_echo1(included_DNA_plates, included_PCR_plates,\
-                             included_taqwater_plates):
+                if st.session_state['experiment'].check_ready_echo1(included_DNA_plates, included_PCR_plates, included_taqwater_plates):
 
                     pcr1_picklist_tab.markdown('<h5 style="color:#95B7C3;text-align:center">Ready to run Echo PCR 1</h5>',\
                              unsafe_allow_html=True)
@@ -295,7 +295,7 @@ def pipe_stages(stage):
                     pcr1_picklist_tab.write('')
                     pcr1_picklist_tab.write('')
                     if echo_picklist_go:
-                        success = st.session_state['experiment'].generate_echo_PCR1_picklist_interface(included_DNA_plates,\
+                        success = st.session_state['experiment'].generate_echo_PCR1_picklist_interface(included_DNA_plates,
                                 included_PCR_plates, included_taqwater_plates)
                         if success:
                             dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths =\
@@ -480,68 +480,86 @@ def pipe_stages(stage):
             
         
     if stage == 5:
-        pipe_title.markdown('<h2 style="text-align:center;color:#0f6b8e">Miseq</h2>', unsafe_allow_html=True)
-        pipe_subtitle.markdown('<h5 style="color:#2BA2D0;text-align:center">Your samples are reading for sequencing</h5>',\
+        # Miseq
+        st.title('Miseq')
+        st.markdown('<h5 style="color:#2BA2D0;text-align:center">Your samples are reading for sequencing</h5>',\
                  unsafe_allow_html=True)
-        pipe_container.write('')
-        pipe_container.write('')
-        s5_download_tab, s5_seq_tab = pipe_container.tabs(["Download", "Sequence Files"])
-        s5_download_tab.markdown('<h4 style="color:#0f6b8e;text-align:center">Download the File for Miseq</h4>',\
+        st.write('')
+        st.write('')
+        s5_download_tab, s5_seq_tab = st.tabs(["Miseq samplesheet", "Upload sequence files"])
+        s5_download_tab.markdown('<h4 style="color:#0f6b8e;text-align:center">Download Miseq samplesheet</h4>',\
                  unsafe_allow_html=True)
         s5_download_tab.write('')
         _, miseq_col1, miseq_col2, _ =  s5_download_tab.columns([2,1,1,2])
-        miseq_col1.markdown('<strong style="color:#486e7a">Name of file</strong>', unsafe_allow_html=True)
-        download_miseq = miseq_col2.button(label='Download')
+        exp = st.session_state['experiment']
+        for fp in exp.get_miseq_samplesheets():
+            miseq_col1.markdown(f'<strong style="color:#486e7a">{fp}</strong>', unsafe_allow_html=True)
+            download_miseq = miseq_col2.button(label='Download', key='dnld_samplesheet_'+str(fp))
 
-        s5_seq_tab.markdown('<h4 style="color:#0f6b8e;text-align:center">Sequences Files</h4>', unsafe_allow_html=True)
-        s5_seq_tab.markdown('<strong style="color:#486e7a">.</strong>', unsafe_allow_html=True)
-        s5_seq_tab.markdown('<strong style="color:#486e7a">.</strong>', unsafe_allow_html=True)
+        with s5_seq_tab:
+            ld.upload_miseq_fastqs(exp)
 
 
     if stage == 6:
-        pipe_title.markdown('<h2 style="text-align:center;color:#0f6b8e">Genotyping</h2>', unsafe_allow_html=True)
+        # Allele calling
+        s4_title = st.title('Allele calling')
+        exp = st.session_state['experiment']
+        #s6_seq_tab, s6_alleles_tab = st.tabs(["Upload sequence files", "Call alleles"])
 
-        allele_calling_tab, genotyping_tab = pipe_container.tabs(['Allele Calling', 'Genotyping'])
-        allele_calling_tab.write('')
+        if 'test_status' in st.session_state and st.session_state['test_status'] == 'upload':
+            s6_seq_tab, s6_alleles_tab, s6_view_tab = st.tabs(["Upload sequence files", "Call alleles", "View"])
+            with s6_seq_tab:
+                st.write('')
+                ld.upload_miseq_fastqs(exp)
+                st.session_state['test_status'] = None
+        elif 'test_status' in st.session_state and st.session_state['test_status'] == 'call':
+            with s6_alleles_tab:
+                num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
+                num_cpus = st.number_input(label="Number of processes to run simultaneously (defaults to # of CPUs)", value=os.cpu_count())
+                exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
+                clear_lock = st.checkbox("Clear process lock")
+                do_matching = st.button("Run allele calling")
+                if do_matching:
+                    match_alleles(exp, ncpus=num_cpus, chunk_size=num_unique_seq, exhaustive=exhaustive_mode,
+                            stagefile=exp.get_exp_fp("Stage3.csv"), force_restart=clear_lock)
+                    do_matching = None
+                st.session_state['test_status'] = None
+        elif 'test_status' in st.session_state and st.session_state['test_status'] == 'view':
+            with s6_view_tab:
+                st.session_state['test_status'] = 'view'
+                table_option = st.selectbox('View Data options',
+                        ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'))
 
-        allele_calling_tab.markdown('<h5 style="color:#2BA2D0;text-align:center">Mapping to Known Sequences to Generate Allele Ratios</h5>',\
-                 unsafe_allow_html=True)
-        allele_calling_tab.write('')
-        allele_calling_tab.write('')
-        path_to_fastq = allele_calling_tab.text_input(label="Path to fastq.gz files")
+                st.markdown(f'<h5 style="text-align:center;color:#2BA2D0"> Selected: {table_option} </h5>', unsafe_allow_html=True)
+                data_table(key=2, view=table_option)
+                st.session_state['test_status'] = None
+        else:
+            st.session_state['test_status'] = None
+            s6_seq_tab, s6_alleles_tab, s6_view_tab = st.tabs(["Upload sequence files", "Call alleles", "View data"])
+            with s6_seq_tab:
+                st.session_state['test_status'] = 'upload'
+                st.write('')
+                ld.upload_miseq_fastqs(exp)
+                st.session_state['test_status'] = None
 
-        options_expander = allele_calling_tab.expander("Options")
+            with s6_alleles_tab:
+                st.session_state['test_status'] = 'call'
+                num_unique_seq = st.text_input("Number of unique sequences per work unit", "1")
+                num_cpus = st.number_input(label="Number of processes to run simultaneously (defaults to # of CPUs)", value=os.cpu_count())
+                exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
+                clear_lock = st.checkbox("Clear process lock")
+                do_matching = st.button("Run allele calling")
+                if do_matching:
+                    match_alleles(exp, ncpus=num_cpus, chunk_size=num_unique_seq, exhaustive=exhaustive_mode,
+                            stagefile=exp.get_exp_fp("Stage3.csv"), force_restart=clear_lock)
+                    do_matching = None
+                st.session_state['test_status'] = None
 
-        allele_calling_tab.write('')
-        allele_calling_tab.write('')
+            with s6_view_tab:
+                st.session_state['test_status'] = 'view'
+                table_option = st.selectbox('View Data options',
+                        ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'))
 
-        _, generate_ratio_col, _ = allele_calling_tab.columns([1,1,1])
-        allele_calling_tab.write('')
-        allele_calling_tab.write('')
-        _, allele_cols1, allele_cols2, _ = allele_calling_tab.columns([1,1,1,1])
-
-        if path_to_fastq:
-            generate_ratio_button = generate_ratio_col.button('Generate Allele Ratios')
-        
-            if generate_ratio_button:
-
-                allele_cols1.markdown('<strong style="color:#486e7a;font-size:18px">allele_ratios.csv</strong>',\
-                         unsafe_allow_html=True)
-                allele_cols2.button('Download', help="filename.csv")
-
-        
-        
-        num_unique_seq = options_expander.text_input("Number of unique sequences per work unit", "1")
-        #num_cpus = options_expander.text_input("Number of processes to run simultaneously", "Default is the number of CPUS in the system")
-        options_expander.write('')
-
-
-        clear_chache = options_expander.checkbox('Clear match and miss caches in run folder') #?
-        match_sequence = options_expander.checkbox("Try to match every sequence, no matter how few counts")
-        #quite_option = options_expander.checkbox("Run with minimal messages")
-        musterer_option = options_expander.checkbox("Musterer data columns are not present")
-
-        genotyping_tab.write('')
-        genotyping_tab.markdown('<h5 style="color:#2BA2D0;text-align:center">Mapping to Allele Ratios to Final Genotypes</h5>',\
-                 unsafe_allow_html=True)
-
+                st.markdown(f'<h5 style="text-align:center;color:#2BA2D0"> Selected: {table_option} </h5>', unsafe_allow_html=True)
+                data_table(key=2)
+                st.session_state['test_status'] = None

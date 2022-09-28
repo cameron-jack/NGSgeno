@@ -3,7 +3,7 @@ port=9123
 
 [theme]
 base="light"
-primaryColor = "#be2596"
+primaryColor = "#f63366"
 backgroundColor = "#fafeff"
 textColor = "#00172B"
 font = "sans serif"

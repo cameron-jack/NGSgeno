@@ -36,7 +36,6 @@ import bin.db_io as db_io
 from bin.makehtml import generate_heatmap_html
 import display_components as dc
 
-
 credits="""
 @created: March 2022
 @author: Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
@@ -239,33 +238,40 @@ def load_database_data():
 
 
 
-def upload_pcr_files(PCR_stage = 'all'):
+def upload_pcr_files(PCR_stage = 1, show_general=True):
     """
     Make big changes to this
     Home page: load data
 
-    Upload options for extra custom data including reference files, assay lists, primer plates, index plates, taq/water plates, and PCR plates (barcode only)
+    Upload options for extra custom data including reference files, assay lists, primer plates,
+     index plates, taq/water plates, and PCR plates (barcode only)
 
-    PCR stage = [1, 2, 'all']
-    As stage 1, primer plate layouts and volumes, taq and water plates and/or barcodes, and PCR plate barcodes are required.. 
-    Users can also upload custom reference files, assay lists and extra taq and water plates. 
+    Args:
+        PCR stage (int) = [1, 2]:
+        As stage 1, primer plate layouts and volumes, taq and water plates and/or barcodes, 
+        and PCR plate barcodes are required.. 
+        Users can also upload custom reference files, assay lists and extra taq and water plates. 
 
-    At stage 2, user provides amplicon plates, index plates and taq/water plates (?)
+        At stage 2, user provides amplicon plates, index plates and taq/water plates
+    
+        show_general (bool): If True, show the general upload options, such as taq/water plate upload, 
+        custom reference and assay list 
 
     """
     upload_col1, upload_col2 = st.columns(2)
 
     if PCR_stage == 1:
-        
+    
+        pcr_plate_barcode = upload_col1.text_input('PCR Plate Barcode', \
+            placeholder='Type in the barcode for PCR plate', key='pcr_plate_barcode')
+
+        taqwater_barcode_area = upload_col2.empty()
+
         uploaded_primer_layouts = upload_col1.file_uploader('Upload Primer Plate Layouts', \
             key='primer_uploader', type='csv', accept_multiple_files=True)
 
         uploaded_primer_volumes = upload_col2.file_uploader('Upload Primer Plate Volumes', \
             key='primer_vol_uploader', type='csv', accept_multiple_files=True)
-
-        pcr_plate_barcode = upload_col2.text_input('PCR Plate Barcode', \
-            placeholder='Type in the barcode for PCR plate', key='pcr_plate_barcode')
-
 
         if uploaded_primer_layouts:
             if 'primer_layouts_upload' not in st.session_state or \
@@ -289,10 +295,12 @@ def upload_pcr_files(PCR_stage = 'all'):
 
 
     if PCR_stage == 2:
-        uploaded_index_layouts = upload_col1.file_uploader('Upload i7i5 Index Plate Layout', \
+        taqwater_barcode_area = upload_col1.empty()
+
+        uploaded_index_layouts = upload_col2.file_uploader('Upload i7i5 Index Plate Layout', \
             key='index_uploader', type='csv', accept_multiple_files=True)
 
-        uploaded_index_volumes = upload_col2.file_uploader('Upload i7i5 Index Plate Volumes', \
+        uploaded_index_volumes = upload_col1.file_uploader('Upload i7i5 Index Plate Volumes', \
             key='index_vol_uploader', type='csv', accept_multiple_files=True)
 
         uploaded_amplicon_plates = upload_col2.file_uploader('Upload extra amplicon plates', \
@@ -321,55 +329,49 @@ def upload_pcr_files(PCR_stage = 'all'):
                 success = st.session_state['experiment'].add_amplicon_manifests(uploaded_amplicon_plates)
                 st.session_state['amplicon_plate_upload'] = [uap.name for uap in uploaded_amplicon_plates]
      
-    taqwater_barcode = upload_col1.text_input('Taq and Water Plate Barcode', \
-        placeholder='Type in the barcode for taq+water plate', key='taq_water_barcode')
+    if show_general:
+        taqwater_barcode = taqwater_barcode_area.text_input('Taq and Water Plate Barcode', \
+            placeholder='Type in the barcode for taq+water plate', key='taq_water_barcode')
 
-    upload_col1.write('')
-    upload_col1.write('')
-    upload_col1.write('')
-    upload_col1.write('')
+        extra_upload_exp = st.expander('Extra Upload Options')
 
+        extra_col1, extra_col2 = extra_upload_exp.columns(2)
 
-    uploaded_taqwater_plates = upload_col1.file_uploader('Upload Taq and Water Plates', \
-        key='taq_water_upload', type='csv', accept_multiple_files=True)
+        uploaded_taqwater_plates = extra_col1.file_uploader('Upload Taq and Water Plates', \
+            key='taq_water_upload', type='csv', accept_multiple_files=True)
 
-    upload_col2.write('')
-    upload_col2.write('')
-    upload_col2.write('')
-    upload_col2.write('')
+        uploaded_references = extra_col2.file_uploader('Upload Custom Reference File', \
+            key='ref_uploader', type=['txt','fa','fasta'], accept_multiple_files=True)
 
-    uploaded_references = upload_col1.file_uploader('Upload Custom Reference File', \
-        key='ref_uploader', type=['txt','fa','fasta'], accept_multiple_files=True)
-
-    uploaded_assaylists = upload_col2.file_uploader('Upload Assay List', \
-        key='assaylist_uploader', type=['txt','csv'], accept_multiple_files=True)
+        uploaded_assaylists = extra_col1.file_uploader('Upload Assay List', \
+            key='assaylist_uploader', type=['txt','csv'], accept_multiple_files=True)
 
 
-    # compare list of all names against the previously loaded list. Only runs if the whole file list changes
-    if uploaded_references:
-        if 'reference_upload' not in st.session_state or \
-                st.session_state['reference_upload'] != [upr.name for upr in uploaded_references]:
-            success = st.session_state['experiment'].add_references(uploaded_references)
-            # set the list of uploaded files so we don't accidentally add them again
-            st.session_state['reference_upload'] = [upr.name for upr in uploaded_references]
-        
-    if uploaded_assaylists:
-        if 'assaylist_upload' not in st.session_state or \
-            st.session_state['assaylist_upload'] != [ual.name for ual in uploaded_assaylists]:
-            success = st.session_state['experiment'].add_assaylists(uploaded_assaylists)
-            st.session_state['assaylist_upload'] = [ual.name for ual in uploaded_assaylists]
-         
-    if taqwater_barcode:
-        if 'taqwater_barcode_upload' not in st.session_state or \
-                st.session_state['taqwater_barcode_upload'] != taqwater_barcode:
-            success = st.session_state['experiment'].add_standard_taqwater_plates([taqwater_barcode])
-            st.session_state['taqwater_barcode_upload'] = taqwater_barcode
+        # compare list of all names against the previously loaded list. Only runs if the whole file list changes
+        if uploaded_references:
+            if 'reference_upload' not in st.session_state or \
+                    st.session_state['reference_upload'] != [upr.name for upr in uploaded_references]:
+                success = st.session_state['experiment'].add_references(uploaded_references)
+                # set the list of uploaded files so we don't accidentally add them again
+                st.session_state['reference_upload'] = [upr.name for upr in uploaded_references]
+            
+        if uploaded_assaylists:
+            if 'assaylist_upload' not in st.session_state or \
+                st.session_state['assaylist_upload'] != [ual.name for ual in uploaded_assaylists]:
+                success = st.session_state['experiment'].add_assaylists(uploaded_assaylists)
+                st.session_state['assaylist_upload'] = [ual.name for ual in uploaded_assaylists]
+            
+        if taqwater_barcode:
+            if 'taqwater_barcode_upload' not in st.session_state or \
+                    st.session_state['taqwater_barcode_upload'] != taqwater_barcode:
+                success = st.session_state['experiment'].add_standard_taqwater_plates([taqwater_barcode])
+                st.session_state['taqwater_barcode_upload'] = taqwater_barcode
 
-    if uploaded_taqwater_plates:
-        if 'taqwater_upload' not in st.session_state or \
-                st.session_state['taqwater_upload'] != [utp.name for utp in uploaded_taqwater_plates]:  
-            success = st.session_state['experiment'].add_standard_taqwater_plates(uploaded_taqwater_plates)
-            st.session_state['taqwater_upload'] = [utp.name for utp in uploaded_taqwater_plates]
+        if uploaded_taqwater_plates:
+            if 'taqwater_upload' not in st.session_state or \
+                    st.session_state['taqwater_upload'] != [utp.name for utp in uploaded_taqwater_plates]:  
+                success = st.session_state['experiment'].add_standard_taqwater_plates(uploaded_taqwater_plates)
+                st.session_state['taqwater_upload'] = [utp.name for utp in uploaded_taqwater_plates]
 
 
     #with st.container():

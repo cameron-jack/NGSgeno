@@ -347,11 +347,13 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     comp_warning_area.markdown(f'<p style="color:#B92A5D">{comp_warning}</p>', unsafe_allow_html=True)
 
 
-def display_primer_components(assay_usage, show_primers=True):
+def display_primer_components(assay_usage, expander=True):
+    if expander:
+        primer_components_exp = st.expander('Primer Wells, Uses, and Volumes', expanded=False)
+        ptab1, ptab2, ptab3, ptab4 = primer_components_exp.tabs(["Wells", "Uses", "Volume μL", "Available μL"])
+    else:
+        ptab1, ptab2, ptab3, ptab4 = st.tabs(["Wells", "Uses", "Volume μL", "Available μL"])
 
-    primer_components_exp = st.expander('Primer Wells, Uses, and Volumes', expanded=False)
-    ptab1, ptab2, ptab3, ptab4 = primer_components_exp.tabs(["Wells", "Uses", "Volume μL", "Available μL"])
-    
     #Set up columns
     col_size = 3
     num_cols = 6
