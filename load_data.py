@@ -306,13 +306,11 @@ def upload_pcr_files(PCR_stage = 1, show_general=True):
         uploaded_amplicon_plates = upload_col2.file_uploader('Upload extra amplicon plates', \
             key='amplicon_plate_uploader', type='csv', accept_multiple_files=True)
 
-
         if uploaded_index_layouts:
             if 'index_layout_upload' not in st.session_state or \
                 st.session_state['index_layout_upload'] != [uil.name for uil in uploaded_index_layouts]:
                 success = st.session_state['experiment'].add_index_layouts(uploaded_index_layouts)
                 st.session_state['barcode_layout_upload'] = [uil.name for uil in uploaded_index_layouts]
-                            
         
         if uploaded_index_volumes:
             if 'index_volume_upload' not in st.session_state or \
@@ -321,7 +319,6 @@ def upload_pcr_files(PCR_stage = 1, show_general=True):
                 success = st.session_state['experiment'].add_index_volumes(uploaded_index_volumes)
                 st.session_state['index_volume_upload'] = [uiv.name for uiv in uploaded_index_volumes]
         
-        #improv
         if uploaded_amplicon_plates:
             if 'amplicon_plate_upload' not in st.session_state or \
                     st.session_state['amplicon_plate_upload'] != \
@@ -373,107 +370,8 @@ def upload_pcr_files(PCR_stage = 1, show_general=True):
                 success = st.session_state['experiment'].add_standard_taqwater_plates(uploaded_taqwater_plates)
                 st.session_state['taqwater_upload'] = [utp.name for utp in uploaded_taqwater_plates]
 
-
-    #with st.container():
-    #    with st.expander('Upload reference sequences, assay lists, taq and water plates, primer plates, barcode plates, PCR plate barcodes', expanded=False):
-
-    #        upload_option = st.radio('Upload Options:', ('Custom Reference File', 'Assay List', 'Taq and Water Plates', 
-    #                'Primer Plates', 'Barcode Plates', 'PCR Plates (barcodes only)'))
-
-    #        if upload_option == 'Custom Reference File':
-    #            uploaded_references = st.file_uploader('Upload custom reference file', key='ref_uploader', type=['txt','fa','fasta'], accept_multiple_files=True)
-    #            if uploaded_references:
-    #                # compare list of all names against the previously loaded list. Only runs if the whole file list changes
-    #                if 'reference_upload' not in st.session_state or \
-    #                        st.session_state['reference_upload'] != [upr.name for upr in uploaded_references]:
-    #                    success = st.session_state['experiment'].add_references(uploaded_references)
-    #                    # set the list of uploaded files so we don't accidentally add them again
-    #                    st.session_state['reference_upload'] = [upr.name for upr in uploaded_references]
-                
-
-    #        if upload_option == 'Assay List':
-    #            uploaded_assaylists = st.file_uploader('Upload assay list', key='assaylist_uploader', type=['txt','csv'], accept_multiple_files=True)
-    #            if uploaded_assaylists:
-    #                # compare list of all names against the previously loaded list. Only runs if the whole file list changes
-    #                if 'assaylist_upload' not in st.session_state or \
-    #                        st.session_state['assaylist_upload'] != [upa.name for upa in uploaded_assaylists]:
-    #                    success = st.session_state['experiment'].add_assaylists(uploaded_assaylists)
-    #                    # set the list of uploaded files so we don't accidentally add them again
-    #                    st.session_state['assaylist_upload'] = [upa.name for upa in uploaded_assaylists]
-
-    #        if upload_option == 'Primer Plates':
-    #            uploaded_primer_layouts = st.file_uploader('Upload primer plate layouts', 
-    #                    key='primer_uploader', type='csv', accept_multiple_files=True)
-    #            if uploaded_primer_layouts:
-    #                # compare list of all names against the previously loaded list. Only runs if the whole file list changes
-    #                if 'primer_layouts_upload' not in st.session_state or \
-    #                        st.session_state['primer_layouts_upload'] != [upl.name for upl in uploaded_primer_layouts]:
-    #                    success = st.session_state['experiment'].add_primer_layouts(uploaded_primer_layouts)
-    #                    # set the list of uploaded files so we don't accidentally add them again
-    #                    st.session_state['primer_layouts_upload'] = [upl.name for upl in uploaded_primer_layouts]
-    #            uploaded_primer_volumes = st.file_uploader('Upload primer plate volumes', key='primer_vol_uploader', type='csv', accept_multiple_files=True)
-    #            if uploaded_primer_volumes:
-    #                # compare list of all names against the previously loaded list. Only runs if the whole file list changes
-    #                if 'primer_volumes_upload' not in st.session_state or \
-    #                        st.session_state['primer_volumes_upload'] != [upv.name for upv in uploaded_primer_volumes]:
-    #                    success = st.session_state['experiment'].add_primer_volumes(uploaded_primer_volumes)
-    #                    # set the list of uploaded files so we don't accidentally add them again
-    #                    st.session_state['primer_volumes_upload'] = [upv.name for upv in uploaded_primer_volumes]
-
-    #        if upload_option == 'Index Plates':
-    #            uploaded_barcode_layouts = st.file_uploader('Upload i7i5 barcode plate layout', 
-    #                    key='barcode_uploader', type='csv', accept_multiple_files=True)
-    #            if uploaded_barcode_layouts:
-    #                # compare list of all names against the previously loaded list. Only runs if the whole file list changes
-    #                if 'barcode_layout_upload' not in st.session_state or \
-    #                        st.session_state['barcode_layout_upload'] != [ubl.name for ubl in uploaded_barcode_layouts]:
-    #                    success = st.session_state['experiment'].add_barcode_layouts(uploaded_barcode_layouts)
-    #                    # set the list of uploaded files so we don't accidentally add them again
-    #                    st.session_state['barcode_layout_upload'] = [ubl.name for ubl in uploaded_barcode_layouts]
-                            
-    #            uploaded_barcode_volumes = st.file_uploader('Upload i7i5 barcode plate volumes', key='barcode_vol_uploader',
-    #                    type='csv', accept_multiple_files=True)
-    #            if uploaded_barcode_volumes:
-    #                # compare list of all names against the previously loaded list. Only runs if the whole file list changes
-    #                if 'barcode_volume_upload' not in st.session_state or \
-    #                        st.session_state['barcode_volume_upload'] != [ubv.name for ubv in uploaded_barcode_volumes]:
-    #                    success = st.session_state['experiment'].add_barcode_volumes(uploaded_barcode_volumes)
-    #                    # set the list of uploaded files so we don't accidentally add them again
-    #                    st.session_state['barcode_volume_upload'] = [ubv.name for ubv in uploaded_barcode_volumes]
-
-    #        #Option to add taq water
-    #        if upload_option == 'Taq and Water Plates':
-    #            taqwater_barcode = st.text_input('Taq+Water plate barcode', placeholder='Type in the barcode for taq+water plate', key='taq_water_barcode')
-    #            if taqwater_barcode:
-    #                # compare file name against the previously loaded file. Only runs if the file changes
-    #                if 'taqwater_barcode_upload' not in st.session_state or \
-    #                        st.session_state['taqwater_barcode_upload'] != taqwater_barcode:
-    #                    success = st.session_state['experiment'].add_standard_taqwater_plates([taqwater_barcode])
-    #                    # set the uploaded file in cache so we don't accidentally add it again
-    #                    st.session_state['taqwater_barcode_upload'] = taqwater_barcode
-
-    #            uploaded_taqwater_plates = st.file_uploader('Upload taq and water resevoir plates', 
-    #                    key='taq_water_upload', type='csv', accept_multiple_files=True)
-    #            if uploaded_taqwater_plates:
-    #                # compare list of all names against the previously loaded list. Only runs if the whole file list changes
-    #                if 'taqwater_upload' not in st.session_state or \
-    #                        st.session_state['taqwater_upload'] != [utp.name for utp in uploaded_taqwater_plates]:  
-    #                    success = st.session_state['experiment'].add_standard_taqwater_plates(uploaded_taqwater_plates)
-    #                    # set the list of uploaded files so we don't accidentally add them again
-    #                    st.session_state['taqwater_upload'] = [utp.name for utp in uploaded_taqwater_plates]
-
-    #        if upload_option == 'PCR Plates (barcodes only)':
-    #            pcr_plate_barcode = st.text_input('PCR plate barcode', placeholder='Type in the barcode for PCR plate', key='pcr_plate_barcode')
-    #            if pcr_plate_barcode:
-    #                # compare file name against the previously loaded file. Only runs if the file changes
-    #                if 'pcr_barcode_upload' not in st.session_state or \
-    #                        st.session_state['pcr_barcode_upload'] != pcr_plate_barcode:
-    #                    success = st.session_state['experiment'].add_pcr_plates([pcr_plate_barcode])
-    #                    # set the uploaded file in cache so we don't accidentally add it again
-    #                    st.session_state['pcr_barcode_upload'] = pcr_plate_barcode
-
 def upload_miseq_fastqs(exp):
-    st.markdown('<h4 style="color:#000000">Add Miseq FASTQ files to experiment</h4>', unsafe_allow_html=True)
+    st.markdown('<h5 style="color:#f63366">Add Miseq FASTQ files to experiment</h5>', unsafe_allow_html=True)
     fastq_path = dc.st_directory_picker("Select location of Miseq FASTQ files")
     fastq_files = [f for f in fastq_path.glob('*.fastq*')] + [f for f in fastq_path.glob('*.fq*')]
     if len(fastq_files) > 0:

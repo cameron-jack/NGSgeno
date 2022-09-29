@@ -19,6 +19,7 @@ from pathlib import PurePath, Path
 import itertools
 from math import fabs, factorial, floor, ceil
 from io import StringIO
+import inspect
 
 import pandas as pd
 
@@ -111,12 +112,13 @@ def data_table(key, options=False, table_option=None):
     if options==True:
         table_option = data_container.selectbox('View Data options',
                                 ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'),\
-                                             key='select' + str(key))
+                                             key='select_' + str(key))
     elif options==False and table_option is None:
         table_option = 'Summary'
 
     data_table_title = data_container.title('')
-    data_table_title.markdown(f'<h5 style="text-align:center;color:#7eaecc">{table_option}</h5>', unsafe_allow_html=True)
+    data_table_title.markdown(f'<h5 style="text-align:center;color:#7eaecc">{table_option}</h5>',\
+        unsafe_allow_html=True)
 
     #exp = st.session_state['experiment']
 
@@ -213,9 +215,13 @@ def data_table(key, options=False, table_option=None):
             pass
                 
     elif table_option == 'View Log':
+        func = sys._getframe(1).f_code.co_name
+        func_line = inspect.getframeinfo(sys._getframe(1)).lineno
+        print("Function", func, type(func_line))
         # display the experiment log and let the user filter the view in a number of ways
         df = pd.DataFrame(st.session_state['experiment'].get_log(30),\
                      columns=st.session_state['experiment'].get_log_header())
+        print(df)
         if 'view_box_size' in st.session_state:
             height = st.session_state['view_box_size']
         else:
@@ -313,8 +319,6 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     if PCR_stage == 2:
         if taq_avail < (primer_taq_vol + index_taq_vol) or water_avail < (primer_water_vol + index_water_vol):
             comp_warning = "Upload more taq and water plates to fulfill PCR 2 requirements"
-    
-        PCR2_cols = pcr_comps_area.columns(col_size)
         
         required_water_vol_str = str(index_water_vol/1000)+ ' μl'
         water_avail_vol_str = str(water_avail_vol) + ' μl'
@@ -344,7 +348,7 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     pcr_cols[2].markdown('**Available taq volume**')
     pcr_cols[3].write(avail_taq_vol_str)
 
-    comp_warning_area.markdown(f'<p style="color:#B92A5D">{comp_warning}</p>', unsafe_allow_html=True)
+    comp_warning_area.markdown(f'<p style="color:#f63366">{comp_warning}</p>', unsafe_allow_html=True)
 
 
 def display_primer_components(assay_usage, expander=True):
@@ -410,7 +414,8 @@ def display_primer_components(assay_usage, expander=True):
             avail_col[r+0].write(p)
             avail_col[r+1].write(primer_avail_vols.get(p,0)/1000)
 
-def st_directory_picker(label='Selected directory:', initial_path=Path(), searched_file_types=['fastq','fastq.gz','fq','fq.gz']):
+def st_directory_picker(label='Selected directory:', initial_path=Path(),\
+            searched_file_types=['fastq','fastq.gz','fq','fq.gz']):
     """
     Streamlit being JS/AJAX has no ability to select a directory. This is for server paths only.
     Initial code by Aidin Jungo here: https://github.com/aidanjungo/StreamlitDirectoryPicker
@@ -429,7 +434,7 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(), search
     
     with col1:
         st.markdown("Back")
-        if st.button("⬅️") and "path" in st.session_state:
+        if st.button("←") and "path" in st.session_state:
             st.session_state['path'] = st.session_state['path'].parent
             st.experimental_rerun()
 
@@ -443,9 +448,11 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(), search
     with col3:
         if subdirectories:
             st.markdown("Select")
-            if st.button("➡️") and "path" in st.session_state:
+            if st.button("→") and "path" in st.session_state:
                 st.session_state['path'] = Path(st.session_state['path'], st.session_state['new_dir'])
                 st.experimental_rerun()
-    st.markdown(f'<h5 style="color:#000000">Contains {len(contains_files)} files of type {",".join(searched_file_types)}</h5>', unsafe_allow_html=True)
+    st.markdown(\
+            f'<h5 style="color:#000000">Contains {len(contains_files)} files of type {",".join(searched_file_types)}</h5>',\
+                    unsafe_allow_html=True)
 
     return st.session_state['path']

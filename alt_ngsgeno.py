@@ -50,10 +50,15 @@ def create_run_folder(newpath):
     exp = Experiment(name=newpath.lstrip('run_'))
     return exp, ''
 
-#generalise for index stage..
-def generate_picklist(DNA_plates, PCR_plates, taqwater_plates):
+#generalise
+def generate_picklist(plates, pcr_stage=1):
     picklist_file_col, picklist_btn_col = st.columns(2)
-    if st.session_state['experiment'].check_ready_echo1(DNA_plates, PCR_plates, taqwater_plates):
+    if pcr_stage == 1:
+        DNA_plates = plates[0]
+        PCR_plates = plates[1]
+        taqwater_plates = plates[2]
+        error_msgs = []
+        
         success = st.session_state['experiment'].generate_echo_PCR1_picklist_interface(DNA_plates,\
                 PCR_plates, taqwater_plates)
                         
@@ -62,8 +67,8 @@ def generate_picklist(DNA_plates, PCR_plates, taqwater_plates):
                 st.session_state['experiment'].get_echo_PCR1_picklist_filepaths()
 
             if not dna_picklist_paths:
-                            picklist_file_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
-                                    'No DNA picklist available</h4>', unsafe_allow_html=True)
+                error_msgs.append('No DNA picklist available')
+
             else:
                 for dpp in dna_picklist_paths:
                     dpp_file = dpp.split('/')[1]
@@ -74,8 +79,7 @@ def generate_picklist(DNA_plates, PCR_plates, taqwater_plates):
                             data=open(dpp, 'rt'), file_name=dpp, mime='text/csv', key='dna_download_'+dpp)
 
             if not primer_picklist_paths:
-                picklist_file_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
-                        'No primer picklist available</h4>', unsafe_allow_html=True)
+                error_msgs.append('No primer picklist available')
             else:
                 for ppp in primer_picklist_paths:
                     ppp_file = ppp.split('/')[1]
@@ -86,8 +90,7 @@ def generate_picklist(DNA_plates, PCR_plates, taqwater_plates):
                             data=open(ppp, 'rt'), file_name=ppp, mime='text/csv', key='primer_download_'+dpp)
             
             if not taqwater_picklist_paths:
-                picklist_file_col.markdown('<h4 style="color:#ff0000;text-align:center">'+\
-                        'No taq+water picklist available</h4>', unsafe_allow_html=True)
+                error_msgs.append('No taq/water picklist available')
             else:
                 for tpp in taqwater_picklist_paths:
                     tpp_file = tpp.split('/')[1]
@@ -97,39 +100,140 @@ def generate_picklist(DNA_plates, PCR_plates, taqwater_plates):
                     picklist_btn_col.download_button(label=f"Download", 
                             data=open(tpp, 'rt'), file_name=tpp, mime='text/csv', key='taqwater_download_'+tpp)
 
+            if error_msgs:
+                for msg in error_msgs:
+                    picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
+                            unsafe_allow_html=True)
+    
+    if pcr_stage == 2:                      
+        PCR_plates = plates[0]
+        taqwater_plates = plates[1]
+        index_plates = plates[2]
+        amplicon_plates = plates[3]
+        error_msgs = []
 
-#generalise for index stage
-def plate_checklist_expander(available_nimbus):
-    included_DNA_plates = set()
+        success = st.session_state['experiment'].generate_echo_PCR2_picklist_interface(\
+                                PCR_plates, index_plates, taqwater_plates,\
+                                            amplicon_plates)
+        if success:
+            index_picklist_paths, taqwater_picklist_paths, amplicon_picklist_paths =\
+                    st.session_state['experiment'].get_echo_PCR2_picklist_filepaths()
+            
+            # amplicon_picklist_paths is a list
+            if not index_picklist_paths:
+                error_msgs.append('No index picklist available')
+
+            else:
+                for ipp in index_picklist_paths:
+                    ipp_file = ipp.split('/')[1]
+                    picklist_file_col.markdown(\
+                                f'<p style="text-align:right;color:#4b778c;padding:5px">{ipp_file}</p>',\
+                                        unsafe_allow_html=True)
+                    picklist_btn_col.download_button(label=f"Download",\
+                            data=open(ipp, 'rt'), file_name=ipp, mime='text/csv',\
+                                    key='index_download_'+ipp)
+
+            if not amplicon_picklist_paths:
+                error_msgs.append('No amplicon picklist available')
+                
+            else:
+                for app in amplicon_picklist_paths:
+                    app_file = app.split('/')[1]
+                    picklist_file_col.markdown(\
+                                f'<p style="text-align:right;color:#4b778c;padding:5px">{app_file}</p>',\
+                                        unsafe_allow_html=True)
+                    picklist_btn_col.download_button(label=f"Download",\
+                            data=open(app, 'rt'), file_name=app, mime='text/csv',\
+                                    key='amplicon_download_'+app)
+
+            if not taqwater_picklist_paths:
+                error_msgs.append('No taq/water picklist available')
+
+            else:
+                for tpp in taqwater_picklist_paths:
+                    tpp_file = tpp.split('/')[1]
+                    picklist_file_col.markdown(\
+                                f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_file}</p>',\
+                                        unsafe_allow_html=True)
+                    picklist_btn_col.download_button(label=f"Download",\
+                                data=open(tpp, 'rt'), file_name=tpp, mime='text/csv',\
+                                        key='taqwater_download_'+tpp)
+            if error_msgs:
+                for msg in error_msgs:
+                    picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
+                            unsafe_allow_html=True)
+
+def plate_checklist_expander(available_nimbus, pcr_stage=1):
     included_PCR_plates = set()
     included_taqwater_plates = set()
-    checklist_col = st.columns(3)
+    checklist_col = st.columns(4)
+    pcr_plate_title = "PCR Plates"
+    taqwater_plate_title = "Taq/Water Plates"
 
-    checklist_col[0].markdown('**DNA Plates**')
-    checklist_col[1].markdown('**PCR Plates**')
-    checklist_col[2].markdown('**Taq/Water Plates**')
-
-    assay_usage = st.session_state['experiment'].get_assay_usage()
-
-    for nim in available_nimbus:
-        echo_filename=nim.split('/')[1].split('.')[0]
-        inc_dna = checklist_col[0].checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
-        if inc_dna:
-            included_DNA_plates.add(echo_filename.split('_')[-2])
+    if pcr_stage == 1:
+        included_DNA_plates = set()
+        dna_plate_title = "DNA Plates"
+        
+        checklist_col[0].markdown(f'**{dna_plate_title}**')
+        for nim in available_nimbus:
+            echo_filename=nim.split('/')[1].split('.')[0]
+            inc_dna = checklist_col[0].checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
+            if inc_dna:
+                included_DNA_plates.add(echo_filename.split('_')[-2])
     
-    for pcr_pid in st.session_state['experiment'].get_pcr_plates():
-        inc_pcr = checklist_col[1].checkbox(file_io.unguard_pbc(pcr_pid, silent=True),\
-                        value=True, key='chk_box_pcr_'+pcr_pid)
-        if inc_pcr:
-            included_PCR_plates.add(pcr_pid)
+        checklist_col[1].markdown(f'**{pcr_plate_title}**')
+        for pcr_pid in st.session_state['experiment'].get_pcr_plates():
+            inc_pcr = checklist_col[1].checkbox(file_io.unguard_pbc(pcr_pid, silent=True),\
+                            value=True, key='chk_box_pcr_'+pcr_pid)
+            if inc_pcr:
+                included_PCR_plates.add(pcr_pid)
 
-    for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
-        inc_taqwater = checklist_col[2].checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
+        checklist_col[2].markdown(f'**{taqwater_plate_title}**')
+        for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
+            inc_taqwater = checklist_col[2].checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
+                        value=True, key='chk_box_taqwater_'+taqwater_pid)
+            if inc_taqwater:
+                included_taqwater_plates.add(taqwater_pid)
+        
+        return included_DNA_plates, included_PCR_plates, included_taqwater_plates
+
+    if pcr_stage == 2:
+        included_index_plates = set()
+        included_amplicon_plates = set()
+        #could make a for loop
+
+        index_plate_title = "Index Plates"
+        amplicon_plate_title = "Amplicon Plates"
+
+        checklist_col[0].markdown(f'**{pcr_plate_title}**')
+        for pcr_pid in st.session_state['experiment'].get_pcr_plates():
+            inc_pcr = checklist_col[0].checkbox(file_io.unguard_pbc(pcr_pid, silent=True),
+                    value=True, key='chk_box_pcr_'+pcr_pid)
+            if inc_pcr:
+                included_PCR_plates.add(pcr_pid)
+
+        checklist_col[1].markdown(f'**{taqwater_plate_title}**')
+        for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
+            inc_taqwater = checklist_col[1].checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
                     value=True, key='chk_box_taqwater_'+taqwater_pid)
-        if inc_taqwater:
-            included_taqwater_plates.add(taqwater_pid)
-    
-    return included_DNA_plates, included_PCR_plates, included_taqwater_plates
+            if inc_taqwater:
+                included_taqwater_plates.add(taqwater_pid)
+
+        checklist_col[2].markdown(f'**{index_plate_title}**')
+        for index_pid in st.session_state['experiment'].get_index_plates():
+            inc_index = checklist_col[2].checkbox(file_io.unguard_pbc(index_pid, silent=True),
+                                                value=True, key='chk_box_index_'+index_pid)
+            if inc_index:
+                included_index_plates.add(index_pid)
+        
+        checklist_col[3].markdown(f'**{amplicon_plate_title}**')
+        # for amplicon_pid in st.session_state['experiment'].get_amplicon_plates():
+        #         amplicon_index = checklist_col[3].checkbox(file_io.unguard_pbc(amplicon_pid, silent=True), 
+        #                                                      value=True, key='chk_box_amplicon_'+amplicon_pid)
+        #         if amplicon_index:
+        #             included_amplicon_plates.add(amplicon_pid)
+
+        return included_PCR_plates, included_taqwater_plates, included_index_plates, included_amplicon_plates
             
 
 def main():
@@ -160,23 +264,25 @@ def main():
         return
 
     run_folder = ex_folder_col.selectbox("Select a run folder to open", existing_run_folders)
+    error_msg=''
 
-    error_msg_area = new_folder_col.empty()
-    error_msg=None
-
+    #error message comes up now after entering a new folder name - need to fix
     if add_run_folder:
         add_run_folder_str = 'run_' + add_run_folder
         exp, msg = create_run_folder(add_run_folder_str)
         if exp:
             exp.save()                                                                      
             st.session_state['experiment'] = exp
-            add_run_folder = None
             st.experimental_rerun()
         else:
             if 'already exists' in msg:
                 error_msg = "Folder name already exists"
             else:
                 error_msg = "Fatal path error: " + msg
+        
+
+        new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
+                unsafe_allow_html=True)
 
     if 'stage' not in st.session_state:
             st.session_state['stage'] = None
@@ -197,20 +303,19 @@ def main():
                     st.experimental_rerun()
                 else:
                     error_msg = "Invalid experiment file in: " + ch_run_path
+        
+        new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
+                unsafe_allow_html=True)
     
         ch_exp_folder = None
 
-    if error_msg:
-        error_msg_area.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
-                 unsafe_allow_html=True)
-    
     if st.session_state['experiment']:
         exp = st.session_state['experiment']
         
         pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Genotyping", "Review"]
         pipeline_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
 
-        stage_list = ['load', 'nimbus', 'primer', 'index','miseq', 'allele']
+        stage_list = ['load', 'nimbus', 'primer', 'index','miseq', 'allele', 'genotyping', 'review']
 
         if st.session_state['folder']:
             for i in range(6):
@@ -224,15 +329,8 @@ def main():
         if st.session_state['folder']:
             default_tab = st.session_state['tab']
             
-        
-        
-
         #Load data
         if pipeline_stage == 0:
-            # if st.session_state['folder']:
-            #     default_tab = st.session_state['tab']
-            # else:
-            #     default_tab = 1
 
             load_data_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Load Data", description=""),
@@ -257,10 +355,6 @@ def main():
         
         #Nimbus
         if pipeline_stage == 1:
-            if st.session_state['folder']:
-                default_tab = st.session_state['tab']
-            else:
-                default_tab = 1
             
             nim_tab1_err = ''
             nimbus_title = ''
@@ -268,7 +362,7 @@ def main():
             nimbus_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
                 stx.TabBarItemData(id=2, title="Upload", description="Nimbus output files"),
-                stx.TabBarItemData(id=3, title="View", description="Data")
+                stx.TabBarItemData(id=3, title="View Data", description="")
             ], default=default_tab, return_type=int)
 
             if not st.session_state['experiment'].dest_sample_plates:
@@ -358,9 +452,6 @@ def main():
     
                 nim_tab2_title_area.markdown(f'<h5 style="text-align:center;color:#f63366">{nim_tab2_title}</h5>',\
                                 unsafe_allow_html=True)
-                # if files_str:
-                #     nim_upload_area.markdown(f'<p style="text-align:center;color:#4b778c">{files_str}</p>',\
-                #             unsafe_allow_html=True)
 
             #view data
             if nimbus_tab == 3:
@@ -370,12 +461,6 @@ def main():
 
         #Primer PCR
         if pipeline_stage == 2:
-
-            # if st.session_state['folder']:
-            #     default_tab = st.session_state['tab']
-            # else:
-            #     default_tab = 1
-
             primer_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="PCR 1", description="Components"),
                 stx.TabBarItemData(id=2, title="Provide", description="Plates"),
@@ -383,74 +468,64 @@ def main():
             ], default=default_tab, return_type=int)
             
             nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+            nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+            missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
             available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
 
-            if primer_tab == '1':
+            if primer_tab == 1:
                 primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
-                
-                nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
-                available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
-                
                 if available_nimbus:
                     with primer_checklist_exp:
                         included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                    plate_checklist_expander(available_nimbus)
-
-                    # included_DNA_plates = set()
-                    # included_PCR_plates = set()
-                    # included_taqwater_plates = set()
-
-                    # assay_usage = st.session_state['experiment'].get_assay_usage()
-
-                    # for nim in available_nimbus:
-                    #     echo_filename=nim.split('/')[1].split('.')[0]
-                    #     inc_dna = echo1_dna_col.checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
-                    #     if inc_dna:
-                    #         included_DNA_plates.add(echo_filename.split('_')[-2])
-                    
-                    # for pcr_pid in st.session_state['experiment'].get_pcr_plates():
-                    #     inc_pcr = echo1_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True),\
-                    #                  value=True, key='chk_box_pcr_'+pcr_pid)
-                    #     if inc_pcr:
-                    #         included_PCR_plates.add(pcr_pid)
-
-                    # for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
-                    #     inc_taqwater = echo1_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
-                    #                 value=True, key='chk_box_taqwater_'+taqwater_pid)
-                    #     if inc_taqwater:
-                    #         included_taqwater_plates.add(taqwater_pid)
+                                    plate_checklist_expander(available_nimbus, pcr_stage=1)
                     
                     if included_DNA_plates:
                         assay_usage = st.session_state['experiment'].get_assay_usage(dna_plate_list=included_DNA_plates)
                         #assay_usage = st.session_state['experiment'].get_assay_usage()
                         display_pcr_components(assay_usage, 1)
+                else:
+                    no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
+                    st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
+                            unsafe_allow_html=True)
                 
             #provide plates
-            if primer_tab == '2':
+            if primer_tab == 2:
                 primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
-                upload_pcr_files(1)
                 if available_nimbus:
-                    with primer_checklist_exp:
-                        included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                    plate_checklist_expander(available_nimbus)
+                    upload_pcr_files(1)
+                    if available_nimbus:
+                        with primer_checklist_exp:
+                            included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
+                                        plate_checklist_expander(available_nimbus, pcr_stage=1)
 
             #generate picklists
-            if primer_tab == '3':
+            if primer_tab == 3:
                 primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
                 if available_nimbus:
                     with primer_checklist_exp:
                         included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                    plate_checklist_expander(available_nimbus)
+                                    plate_checklist_expander(available_nimbus,pcr_stage=1)
 
                     if included_DNA_plates:
-                        _,picklist_button_col,_ = st.columns([2, 2, 1])
+                        if st.session_state['experiment'].check_ready_echo1(included_DNA_plates,\
+                                    included_PCR_plates,\
+                                            included_taqwater_plates):
 
-                        echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',\
+                            plates = [included_DNA_plates, included_PCR_plates, included_taqwater_plates]
+                            _,picklist_button_col,_ = st.columns([2, 2, 1])
+
+                            echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',\
                                     key='echo_pcr1_go_button')
 
-                        if echo_picklist_go:
-                            generate_picklist(included_DNA_plates, included_PCR_plates, included_taqwater_plates)
+                            picklist_button_col.write('')
+
+                            if echo_picklist_go:
+                                generate_picklist(plates, pcr_stage=1)
+                    
+                    else:
+                        no_dna_msg = "Include at least one DNA plate to carry on with the pipeline"
+                        st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_dna_msg}</h5',\
+                            unsafe_allow_html=True)
 
             st.session_state['tab'] = primer_tab
 
@@ -461,69 +536,94 @@ def main():
                 stx.TabBarItemData(id=1, title="PCR 2", description="Components"),
                 stx.TabBarItemData(id=2, title="Provide", description="Plates"),
                 stx.TabBarItemData(id=3, title="Generate", description="Picklists")
-            ], default=1)
+            ], default=1, return_type=int)
 
-            dna_picklist_path = primer_picklist_path = taqwater_picklist_path = error_msgs = None
-
-            if index_tab == '1':
+            nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+            missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
+            available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
+            #PCR components
+            if index_tab == 1:
                 index_checklist_exp = st.expander('Plate Checklist', expanded=False)
-                echo2_pcr_col, echo2_index_col, echo2_taqwater_col, echo2_amplicon_col = index_checklist_exp.columns(4)
-                echo2_pcr_col.markdown('**PCR Plates**')
-                echo2_index_col.markdown('**Index Plates**')
-                echo2_taqwater_col.markdown('**Taq/Water Plates**')
-                echo2_amplicon_col.markdown('**Amplicon Plates**')
-
-                nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
-                missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
-                available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
-
                 if available_nimbus:
-                    included_PCR_plates = set()
-                    included_taqwater_plates = set()
-                    included_index_plates = set()
-                    included_amplicon_plates = set()
+                    with index_checklist_exp:
+                        included_PCR_plates, included_taqwater_plates, included_index_plates,\
+                                    included_amplicon_plates =\
+                                    plate_checklist_expander(available_nimbus, pcr_stage=2)
+                
+                    assay_usage = st.session_state['experiment'].get_assay_usage()
+                    display_pcr_components(assay_usage, 2)
+                else:
+                    no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
+                    st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
+                            unsafe_allow_html=True)
 
-                    for pcr_pid in st.session_state['experiment'].get_pcr_plates():
-                        inc_pcr = echo2_pcr_col.checkbox(file_io.unguard_pbc(pcr_pid, silent=True),
-                                value=True, key='chk_box_pcr_'+pcr_pid)
-                        if inc_pcr:
-                            included_PCR_plates.add(pcr_pid)
+            #plate info
+            if index_tab == 2:
+                index_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                if available_nimbus:
+                    with index_checklist_exp:
+                        included_PCR_plates, included_taqwater_plates, included_index_plates,\
+                                    included_amplicon_plates =\
+                                    plate_checklist_expander(available_nimbus, pcr_stage=2)
 
-                    for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
-                        inc_taqwater = echo2_taqwater_col.checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
-                                value=True, key='chk_box_taqwater_'+taqwater_pid)
-                        if inc_taqwater:
-                            included_taqwater_plates.add(taqwater_pid)
+                    upload_pcr_files(2)
 
-                    for index_pid in st.session_state['experiment'].get_taqwater_plates():
-                        inc_index = echo2_index_col.checkbox(file_io.unguard_pbc(index_pid, silent=True),
-                                                            value=True, key='chk_box_index_'+index_pid)
-                        if inc_index:
-                            included_index_plates.add(index_pid)
+            #generate picklist
+            picklist_err = ''
+            if index_tab == 3:
+                index_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                if available_nimbus:
+                    with index_checklist_exp:
+                        included_PCR_plates, included_taqwater_plates, included_index_plates,\
+                                    included_amplicon_plates =\
+                                    plate_checklist_expander(available_nimbus, pcr_stage=2)
 
-            if index_tab == '2':
-                upload_pcr_files(2)
-            
+                    if st.session_state['experiment'].check_ready_echo2(included_PCR_plates,\
+                                included_taqwater_plates, included_index_plates):
+
+                        _,picklist_button_col,_ = st.columns([2, 2, 1])
+
+                        plates = [included_PCR_plates, included_taqwater_plates, included_index_plates,\
+                                    included_amplicon_plates]
+
+                        echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
+                                    key='echo_pcr2_go_button')
+
+                        picklist_button_col.write('')
+
+                        if echo_picklist_go:
+                            generate_picklist(plates, pcr_stage=2)
+
+                    else:
+                        picklist_err = "Include at lease one PCR plate, "+\
+                            "one index plate and one taq/water plate to carry on with the pipeline"
+                
+                        st.markdown(f'<h5 style="color:#f63366;text-align:center">{picklist_err}</h5>',\
+                                unsafe_allow_html=True)
+                    
             st.session_state['tab'] = index_tab
             
-
         #Miseq
         if pipeline_stage == 4:
             miseq_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Download", description="Samplesheet"),
                 stx.TabBarItemData(id=2, title="Upload", description="Sequence Files"),
-            ], default=1)
-
+            ], default=1, return_type=int)
+            st.write('')
             exp = st.session_state['experiment']
-            if miseq_tab == '1':
+            if miseq_tab == 1:
                 _, miseq_col1, miseq_col2, _ =  st.columns([2,1,1,2])
 
-                for fp in exp.get_miseq_samplesheets():
-                    miseq_col1.markdown(f'<strong style="color:#486e7a">{fp}</strong>', unsafe_allow_html=True)
-                
-                    download_miseq = miseq_col2.button(label='Download', key='dnld_samplesheet_'+str(fp))
+                if exp.get_miseq_samplesheets():
+                    for fp in exp.get_miseq_samplesheets():
+                        fp_name = str(fp).split('/')[1]
+                        miseq_col1.markdown(f'<strong style="color:#486e7a">{fp_name}</strong>', unsafe_allow_html=True)
+                    
+                        download_miseq = miseq_col2.button(label='Download', key='dnld_samplesheet_'+str(fp))
+                else:
+                    no_miseq_msg = ""
 
-            if miseq_tab == '2':
+            if miseq_tab == 2:
                 upload_miseq_fastqs(exp)
 
             st.session_state['tab'] = miseq_tab
@@ -536,16 +636,16 @@ def main():
                 allele_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
                 stx.TabBarItemData(id=2, title="Allele Calling", description=""),
-                stx.TabBarItemData(id=3, title="View", description=""),
-                ], default=1)
+                stx.TabBarItemData(id=3, title="View Data", description=""),
+                ], default=1, return_type=int)
 
-                if allele_tab == '1':
+                if allele_tab == 1:
                     st.write('')
                     upload_miseq_fastqs(exp)
                     st.session_state['test_status'] = None
 
             elif 'test_status' in st.session_state and st.session_state['test_status'] == 'call':
-                if allele_tab == '2':
+                if allele_tab == 2:
                     num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
                     num_cpus = st.number_input(\
                                 label="Number of processes to run simultaneously (defaults to # of CPUs)",\
@@ -561,7 +661,7 @@ def main():
                     st.session_state['test_status'] = None
 
             elif 'test_status' in st.session_state and st.session_state['test_status'] == 'view':
-                if allele_tab == '3':
+                if allele_tab == 3:
                     st.session_state['test_status'] = 'view'
                     data_table(key=2, options=True)
                     st.session_state['test_status'] = None
@@ -569,19 +669,19 @@ def main():
                 st.session_state['test_status'] = None
                 allele_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
-                stx.TabBarItemData(id=2, title="Call", description="Alleles"),
-                stx.TabBarItemData(id=3, title="View", description="Data"),
+                stx.TabBarItemData(id=2, title="Allele Calling", description=""),
+                stx.TabBarItemData(id=3, title="View Data", description=""),
                 ], default=1)
 
                 #upload sequences
-                if allele_tab == '1':
+                if allele_tab == 1:
                     st.session_state['test_status'] = 'upload'
                     st.write('')
                     upload_miseq_fastqs(exp)
                     st.session_state['test_status'] = None
                 
                 #allele calling
-                if allele_tab == '2':
+                if allele_tab == 2:
                     st.session_state['test_status'] = 'call'
                     num_unique_seq = st.text_input("Number of unique sequences per work unit", "1")
                     num_cpus = st.number_input(\
@@ -598,12 +698,20 @@ def main():
                     st.session_state['test_status'] = None
                     
                 #view data
-                if allele_tab == '3':
+                if allele_tab == 3:
                     st.session_state['test_status'] = 'view'
                     data_table(key=2, options=True)
                     st.session_state['test_status'] = None
                 
             st.session_state['tab'] = allele_tab
+        
+        #Genotyping
+        if pipeline_stage == 6:
+            pass
+
+        #Review
+        if pipeline_stage == 7:
+            pass
         
         st.session_state['stage'] = stage_list[pipeline_stage]
         st.session_state['folder'] = None

@@ -168,7 +168,6 @@ def folder_sb():
                 elif ch_run_path.endswith(exp.name):
                     # success!
                     st.session_state['experiment'] = exp
-                    st.write(exp)
                     st.experimental_rerun()
                 else:
                     error_msg = "Invalid experiment file in: " + ch_run_path

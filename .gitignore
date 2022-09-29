@@ -3,6 +3,7 @@
 config.ini
 __pycache__
 .vs
+.DS_Store
 /tmpocp07f36.html
 /tmpg_pacjr8.html
 /tmp4u4o3lia.html
@@ -57,11 +58,7 @@ __pycache__
 /20210301
 /20210228
 /20210224
-<<<<<<< HEAD
-/NGS_env
-/run_*
-=======
 /run_*
 /NGS_env
 error_msg.txt
->>>>>>> master
+ 
