@@ -9,19 +9,17 @@
 @last_edit: 2022-08-29
 @edit_comment:
 
-Display methods for the main GUI pipeline. Methods in include data_table, display_pcr_componenent, display_pcr_componenent 
-as well as aggrid_interactive_table and delete_entries
-
+Display methods for the main GUI pipeline. Methods in include data_table, display_pcr_componenent,
+display_pcr_componenent as well as aggrid_interactive_table and delete_entries
 """
 
-from ctypes.wintypes import WIN32_FIND_DATAA
-from msilib.schema import File
 import os
 import sys
 from pathlib import PurePath, Path
 import itertools
 from math import fabs, factorial, floor, ceil
 from io import StringIO
+import inspect
 
 import pandas as pd
 
@@ -51,17 +49,20 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
     options = GridOptionsBuilder.from_dataframe(
         df, enableRowGroup=True, enableValue=True, enablePivot=True
     )
-
+    #print('aggrid1', st.session_state['experiment'].name)
+    
     options.configure_side_bar()
+    #st.write(df)
 
-    options.configure_selection("multiple", use_checkbox=False, rowMultiSelectWithClick=False, suppressRowDeselection=False)
+    options.configure_selection("multiple", use_checkbox=False, \
+                rowMultiSelectWithClick=False, suppressRowDeselection=False)
     selection = AgGrid(
         df,
         enable_enterprise_modules=True,
         height=grid_height,
         gridOptions=options.build(),
         # _available_themes = ['streamlit','light','dark', 'blue', 'fresh','material']
-        theme="streamlit",
+        theme="fresh",
         #update_mode=GridUpdateMode.MODEL_CHANGED,
         update_mode=GridUpdateMode.SELECTION_CHANGED,
         key=key,
@@ -93,36 +94,41 @@ def delete_entries(exp, entries):
     print('delete_entries ran')
 
 
-def data_table(key, view='Summary'):
+def data_table(key, options=False, table_option=None):
     """
     Shows the loaded data in a table.
     Args:
         key (Any): key for the table so that it is a unique widget, if there's more than one in a page
-        view ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'): Different options for viewing the data
+        options (bool): Shows different options for table view in a selectbox if True
+        table_option (str): If options is False, can choose a table_option instead ('Summary', 'Edit Table', 
+        'Plate View', 'Explore Assays', 'View Log)
 
-    Need to fix the delete selection part - clicking no should reset the table view. Also deleting the entry doesn't affect the pipeline further down.
+    Need to fix the delete selection part - clicking no should reset the table view. 
+    Also deleting the entry doesn't affect the pipeline further down.
     """
 
-    #Need to rearrange
-    table_container = st.container()
-    log_container = st.container()
-    plate_view_container = st.container()
-    explore_assay_container = st.container()
-    view_log_container = st.container()
+    data_container = st.container()
 
-    assay_col1, assay_col2, assay_col3, assay_col4, assay_col5 = explore_assay_container.columns(5)
+    if options==True:
+        table_option = data_container.selectbox('View Data options',
+                                ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'),\
+                                             key='select_' + str(key))
+    elif options==False and table_option is None:
+        table_option = 'Summary'
 
-    exp = st.session_state['experiment']
+    data_table_title = data_container.title('')
+    data_table_title.markdown(f'<h5 style="text-align:center;color:#7eaecc">{table_option}</h5>',\
+        unsafe_allow_html=True)
+
+    #exp = st.session_state['experiment']
 
     #Experiment summary - table
 
-    if view == 'Summary':
+    if table_option == 'Summary':
         selection = []
         st.session_state['nuke'] = ''
 
         #st.session_state['delete_selection'] = False
-
-        
         if st.session_state['experiment']:
             #st.write(st.session_state['experiment'].name)
             df = st.session_state['experiment'].inputs_as_dataframe()
@@ -132,44 +138,45 @@ def data_table(key, view='Summary'):
                 #print(f"{type(df)=}, {df=})")
                 selection = aggrid_interactive_table(df, key=key)
             #print(f"{type(selection)=} {selection=}")
-            if selection['selected_rows']:
-                # only do the code below if this is a fresh selection
-                rows = selection["selected_rows"]
-                lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
-                if 'previous_delete_group_selection' not in st.session_state:
-                    st.session_state['previous_delete_group_selection'] = None
-                if lines and st.session_state['previous_delete_group_selection'] != lines:
-                    table_container.markdown(f"**You selected {lines}**")
-                    del_col1, del_col2, del_col3, _ = table_container.columns([2,1,1,4])
-                    del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                    delete_button = del_col2.button("Yes",on_click=delete_entries, 
-                            args=(st.session_state['experiment'], selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
-                    mistake_button = del_col3.button("No",on_click=delete_entries, args=(st.session_state['experiment'], []), 
-                            key="keep " + str(key), help=f"Keep {lines}")
+            # if selection['selected_rows']:
+            #     # only do the code below if this is a fresh selection
+            #     rows = selection["selected_rows"]
+            #     lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
+            #     if 'previous_delete_group_selection' not in st.session_state:
+            #         st.session_state['previous_delete_group_selection'] = None
+            #     if lines and st.session_state['previous_delete_group_selection'] != lines:
+            #         data_container.markdown(f"**You selected {lines}**")
+            #         del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
+            #         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
+            #         delete_button = del_col2.button("Yes",on_click=delete_entries, 
+            #                 args=(st.session_state['experiment'], selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
+            #         mistake_button = del_col3.button("No",on_click=delete_entries, args=(st.session_state['experiment'], []), 
+            #                 key="keep " + str(key), help=f"Keep {lines}")
                     
-                    if mistake_button:
-                        st.session_state['previous_delete_group_selection'] = lines
-                        lines = None
-                        selection['selected_rows'] = None
-                        st.experimental_rerun()
-                    elif delete_button:
-                        selection['selected_rows'] = None
-                        lines = None
-                        st.session_state['previous_delete_group_selection'] = None
-                        st.experimental_rerun()
+            #         if mistake_button:
+            #             st.session_state['previous_delete_group_selection'] = lines
+            #             lines = None
+            #             selection['selected_rows'] = None
+            #             st.experimental_rerun()
+            #         elif delete_button:
+            #             selection['selected_rows'] = None
+            #             lines = None
+            #             st.session_state['previous_delete_group_selection'] = None
+            #             st.experimental_rerun()
 
-    elif view == 'Edit Table':
+    elif table_option == 'Edit Table':
         # Show plates in table form and let the user edit them to fix minor mistakes
         pass
 
     #Show a visual of the plates
-    elif view == 'Plate View':
+    elif table_option == 'Plate View':
         plate_ids = []
-        for pid in exp.plate_location_sample:
-            plate_ids.append(pid.strip('p'))
-        #plate_view_container.write(pids)
-        plate_selectbox = plate_view_container.selectbox('Plate ID to view', plate_ids, key=key)
-        #plate_input = plate_view_container.text_input('Plate ID to view', key='plate_input1')
+        for pid in st.session_state['experiment'].plate_location_sample:
+            plate_ids.append(file_io.unguard(pid))
+
+        #Let user choose which plate to view
+        plate_selectbox = data_container.selectbox('Plate ID to view', plate_ids, key=key)
+        #plate_input = data_container.text_input('Plate ID to view', key='plate_input1')
         if plate_selectbox:
             plate_id = file_io.guard_pbc(plate_selectbox)
             if plate_id in st.session_state['experiment'].plate_location_sample:
@@ -178,15 +185,19 @@ def data_table(key, view='Summary'):
                 #    print(heatmap_str, file=outf)
                 components.html(heatmap_str, height=700, scrolling=True)
             else:
-                plate_view_container.markdown('<p style="color:#FF0000">Plate barcode not found in experiment</p>', unsafe_allow_html=True)
+                plate_barcode_error_msg = "Plate barcode not found in experiment"
         # let user choose plates and then display them as a plate layout with well contents on hover
         # plate_col1, plate_col2 = st.columns(2)
         # for plate in st.session_state['experiment'].plate_location_sample:
         #    break
         # heatmap_str = generate_heatmap_html(plate_id, st.session_state['experiment'], scaling=1)
         # components.html(heatmap_str, height=600, scrolling=True)
+        plate_barcode_error = data_container.markdown(f'<p style="color:#FF0000">{plate_barcode_error_msg}</p>',\
+                unsafe_allow_html=True)
 
-    elif view == 'Explore Assays':  # Assay explorer
+    elif table_option == 'Explore Assays':
+        assay_col1, assay_col2, assay_col3, assay_col4, assay_col5 = data_container.columns(5)
+          # Assay explorer
         # display allowed and denied assays, missing assays, used assays, etc.
         with assay_col1:
             pass
@@ -203,37 +214,48 @@ def data_table(key, view='Summary'):
         with assay_col5:
             pass
                 
-    elif view == 'View Log':
+    elif table_option == 'View Log':
+        func = sys._getframe(1).f_code.co_name
+        func_line = inspect.getframeinfo(sys._getframe(1)).lineno
+        print("Function", func, type(func_line))
         # display the experiment log and let the user filter the view in a number of ways
-        df = pd.DataFrame(st.session_state['experiment'].get_log(30), columns=exp.get_log_header())
-        if 'view_box_size' in st.session_state:
-            height = st.session_state['view_box_size']
+        log_entries = st.session_state['experiment'].get_log(30)
+        if len(log_entries) == 0:
+            st.write('No entries currently in the log')
         else:
-            height = 250
-        log_container.dataframe(df, height=height)
+            df = pd.DataFrame(st.session_state['experiment'].get_log(30),\
+                     columns=st.session_state['experiment'].get_log_header())
+            print(df)
+            if 'view_box_size' in st.session_state:
+                height = st.session_state['view_box_size']
+            else:
+                height = 250
+            data_container.dataframe(df, height=height)
 
 
-def display_pcr_components(assay_usage, PCR_stage='all'):
+def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     """
-    Expander widget that shows the required componenents for each PCR reaction, including wells, PCR plates, taq+water plates, index pairs 
+    Expander widget that shows the required componenents for each PCR reaction, 
+    including wells, PCR plates, taq+water plates, index pairs 
     Args:
         assay_usage: from Experiment.get_assay_usage
-        PCR_stage(1, 2, 'all'): 1 = Echo Primer stage, 2 = Echo Indexing, all = Both
+        PCR_stage (1, 2): 1 = Echo Primer stage, 2 = Echo Indexing
+        show_general (bool): if True show all of the general information for PCR reactions,
+        including user supplied plates.  
     
     """
     AFTER_NIM_WELLS = 384
+    pcr_comps_area = st.container()
     
-    #pcr_components_exp = st.expander('Required Componenents for PCR Reactions', expanded=False)
-    pcr_components_container = st.container()
-    _,filter_col1,_,filter_col2, _ = pcr_components_container.columns([1,5,1,5,1])
+    _,filter_col1,_,filter_col2, _ = pcr_comps_area.columns([1,5,1,5,1])
     col_size = [6, 4, 6, 4]
-    req_cols = pcr_components_container.columns(col_size)
-
+    
     if assay_usage:
         primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
                 st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
         reactions = sum([v for v in assay_usage.values()])
-        index_remain, index_avail, index_vol_capacity = st.session_state['experiment'].get_index_remaining_available_volume(assay_usage=assay_usage)
+        index_remain, index_avail, index_vol_capacity =\
+                     st.session_state['experiment'].get_index_remaining_available_volume(assay_usage=assay_usage)
         
     else:
         reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
@@ -242,87 +264,72 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
                 st.session_state['experiment'].get_index_remaining_available_volume()
 
     taq_avail, water_avail, pids = st.session_state['experiment'].get_taqwater_avail()
-
-    if 'assay_filter' not in st.session_state:
-        st.session_state['assay_filter'] = 1
-
-        filter_assays = filter_col1.button('Filter assays', key='assay_filter_button', disabled=True)
-        unfilter_assays = filter_col2.button('Unfilter assays', key='assay_unfilter_button')
-
-        if unfilter_assays:
-            st.session_state['assay_filter'] = 0
-
-        if filter_assays:
+    
+    if show_general:
+        if 'assay_filter' not in st.session_state:
             st.session_state['assay_filter'] = 1
 
-    required_wells = ceil(reactions/AFTER_NIM_WELLS)
-    user_supplied_PCR = ', '.join([file_io.unguard_pbc(p, silent=True) for p in st.session_state['experiment'].get_pcr_plates()])
-    user_supplied_taqwater = ', '.join([file_io.unguard_pbc(p, silent=True) for p in st.session_state['experiment'].get_taqwater_avail()[2]])
+            filter_assays = filter_col1.button('Filter assays', key='assay_filter_button', disabled=True)
+            unfilter_assays = filter_col2.button('Unfilter assays', key='assay_unfilter_button')
 
-    #Wells and plates
-    req_cols[0].markdown('<h6 style="color:#B1298D">Required reaction wells</h6>', unsafe_allow_html=True)
-    req_cols[1].write(str(reactions))
+            if unfilter_assays:
+                st.session_state['assay_filter'] = 0
 
-    req_cols[2].markdown('<h6 style="color:#B1298D">Required PCR plates</h6>', unsafe_allow_html=True)
-    req_cols[3].write(str(required_wells))
+            if filter_assays:
+                st.session_state['assay_filter'] = 1
 
-    req_cols[0].markdown('<h6 style="color:#000000">User supplied PCR plates</h6>', unsafe_allow_html=True)
-    req_cols[1].write(user_supplied_PCR)
+        required_wells = ceil(reactions/AFTER_NIM_WELLS)
+        user_supplied_PCR = ', '.join([file_io.unguard_pbc(p, silent=True)\
+                    for p in st.session_state['experiment'].get_pcr_plates()])
+        user_supplied_taqwater = ', '.join([file_io.unguard_pbc(p, silent=True)\
+                    for p in st.session_state['experiment'].get_taqwater_avail()[2]])
 
-    req_cols[2].markdown('<h6 style="color:#000000">User supplied taq+water plates</h6>', unsafe_allow_html=True)
-    req_cols[3].write(user_supplied_taqwater)
+        comp_warning_area = pcr_comps_area.empty()
+        comp_warning = ''
 
-    pcr_components_container.write('')
-
+        req_cols = pcr_comps_area.columns(col_size)
+        #Wells and plates
+        req_cols[0].markdown('**Number of required PCR plates**', unsafe_allow_html=True)
+        req_cols[1].write(str(required_wells))
+        req_cols[0].markdown('**Number of required reaction wells**', unsafe_allow_html=True)
+        req_cols[1].write(str(reactions))
+        req_cols[2].markdown('**User supplied PCR plates**', unsafe_allow_html=True)
+        if user_supplied_PCR:
+            req_cols[3].write(user_supplied_PCR)
+        else:
+            req_cols[3].write('None')
+        req_cols[2].markdown('**User supplied taq/water plates**', unsafe_allow_html=True)
+        if user_supplied_PCR:
+            req_cols[3].write(user_supplied_taqwater)
+        else:
+            req_cols[3].write('None')
+        pcr_comps_area.write('')
 
     #PCR1 and PCR2 taq and water 
     taq_avail_vol = taq_avail/1000
     water_avail_vol = water_avail/1000
 
-    if PCR_stage == 1 or PCR_stage == 'all':
-        #PCR1 componenents
-        pcr_components_container.markdown('<h6 style="color:#B1298D">PCR 1</h6>', unsafe_allow_html=True)
+    pcr_cols = pcr_comps_area.columns(col_size)
+
+    if PCR_stage == 1:
         if taq_avail < primer_taq_vol or water_avail < primer_water_vol:
-            pcr_components_container.markdown('<p style="color:#B92A5D"> Upload more taq and water plates to fulfill PCR 1 requirements </p>', unsafe_allow_html=True)
-    
-        PCR1_cols = pcr_components_container.columns(col_size)
+            comp_warning = 'Provide more taq and water plates to fulfill PCR 1 requirements'
 
-        PCR1_cols[0].markdown('**Required water volume**', unsafe_allow_html=True)
-        PCR1_cols[1].write(str(primer_water_vol/1000)+' μl')
+        required_water_vol_str = str(primer_water_vol/1000) + ' μl'
+        water_avail_vol_str = str(water_avail_vol)+' μl'
+        required_taq_vol_str = str(primer_taq_vol/1000)+' μl'
+        avail_taq_vol_str = str(taq_avail_vol)+' μl'
 
-        PCR1_cols[2].markdown('**Available water volume**')
-        PCR1_cols[3].write(str(water_avail_vol)+' μl')
-
-        PCR1_cols[0].markdown('**Required taq volume**')
-        PCR1_cols[1].write(str(primer_taq_vol/1000)+' μl')
-
-        PCR1_cols[2].markdown('**Available taq volume**')
-        PCR1_cols[3].write(str(taq_avail_vol)+' μl')
-        pcr_components_container.write('')
-
-    if PCR_stage == 2 or PCR_stage == 'all':
-        #PCR 2 components
-        pcr_components_container.markdown('<h6 style="color:#B1298D">PCR 2</h6>', unsafe_allow_html=True)
-    
+    if PCR_stage == 2:
         if taq_avail < (primer_taq_vol + index_taq_vol) or water_avail < (primer_water_vol + index_water_vol):
-            pcr_components_container.markdown('<p style="color:#B92A5D"> Upload more taq and water plates to fulfill PCR 2 requirements </p>', unsafe_allow_html=True)
-    
-        PCR2_cols = pcr_components_container.columns(col_size)
+            comp_warning = "Upload more taq and water plates to fulfill PCR 2 requirements"
+        
+        required_water_vol_str = str(index_water_vol/1000)+ ' μl'
+        water_avail_vol_str = str(water_avail_vol) + ' μl'
+        required_taq_vol_str = str(index_taq_vol/1000)+ ' μl'
+        avail_taq_vol_str = str(taq_avail_vol)+ ' μl'
 
-        PCR2_cols[0].markdown('**Required water volume**')
-        PCR2_cols[1].write(str(index_water_vol/1000)+' μl')
-
-        PCR2_cols[2].markdown('**Available water volume**')
-        PCR2_cols[3].write(str(water_avail_vol)+' μl')
-
-        PCR2_cols[0].markdown('**Required taq volume**')
-        PCR2_cols[1].write(str(index_taq_vol/1000)+' μl')
-
-        PCR2_cols[2].markdown('**Available taq volume**')
-        PCR2_cols[3].write(str(taq_avail_vol)+' μl')
-    
-        #Index
-        index_cols = pcr_components_container.columns(col_size)
+        index_cols = pcr_comps_area.columns(col_size)
 
         if index_vol_capacity > (index_avail - index_remain):
             index_pairs_allowed = '<p style="color:green">'+str(index_vol_capacity)+'</p>'
@@ -336,12 +343,25 @@ def display_pcr_components(assay_usage, PCR_stage='all'):
         index_cols[0].markdown('**Index Pairs Allowed by Volume**')
         index_cols[1].markdown(index_pairs_allowed, unsafe_allow_html=True)
 
+    pcr_cols[0].markdown('**Required water volume**')
+    pcr_cols[1].write(required_water_vol_str)
+    pcr_cols[2].markdown('**Available water volume**')
+    pcr_cols[3].write(water_avail_vol_str)
+    pcr_cols[0].markdown('**Required taq volume**')
+    pcr_cols[1].markdown(required_taq_vol_str)
+    pcr_cols[2].markdown('**Available taq volume**')
+    pcr_cols[3].write(avail_taq_vol_str)
 
-def display_primer_components(assay_usage, show_primers=True):
+    comp_warning_area.markdown(f'<p style="color:#f63366">{comp_warning}</p>', unsafe_allow_html=True)
 
-    primer_components_exp = st.expander('Primer Wells, Uses, and Volumes', expanded=False)
-    ptab1, ptab2, ptab3, ptab4 = primer_components_exp.tabs(["Wells", "Uses", "Volume μL", "Available μL"])
-    
+
+def display_primer_components(assay_usage, expander=True):
+    if expander:
+        primer_components_exp = st.expander('Primer Wells, Uses, and Volumes', expanded=False)
+        ptab1, ptab2, ptab3, ptab4 = primer_components_exp.tabs(["Wells", "Uses", "Volume μL", "Available μL"])
+    else:
+        ptab1, ptab2, ptab3, ptab4 = st.tabs(["Wells", "Uses", "Volume μL", "Available μL"])
+
     #Set up columns
     col_size = 3
     num_cols = 6
@@ -398,8 +418,8 @@ def display_primer_components(assay_usage, show_primers=True):
             avail_col[r+0].write(p)
             avail_col[r+1].write(primer_avail_vols.get(p,0)/1000)
 
-
-def st_directory_picker(label='Selected directory:', initial_path=Path(), searched_file_types=['fastq','fastq.gz','fq','fq.gz']):
+def st_directory_picker(label='Selected directory:', initial_path=Path(),\
+            searched_file_types=['fastq','fastq.gz','fq','fq.gz']):
     """
     Streamlit being JS/AJAX has no ability to select a directory. This is for server paths only.
     Initial code by Aidin Jungo here: https://github.com/aidanjungo/StreamlitDirectoryPicker
@@ -418,7 +438,7 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(), search
     
     with col1:
         st.markdown("Back")
-        if st.button("⬅️") and "path" in st.session_state:
+        if st.button("←") and "path" in st.session_state:
             st.session_state['path'] = st.session_state['path'].parent
             st.experimental_rerun()
 
@@ -432,9 +452,11 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(), search
     with col3:
         if subdirectories:
             st.markdown("Select")
-            if st.button("➡️") and "path" in st.session_state:
+            if st.button("→") and "path" in st.session_state:
                 st.session_state['path'] = Path(st.session_state['path'], st.session_state['new_dir'])
                 st.experimental_rerun()
-    st.markdown(f'<h5 style="color:#000000">Contains {len(contains_files)} files of type {",".join(searched_file_types)}</h5>', unsafe_allow_html=True)
+    st.markdown(\
+            f'<h5 style="color:#000000">Contains {len(contains_files)} files of type {",".join(searched_file_types)}</h5>',\
+                    unsafe_allow_html=True)
 
     return st.session_state['path']

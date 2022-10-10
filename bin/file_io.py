@@ -6,8 +6,7 @@ if TYPE_CHECKING:
     from experiment import Experiment
 import sys
 import os
-import glob
-from pathlib import PurePath
+from pathlib import Path
 import traceback
 
 """
@@ -434,6 +433,33 @@ def read_stage3_csv():
 #        output_error(exc, msg='Problem matching Nimbus to Echo files. match_nimbus_to_echo_files()')
 #        return [], [], []
 
+#def match_nimbus_to_echo_files(exp: Experiment) -> tuple(list,list,list):
+#    """ Make sure there is a 1-1 match of Nimbus to Echo-COC file.
+#        Assumes plate barcodes are guarded.
+#        Inputs: an Experiment instance
+#        Outputs: three lists (nimbus files, echo files, barcodes not matches by echo files)
+#   """
+#    try:
+#        # Python 3.10
+#        #nfiles = [exp.get_exp_fp(fn) for fn in glob.glob('Nimbus-*.csv', root_dir='run_'+exp.name)]
+#        #efiles = [exp.get_exp_fp(fn) for fn in glob.glob('Echo_384_COC_00??_*.csv', root_dir='run_'+exp.name)]
+#        # Python 3.9
+#        #print(glob.glob('*'))
+#        nim_str = os.path.join('run_'+exp.name, 'Nimbus-*.csv')
+#        echo_str = os.path.join('run_'+exp.name, 'Echo_384_COC_00??_*_0.csv')
+#        nfiles = glob.glob(nim_str) #[exp.get_exp_fp(fn) for fn in glob.glob(nim_str)]
+#        efiles = glob.glob(echo_str) #[exp.get_exp_fp(fn) for fn in glob.glob(echo_str)]
+#        # cleave off the path and file name junk to just get the barcodes
+#        nbc = frozenset(PurePath(fn).name.replace('Nimbus-','').replace('.csv','') for fn in nfiles)
+#        ebc = frozenset(PurePath(fn).name.replace('.csv','').split('_',5)[4] for fn in efiles)
+#        xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
+#        #print(f"{nbc=} {ebc=} {xbc=}")
+#        return nfiles, efiles, xbc
+#    except Exception as exc:
+#        exp.log('Problem matching Nimbus to Echo files', level='Error')
+#        exp.log(traceback.print_exc(limit=2), level='Error')    
+#        return [], [], []
+
 def match_nimbus_to_echo_files(exp: Experiment) -> tuple(list,list,list):
     """ Make sure there is a 1-1 match of Nimbus to Echo-COC file.
         Assumes plate barcodes are guarded.
@@ -441,21 +467,13 @@ def match_nimbus_to_echo_files(exp: Experiment) -> tuple(list,list,list):
         Outputs: three lists (nimbus files, echo files, barcodes not matches by echo files)
    """
     try:
-        # Python 3.10
-        #nfiles = [exp.get_exp_fp(fn) for fn in glob.glob('Nimbus-*.csv', root_dir='run_'+exp.name)]
-        #efiles = [exp.get_exp_fp(fn) for fn in glob.glob('Echo_384_COC_00??_*.csv', root_dir='run_'+exp.name)]
-        # Python 3.9
-        #print(glob.glob('*'))
-        nim_str = os.path.join('run_'+exp.name, 'Nimbus-*.csv')
-        echo_str = os.path.join('run_'+exp.name, 'Echo_384_COC_00??_*_0.csv')
-        nfiles = glob.glob(nim_str) #[exp.get_exp_fp(fn) for fn in glob.glob(nim_str)]
-        efiles = glob.glob(echo_str) #[exp.get_exp_fp(fn) for fn in glob.glob(echo_str)]
+        nimbus_files = list(Path(exp.get_exp_dir()).glob('Nimbus-*.csv'))
+        echo_files = list(Path(exp.get_exp_dir()).glob('Echo_384_COC_00??_*_0.csv'))
         # cleave off the path and file name junk to just get the barcodes
-        nbc = frozenset(PurePath(fn).name.replace('Nimbus-','').replace('.csv','') for fn in nfiles)
-        ebc = frozenset(PurePath(fn).name.replace('.csv','').split('_',5)[4] for fn in efiles)
+        nbc = frozenset(fp.name.replace('Nimbus-','').replace('.csv','') for fp in nimbus_files)
+        ebc = frozenset(fp.name.replace('.csv','').split('_',5)[4] for fp in echo_files)
         xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
-        #print(f"{nbc=} {ebc=} {xbc=}")
-        return nfiles, efiles, xbc
+        return [str(fp) for fp in nimbus_files], [str(fp) for fp in echo_files], xbc
     except Exception as exc:
         exp.log('Problem matching Nimbus to Echo files', level='Error')
         exp.log(traceback.print_exc(limit=2), level='Error')    

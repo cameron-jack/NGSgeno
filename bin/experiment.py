@@ -131,6 +131,8 @@ class Experiment():
         self.log('Info: Unlocking experiment. Modification is now possible. There should be good reason for this!')
         self.locked = False
 
+    ### functions for returning locally held file paths
+
     def get_exp_dir(self):
         """ return the experiment directory name """
         return 'run_' + self.name
@@ -158,7 +160,7 @@ class Experiment():
         Return the absolute path to the where cleaned fastq files should be stored
         Create it if it doesn't exist
         """
-        dp = self.get_exp_fp('clean')
+        dp = self.get_exp_fp('cleaned')
         if not os.path.exists(dp):
             os.mkdir(dp)
         return dp
@@ -173,8 +175,23 @@ class Experiment():
             os.mkdir(dp)
         return dp
 
+    def get_raw_fastq_pairs(self):
+        """ return a sorted list of tuple(R1_path, R2_path) to raw FASTQ files """
+        valid_pairs = []
+        rdp = self.get_raw_dirpath()
+        r1s = [rdp/Path(f) for f in os.listdir(rdp) if f.endswith('.fastq.gz') and '_R1_' in f]
+        for r1 in r1s:
+            r2 = Path(str(r1).replace('_R1_','_R2_'))
+            if r1.is_file() and r2.is_file():
+                valid_pairs.append((r1,r2))
+            else:
+                if not r1.is_file():
+                    self.log(f'Warning: {r1} expected raw FASTQ file does not exist')
+                elif not r2.is_file():
+                    self.log(f'Warning: {r2} expected raw FASTQ file does not exist')
+        return sorted(valid_pairs)
 
-
+    ### functions for handling plates
    
     def add_rodentity_plate_set(self, sample_plate_ids, dna_plate_id):
         """ 
@@ -778,10 +795,31 @@ class Experiment():
                                 self.reference_sequences[uploaded_reference.name] = {str(seqitr.id):str(seqitr.seq) for seqitr in SeqIO.parse(sio, "fasta")}
                         except Exception as exc:
                             self.log(f"Error: Couldn't parse reference file {uploaded_reference.name} {exc}")
+                            self.save()
                             return False
             self.log(f'Success: uploaded {len(self.reference_sequences[uploaded_reference.name])} reference sequences from {uploaded_reference.name}')
         self.save()
         return True
+
+    def generate_targets(self):
+        """ create target file based on loaded references """
+        target_fn = self.get_exp_fp('targets.fa')
+        counter = 0
+        try:
+            with open(target_fn, 'wt') as targetf:
+                for group in self.reference_sequences:
+                    for id in self.reference_sequences[group]:
+                        print(f'>{id}', file=targetf)
+                        print(f'{self.reference_sequences[group][id]}', file=targetf)
+                        counter += 1
+            self.log('Success: created reference sequences file {target_fn} containing {counter} sequences')
+            self.save()
+            return True
+        except Exception as exc:
+            self.log(f'Critical: could not write reference sequences to {target_fn} {exc}')
+            self.save()
+            return False
+        
 
     def add_assaylists(self, uploaded_assaylists):
         """ mapping of assay to primer name - may not be required in future in this capacity.
@@ -1399,7 +1437,20 @@ class Experiment():
             return self.log[::-1]
         return self.log_entries[:-(num_entries+1):-1]
 
-
+    def clear_log(self, message_type=None):
+        """ delete all the log entries with level='Debug' """
+        if message_type is not None:
+            if message_type not in ['Debug','Info','Warning','Error','Critical','Begin','End','Success','Failure']:
+                self.log_entries.append(f"Error: didn't recognise message type {message_type}")
+                self.save()
+                return
+        clean_log = []
+        if message_type is not None:
+            for entry in self.log_entries:
+                if entry[-2] != message_type:
+                    clean_log.append(entry)
+        self.log_entries = clean_log
+        self.save()
 
 #def save_experiment(experiment, exp_path):
 #    """ save experiment details to experiment.json """

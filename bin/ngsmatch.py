@@ -7,6 +7,7 @@
 @version_comment: Runs independently of the pipeline. Removed cache options. 
     Cache is now in memory and always starts empty. Removed logging module. Log is local and saves to file.
     Replaced verbose option with debug option. Error handling updated. ProgramFail exception except is gone.
+    Progress percentage is written to a file name.
     
 @last_edit: 2022-02-16
 @edit_comment: So many edits...
@@ -550,7 +551,14 @@ def get_raw_fastq_pairs(dirpath):
 
 
 def report_progress(rundir, launch_progress, match_progress):
-    """ clear all previous progress files and touch a new file with the launch and match progress values in the name """
+    """
+    Clear all previous progress files and touch a new file with the launch and match progress values in the name
+    Only do the operation is progress is a multiple of 5 to save on disk writes
+    """
+    if launch_progress != 0 and launch_progress % 5 != 0:
+        return
+    if match_progress != 0 and match_progress % 5 != 0:
+        return
     for fn in list(Path(rundir).glob('match_progress_*')):
         os.remove(fn)
     progress_fn = os.path.join(args.rundir,'match_progress_'+str(launch_progress)+'_'+str(match_progress))
