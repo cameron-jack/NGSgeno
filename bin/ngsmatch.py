@@ -54,7 +54,20 @@ import Bio.pairwise2 as pw2
 import Bio.SeqIO
 import Bio.Align as Align
 
-from bin.echo_primer import padwell
+# Add/remove leading 0's from well ids - replicated from util.py to allay path issues
+def padwell(w):
+    "convert a Nimbus well ID to an EP plate (proper/sortable) well ID"
+    return '0'.join([w[0], w[1]]) if len(w)==2 else w
+
+def unpadwell(w):
+    "Echo software doesn't like well IDs like A01, it wants A1"
+    if len(w) == 2:
+        return w
+    try:
+        well = w[0]+w[2] if w[1]=='0' else w
+    except:
+        print(f"unpadwell failed with {w=}")
+    return well
 
 bclen = 8 # length of pseudo barcode
 matchcutoff = 1.5 # should control via command line - must be >1.x
@@ -304,16 +317,16 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
     varsep = " // "
     PID = os.getpid()
     if debug:
-        msg = f"Executing work block {work_block*len(wrs_od_list)} on process {PID}"
-        print(msg, file=sys.stderr)
+        with lock_l:
+            log.append(f"Debug: Executing work block {work_block*len(wrs_od_list)} on process {PID}")
     #cache_hits = 0  # a hit in either the match_cache or miss_cache
     #cache_misses = 0
-    result_list = []
     for wr in wrs_od_list:
         #print(f"wr is type: {type(wr)}", file=sys.stderr)
         # find source files
         if debug:
-            print(f"{PID} Working on: {wr['pcrplate']} {wr['pcrwell']}", file=sys.stderr)
+            with lock_l:
+                log.append(f"Debug:{PID} Working on: {wr['pcrplate']} {wr['pcrwell']}")
         rfn= "*{}-{}_*_R1_*.fastq.gz".format(wr['pcrplate'], padwell(wr['pcrwell']))
         fn1s = glob.glob(os.path.join(rundir, "raw", rfn))
         if not fn1s:
@@ -321,7 +334,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
                 log.append(f"no data for {fn1s}")
             with lock_r:
                 results.append(tuple(wr.values()))
-            return
+            continue
             
         if len(fn1s)>1:
             with lock_l:
@@ -329,7 +342,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
                 log.append(f"   R1 files= {fn1s}")
             with lock_r:
                 results.append(tuple(wr.values()))
-            return
+            continue
             
         fnr1 = fn1s[0]
         fn1 = os.path.basename(fnr1) # just the one file
@@ -342,7 +355,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
                 log.append(f"missing file: {fnr2}")
             with lock_r:
                 results.append(tuple(wr.values()))
-            return
+            continue
         
         # use Windows file separators
         fncs = tuple(os.path.join(rundir,"cleaned", fn) for fn in (fn1, fn2))
@@ -380,7 +393,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
             fnm_fmt = fnmfmt.replace('{}.{}','')
             if debug:
                 with lock_l:
-                    log.append(f"Skipping cleaning and merging of reads for {fnm_fmt}")
+                    log.append(f"Debug: Skipping cleaning and merging of reads for {fnm_fmt}")
             with open(fnlog) as logfile:
                 logdata = logfile.read()
             log1, log2 = logdata.split("======\n", 1)
@@ -405,7 +418,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
                 log.append(f"Pair count mismatch. {cleanCount} != {cleanCount2}")
             with lock_r:
                 results.append(tuple(wr.values()))
-            return
+            continue
                 
         fn = fnms[0] # merged reads file
         with myopen(fn) as src:
@@ -418,7 +431,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
                 log.append(f"Merged counts mismatch. {mergeCount} != {joinCount}") 
             with lock_r:
                 results.append(tuple(wr.values()))
-            return
+            continue
         #assert mergeCount==joinCount # check data is "good"
             
         # we are looking for sequences that match any target in fadict
@@ -441,11 +454,9 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
         low_cov_cutoff = max(mergeCount/20, 50)
         other_count = 0
         mc = dict(match_cache)
-        original_cache_size = len(mc)
-        msc = {}
-        if miss_cache is not None:
-            msc = dict(miss_cache)
-            original_miss_cache_size = len(msc)
+        original_match_cache_size = len(mc)
+        msc = dict(miss_cache)
+        original_miss_cache_size = len(msc)
             #print(PID, 'Miss cache', type(msc), msc)
         for seq, num in seqcnt.most_common():
             if num >= low_cov_cutoff or exhaustive:
@@ -503,18 +514,13 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
             else:
                 match_cnt['other'] += num
                 other_count += 1
-        if len(mc) > original_cache_size:
+        if len(mc) > original_match_cache_size:
             #print(f"{PID} Getting cache lock")
             with lock_c:
-                match_cache.update(mc)
-            #print(f"{PID} leaving cache lock")
-        if miss_cache is not None:
-            if len(msc) > original_miss_cache_size:
-                #print(f"{PID} Size of miss cache: {len(msc)}")
-                #print(f"{PID} Getting miss cache lock")
-                with lock_mc:
-                    miss_cache.update(msc)
-                #print(f"{PID} Leaving miss cache lock")
+                match_cache.update(mc) 
+        if len(msc) > original_miss_cache_size:
+            with lock_mc:
+                miss_cache.update(msc)
         # rename 'other' to include number of separate sequence variations
         match_cnt['other ('+str(other_count)+')'] = match_cnt['other']
         match_cnt['other'] = 0
@@ -526,11 +532,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
         res2 = tuple(x for p in resx for x in p)
         retval = tuple((str(x) for x in tuple(wr.values()) + res1 + res2))
         with lock_r:
-            results.append(retval)
-        return
-    with lock_r:
-        results.append(tuple(wr.values()))
-    return
+            results.append(retval)       
 
 
 def write_log(log, logfn):
@@ -555,15 +557,18 @@ def report_progress(rundir, launch_progress, match_progress):
     Clear all previous progress files and touch a new file with the launch and match progress values in the name
     Only do the operation is progress is a multiple of 5 to save on disk writes
     """
-    if launch_progress != 0 and launch_progress % 5 != 0:
-        return
-    if match_progress != 0 and match_progress % 5 != 0:
-        return
+    progress_files = list(Path(rundir).glob('match_progress_*'))
+    if len(progress_files) == 1:
+        lp = int(str(progress_files[0]).split('_')[-2])
+        mp = int(str(progress_files[0]).split('_')[-1])
+        if lp == launch_progress and mp == match_progress:
+            # no change
+            return
     for fn in list(Path(rundir).glob('match_progress_*')):
         os.remove(fn)
     progress_fn = os.path.join(args.rundir,'match_progress_'+str(launch_progress)+'_'+str(match_progress))
     with open(progress_fn, 'wt') as fp:
-        pass
+        pass  # just touch the file
 
 
 def main(args):
@@ -571,8 +576,6 @@ def main(args):
     Read background data: target reference sequences file
     Then processes merged pairs files producing NGS report.
     """
-    
-
     log = []
     
     log.append('Info: Run with the following command line options:')
@@ -664,36 +667,44 @@ def main(args):
                 while True:
                     reports_waiting = [r for r in reports if not r[0].ready()]
                     if len(reports_waiting) >= NUMPROCS:
-                        time.sleep(0.05 + chunksize/20)
+                        time.sleep(0.05 + chunksize/40)
+                        launch_progress = int(100*(i+1)/ceil(len(wrs)/chunksize))
+                        match_progress = int(100*len([r for r in reports if r[0].ready()])/(len(wrs)/chunksize))
+                        report_progress(args.rundir, launch_progress, match_progress)
                         continue
                     else:
+                        # update caches before we try to launch any more processes
+                        with lock_mtc:
+                            matchc = match_cache
+                        with lock_msc:
+                            missc = miss_cache
+                        msg = f"Debug: Adding work to pool... chunk {i} of size {chunksize}, cache size {len(matchc)}, "+\
+                                f"miss cache size {len(missc)}, outstanding reports {len(reports_waiting)}" 
+                        log.append(msg)
+                        print(msg, file=sys.stderr)
+                
+                        r1 = pool.apply_async(process_well, (i, chunk, args.rundir, targets, matchc, missc, results, logm, lock_mtc, 
+                                lock_msc, lock_r, lock_l, args.exhaustive, args.debug))
+                        reports.append((r1,chunk))
+                        launch_progress = int(100*(i+1)/ceil(len(wrs)/chunksize))
+                        match_progress = int(100*len([r for r in reports if r[0].ready()])/(len(wrs)/chunksize))
+                        report_progress(args.rundir, launch_progress, match_progress)
                         break
-                # update caches before we try to launch any more processes
-                with lock_mtc:
-                    matchc = match_cache
-                with lock_msc:
-                    missc = miss_cache
                 
-                log.append(f"Adding work to pool... chunk {i*chunksize}, cache size {len(matchc)}, miss cache size {len(missc)}")
                 
-                r1 = pool.apply_async(process_well, (i, chunk, args.rundir, targets, matchc, missc, results, logm, lock_mtc, 
-                        lock_msc, lock_r, lock_l, args.exhaustive, args.debug))
-                reports.append((r1,chunk))
-                launch_progress = int(100*(i+1)/ceil(len(wrs)/chunksize))
-                match_progress = int(100*len([r for r in reports if r[0].ready()])/len(wrs))
-                report_progress(args.rundir, launch_progress, match_progress)
-                
-                if i%4 == 0 and i != 0:
-                    time.sleep(2 + chunksize/10)
+                #if i%4 == 0 and i != 0:
+                #    time.sleep(2 + chunksize/10)
 
             print('Waiting on all processes to return')
             while True:
-                match_progress = int(100*len([r for r in reports if r[0].ready()])/len(wrs))
-                report_progress(args.rundir, launch_progress, match_progress)
                 if any([not r[0].ready() for r in reports]):
+                    match_progress = int(100*len([r for r in reports if r[0].ready()])/(len(wrs)/chunksize))
+                    report_progress(args.rundir, launch_progress, match_progress)
                     print('Waiting 1 minute for jobs to complete... you may see many of these messages', file=sys.stderr)
                     time.sleep(60)
                 else:
+                    match_progress = int(100*len([r for r in reports if r[0].ready()])/(len(wrs)/chunksize))
+                    report_progress(args.rundir, launch_progress, match_progress)
                     break
 
             for r in reports:

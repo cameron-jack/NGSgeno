@@ -29,7 +29,6 @@ import streamlit.components.v1 as components
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 from bin.experiment import Experiment, EXP_FN, load_experiment
-from bin.util import output_error
 from bin.util import CAP_VOLS, DEAD_VOLS
 import bin.file_io as file_io
 import bin.db_io as db_io
@@ -104,14 +103,13 @@ def data_table(key, options=False, table_option=None):
         'Plate View', 'Explore Assays', 'View Log)
 
     Need to fix the delete selection part - clicking no should reset the table view. 
-    Also deleting the entry doesn't affect the pipeline further down.
     """
 
     data_container = st.container()
 
     if options==True:
         table_option = data_container.selectbox('View Data options',
-                                ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'View Log'),\
+                                ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'Reference Sequences', 'View Log'),\
                                              key='select_' + str(key))
     elif options==False and table_option is None:
         table_option = 'Summary'
@@ -186,14 +184,15 @@ def data_table(key, options=False, table_option=None):
                 components.html(heatmap_str, height=700, scrolling=True)
             else:
                 plate_barcode_error_msg = "Plate barcode not found in experiment"
+                data_container.markdown(f'<p style="color:#FF0000">{plate_barcode_error_msg}</p>',\
+                unsafe_allow_html=True)
         # let user choose plates and then display them as a plate layout with well contents on hover
         # plate_col1, plate_col2 = st.columns(2)
         # for plate in st.session_state['experiment'].plate_location_sample:
         #    break
         # heatmap_str = generate_heatmap_html(plate_id, st.session_state['experiment'], scaling=1)
         # components.html(heatmap_str, height=600, scrolling=True)
-        plate_barcode_error = data_container.markdown(f'<p style="color:#FF0000">{plate_barcode_error_msg}</p>',\
-                unsafe_allow_html=True)
+        
 
     elif table_option == 'Explore Assays':
         assay_col1, assay_col2, assay_col3, assay_col4, assay_col5 = data_container.columns(5)
@@ -213,6 +212,16 @@ def data_table(key, options=False, table_option=None):
             pass
         with assay_col5:
             pass
+
+    elif table_option == 'Reference Sequences':
+        #print(f"{st.session_state['experiment'].reference_sequences=}", file=sys.stderr)
+        refseq = st.session_state['experiment'].reference_sequences
+        with data_container:
+            for group in refseq:
+                dataset = [[id,refseq[group][id]] for id in refseq[group]]
+                ref_df = pd.DataFrame(dataset, columns=['Name','Sequence'])
+                st.markdown('**'+group+'**')
+                aggrid_interactive_table(ref_df, key='seqs'+group)
                 
     elif table_option == 'View Log':
         func = sys._getframe(1).f_code.co_name

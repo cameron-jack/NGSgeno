@@ -1,6 +1,7 @@
 # from asyncio.windows_utils import pipe
 # from distutils.command.upload import upload
 import os
+from ssl import SSLSession
 import sys
 from pathlib import PurePath
 import itertools
@@ -27,6 +28,7 @@ from bin.makehtml import generate_heatmap_html
 import extra_streamlit_components as stx
 from display_components import data_table, display_pcr_components, display_primer_components
 from load_data import *
+import asyncio
 
 def get_run_folders():
     """ return an alphabetically sorted list of run folders, without their run_ prefix """
@@ -235,7 +237,28 @@ def plate_checklist_expander(available_nimbus, pcr_stage=1):
         #             included_amplicon_plates.add(amplicon_pid)
 
         return included_PCR_plates, included_taqwater_plates, included_index_plates, included_amplicon_plates
-            
+ 
+    
+async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog):
+    while True:
+        progress_files = list(Path(rundir).glob('match_progress_*'))
+        if len(progress_files) == 0:
+            launch_progress = 0
+            match_progress = 0
+        elif len(progress_files) == 1:
+            launch_progress = int(str(progress_files[0]).split('_')[-2])
+            match_progress = int(str(progress_files[0]).split('_')[-1])
+        
+        launch_msg.write('Allele calling task launch progress: '+str(launch_progress)+'%')
+        launch_prog.progress(launch_progress)
+        completion_msg.write('Allele calling task completion progress: '+str(match_progress)+'%')
+        match_prog.progress(match_progress)
+
+        if launch_progress == 100 and match_progress == 100:
+            st.write('Analysis completed')
+            st.session_state['match_running'] = False
+            return
+        await asyncio.sleep(1)
 
 def main():
     st.set_page_config(
@@ -281,7 +304,6 @@ def main():
             else:
                 error_msg = "Fatal path error: " + msg
         
-
         new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
                 unsafe_allow_html=True)
 
@@ -307,8 +329,6 @@ def main():
         
         new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
                 unsafe_allow_html=True)
-    
-        ch_exp_folder = None
 
     if st.session_state['experiment']:
         exp = st.session_state['experiment']
@@ -322,37 +342,32 @@ def main():
             for i in range(6):
                 if st.session_state['stage'] == stage_list[i]:
                     pipeline_stage = i
-
-        if 'tab' not in st.session_state:
-                st.session_state['tab'] = None
-
-        default_tab = 1
-        if st.session_state['folder']:
-            default_tab = st.session_state['tab']
             
         #Load data
         if pipeline_stage == 0:
-
             load_data_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Load Data", description=""),
                 stx.TabBarItemData(id=2, title="View Data", description="")
-            ], default=default_tab, return_type=int)
+            ], return_type=int)
+
+            if not load_data_tab:
+                if 'load_tab' not in st.session_state:
+                    st.session_state['load_tab'] = 1
+                load_data_tab = st.session_state['load_tab']
 
             #view data
             if load_data_tab == 1:
-                
                 load_rodentity_data()
                 load_database_data()
                 load_custom_csv()
+                st.session_state['load_tab'] = 1
 
             #load data
             if load_data_tab == 2:
-                
                 assay_usage = st.session_state['experiment'].get_assay_usage()
-                data_table(key=1, options=True)
+                data_table(key=load_data_tab, options=True)
                 display_primer_components(assay_usage, expander=True)
-                #st.session_state['tab'] = load_data_tab
-            st.session_state['tab'] = load_data_tab
+                st.session_state['load_tab'] = 2
         
         #Nimbus
         if pipeline_stage == 1:
@@ -364,7 +379,12 @@ def main():
                 stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
                 stx.TabBarItemData(id=2, title="Upload", description="Nimbus output files"),
                 stx.TabBarItemData(id=3, title="View Data", description="")
-            ], default=default_tab, return_type=int)
+            ], return_type=int)
+
+            if not nimbus_tab:
+                if 'nimbus_tab' not in st.session_state:
+                    st.session_state['nimbus_tab'] = 1
+                nimbus_tab = st.session_state['nimbus_tab']
 
             if not st.session_state['experiment'].dest_sample_plates:
                 nimbus_title = "Load data inputs to enable Nimbus input file generation."
@@ -415,7 +435,8 @@ def main():
                                  unsafe_allow_html=True)
                  
                         dl_col4.download_button("Download ", open(nf), file_name=nimbus_fn,\
-                                key='nimbus_input'+str(i), help=f"Download Nimbus input file {nf}")    
+                                key='nimbus_input'+str(i), help=f"Download Nimbus input file {nf}") 
+                st.session_state['nimbus_tab'] = 1
 
             #upload nimbus
             if nimbus_tab == 2:
@@ -449,15 +470,14 @@ def main():
                                 #print(nim_output.getvalue().decode("utf-8"))
                                 outf.write(nim_output.getvalue().decode("utf-8").replace('\r\n','\n'))
         
-    
                 nim_tab2_title_area.markdown(f'<h5 style="text-align:center;color:#f63366">{nim_tab2_title}</h5>',\
                                 unsafe_allow_html=True)
+                st.session_state['nimbus_tab'] = 2
 
             #view data
             if nimbus_tab == 3:
-                data_table(key='nimbus', options=True)
-
-            st.session_state['tab'] = nimbus_tab
+                data_table(key=load_data_tab, options=True)
+                st.session_state['nimbus_tab'] = 3
 
         #Primer PCR
         if pipeline_stage == 2:
@@ -465,7 +485,12 @@ def main():
                 stx.TabBarItemData(id=1, title="PCR 1", description="Components"),
                 stx.TabBarItemData(id=2, title="Provide", description="Plates"),
                 stx.TabBarItemData(id=3, title="Generate", description="Picklists")
-            ], default=default_tab, return_type=int)
+            ], return_type=int)
+
+            if not primer_tab:
+                if 'primer_tab' not in st.session_state:
+                    st.session_state['primer_tab'] = 1
+                primer_tab = st.session_state['primer_tab']
             
             nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
             missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
@@ -485,6 +510,7 @@ def main():
                     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                     st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
                             unsafe_allow_html=True)
+                st.session_state['primer_tab'] = 1
                 
             #provide plates
             if primer_tab == 2:
@@ -494,6 +520,7 @@ def main():
                     with primer_checklist_exp:
                         included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
                                 plate_checklist_expander(efs, pcr_stage=1)
+                st.session_state['primer_tab'] = 2
 
             #generate picklists
             if primer_tab == 3:
@@ -522,17 +549,20 @@ def main():
                         no_dna_msg = "Include at least one DNA plate to carry on with the pipeline"
                         st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_dna_msg}</h5',\
                             unsafe_allow_html=True)
-
-            st.session_state['tab'] = primer_tab
+                st.session_state['primer_tab'] = 3
 
         #Index PCR
         if pipeline_stage == 3:
-
             index_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="PCR 2", description="Components"),
                 stx.TabBarItemData(id=2, title="Provide", description="Plates"),
                 stx.TabBarItemData(id=3, title="Generate", description="Picklists")
-            ], default=1, return_type=int)
+            ], return_type=int)
+
+            if not index_tab:
+                if 'index_tab' not in st.session_state:
+                    st.session_state['index_tab'] = 1
+                index_tab = st.session_state['index_tab']
 
             nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
             missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
@@ -552,6 +582,7 @@ def main():
                     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                     st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
                             unsafe_allow_html=True)
+                st.session_state['index_tab'] = 1
 
             #plate info
             if index_tab == 2:
@@ -563,6 +594,7 @@ def main():
                                     plate_checklist_expander(available_nimbus, pcr_stage=2)
 
                     upload_pcr_files(2)
+                st.session_state['index_tab'] = 2
 
             #generate picklist
             picklist_err = ''
@@ -596,8 +628,7 @@ def main():
                 
                         st.markdown(f'<h5 style="color:#f63366;text-align:center">{picklist_err}</h5>',\
                                 unsafe_allow_html=True)
-                    
-            st.session_state['tab'] = index_tab
+                st.session_state['index_tab'] = 3
             
         #Miseq
         if pipeline_stage == 4:
@@ -605,6 +636,12 @@ def main():
                 stx.TabBarItemData(id=1, title="Download", description="Samplesheet"),
                 stx.TabBarItemData(id=2, title="Upload", description="Sequence Files"),
             ], default=1, return_type=int)
+
+            if not miseq_tab:
+                if 'miseq_tab' not in st.session_state:
+                    st.session_state['miseq_tab'] = 1
+                miseq_tab = st.session_state['miseq_tab']
+
             st.write('')
             exp = st.session_state['experiment']
             if miseq_tab == 1:
@@ -618,123 +655,83 @@ def main():
                         download_miseq = miseq_col2.button(label='Download', key='dnld_samplesheet_'+str(fp))
                 else:
                     no_miseq_msg = ""
+                st.session_state['miseq_tab'] = 1
 
             if miseq_tab == 2:
                 upload_miseq_fastqs(exp)
-
-            st.session_state['tab'] = miseq_tab
+                st.session_state['miseq_tab'] = 2
 
         #Allele Calling
         if pipeline_stage == 5:
             exp = st.session_state['experiment']
-            
-            if 'test_status' in st.session_state and st.session_state['test_status'] == 'upload':
-                allele_tab = stx.tab_bar(data=[
+
+            allele_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
                 stx.TabBarItemData(id=2, title="Allele Calling", description=""),
                 stx.TabBarItemData(id=3, title="View Data", description=""),
-                ], default=1, return_type=int)
+            ], key='allele_tab_bar' , return_type=int)
 
-                if allele_tab == 1:
-                    st.write('')
-                    upload_miseq_fastqs(exp)
-                    st.session_state['test_status'] = None
+            if not allele_tab:
+                if 'allele_tab' not in st.session_state:
+                    st.session_state['allele_tab'] = 1
+                allele_tab = st.session_state['allele_tab']
 
-            elif 'test_status' in st.session_state and st.session_state['test_status'] == 'call':
-                if allele_tab == 2:
-                    rundir = st.session_state["experiment"].get_exp_dir()
-                    progress_files = list(Path(rundir).glob('match_progress_'))
-                    if len(progress_files) == 1:
-                        if 'match_running' not in st.session_state or st.session_state['match_running'] is False:
-                            os.remove(progress_files[0])
-                        else:
-                            launch_progress = int(progress_files[0].split('_')[2])
-                            match_progress = int(progress_files[0].split('_')[3])
-                            if launch_progress == 100 and match_progress == 100:
-                                st.session_state['match_running'] = False
+            if allele_tab == 1:
+                st.write('')
+                upload_miseq_fastqs(exp)
+                st.session_state['allele_tab'] = 1
 
+            if allele_tab == 2:
+                rundir = exp.get_exp_dir()
 
-                    num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
-                    num_cpus = st.number_input(\
-                                label="Number of processes to run simultaneously (defaults to # of CPUs)",\
-                                        value=os.cpu_count())
-                    exhaustive_mode = st.checkbox(\
-                                "Exhaustive mode: try to match every sequence, no matter how few counts")
-                    clear_lock = st.checkbox("Clear process lock")
-                    do_matching = st.button("Run allele calling")
-                    if do_matching:
-                        success = st.session_state['experiment'].generate_targets()
-                        if success:
-                            matching_prog = os.path.join('bin','ngsmatch.py')
-                            
-                            cmd_str = f'python {matching_prog} --ncpus {num_cpus} --chunk_size {num_unique_seq} --exhaustive {exhaustive_mode} '+\
-                                    f'--rundir {rundir}'
-                            cp = subprocess.run(cmd_str.split(' '))
-                            st.session_state['match_running'] = True
-                            launch_progress = st.progress(0)
-                            match_progress = st.progress(0)
-                            print('f{cp}', file=sys.stderr)
-                        #match_alleles(exp, ncpus=num_cpus, chunk_size=num_unique_seq, exhaustive=exhaustive_mode,
-                        #        stagefile=exp.get_exp_fp("Stage3.csv"), force_restart=clear_lock)
-                        do_matching = None
-                    if len(progress_files) == 1:
-                        launch_progress = int(progress_files[0].split('_')[2])
-                        match_progress = int(progress_files[0].split('_')[3])
-                        if launch_progress == 100 and match_progress == 100:
-                            st.write('Analysis completed')
-                            st.session_state['match_running'] = False
-                        else:
-                            st.write('Allele calling task launch progress')
-                            st.progress(launch_progress)
-                            st.write('Allele calling task completion progress')
-                            st.progress(match_progress)
-                    st.session_state['test_status'] = None
-
-            elif 'test_status' in st.session_state and st.session_state['test_status'] == 'view':
-                if allele_tab == 3:
-                    st.session_state['test_status'] = 'view'
-                    data_table(key=2, options=True)
-                    st.session_state['test_status'] = None
-            else:
-                print('hello')
-                st.session_state['test_status'] = None
-                allele_tab = stx.tab_bar(data=[
-                        stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
-                        stx.TabBarItemData(id=2, title="Allele Calling", description=""),
-                        stx.TabBarItemData(id=3, title="View Data", description=""),
-                    ], default=1, return_type=int)
-                print(f"{allele_tab=}")
-                #upload sequences
-                if allele_tab == 1:
-                    st.session_state['test_status'] = 'upload'
-                    st.write('hello')
-                    upload_miseq_fastqs(exp)
-                    st.session_state['test_status'] = None
+                num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
+                num_cpus = st.number_input(\
+                            label="Number of processes to run simultaneously (defaults to # of CPUs)",\
+                                    value=os.cpu_count())
+                exhaustive_mode = st.checkbox(\
+                            "Exhaustive mode: try to match every sequence, no matter how few counts")
                 
-                #allele calling
-                if allele_tab == 2:
-                    st.session_state['test_status'] = 'call'
-                    num_unique_seq = st.text_input("Number of unique sequences per work unit", "1")
-                    num_cpus = st.number_input(\
-                                label="Number of processes to run simultaneously (defaults to # of CPUs)",\
-                                        value=os.cpu_count())
-                    exhaustive_mode = st.checkbox(\
-                                "Exhaustive mode: try to match every sequence, no matter how few counts")
-                    clear_lock = st.checkbox("Clear process lock")
-                    do_matching = st.button("Run allele calling")
-                    if do_matching:
-                        #match_alleles(exp, ncpus=num_cpus, chunk_size=num_unique_seq, exhaustive=exhaustive_mode,
-                        #        stagefile=exp.get_exp_fp("Stage3.csv"), force_restart=clear_lock)
-                        do_matching = None
-                    st.session_state['test_status'] = None
+                progress_files = list(Path(rundir).glob('match_progress_*'))
+                if len(progress_files) == 1:
+                    st.session_state['match_running'] = True
+                else:
+                    st.session_state['match_running'] = False
+
+                disable_calling = False
+                if Path(exp.get_exp_fp('ngsgeno_lock')).exists():
+                    st.markdown('**Analysis in progress**')
+                    disable_calling = True
+                
+                do_matching = st.button("Run allele calling", disabled=disable_calling)
+
+                if do_matching:
+                    success = exp.generate_targets()
+                    if not success:
+                        exp.log('Critical: failed to save reference sequences to target file')
+                    else:
+                        matching_prog = os.path.join('bin','ngsmatch.py')
+                        cmd_str = f'python {matching_prog} --ncpus {num_cpus} --chunk_size {num_unique_seq} --rundir {rundir}'
+                        if exhaustive_mode:
+                            cmd_str += ' --exhaustive'                     
+                        exp.log(f'Info: {cmd_str}')
+                        cp = subprocess.run(cmd_str.split(' '))
+                        st.session_state['match_running'] = True
+                        exp.log(f'Debug: {cp}')
+                    do_matching = None
+
+                if 'match_running' in st.session_state and st.session_state['match_running']:
+                    launch_msg = st.empty()
+                    launch_prog = st.progress(0)
+                    completion_msg = st.empty()
+                    match_prog = st.progress(0)
+                    asyncio.run(report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog))
                     
-                #view data
-                if allele_tab == 3:
-                    st.session_state['test_status'] = 'view'
-                    data_table(key=2, options=True)
-                    st.session_state['test_status'] = None
-                
-            st.session_state['tab'] = allele_tab
+                st.session_state['allele_tab'] = 2
+
+            if allele_tab == 3:
+                data_table(key='allele_calling', options=True)
+                st.session_state['allele_tab'] = 3
+            
         
         #Genotyping
         if pipeline_stage == 6:

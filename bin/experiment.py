@@ -775,6 +775,7 @@ class Experiment():
             self.log('Error: Cannot add reference sequences while lock is active')
             self.save()
             return False
+        partial_fail = False
         for uploaded_reference in uploaded_references:
             if uploaded_reference.name in self.reference_sequences:
                 self.log(f"Warning: Duplicate reference file name: {uploaded_reference.name=} in . Overwriting")
@@ -796,9 +797,12 @@ class Experiment():
                         except Exception as exc:
                             self.log(f"Error: Couldn't parse reference file {uploaded_reference.name} {exc}")
                             self.save()
-                            return False
+                            partial_fail = True
+                            continue                
             self.log(f'Success: uploaded {len(self.reference_sequences[uploaded_reference.name])} reference sequences from {uploaded_reference.name}')
         self.save()
+        if partial_fail:
+            return False
         return True
 
     def generate_targets(self):
@@ -812,7 +816,7 @@ class Experiment():
                         print(f'>{id}', file=targetf)
                         print(f'{self.reference_sequences[group][id]}', file=targetf)
                         counter += 1
-            self.log('Success: created reference sequences file {target_fn} containing {counter} sequences')
+            self.log(f'Success: created reference sequences file {target_fn} containing {counter} sequences')
             self.save()
             return True
         except Exception as exc:
