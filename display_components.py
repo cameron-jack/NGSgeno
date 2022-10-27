@@ -241,18 +241,18 @@ def data_table(key, options=False, table_option=None):
         func_line = inspect.getframeinfo(sys._getframe(1)).lineno
         print("Function", func, type(func_line))
         # display the experiment log and let the user filter the view in a number of ways
-        log_entries = st.session_state['experiment'].get_log(30)
+        log_entries = st.session_state['experiment'].get_log(100)
         if len(log_entries) == 0:
             st.write('No entries currently in the log')
         else:
-            df = pd.DataFrame(st.session_state['experiment'].get_log(30),\
-                     columns=st.session_state['experiment'].get_log_header())
-            print(df)
+            df = pd.DataFrame(log_entries, columns=st.session_state['experiment'].get_log_header())
+            #print(df)
             if 'view_box_size' in st.session_state:
                 height = st.session_state['view_box_size']
             else:
                 height = 250
-            data_container.dataframe(df, height=height)
+            aggrid_interactive_table(df, key='logs')
+            #data_container.dataframe(df, height=height)
 
 
 def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):

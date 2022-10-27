@@ -206,7 +206,7 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
         exp - an Experiment instance
         fn - output filename
         rows - data rows to write
-        transaction_record - a dictionary of changes from the input plates
+        transactions - a dictionary of changes from the input plates
         output_plate_guards - whether or not to write guard characters on the plate barcodes
     """
     try:

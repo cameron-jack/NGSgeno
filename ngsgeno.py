@@ -42,7 +42,7 @@ def create_run_folder(newpath):
         try:
             os.mkdir(newpath)
         except Exception as exc:
-            output_error(exc, msg='Could not create new folder: ' + newpath)
+            print(f'Could not create new folder: {newpath} {exc}', file=sys.stderr)
             return None, 'Failed to create new folder: ' + newpath
     else:
         if os.path.exists(os.path.join(newpath, EXP_FN)):
@@ -325,7 +325,7 @@ def main():
     try:
         existing_run_folders = get_run_folders()
     except Exception as exc:
-        output_error(exc, msg='Cannot locate NGSgeno folder')
+        print(f'Cannot locate NGSgeno folder {exc}', file=sys.stderr)
         return
 
     run_folder = ex_folder_col.selectbox("Select a run folder to open", existing_run_folders)
