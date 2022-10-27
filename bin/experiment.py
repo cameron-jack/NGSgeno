@@ -160,15 +160,11 @@ class Experiment():
         if self.pending_steps is None:
             self.pending_steps = {}
         for t in transactions:
-            p = Path(t)
-            parent_path = p.parent
-            file_name = 'pending_' + str(p.name)
-            t_renamed = parent_path / file_name
-            if t_renamed in self.pending_steps:
+            if t in self.pending_steps:
                 self.log(f'Critical: file generation {t} already performed in this stage of the pipeline')
                 return False
-            self.pending_steps[t_renamed] = deepcopy(transactions[t])
-            self.log(f'Info: Adding generated file {t_renamed} to pending pipeline stage history')
+            self.pending_steps[t] = deepcopy(transactions[t])
+            self.log(f'Info: Adding generated file {t} to pending pipeline stage history')
         return True
 
 
@@ -177,9 +173,10 @@ class Experiment():
         We need the user to know if accepting pending transactions will result in overwriting an existing
         file. We return the list of all clashing filepaths
         """
-        clash = []
+        clashes = []
         if self.pending_steps is None:
-            return clash
+            print('no pending steps')
+            return clashes
         
         for transaction in self.pending_steps:
             p = Path(transaction)
@@ -187,14 +184,18 @@ class Experiment():
             file_name = str(p.name)
             final_name = file_name[len('pending_'):]  # cut off the leading "pending_"
             final_path = str(parent / final_name)
-            for step in self.reproducible_steps:
-                if step is None or len(step) == 0:
-                    continue
-                # each step is dict['filenames'] = {PID: {well:change}}
-                if final_path in step:
-                    self.log(f'Warning: file path {final_path} already exists and will be overwritten if pending changes are accepted')
-                    clash.append(final_path)                   
-        return clash
+            #print('Pending and final paths: ', str(p), str(final_path), file=sys.stderr)
+            if Path(final_path).exists():
+                clashes.append(final_path)
+            else:
+                for step in self.reproducible_steps:
+                    if step is None or len(step) == 0:
+                        continue
+                    # each step is dict['filenames'] = {PID: {well:change}}
+                    if final_path in step:
+                        self.log(f'Warning: file path {final_path} already exists and will be overwritten if pending changes are accepted')
+                        clashes.append(final_path)                  
+        return clashes
 
 
     def clear_pending_transactions(self):
@@ -208,6 +209,9 @@ class Experiment():
                 if Path(transaction).exists():
                     os.remove(transaction)
             self.pending_steps = None
+            pending_files_hanging = Path(self.get_exp_dir()).glob('pending_*')
+            for p in pending_files_hanging:
+                os.remove(p)
         except Exception as exc:
             self.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
             return False
@@ -229,6 +233,9 @@ class Experiment():
         if len(clashes) == 0:
             for transaction in self.pending_steps:
                 p = Path(transaction)
+                if not p.exists():
+                    self.log(f'Warning: {str(p)} not found')
+                    continue
                 parent = p.parent
                 file_name = str(p.name)
                 final_name = file_name[len('pending_'):]
@@ -256,6 +263,9 @@ class Experiment():
         # rename pending filepaths
         for transaction in self.pending_steps:
             p = Path(transaction)
+            if not p.exists():
+                self.log(f'Warning: {str(p)} not found')
+                continue
             parent = p.parent
             file_name = str(p.name)
             final_name = file_name[len('pending_'):]
@@ -307,8 +317,10 @@ class Experiment():
             fp = Path(os.path.join(dirname, filename))
         else:
             fp = Path(filename)
-        if transaction and fp.exists():
-            pass
+        if transaction:
+            parent_path = fp.parent
+            file_name = 'pending_' + str(fp.name)
+            fp = parent_path / file_name
         return str(fp)
 
     def get_raw_dirpath(self):
@@ -1192,7 +1204,7 @@ class Experiment():
                             continue
                         outline = ','.join([f"Source[{i+1}]",util.unguard_pbc(pid,silent=True),plate['plate_type'],
                                 well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
-                        print(outline, file=fout)
+                        #print(outline, file=fout)
         except Exception as exc:
             self.log(f'Failure: could not write primer survey {exc}')
             self.save()

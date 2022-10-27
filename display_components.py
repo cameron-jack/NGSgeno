@@ -482,3 +482,98 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
                     unsafe_allow_html=True)
 
     return st.session_state['path']
+
+
+def show_echo1_outputs():
+    exp = st.session_state['experiment']
+    picklist_file_col, picklist_btn_col = st.columns(2)
+    dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR1_picklist_filepaths()
+    error_msgs = []
+    
+    if not dna_picklist_paths:
+        error_msgs.append('No DNA picklist available')
+    else:
+        for dpp in dna_picklist_paths:
+            dpp_file = str(Path(dpp).name)
+            picklist_file_col.markdown(\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{dpp_file}</p>',\
+                    unsafe_allow_html=True)
+            picklist_btn_col.download_button(label=f"Download", 
+                    data=open(dpp, 'rt'), file_name=dpp, mime='text/csv', key='dna_download_'+dpp)
+
+    if not primer_picklist_paths:
+        error_msgs.append('No primer picklist available')
+    else:
+        for ppp in primer_picklist_paths:
+            ppp_file = str(Path(ppp).name)
+            picklist_file_col.markdown(\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{ppp_file}</p>',\
+                        unsafe_allow_html=True)
+            picklist_btn_col.download_button(label=f"Download", 
+                    data=open(ppp, 'rt'), file_name=ppp, mime='text/csv', key='primer_download_'+dpp)
+            
+    if not taqwater_picklist_paths:
+        error_msgs.append('No taq/water picklist available')
+    else:
+        for tpp in taqwater_picklist_paths:
+            tpp_file = str(Path(tpp).name)
+            picklist_file_col.markdown(\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_file}</p>',\
+                        unsafe_allow_html=True)
+            picklist_btn_col.download_button(label=f"Download", 
+                    data=open(tpp, 'rt'), file_name=tpp, mime='text/csv', key='taqwater_download_'+tpp)
+
+    if error_msgs:
+        for msg in error_msgs:
+            picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
+                    unsafe_allow_html=True)
+
+def show_echo2_outputs():
+    exp = st.session_state['experiment']
+    picklist_file_col, picklist_btn_col = st.columns(2)
+    index_picklist_paths, taqwater_picklist_paths, amplicon_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
+    
+    error_msgs = []
+
+    # amplicon_picklist_paths is a list
+    if not index_picklist_paths:
+        error_msgs.append('No index picklist available')
+    else:
+        for ipp in index_picklist_paths:
+            ipp_file = str(Path(ipp).name)
+            picklist_file_col.markdown(\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{ipp_file}</p>',\
+                                unsafe_allow_html=True)
+            picklist_btn_col.download_button(label=f"Download",\
+                    data=open(ipp, 'rt'), file_name=ipp, mime='text/csv',\
+                            key='index_download_'+ipp)
+
+    if not amplicon_picklist_paths:
+        error_msgs.append('No amplicon picklist available')               
+    else:
+        for app in amplicon_picklist_paths:
+            app_file = str(Path(app).name)
+            picklist_file_col.markdown(\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{app_file}</p>',\
+                                unsafe_allow_html=True)
+            picklist_btn_col.download_button(label=f"Download",\
+                    data=open(app, 'rt'), file_name=app, mime='text/csv',\
+                            key='amplicon_download_'+app)
+
+    if not taqwater_picklist_paths:
+        error_msgs.append('No taq/water picklist available')
+
+    else:
+        for tpp in taqwater_picklist_paths:
+            tpp_file = str(Path(tpp).name)
+            picklist_file_col.markdown(\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_file}</p>',\
+                                unsafe_allow_html=True)
+            picklist_btn_col.download_button(label=f"Download",\
+                        data=open(tpp, 'rt'), file_name=tpp, mime='text/csv',\
+                                key='taqwater_download_'+tpp)
+    if error_msgs:
+        for msg in error_msgs:
+            picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
+                    unsafe_allow_html=True)
+    
