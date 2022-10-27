@@ -72,7 +72,6 @@ def load_rodentity_data():
     """
     Home page 
     """
-    print('HERE')
     rodentity_exp = st.expander('Add data from Rodentity JSON files',expanded=True)
     rod_col1, rod_col2= rodentity_exp.columns(2)
 

@@ -61,9 +61,10 @@ def nimbus_gen(exp):
     dna_plate_id = barcode or name of target output files, which should be guarded already
     As a file generator() it needs to create a transaction (exp.reproducible_steps) entry
     """
+    transactions = {}
     try:
     #if True:
-        transactions = {}
+        
         for dna_BC in exp.dest_sample_plates:
             if not util.is_guarded_pbc(dna_BC):
                 dna_BC = util.guard_pbc(dna_BC)
@@ -139,9 +140,11 @@ def nimbus_gen(exp):
         
                 
     except Exception as exc:
+        print("Transactions in nimbus_gen on fail: ", transactions, file=sys.stderr)
         exp.log(f'Error: Nimbus input file creation {exc}')
         exp.save()
         return False
+    print("Transactions in nimbus_gen()", transactions, file=sys.stderr)
     exp.add_pending_transactions(transactions)
     exp.log(f'Success: Hamilton Nimbus plate definition files have been generated')
     exp.save()
@@ -239,6 +242,7 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
             dst.writerows(data)
     except Exception as exc:
         exp.log(f"Failure: Picklist generation failed for {fn} {exc}")
+        print(f"Failure: Picklist generation failed for {fn} {exc}", file=sys.stderr)
         if Path(fn).exists():
             os.remove(fn)
         transactions = None

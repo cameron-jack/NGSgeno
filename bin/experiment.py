@@ -165,6 +165,7 @@ class Experiment():
                 return False
             self.pending_steps[t] = deepcopy(transactions[t])
             self.log(f'Info: Adding generated file {t} to pending pipeline stage history')
+            print('These are the pending transactions', self.pending_steps, file=sys.stderr)
         return True
 
 
@@ -241,7 +242,7 @@ class Experiment():
                 final_name = file_name[len('pending_'):]
                 final_path = parent / final_name
                 os.rename(p, final_path)
-                return True
+            return True
 
         clashing_index = -1
         for i,step in enumerate(self.reproducible_steps):

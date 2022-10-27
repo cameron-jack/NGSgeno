@@ -375,12 +375,12 @@ def main():
         
         pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Reports"]
         pipeline_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
-        print(pipeline_stage)                                                                              
+                                                                                   
         if not pipeline_stage and pipeline_stage != 0: # not pipeline_stage evaluates to 0!
             if 'pipeline_stage' not in st.session_state or st.session_state['pipeline_stage'] is None:
                 st.session_state['pipeline_stage'] = 0
             pipeline_stage = st.session_state['pipeline_stage']
-        print(pipeline_stage)
+        
         #Load data
         if pipeline_stage == 0:
             load_data_tab = stx.tab_bar(data=[
