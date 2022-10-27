@@ -3,7 +3,7 @@
 import os
 from ssl import SSLSession
 import sys
-from pathlib import PurePath
+from pathlib import PurePath, Path
 import itertools
 from math import fabs, factorial, floor, ceil
 from io import StringIO
@@ -26,8 +26,8 @@ from bin.makehtml import generate_heatmap_html
 #from bin.ngsmatch import match_alleles
 
 import extra_streamlit_components as stx
-from display_components import data_table, display_pcr_components, display_primer_components
-from load_data import *
+import display_components as dc
+import load_data as ld
 import asyncio
 
 def get_run_folders():
@@ -55,6 +55,7 @@ def create_run_folder(newpath):
 
 #generalise
 def generate_picklist(plates, pcr_stage=1):
+    exp = st.session_state['experiment']
     picklist_file_col, picklist_btn_col = st.columns(2)
     if pcr_stage == 1:
         DNA_plates = plates[0]
@@ -62,12 +63,13 @@ def generate_picklist(plates, pcr_stage=1):
         taqwater_plates = plates[2]
         error_msgs = []
         
-        success = st.session_state['experiment'].generate_echo_PCR1_picklist_interface(DNA_plates,\
+        success = exp.generate_echo_PCR1_picklists(DNA_plates,\
                 PCR_plates, taqwater_plates)
-                        
-        if success:
+        if not success:
+            exp.clear_pending_transactions()                 
+        else:
             dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths =\
-                st.session_state['experiment'].get_echo_PCR1_picklist_filepaths()
+                exp.get_echo_PCR1_picklist_filepaths()
 
             if not dna_picklist_paths:
                 error_msgs.append('No DNA picklist available')
@@ -115,7 +117,7 @@ def generate_picklist(plates, pcr_stage=1):
         amplicon_plates = plates[3]
         error_msgs = []
 
-        success = st.session_state['experiment'].generate_echo_PCR2_picklist_interface(\
+        success = st.session_state['experiment'].generate_echo_PCR2_picklists(\
                                 PCR_plates, index_plates, taqwater_plates,\
                                             amplicon_plates)
         if success:
@@ -185,7 +187,7 @@ def plate_checklist_expander(available_nimbus, pcr_stage=1):
                 included_DNA_plates.add(echo_filename.split('_')[-2])
     
         checklist_col[1].markdown(f'**{pcr_plate_title}**')
-        for pcr_pid in st.session_state['experiment'].get_pcr_plates():
+        for pcr_pid in st.session_state['experiment'].get_pcr_pids():
             inc_pcr = checklist_col[1].checkbox(file_io.unguard_pbc(pcr_pid, silent=True),\
                             value=True, key='chk_box_pcr_'+pcr_pid)
             if inc_pcr:
@@ -209,21 +211,21 @@ def plate_checklist_expander(available_nimbus, pcr_stage=1):
         amplicon_plate_title = "Amplicon Plates"
 
         checklist_col[0].markdown(f'**{pcr_plate_title}**')
-        for pcr_pid in st.session_state['experiment'].get_pcr_plates():
+        for pcr_pid in st.session_state['experiment'].get_pcr_pids():
             inc_pcr = checklist_col[0].checkbox(file_io.unguard_pbc(pcr_pid, silent=True),
                     value=True, key='chk_box_pcr_'+pcr_pid)
             if inc_pcr:
                 included_PCR_plates.add(pcr_pid)
 
         checklist_col[1].markdown(f'**{taqwater_plate_title}**')
-        for taqwater_pid in st.session_state['experiment'].get_taqwater_plates():
+        for taqwater_pid in st.session_state['experiment'].get_taqwater_pids():
             inc_taqwater = checklist_col[1].checkbox(file_io.unguard_pbc(taqwater_pid, silent=True), 
                     value=True, key='chk_box_taqwater_'+taqwater_pid)
             if inc_taqwater:
                 included_taqwater_plates.add(taqwater_pid)
 
         checklist_col[2].markdown(f'**{index_plate_title}**')
-        for index_pid in st.session_state['experiment'].get_index_plates():
+        for index_pid in st.session_state['experiment'].get_index_pids():
             inc_index = checklist_col[2].checkbox(file_io.unguard_pbc(index_pid, silent=True),
                                                 value=True, key='chk_box_index_'+index_pid)
             if inc_index:
@@ -260,6 +262,36 @@ async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match
             return
         await asyncio.sleep(1)
 
+
+def run_generate(exp, target_func, context=None, *args, **kwargs):
+    """
+    Run target_func() and ask user to respond to any file/pipeline clashes in the given context, if provided
+    """
+    success = target_func()
+    if not success:
+        exp.clear_pending_transactions()
+    else:
+        if exp.pending_steps is not None and len(exp.pending_steps) > 0:
+            clashes = exp.clashing_pending_transactions()
+            if len(clashes) > 0:
+                if context:
+                    context.warning(f'The following output files already exist {clashes}', icon='!')
+                    context.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages', icon="!")
+                    if context.button('Accept'):
+                        exp.accept_pending_transactions()
+                    if context.button('Cancel'):
+                        exp.clear_pending_transactions()
+                else:
+                    st.warning(f'The following output files already exist {clashes}', icon='!')
+                    st.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages', icon="!")
+                    if st.button('Accept'):
+                        exp.accept_pending_transactions()
+                    if st.button('Cancel'):
+                        exp.clear_pending_transactions()
+            else:
+                exp.accept_pending_transactions()
+    return success
+
 def main():
     st.set_page_config(
         page_title="NGS Genotyping",
@@ -274,11 +306,20 @@ def main():
     if 'folder' not in st.session_state:
         st.session_state['folder'] = None
     #Folder inputs
-    title = "NGS Genotyping Pipeline"
-    _,title_column,new_folder_col, ex_folder_col = st.columns([1,4,4,4])
-    title_column.markdown(f'<h2>{title}</h2>', unsafe_allow_html=True)
+    
+    _, title_column,logo_col, current_folder_col, new_folder_col, ex_folder_col, _ = st.columns([2,4,3,4,4,4,2])
+    with title_column:
+        st.markdown('<h2 align="center">NGS Genotyping</h2>', unsafe_allow_html=True)
+    logo_col.image('ngsg_explorer.png')
 
-    add_run_folder = new_folder_col.text_input('Create new run folder:')
+    with current_folder_col:
+        st.markdown('Current experiment folder')
+        if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
+            st.markdown('###### '+st.session_state['experiment'].name)
+        else:
+            st.markdown('###### None')
+
+    add_run_folder = new_folder_col.text_input('Create new run folder')
     #create_run_folder_button = ftab1.button(label='Create', key='create_run_folder_button')
 
     try:
@@ -308,7 +349,7 @@ def main():
                 unsafe_allow_html=True)
 
     if 'stage' not in st.session_state:
-            st.session_state['stage'] = None
+        st.session_state['stage'] = None
 
     if run_folder:
         if st.session_state['experiment'] == None or st.session_state['experiment'].name != run_folder:
@@ -317,7 +358,6 @@ def main():
             if os.path.exists(ch_run_path):
                 exp = load_experiment(ch_run_path)
                 st.session_state['folder'] = 'existing'
-                #print(dir(exp))
                 if not exp:
                     error_msg = "Could not load experiment from: "+ ch_run_path
                 elif ch_run_path.endswith(exp.name):
@@ -333,16 +373,14 @@ def main():
     if st.session_state['experiment']:
         exp = st.session_state['experiment']
         
-        pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Genotyping", "Review"]
+        pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Reports"]
         pipeline_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
-
-        stage_list = ['load', 'nimbus', 'primer', 'index','miseq', 'allele', 'genotyping', 'review']
-
-        if st.session_state['folder']:
-            for i in range(6):
-                if st.session_state['stage'] == stage_list[i]:
-                    pipeline_stage = i
-            
+        print(pipeline_stage)                                                                              
+        if not pipeline_stage and pipeline_stage != 0: # not pipeline_stage evaluates to 0!
+            if 'pipeline_stage' not in st.session_state or st.session_state['pipeline_stage'] is None:
+                st.session_state['pipeline_stage'] = 0
+            pipeline_stage = st.session_state['pipeline_stage']
+        print(pipeline_stage)
         #Load data
         if pipeline_stage == 0:
             load_data_tab = stx.tab_bar(data=[
@@ -357,21 +395,22 @@ def main():
 
             #view data
             if load_data_tab == 1:
-                load_rodentity_data()
-                load_database_data()
-                load_custom_csv()
+                with st.expander(label='Summary of loaded data', expanded=False):
+                    dc.data_table('load_data_tab1', options=False, table_option='Summary')
+                ld.load_rodentity_data()
+                ld.load_database_data()
+                ld.load_custom_csv()
                 st.session_state['load_tab'] = 1
 
             #load data
             if load_data_tab == 2:
                 assay_usage = st.session_state['experiment'].get_assay_usage()
-                data_table(key=load_data_tab, options=True)
-                display_primer_components(assay_usage, expander=True)
+                dc.data_table(key=load_data_tab, options=True)
+                dc.display_primer_components(assay_usage, expander=True)
                 st.session_state['load_tab'] = 2
         
         #Nimbus
         if pipeline_stage == 1:
-            
             nim_tab1_err = ''
             nimbus_title = ''
 
@@ -386,26 +425,34 @@ def main():
                     st.session_state['nimbus_tab'] = 1
                 nimbus_tab = st.session_state['nimbus_tab']
 
+            exp = st.session_state['experiment']
+            nfs, efs, xbcs = exp.get_nimbus_filepaths()
+
             if not st.session_state['experiment'].dest_sample_plates:
                 nimbus_title = "Load data inputs to enable Nimbus input file generation."
-            else: 
-                nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+            else:
                 # do we have any Nimbus inputs to generate + download
-                yet_to_run = len(st.session_state['experiment'].dest_sample_plates) - len(nfs)
-            
+                yet_to_run = len(exp.dest_sample_plates) - len(nfs)
+                if len(efs) == len(nfs):  # already exists
+                    st.write('All Nimbus outputs received')
                 if yet_to_run and yet_to_run > 0: 
+                    nim_tab2_title = str(yet_to_run) + " 96-well plate sets need Nimbus input file generation"
+
                     plates_to_run = [dest_plate for dest_plate in exp.dest_sample_plates\
                                  if all([dest_plate not in nf for nf in nfs])]
                     plates_to_run_str = '\n'.join(plates_to_run)
-                    success = st.session_state['experiment'].generate_nimbus_inputs()
-                    if not success:
-                        nim_tab1_err = "Failed to generate Nimbus files. Please read the log."
-                    else:
-                        nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+                    st.write(plates_to_run_str)
+                    run_gen_nimbus = st.button('Generate Nimbus input files')
+                    if run_gen_nimbus:
+                        success = run_generate(exp, exp.generate_nimbus_inputs)
+                        if not success:
+                            nim_tab1_err = "Failed to generate Nimbus files. Please read the log."
+                        else:
+                            nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
 
-                    nim_tab2_title = str(yet_to_run) + " 96-well plate sets need Nimbus input file generation"
+                    
 
-                nfs, efs, xbcs = st.session_state['experiment'].get_nimbus_filepaths()
+                
             
             #download nimbus
             if nimbus_tab == 1:
@@ -476,7 +523,7 @@ def main():
 
             #view data
             if nimbus_tab == 3:
-                data_table(key=load_data_tab, options=True)
+                dc.data_table(key=nimbus_tab, options=True)
                 st.session_state['nimbus_tab'] = 3
 
         #Primer PCR
@@ -505,7 +552,7 @@ def main():
                     if included_DNA_plates:
                         assay_usage = st.session_state['experiment'].get_assay_usage(dna_plate_list=included_DNA_plates)
                         #assay_usage = st.session_state['experiment'].get_assay_usage()
-                        display_pcr_components(assay_usage, 1)
+                        dc.display_pcr_components(assay_usage, 1)
                 else:
                     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                     st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
@@ -516,7 +563,7 @@ def main():
             if primer_tab == 2:
                 primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
                 if efs:
-                    upload_pcr_files(1)
+                    ld.upload_pcr_files(1)
                     with primer_checklist_exp:
                         included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
                                 plate_checklist_expander(efs, pcr_stage=1)
@@ -577,7 +624,7 @@ def main():
                                     plate_checklist_expander(available_nimbus, pcr_stage=2)
                 
                     assay_usage = st.session_state['experiment'].get_assay_usage()
-                    display_pcr_components(assay_usage, 2)
+                    dc.display_pcr_components(assay_usage, 2)
                 else:
                     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                     st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
@@ -593,7 +640,7 @@ def main():
                                     included_amplicon_plates =\
                                     plate_checklist_expander(available_nimbus, pcr_stage=2)
 
-                    upload_pcr_files(2)
+                    ld.upload_pcr_files(2)
                 st.session_state['index_tab'] = 2
 
             #generate picklist
@@ -658,7 +705,7 @@ def main():
                 st.session_state['miseq_tab'] = 1
 
             if miseq_tab == 2:
-                upload_miseq_fastqs(exp)
+                ld.upload_miseq_fastqs(exp)
                 st.session_state['miseq_tab'] = 2
 
         #Allele Calling
@@ -678,7 +725,7 @@ def main():
 
             if allele_tab == 1:
                 st.write('')
-                upload_miseq_fastqs(exp)
+                ld.upload_miseq_fastqs(exp)
                 st.session_state['allele_tab'] = 1
 
             if allele_tab == 2:
@@ -729,20 +776,65 @@ def main():
                 st.session_state['allele_tab'] = 2
 
             if allele_tab == 3:
-                data_table(key='allele_calling', options=True)
+                dc.data_table(key='allele_calling', options=True)
                 st.session_state['allele_tab'] = 3
             
         
-        #Genotyping
+        # Reports
         if pipeline_stage == 6:
-            pass
+            exp = st.session_state['experiment']
+            results_fp = exp.get_exp_fp('Results.csv')
+            if not Path(results_fp).exists():
+                st.markdown('**No allele calling results available**')
+            else:
+                rodentity_results = []
+                custom_results = []
+                other_results = []
+                with open(results_fp, 'rt') as rfn:
+                    for i, line in enumerate(rfn):
+                        l = line.replace('"','')
+                        cols = [c.strip() for c in l.split(',')]
+                        #print(cols)
+                        if i == 0:
+                            hdr = cols
+                            hdr.append('More')
+                        else:
+                            sample = cols[3]
+                            more = ';'.join(map(str, cols[24:]))
+                            data = cols[:24]
+                            #print(f'{type(data)=} {data=}')
+                            #print(f'{type(more)=} {more=}')
+                            data.append(more)
+                            #print(cols)
+                            #print(data)
+                            #print(more)
+                            if file_io.is_guarded_cbc(sample):
+                                custom_results.append(data)
+                            elif file_io.is_guarded_rbc(sample):
+                                rodentity_results.append(data)
+                            else:
+                                other_results.append(data)
 
-        #Review
-        if pipeline_stage == 7:
-            pass
-        
-        st.session_state['stage'] = stage_list[pipeline_stage]
-        st.session_state['folder'] = None
+                #print(hdr)
+                #print(custom_results[0:3])
+
+                print(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}')
+                rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
+                with rodentity_view:
+                    dfr = pd.DataFrame(rodentity_results, columns=hdr)
+                    dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
+
+                custom_view = st.expander('Custom results: '+str(len(custom_results)))
+                with custom_view:
+                    dfc = pd.DataFrame(custom_results, columns=hdr)
+                    dc.aggrid_interactive_table(dfc, key='custom_view_key')
+                other_view = st.expander('Other results: '+str(len(other_results)))
+                with other_view:
+                    dfo = pd.DataFrame(other_results, columns=hdr)
+                    dc.aggrid_interactive_table(dfo, key='other_view_key')
+
+        st.session_state['pipeline_stage'] = pipeline_stage
+        #st.session_state['folder'] = None
 
 if __name__ == '__main__':
     main()

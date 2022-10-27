@@ -20,8 +20,6 @@ from pathlib import PurePath
 from collections import defaultdict
 import csv
 
-import bin.file_io as file_io 
-from bin.file_io import GUARD_TYPES
 import itertools
 
 ### Set up SSL/TLS certificate
@@ -82,9 +80,11 @@ CAP_VOLS = {'384PP_AQ_BP': 12*1000, '6RES_AQ_BP2': 2800*1000, 'Hard Shell 384 we
 # convenient name to exact plate model mapping
 PLATE_TYPES = {'Echo6': '6RES_AQ_BP2', 'Echo384': '384PP_AQ_BP',
                'PCR384': 'Hard Shell 384 well PCR Biorad'}
-
+WATER_WELLS = ['A'+c for c in '123']
+TAQ_WELLS = ['B'+c for c in '123']
     
 def output_error(exc, msg=''):
+    """ DEPRECATED """
     with open(ERROR_FN, 'wt') as f:
         if msg:
             f.write(f"{exc} {msg}")
@@ -131,163 +131,309 @@ def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied
                     assay_counts[assay] += 1
     return assay_counts
  
+### Helper functions for IO
 
-# File choosers
-def get_mouse_ref():
-    return sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.fa")) +        
-            glob.glob(os.path.join('..','library',"reference_sequences_*.txt")), reverse=True)[0]
+class UnguardedBarcodeError(Exception):
+    """ Exception raised for barcodes with degraded or missing guards
 
-def get_mouse_assaylist():
-    return sorted(glob.glob(os.path.join('..','library', 'assay_list_*.csv')), reverse=True)[0]
+    Attributes:
+        message -- explanation of the error
+    """
+    def __init__(self, message):
+        self.message = message
 
-def get_mouse_conversions():
-    return sorted(glob.glob(os.path.join('..','library', 'NGS_assay_conversions_*.xlsx')), reverse=True)[0]
+class EmptyBarcodeError(Exception):
+    """ Exception raised when a barcode is an empty string
 
-def get_mouse_primer_layout():
-    return sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
+    Attributes:
+        message -- explanation of the error
+    """
+    def __init__(self, message):
+        self.message = message
 
-def get_mouse_i7i5_layout():
-    return sorted(glob.glob(os.path.join('..','library', 'i7i5_plate_layout_*.csv')), reverse=True)[0]
 
-def get_mouse_primer_survey():
-    return sorted(glob.glob(os.path.join('..','library',"*_platesurvey_fluid_volume_*primerplate.csv")), reverse=True)[0]
+class ExistingGuardError(Exception):
+    """ Exception raised when a barcode appears to already have a valid set of guards
 
-def get_mouse_i7i5_survey():
-    return sorted(glob.glob(os.path.join('..','library',"*_platesurvey_fluid_volume_I7I5PLATE.csv")), reverse=True)[0]
+    Attributes:
+        message -- explanation of the error
+    """
+    def __init__(self, message):
+        self.message = message
 
-# I/O for template_files.txt which stores the current pipeline configuration
-# DEPRECATED
-#class TemplateFiles():
-#    """
-#    Tracks information on the following file paths (when available)
-#    mouse pipeline files:
-#    mouse_ref - defaults to library .fa or.txt (.fa takes precedence)
-#    assay_list - defaults to library
-#    conversions - defaults to library (this file may on borrowed time thanks to Rodentity)
+# global - set of all possible guard types
+GUARD_TYPES = set(['m','r','c','p', 'a'])
 
-#    custom pipeline files:
+# Confirm guards
+def is_guarded_mbc(mbc):
+    """ Return True if Musterer barcode is correctly guarded, else False """
+    mbc = str(mbc)
+    if mbc.startswith('m') and mbc.endswith('m'):
+        return True
+    return False
 
-#    """
-#    def __init__(self, debug=False):
-#        """ initialise with values from file, if it exists """
-#        self.files = collections.defaultdict(str)
-#        if os.path.exists('template_files.txt'):
-#            with open('template_files.txt', 'rt') as f:
-#                for line in f:
-#                    cols = line.strip().split('\t')
-#                    self.files[cols[0]] = cols[1]
-#        if debug:
-#            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stdout)
-#        self.cust_format = None # guard type for custom barcodes. Must be one of file_io.GUARD_TYPES
+def is_guarded_rbc(rbc):
+    """ Return True if Rodentity barcode is correctly guarded (rNNNNNr), else False """
+    rbc = str(rbc)
+    if rbc.startswith('r') and rbc.endswith('r'):
+        return True
+    return False
 
-#    def save_config(self):
-#        """ save configuration to template_files.txt """
-#        with open('template_files.txt', 'wt') as outf:
-#            for key in self.files:
-#                print(key + '\t' + self.files[key], file=outf)
- 
-#    def load_config(self, debug=False):
-#        """ load existing template file info if available """
-#        if os.path.exists('template_files.txt'):
-#            with open('template_files.txt', 'rt') as f:
-#                for line in f:
-#                    cols = line.strip().split('\t')
-#                    self.files[cols[0]] = cols[1]
-#        else:
-#            print("No file found: 'template_files.txt'", file=sys.stdout)
-#            return
-#        if debug:
-#            print('TemplateFiles:', [(k, self.files[k]) for k in self.files], file=sys.stdout)
+def is_guarded_cbc(cbc):
+    """ Return True if custom barcode is correctly guarded, else False """
+    cbc = str(cbc)
+    if cbc.startswith('c') and cbc.endswith('c'):
+        return True
+    return False
 
-#    def set_mouse_files(self, ref=None, assay_list=None, conversions=None, save=False):
-#        """ set files specific to the mouse pipeline. If arguments are None, use defaults in library folder.
-#            variables are prefixed with mouse_ and operate on m or M guarded barcodes """
-#        # mouse reference sequence file
-#        self.files['mouse_ref'] = get_mouse_ref()
-#        if ref:
-#            if os.path.exists(ref):
-#                self.files['mouse_ref'] = primer_survey
-#            else:
-#                print('Mouse reference sequences file', ref, 'not found! Using default:', 
-#                        self.files['mouse_ref'], file=sys.stdout)    
-#        # mouse valid assay list
-#        self.files['mouse_assay_list'] = get_mouse_assaylist()
-#        if assay_list:
-#            if os.path.exists(assay_list):
-#                self.files['mouse_assay_list'] = assay_list
-#            else:
-#                print('Assay list file', assay_list, 'not found! Using default:', self.files['mouse_assay_list'], file=sys.stdout)
-#        self.files['mouse_conversions'] = get_mouse_conversions()
-#        # mouse assay old/new conversions
-#        if conversions:
-#            if os.path.exists(conversions):
-#                self.files['mouse_conversions'] = conversions
-#            else:
-#                print('Conversions file', conversions, 'not found! Using default:', self.files['mouse_conversions'], file=sys.stdout)
-#        if save:
-#            self.save_config()
+def is_guarded_pbc(pbc):
+    """ Return True if plate barcode is correctly guarded, else False """
+    pbc = str(pbc)
+    if pbc.startswith('p') and pbc.endswith('p'):
+        return True
+    return False
 
-#    def set_custom_files(self, manifest=None, assays=None, ref=None, save=False):
-#        """ set files specific to the custom pipeline, variables have prefix cust_ and work with 'custom' guarded prefices """
-#        if manifest:
-#            if os.path.exists(manifest):
-#                self.files['cust_manifest'] = manifest
-#            else:
-#                print('Custom manifest file', manifest, 'not found! No custom manifest set', file=sys.stdout)
-#        if assays:
-#            if os.path.exists(assays):
-#                self.files['cust_assay_list'] = assays
-#            else:
-#                print('Custom assay list file', assays, 'not found! No custom assay list set', file=sys.stdout)
-#        if ref:
-#            if os.path.exists(ref):
-#                self.files['cust_ref'] = cust_ref
-#            else:
-#                print('Custom reference sequence file', ref, 'not found! No custom reference set', file=sys.stdout)   
-#        if save:
-#            self.save_config()
+def is_guarded_abc(abc):
+    """ Return True if amplicon sample barcode is correctly guarded, else False """
+    abc = str(abc)
+    if abc.startswith('a') and abc.endswith('a'):
+        return True
+    return False
 
-#    def set_custom_file_format(self, format):
-#        """ sets the default interpretation of unguarded barcodes """
-#        if format not in GUARD_TYPES:
-#            print('Guard type not recognised for custom manifest format', format,
-#                    'defaulting to',self.cust_format, file=sys.stdout)
-#        else:
-#            self.cust_format = format
-    
-#    def set_layout_files(self, primer_plate=None, i7i5_plate=None, save=False):
-#        """ set layout files for Echo robot processing - primers and barcodes which are shared across runs """
-#        self.files['primer_plate'] = get_mouse_primer_layout()
-#        if primer_plate:
-#            if os.path.exists(primer_plate):
-#                self.files['primer_plate'] = primer_plate
-#            else:
-#                print('Primer plate layout', primer_plate,'not found! Using default:', self.files['primer_plate'], file=sys.stdout)
-#        self.files['i7i5_plate'] = get_mouse_i7i5_layout()
-#        if i7i5_plate:
-#            if os.path.exists(i7i5_plate):
-#                self.files['i7i5_plate'] = i7i5_plate
-#            else:
-#                print('i7i5 barcode plate layout', i7i5_plate,'not found! Using default:', self.files['i7i5_plate'], file=sys.stdout)
-#        if save:
-#            self.save_config()
+def is_guarded(bc):
+    """ generic check of guard status """
+    if is_guarded_mbc(bc):
+        return True
+    elif is_guarded_rbc(bc):
+        return True
+    elif is_guarded_cbc(bc):
+        return True
+    elif is_guarded_pbc(bc):
+        return True
+    elif is_guarded_abc(bc):
+        return True
+    return False
 
-#    def set_survey_files(self, primer_survey=None, i7i5_survey=None, save=False):
-#        """ set plate survey files for Echo robot processing - primers and barcodes which are shared across runs """
-#        self.files['primer_survey'] = get_mouse_primer_survey()
-#        if primer_survey:
-#            if os.path.exists(primer_survey):
-#                self.files['primer_survey'] = primer_survey
-#            else:
-#                print('Primer survey file', primer_survey, 'not found! Using default:', self.files['primer_survey'], file=sys.stdout)
-#        self.files['i7i5_survey'] = get_mouse_i7i5_survey()
-#        if i7i5_survey:
-#            if os.path.exists(i7i5_survey):
-#                self.files['i7i5_survey'] = i7i5_survey
-#            else:
-#                print('i7i5 barcode survey file', i7i5_survey, 'not found! Using default:', self.files['i7i5_survey'], file=sys.stdout)
-#        if save:
-#            self.save_config()
+
+# Add guards to barcodes
+def guard_mbc(mbc, silent=False):
+    """ Add guards to Musterer barcode """
+    mbc = str(mbc).strip()
+    if mbc == '':
+        msg = f"Musterer barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(mbc):
+        if silent:
+            return mbc
+        msg = f"Musterer barcode appears to already have Musterer guards: {mbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(mbc):
+        msg = f"Musterer barcode appears to already have Rodentity guards: {mbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(mbc):
+        msg = f"Musterer barcode appears to already have custom guards: {mbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(mbc):
+        msg = f"Musterer barcode appears to already have plate guards: {mbc}"
+        raise ExistingGuardError(msg)
+    return 'm' + mbc + 'm'
+
+def guard_rbc(rbc, silent=False):
+    """ Add guards to Rodentity barcode """
+    rbc = str(rbc).strip()
+    if rbc == '':
+        msg = f"Rodentity barcode is zero length string!" 
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(rbc):
+        msg = f"Rodentity barcode appears to already have Musterer guards: {rbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(rbc):
+        if silent:
+            return rbc
+        msg = f"Rodentity barcode appears to already have Rodentity guards: {rbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(rbc):
+        msg = f"Rodentity barcode appears to already have custom guards: {rbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(rbc):
+        msg = f"Rodentity barcode appears to already have plate guards: {rbc}"
+        raise ExistingGuardError(msg)
+    return 'r' + rbc + 'r'  # Rodentity barcodes already start with 'M'
+
+def guard_cbc(cbc, silent=False):
+    """ Add guards to custom barcode """
+    cbc = str(cbc).strip()
+    if cbc == '':
+        msg = f"Custom barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(cbc):
+        msg = f"Custom barcode appears to already have Musterer guards: {cbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(cbc):
+        msg = f"Custom barcode appears to already have Rodentity guards: {cbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(cbc):
+        if silent:
+            return cbc
+        msg = f"Custom barcode appears to already have custom guards: {cbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(cbc):
+        msg = f"Custom barcode appears to already have plate guards: {cbc}"
+        raise ExistingGuardError(msg)
+    return 'c' + cbc + 'c'
+
+def guard_pbc(pbc, silent=False):
+    """ Add guards to plate barcode, silent ignores already correctly guarded case """
+    pbc = str(pbc).strip()
+    if pbc == '':
+        msg = f"Plate barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(pbc):
+        msg = f"Plate barcode appears to already have Musterer guards: {pbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(pbc):
+        msg = f"Plate barcode appears to already have Rodentity guards: {pbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(pbc):
+        msg = f"Plate barcode appears to already have custom guards: {pbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_abc(pbc):
+        msg = f"Plate barcode appears to already have amplicon guards: {pbc}"
+    if is_guarded_pbc(pbc):
+        if silent:
+            return pbc
+        msg = f"Plate barcode appears to already have plate guards: {pbc}"
+        raise ExistingGuardError(msg)
+    return 'p' + pbc + 'p'
+
+def guard_abc(abc, silent=False):
+    """ Add guards to amplicon sample barcodes, silent ignores already correctly guarded case """
+    abc = str(abc).strip()
+    if abc == '':
+        msg = f"Amplicon sample barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(abc):
+        msg = f"Amplicon sample barcode appears to already have Musterer guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(abc):
+        msg = f"Amplicon sample barcode appears to already have Rodentity guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(abc):
+        msg = f"Amplicon sample barcode appears to already have custom guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(abc):
+        msg = f"Amplicon sample barcode appears to already have plate guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(abc):
+        if silent:
+            return abc
+        msg = f"Amplicon sample barcode appears to already have amplicon guards: {abc}"
+        raise ExistingGuardError(msg)
+    return 'a' + abc + 'a'
+
+
+# Unguard barcodes
+def unguard_mbc(mbc, silent=False):
+    """ remove guards from a Musterer barcode """
+    if type(mbc) != str:
+        msg = f"Musterer barcode is not a string! {mbc} is type {type(mbc)}"
+        raise AttributeError(msg)
+    if not mbc.startswith('m') and not mbc.endswith('m') and silent:  # just return unguarded barcodes as themselves
+        return mbc
+    if not mbc.startswith('m') or not mbc.endswith('m'):
+        msg = f"Musterer barcode guards degraded or missing in: {mbc}"
+        raise UnguardedBarcodeError(msg)
+    return mbc[1:-1]
+
+def unguard_rbc(rbc, silent=False):
+    """ remove guards from a Rodentity barcode """
+    if type(rbc) != str:
+        msg = f"Rodentity barcode is not a string! {rbc} is type {type(rbc)}"
+        raise AttributeError(msg)
+    if not rbc.startswith('r') and not rbc.endswith('r') and silent:  # just return unguarded barcodes as themselves
+        return rbc
+    if not rbc.startswith('r') or not rbc.endswith('r'):
+        msg = f"Musterer barcode guards degraded or missing in: {rbc}"
+        raise UnguardedBarcodeError(msg)
+    return rbc[1:-1]  # Rodentity barcodes keep their 'M' prefix
+
+def unguard_cbc(cbc, silent=False):
+    """ remove guards from a custom barcode """
+    if type(cbc) != str:
+        msg = f"Custom barcode is not a string! {cbc} is type {type(cbc)}"
+        raise AttributeError(msg)
+    if not cbc.startswith('c') and not cbc.endswith('c') and silent:  # just return unguarded barcodes as themselves
+        return cbc
+    if not cbc.startswith('c') or not cbc.endswith('c'):
+        msg = f"Custom barcode guards degraded or missing in: {cbc}"
+        raise UnguardedBarcodeError(msg)
+    return cbc[1:-1]
+
+def unguard_pbc(pbc, silent=False):
+    """ remove guards from a plate barcode """
+    if type(pbc) != str:
+        msg = f"Plate barcode is not a string! {pbc} is type {type(pbc)}"
+        raise AttributeError(msg)
+    if not pbc.startswith('p') and not pbc.endswith('p') and silent:  # just return unguarded barcodes as themselves
+        return pbc
+    if not pbc.startswith('p') or not pbc.endswith('p'):
+        msg = f"Plate barcode guards degraded or missing in: {pbc}"
+        raise UnguardedBarcodeError(msg)
+    return pbc[1:-1]
+
+def unguard_abc(abc, silent=False):
+    """ remove guards from an amplicon sample barcode """
+    if type(abc) != str:
+        msg = f"Amplicon sample barcode is not a string! {abc} is type {type(abc)}"
+        raise AttributeError(msg)
+    if not abc.startswith('a') and not abc.endswith('a') and silent:  # just return unguarded barcodes as themselves
+        return abc
+    if not abc.startswith('a') or not abc.endswith('a'):
+        msg = f"Amplicon sample barcode guards degraded or missing in: {abc}"
+        raise UnguardedBarcodeError(msg)
+    return abc[1:-1]
+
+def unguard(bc, silent=False):
+    """ shortcut, for when we don't know what kind of guarding we have but need to remove it for output """
+    if is_guarded_mbc(bc):
+        return unguard_mbc(bc)
+    elif is_guarded_rbc(bc):
+        return unguard_rbc(bc)
+    elif is_guarded_cbc(bc):
+        return unguard_cbc(bc)
+    elif is_guarded_pbc(bc):
+        return unguard_pbc(bc)
+    elif is_guarded_abc(bc):
+        return unguard_abc(bc)
+    else:
+        if not silent:
+            print('Possibly unguarded already:',bc, file=sys.stdout)
+        return bc
+
+# File choosers - obsolete
+#def get_mouse_ref():
+#    return sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.fa")) +        
+#            glob.glob(os.path.join('..','library',"reference_sequences_*.txt")), reverse=True)[0]
+
+#def get_mouse_assaylist():
+#    return sorted(glob.glob(os.path.join('..','library', 'assay_list_*.csv')), reverse=True)[0]
+
+#def get_mouse_conversions():
+#    return sorted(glob.glob(os.path.join('..','library', 'NGS_assay_conversions_*.xlsx')), reverse=True)[0]
+
+#def get_mouse_primer_layout():
+#    return sorted(glob.glob(os.path.join('..','library', 'primer_layout*_*.csv')), reverse=True)[0]
+
+#def get_mouse_i7i5_layout():
+#    return sorted(glob.glob(os.path.join('..','library', 'i7i5_plate_layout_*.csv')), reverse=True)[0]
+
+#def get_mouse_primer_survey():
+#    return sorted(glob.glob(os.path.join('..','library',"*_platesurvey_fluid_volume_*primerplate.csv")), reverse=True)[0]
+
+#def get_mouse_i7i5_survey():
+#    return sorted(glob.glob(os.path.join('..','library',"*_platesurvey_fluid_volume_I7I5PLATE.csv")), reverse=True)[0]
+
+
          
 
 # Item/attribute selection macros - used for Table selections
@@ -411,9 +557,9 @@ class Table:
             data = []
             for row in self.data:
                 if output_plate_guards:  # guard plate barcodes
-                    data.append([str(d) if 'plate barcode' not in h.lower() else file_io.guard_pbc(str(d), silent=True) for (h,d) in zip(self.header, row)])
+                    data.append([str(d) if 'plate barcode' not in h.lower() else guard_pbc(str(d), silent=True) for (h,d) in zip(self.header, row)])
                 else:  # unguard plate barcodes
-                    data.append([str(d) if 'plate barcode' not in h.lower() else file_io.unguard_pbc(str(d), silent=True) for (h,d) in zip(self.header, row)])
+                    data.append([str(d) if 'plate barcode' not in h.lower() else unguard_pbc(str(d), silent=True) for (h,d) in zip(self.header, row)])
             wx.writerow(self.header)
             wx.writerows(data)
         return

@@ -38,16 +38,22 @@ from streamlit import _update_logger
 #from pathlib import Path
 #file = Path(__file__).resolve()
 #sys.path.append(os.path.join(file.parents[1],'bin'))
-import bin.db_io as db_io
-import bin.file_io as file_io
-from bin.util import CAP_VOLS, DEAD_VOLS, output_error, padwell, unpadwell, row_ordered_96, row_ordered_384, calc_plate_assay_usage
-from bin.util import DNA_VOL, PRIMER_VOL, PRIMER_TAQ_VOL, PRIMER_WATER_VOL, INDEX_VOL, INDEX_TAQ_VOL, INDEX_WATER_VOL
-from bin.nimbus import read_custom_csv_to_json, nimbus_gen
-from bin.echo_primer import generate_echo_PCR1_picklist
-from bin.echo_index import generate_echo_PCR2_picklist
+try:
+    import bin.db_io as db_io
+except ModuleNotFoundError:
+    import db_io
+try:
+    import bin.file_io as file_io
+except ModuleNotFoundError:
+    import file_io
+try:
+    import util
+    
+except ModuleNotFoundError:
+    import bin.util as util
 
-EXP_FN = 'experiment.json'
-       
+
+EXP_FN = 'experiment.json'      
 
 # Defines content of experiment.ini which stores the current pipeline configuration
 class Experiment():
@@ -72,10 +78,11 @@ class Experiment():
     How to track usage of wells and not accidentally drain a well twice if we regenerate earlier files?
     Transaction tracking:
         - "generate" methods, which create fixed outputs (and usually modify state) should create a "transaction".
-        - Use a list (stack) to track transactions
-        - Only one instance of a generate method's use can exist in the list for the same set of inputs and outputs
+        - self.reproducible_steps - [] is a list (stack) of transactions
+        - Only one instance of a generate method's use can exist in the list for the same set of outputs
         - Because it is ordered, we can "rewind" to this location.
         - Transactions store all plate modifications (i.e. +/- volume changes)
+        - These modifications are applied to a plate record before any operations are carried out with these plates
         
     """
     def __init__(self, name):
@@ -98,18 +105,27 @@ class Experiment():
         # The specific import function should be responsisble for creating the "assays" and "assayFamilies" fields.
         # Note the ugly camel case for assayFamilies - to match headers with this case type
         ###
-        
         self.denied_assays = []
         self.denied_primers = []
         self.assay_synonyms = {}  # {source:{reference:alternative}}
         self.primer_assay = {}  # {source:{mapping of primer to assay}}
         self.reference_sequences = {}  # {source:{name:seq}} mapping of sequence name to sequence
+        ###
+        # All generate_XXX() functions produce one or more files
+        # a transaction record in self.reproducible_steps consists of a dictionary of form:
+        #   {sorted output filenames:{plate_id:[modifications to the plate]}
+        # This is a set of modifications to our saved plates which are applied before we do anything further with these plates
+        # On loading an experiment we should go through the steps and make sure all the expected output files are present.
+        # In order to access a plate with all its modifications we need a function for looking up plates and applying 
+        #   modifications during the pipeline. We'll call this Experiment.get_plate(PID)
+        ###
         self.reproducible_steps = []  # a strict subset of the log that only includes working instructions
+        self.pending_steps = None # reproducible steps that are awaiting user approval to replace existing steps
         self.log_entries = []  # use self.log(message, level='') to add to this
         self.log_time = datetime.datetime.now()  # save the log after a certain time has elapsed, to avoid too much IO
-        self.transfer_volumes = {'DNA_VOL':DNA_VOL, 'PRIMER_VOL':PRIMER_VOL, 'PRIMER_TAQ_VOL':PRIMER_TAQ_VOL,
-                'PRIMER_WATER_VOL':PRIMER_WATER_VOL, 'INDEX_VOL':INDEX_VOL, 'INDEX_TAQ_VOL':INDEX_TAQ_VOL,
-                'INDEX_WATER_VOL':INDEX_WATER_VOL}  # load the defaults from util.py
+        self.transfer_volumes = {'DNA_VOL':util.DNA_VOL, 'PRIMER_VOL':util.PRIMER_VOL, 'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
+                'PRIMER_WATER_VOL':util.PRIMER_WATER_VOL, 'INDEX_VOL':util.INDEX_VOL, 'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
+                'INDEX_WATER_VOL':util.INDEX_WATER_VOL}  # load the defaults from util.py
         
 
     def __setstate__(self, state):
@@ -131,19 +147,169 @@ class Experiment():
         self.log('Info: Unlocking experiment. Modification is now possible. There should be good reason for this!')
         self.locked = False
 
+    ### transactions/reproducible steps
+
+    def add_pending_transactions(self, transactions):
+        """                 
+        Add to the current pending steps for a "step" of file generation. 
+        It will fail (return False) if it attempts to overwrite an existing stored change.
+        You can call this multiple times and the results will be combined into a single "step"
+        """
+        if not transactions:
+            return True
+        if self.pending_steps is None:
+            self.pending_steps = {}
+        for t in transactions:
+            p = Path(t)
+            parent_path = p.parent
+            file_name = 'pending_' + str(p.name)
+            t_renamed = parent_path / file_name
+            if t_renamed in self.pending_steps:
+                self.log(f'Critical: file generation {t} already performed in this stage of the pipeline')
+                return False
+            self.pending_steps[t_renamed] = deepcopy(transactions[t])
+            self.log(f'Info: Adding generated file {t_renamed} to pending pipeline stage history')
+        return True
+
+
+    def clashing_pending_transactions(self):
+        """
+        We need the user to know if accepting pending transactions will result in overwriting an existing
+        file. We return the list of all clashing filepaths
+        """
+        clash = []
+        if self.pending_steps is None:
+            return clash
+        
+        for transaction in self.pending_steps:
+            p = Path(transaction)
+            parent = p.parent
+            file_name = str(p.name)
+            final_name = file_name[len('pending_'):]  # cut off the leading "pending_"
+            final_path = str(parent / final_name)
+            for step in self.reproducible_steps:
+                if step is None or len(step) == 0:
+                    continue
+                # each step is dict['filenames'] = {PID: {well:change}}
+                if final_path in step:
+                    self.log(f'Warning: file path {final_path} already exists and will be overwritten if pending changes are accepted')
+                    clash.append(final_path)                   
+        return clash
+
+
+    def clear_pending_transactions(self):
+        """
+        Nukes all pending steps and files (presumably the user declined to keep them)
+        """
+        if self.pending_steps is None:
+            return True
+        try:
+            for transaction in self.pending_steps:
+                if Path(transaction).exists():
+                    os.remove(transaction)
+            self.pending_steps = None
+        except Exception as exc:
+            self.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
+            return False
+        return True
+
+    def accept_pending_transactions(self):
+        """ 
+        Look up the keys from self.pending_steps in self.reproducible_steps then
+            remove all entries matching and following this then
+            append the pending steps, rename files, and clear pending steps
+
+        Returns True on success
+        """
+        if not self.pending_steps:
+            self.log("Warning: there are no pending transactions to record")
+            return True  # It didn't actually fail
+
+        clashes = self.clashing_pending_transactions()
+        if len(clashes) == 0:
+            for transaction in self.pending_steps:
+                p = Path(transaction)
+                parent = p.parent
+                file_name = str(p.name)
+                final_name = file_name[len('pending_'):]
+                final_path = parent / final_name
+                os.rename(p, final_path)
+                return True
+
+        clashing_index = -1
+        for i,step in enumerate(self.reproducible_steps):
+            for dest in step:
+                if dest in self.pending_steps:
+                    clashing_index = i
+                    break
+        
+        if clashing_index == -1:  # this should NEVER happen
+            self.log(f"Critical: pipeline detects clashing transaction {clashing_index=} for {self.pending_steps=}") 
+            return False
+
+        # keep everything prior to the clash, then add on the pending steps
+        remove_these_steps = self.reproducible_steps[clashing_index:]
+        for step in remove_these_steps:
+            for fp in step:
+                if Path(fp).exists():
+                    os.remove(fp)
+        # rename pending filepaths
+        for transaction in self.pending_steps:
+            p = Path(transaction)
+            parent = p.parent
+            file_name = str(p.name)
+            final_name = file_name[len('pending_'):]
+            final_path = parent / final_name
+            os.rename(p, final_path)
+        self.reproducible_steps = self.reproducible_steps[0:clashing_index]
+        self.reproducible_steps.append(self.pending_steps.copy())
+        self.pending_steps = None
+        return True
+
+
+    def get_plate(self, PID):
+        """ 
+        Look up a plate ID in self.plate_location_sample and then in self.reproducible_steps
+        Apply all changes seen in self.reproducible steps
+        Return the modified plate
+        PID should be a guarded plate ID 
+        """
+        if PID not in self.plate_location_sample:
+            self.log(f'Error: {PID} not found in plate records')
+            return None
+        mod_plate = deepcopy(self.plate_location_sample[PID])
+        # self.reproducible_steps is a list, so stage will be a dictionary
+        for stage in self.reproducible_steps:
+            if stage is None:
+                continue
+            # each stage is dict['filenames'] = {PID: {well:change}}
+            for fn in stage:
+                if stage[fn] is None:
+                    continue
+                if PID in stage[fn]:
+                    for well in stage[fn][PID]:
+                        mod_plate[well] += stage[fn][PID][well]
+        return mod_plate
+
     ### functions for returning locally held file paths
 
     def get_exp_dir(self):
         """ return the experiment directory name """
         return 'run_' + self.name
 
-    def get_exp_fp(self, filename):
-        """ return the expected experiment path to filename """
+    def get_exp_fp(self, filename, transaction=False):
+        """ 
+        Return the expected experiment path to filename as a string
+        if transaction is True, check for an existing match and append "_pending" if required        
+        """
         dirname = self.get_exp_dir()
-        if dirname in filename:
-            return fp
-        fp = os.path.join(dirname, filename)
-        return fp
+        if dirname not in filename:
+            fp = Path(os.path.join(dirname, filename))
+        else:
+            fp = Path(filename)
+        if transaction and fp.exists():
+            pass
+        return str(fp)
 
     def get_raw_dirpath(self):
         """ 
@@ -205,7 +371,7 @@ class Experiment():
         try:
             self.log('Adding Rodentity plate set', level='b')  # records the function starting
             
-            sample_plate_ids = sorted([file_io.guard_pbc(spid, silent=True) for spid in sample_plate_ids if spid])
+            sample_plate_ids = sorted([util.guard_pbc(spid, silent=True) for spid in sample_plate_ids if spid])
         
             # check required data is present
             if len(sample_plate_ids) == 0:
@@ -238,11 +404,11 @@ class Experiment():
                     self.plate_location_sample[spid] = {'purpose':'sample','source':'rodentity', 'wells':set()}
                 #print(f"{sample_info=}")
                 for record in sample_info[spid]['wells']:  # "wellLocation", "mouse" 
-                    pos = unpadwell(record['wellLocation'])
+                    pos = util.unpadwell(record['wellLocation'])
                     self.plate_location_sample[spid]['wells'].add(pos)
                     if pos not in self.plate_location_sample[spid]:
                         self.plate_location_sample[spid][pos] = {}
-                    self.plate_location_sample[spid][pos]['barcode'] = file_io.guard_rbc(record['mouse']['barcode'], silent=True)
+                    self.plate_location_sample[spid][pos]['barcode'] = util.guard_rbc(record['mouse']['barcode'], silent=True)
                     self.plate_location_sample[spid][pos]['strain'] = record['mouse']['mouselineName']
                     self.plate_location_sample[spid][pos]['sex'] = record['mouse']['sex']
                     self.plate_location_sample[spid][pos]['mouse'] = deepcopy(record['mouse'])
@@ -328,11 +494,11 @@ class Experiment():
                 if spid not in self.plate_location_sample:  # should always be the case
                     self.plate_location_sample[spid] = {'purpose':'sample','source':'musterer','wells':set()}
                 for record in sample_info:  # 'wellLocation', 'mouse', 'mouseBarcode', 'mouseId'
-                    pos = unpadwell(record['wellLocation'])
+                    pos = util.unpadwell(record['wellLocation'])
                     self.plate_location_sample[spid]['wells'].add(pos)
                     self.plate_location_sample[spid][pos] = record['mouse'].copy()  # dict
                     self.plate_location_sample[spid][pos]['mouseId'] = record['mouseId']
-                    self.plate_location_sample[spid][pos]['barcode'] = file_io.guard_mbc(record['mouseBarcode'])
+                    self.plate_location_sample[spid][pos]['barcode'] = util.guard_mbc(record['mouseBarcode'])
                     self.plate_location_sample[spid][pos]['must_assays'] = record['mouse']['assays'].copy()
                     assays = [assay['assayName'] for assay in record['mouse']['assays']]
                     assayFamilies = set([a.split('_')[0] for a in assays])
@@ -382,18 +548,18 @@ class Experiment():
             for i,entry in enumerate(manifest_info):
                 for key in entry:
                     if key == 'Dest barcode':
-                        manifest_info[i][key] = file_io.guard_pbc(entry[key], silent=True)
+                        manifest_info[i][key] = util.guard_pbc(entry[key], silent=True)
                         dpids_spids[manifest_info[i][key]] = set()
                     if key == 'Plate barcode':
-                        manifest_info[i][key] = file_io.guard_pbc(entry[key], silent=True)
+                        manifest_info[i][key] = util.guard_pbc(entry[key], silent=True)
                     if key == 'Sample barcode':
-                        if not file_io.is_guarded(entry[key]):
+                        if not util.is_guarded(entry[key]):
                             if default_manifest_type == 'c':
-                                manifest_info[i][key] = file_io.guard_cbc(entry[key])
+                                manifest_info[i][key] = util.guard_cbc(entry[key])
                             elif default_manifest_type == 'r':
-                                manifest_info[i][key] = file_io.guard_rbc(entry[key])
+                                manifest_info[i][key] = util.guard_rbc(entry[key])
                             elif default_manifest_type == 'm':
-                                manifest_info[i][key] = file_io.guard_mbc(entry[key])
+                                manifest_info[i][key] = util.guard_mbc(entry[key])
             for i,entry in enumerate(manifest_info):
                 dpids_spids[entry['Dest barcode']].add(entry['Plate barcode'])
 
@@ -453,7 +619,7 @@ class Experiment():
                     sample_number = i+1
                 dest_pid = entry['Dest barcode']
                 source_pid = entry['Plate barcode']
-                well = unpadwell(entry['Well'])
+                well = util.unpadwell(entry['Well'])
                 assays = [entry[key] for key in entry if 'assay' in key.lower() and entry[key].strip()!='']
                 assayFamilies = set([a.split('_')[0] for a in assays])
                 
@@ -503,7 +669,7 @@ class Experiment():
         musterer_pids = set()
         for pid in self.plate_location_sample:
             for well in self.plate_location_sample[pid]:
-                if file_io.is_guarded_mbc(self.plate_location_sample[pid][well]['sample_barcode']):
+                if util.is_guarded_mbc(self.plate_location_sample[pid][well]['sample_barcode']):
                     musterer_pids.add(pid)
         return musterer_pids
 
@@ -514,18 +680,18 @@ class Experiment():
         rodentity_pids = set()
         for pid in self.plate_location_sample:
             for well in self.plate_location_sample[pid]:
-                if file_io.is_guarded_rbc(self.plate_location_sample[pid][well]['sample_barcode']):
+                if util.is_guarded_rbc(self.plate_location_sample[pid][well]['sample_barcode']):
                     rodentity_pids.add(pid)
         return rodentity_pids
 
     def get_custom_pids(self):
-        """ return [pids] with samples that are sourced as custom """
+        """ return [pids] with samples that are sourced as custom - useful for mixed content plates """
         # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], 
         #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] } }
         custom_pids = set()
         for pid in self.plate_location_sample:
             for well in self.plate_location_sample[pid]:
-                if file_io.is_guarded_cbc(self.plate_location_sample[pid][well]['sample_barcode']):
+                if util.is_guarded_cbc(self.plate_location_sample[pid][well]['sample_barcode']):
                     custom_pids.add(pid)
         return custom_pids
         
@@ -538,7 +704,7 @@ class Experiment():
         total_unique_assays = set()
         total_well_counts = {'c':0,'m':0,'r':0}
         for dna_pid in self.dest_sample_plates:
-            d = {'DNA PID': file_io.unguard_pbc(dna_pid)}
+            d = {'DNA PID': util.unguard_pbc(dna_pid)}
             d['Sample PID1'] = ''  # we need to define a regular structure for Pandas dataframe, I know this is ugly
             d['Sample PID2'] = ''
             d['Sample PID3'] = ''
@@ -552,17 +718,17 @@ class Experiment():
             #d['Unique assays'] = set()
             
             for i, sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
-                d['Sample PID'+str(i+1)] = file_io.unguard_pbc(sample_pid)
+                d['Sample PID'+str(i+1)] = util.unguard_pbc(sample_pid)
                 for info in (self.plate_location_sample[sample_pid][well] for well in self.plate_location_sample[sample_pid]['wells']):
                     samp_barcode = info['barcode']     
 
-                    if file_io.is_guarded_cbc(samp_barcode):
+                    if util.is_guarded_cbc(samp_barcode):
                         d['Custom samples'] += 1
                         total_well_counts['c'] += 1
-                    #elif file_io.is_guarded_mbc(samp_barcode):
+                    #elif util.is_guarded_mbc(samp_barcode):
                     #    d[' counts']['m'] += 1
                     #    total_well_counts['m'] += 1  
-                    elif file_io.is_guarded_rbc(samp_barcode):
+                    elif util.is_guarded_rbc(samp_barcode):
                         d['Rodentity samples'] += 1
                         total_well_counts['r'] += 1   
                     #for assay in info['assays']:
@@ -592,32 +758,21 @@ class Experiment():
         inputs = {key: [i[key] for i in inputs_dict] for key in inputs_dict[0]}
         return pd.DataFrame(inputs)
 
-    def get_valid_assay_counts(self):
-        """ valid assays file must not be empty """
-        pass
-
-    def get_invalid_assay_counts(self):
-        """ valid assays file must not be empty """
-        pass
-
-    def get_free_index_count(self):
-        """ calculate the remaining free i7i5 index barcodes available """
-        pass
-
     def add_pcr_plates(self, pcr_plate_list=[]):
         """
-        Add one or more empty 384-well plates to self.plate_location_sample
+        Add one or more empty 384-well PCR plates to self.plate_location_sample
         """
         for pid in pcr_plate_list:
-            p = file_io.guard_pbc(pid, silent=True)
+            p = util.guard_pbc(pid, silent=True)
             if p in self.plate_location_sample:
                 self.log(f'Error: {p} already in use, skipping')
                 continue
-            self.plate_location_sample[p] = {'purpose':'pcr', 'wells':set(), 'source':'user', 'plate_type':'384PP_AQ_BP', 'barcode':p}
+            self.plate_location_sample[p] = {'purpose':'pcr', 'wells':set(), 'source':'user', 
+                    'plate_type':util.PLATE_TYPES['PCR384'], 'barcode':p}
         self.save()
         return True
                                                                                             
-    def get_pcr_plates(self):
+    def get_pcr_pids(self):
         """ return a list of user supplied PCR plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'pcr']
 
@@ -630,7 +785,7 @@ class Experiment():
             if dna_plate_list and dest not in dna_plate_list:
                 continue
             for samp in self.dest_sample_plates[dest]:
-                assay_usage.update(calc_plate_assay_usage(self.plate_location_sample[samp]))
+                assay_usage.update(util.calc_plate_assay_usage(self.plate_location_sample[samp]))
         return assay_usage
 
     def get_volumes_required(self, assay_usage=None, dna_plate_list=[]):
@@ -654,11 +809,11 @@ class Experiment():
         """
         Returns the barcode pairs remaining, max available barcode pairs, max barcode pairs allowed by volume
         """
-        barcode_pids = []
+        index_pids = []
         for pid in self.plate_location_sample:
             if self.plate_location_sample[pid]['purpose'] == 'index':
-                barcode_pids.append(pid)
-        if not barcode_pids:
+                index_pids.append(pid)
+        if not index_pids:
             return 0, 0, False
 
         if not assay_usage:
@@ -668,21 +823,22 @@ class Experiment():
         fwd_barcode_vols = {}  # name=[vol, vol, ...]
         rev_barcode_vols = {}
         
-        for bpid in barcode_pids:
-            for well in self.plate_location_sample[bpid]['wells']:
-                if 'idt_name' not in self.plate_location_sample[bpid][well]:
+        for idx_pid in index_pids:
+            idx_plate = self.get_plate(idx_pid)
+            for well in idx_plate['wells']:
+                if 'idt_name' not in idx_plate[well]:
                     continue
-                name = self.plate_location_sample[bpid][well]['idt_name']
+                name = idx_plate[well]['idt_name']
                 if 'i7F' in name:
                     if name not in fwd_barcode_vols:
                         fwd_barcode_vols[name] = []
-                    if 'volume' in self.plate_location_sample[bpid][well]:
-                        fwd_barcode_vols[name].append(self.plate_location_sample[bpid][well]['volume'])
+                    if 'volume' in idx_plate[well]:
+                        fwd_barcode_vols[name].append(idx_plate[well]['volume']) - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']] 
                 elif 'i5R' in name:
                     if name not in rev_barcode_vols:
                         rev_barcode_vols[name] = []
-                    if 'volume' in self.plate_location_sample[bpid][well]:
-                        rev_barcode_vols[name].append(self.plate_location_sample[bpid][well]['volume'])
+                    if 'volume' in idx_plate[well]:
+                        rev_barcode_vols[name].append(idx_plate[well]['volume']) - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
                 else:
                     self.log('Unexpected index name:' + name, level='Warning')
         max_i7F = len(fwd_barcode_vols)
@@ -690,7 +846,8 @@ class Experiment():
         reaction_vol_capacity = 0
         for name in fwd_barcode_vols:
             # get the number of possible reactions and keep the lower number from possible reactions or possible reaction partners
-            max_reactions = sum([floor((vol-DEAD_VOLS['384PP_AQ_BP'])/self.transfer_volumes['INDEX_VOL']) for vol in fwd_barcode_vols[name]])
+            max_reactions = sum([floor((vol-util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])/self.transfer_volumes['INDEX_VOL']) \
+                    for vol in fwd_barcode_vols[name]])
             reaction_vol_capacity += min(max_reactions, max_i5R)
         max_barcode_pairs = max_i7F * max_i5R
 
@@ -703,35 +860,55 @@ class Experiment():
         primer_vols = {}
         for pid in self.plate_location_sample:
             if self.plate_location_sample[pid]['purpose'] == 'primers':
-                for well in self.plate_location_sample[pid]['wells']:
-                    if 'primer' in self.plate_location_sample[pid][well]:
-                        primer = self.plate_location_sample[pid][well]['primer']
+                pmr_plate = self.get_plate(pid)
+                for well in pmr_plate['wells']:
+                    if 'primer' in pmr_plate[well]:
+                        primer = pmr_plate[well]['primer']
                         if primer not in primer_counts:
                             primer_counts['primer'] = 0
                         if primer not in primer_vols:
                             primer_vols['primer'] = 0
                         primer_counts['primer'] += 1
-                        if 'volume' in self.plate_location_sample[pid][well]:
-                            primer_vols['primer'] += self.plate_location_sample[pid][well]['volume']
+                        if 'volume' in pmr_plate[pid][well]:
+                            primer_vols['primer'] += pmr_plate[pid][well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
         return primer_counts, primer_vols
 
-    def get_taqwater_avail(self):
-        """ returns (int) taq and (int) water volumes loaded as available for a given Echo stage (PCR) in nanolitres """
+    def get_taqwater_avail(self, taqwater_bcs=None, transactions=None):
+        """ 
+        Returns (int) taq and (int) water volumes (in nanolitres) loaded as available 
+        Will work from a list of barcodes if provided, or will calculate for all available plates
+        transactions (Optional): a dictionary of plates and their unprocessed changes for accurate calculation
+        """
         taq_avail = 0
         water_avail = 0
-        pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
+        if taqwater_bcs is not None:
+            pids = [p for p in taqwater_bcs if self.plate_location_sample[p]['purpose'] == 'taq_water']
+        else:
+            pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
+
         for pid in pids:
-            taq_avail += 3* (CAP_VOLS['6RES_AQ_BP2'] - DEAD_VOLS['6RES_AQ_BP2'])
-            water_avail += 3* (CAP_VOLS['6RES_AQ_BP2'] - DEAD_VOLS['6RES_AQ_BP2'])
+            tw_plate = self.get_plate(pid) # get the plate records with adjusted usage
+            for well in ['A1','A2','A3']:
+                water_avail += tw_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo6']]
+                if transactions is not None:
+                    if pid in transactions:
+                        if well in transactions[pid]:
+                            water_avail += transactions[pid][well] # the transactions are recorded as change, so will be negative values
+
+            for well in ['B1','B2','B3']:
+                taq_avail += tw_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo6']]
+                if transactions is not None:
+                    if pid in transactions:
+                        if well in transactions[pid]:
+                            taq_avail += transactions[pid][well]
         return taq_avail, water_avail, pids
 
-    def get_taqwater_plates(self):
+    def get_taqwater_pids(self):
         pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
         return pids
 
     def generate_nimbus_inputs(self):
-        success = nimbus_gen(self)
-        #print("In generate_nimbus_inputs", success)
+        success = file_io.nimbus_gen(self)
         return success
 
     def get_nimbus_filepaths(self):
@@ -807,7 +984,9 @@ class Experiment():
 
     def generate_targets(self):
         """ create target file based on loaded references """
-        target_fn = self.get_exp_fp('targets.fa')
+        transactions = {}
+        target_fn = self.get_exp_fp('targets.fa', transaction=True)
+        transactions[target_fn] = {} # add plates and modifications to this
         counter = 0
         try:
             with open(target_fn, 'wt') as targetf:
@@ -815,14 +994,15 @@ class Experiment():
                     for id in self.reference_sequences[group]:
                         print(f'>{id}', file=targetf)
                         print(f'{self.reference_sequences[group][id]}', file=targetf)
-                        counter += 1
-            self.log(f'Success: created reference sequences file {target_fn} containing {counter} sequences')
-            self.save()
-            return True
+                        counter += 1    
         except Exception as exc:
             self.log(f'Critical: could not write reference sequences to {target_fn} {exc}')
             self.save()
             return False
+        self.add_reproducible_steps(transactions)
+        self.log(f'Success: created reference sequences file {target_fn} containing {counter} sequences')
+        self.save()
+        return True
         
 
     def add_assaylists(self, uploaded_assaylists):
@@ -872,7 +1052,7 @@ class Experiment():
                     continue  # header
                 if row == '' or row[0] == '' or row[1] == '':
                     continue
-                well = unpadwell(row[0])
+                well = util.unpadwell(row[0])
                 if well not in self.plate_location_sample[PID]:
                     self.plate_location_sample[PID]['wells'].add(well)
                     self.plate_location_sample[PID][well] = {}
@@ -922,7 +1102,7 @@ class Experiment():
                             self.plate_location_sample[PID][well] = {}
                         self.plate_location_sample[PID][well]['volume'] = float(col)*1000
                 else:
-                    well = unpadwell(row[0])
+                    well = util.unpadwell(row[0])
                     if well not in self.plate_location_sample[PID]:
                         self.plate_location_sample[PID]['wells'].add(well)
                         self.plate_location_sample[PID][well] = {}
@@ -947,7 +1127,7 @@ class Experiment():
                 if i == 0:
                     continue  # header
                 cols = [c.strip() for c in row]
-                PID = file_io.guard_pbc(cols[0], silent=True)
+                PID = util.guard_pbc(cols[0], silent=True)
                 if PID in self.plate_location_sample and self.plate_location_sample[PID]['purpose'] != 'amplicon':
                     self.log(f"Error: Amplicon plate barcode: {PID=} matches "+\
                             f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
@@ -956,9 +1136,9 @@ class Experiment():
                     self.plate_location_sample[PID] = {'purpose':'amplicon', 'source':'user', 'wells':set(), 
                             'plate_type':'384PP_AQ_BP', 'barcode':PID}
                     self.log(f"Info: Creating new amplicon plate record for {PID}")
-                well = unpadwell(cols[1])
+                well = util.unpadwell(cols[1])
                 try:
-                    sample = file_io.guard_abc(cols[2], silent=True)
+                    sample = util.guard_abc(cols[2], silent=True)
                 except Exception as exc:
                     self.log(f"Error: Amplicon sample barcode could not be guarded {exc=}")
                     self.delete_plates([PID])
@@ -994,32 +1174,52 @@ class Experiment():
         primer_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primers']
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
                 'primer names pooled', 'volume']
-        fn = self.get_exp_fp(primer_survey_filename)
-        if os.path.exists(fn):
-            self.log(f'Warning: overwriting primer survey file {fn}')
-        with open(fn, 'wt') as fout:
-            print(','.join(header), file=fout)
-            for i,pid in enumerate(primer_pids):
-                plate=self.plate_location_sample[pid]
-                for well in row_ordered_384:
-                    # TODO: correct the columns below
-                    if well not in plate['wells']:
-                        continue
-                    if 'primer' not in plate[well]:
-                        continue
-                    if 'volume' not in plate[well]:
-                        continue
-                    outline = ','.join([f"Source[{i+1}]",file_io.unguard_pbc(pid,silent=True),plate['plate_type'],
-                            well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
-                    print(outline, file=fout)
-        self.log(f"Success: written Echo primer survey to {fn}")
+        transactions = {}                                       
+        primer_survey_fn = self.get_exp_fp(primer_survey_filename, transaction=True)
+        transactions[primer_survey_fn] = {} # add plates and modifications to this
+        try:
+            with open(primer_survey_fn, 'wt') as fout:
+                print(','.join(header), file=fout)
+                for i,pid in enumerate(primer_pids):
+                    transactions[primer_survey_fn][pid] = {}
+                    plate=self.plate_location_sample[pid]
+                    for well in util.row_ordered_384:
+                        if well not in plate['wells']:
+                            continue
+                        if 'primer' not in plate[well]:
+                            continue
+                        if 'volume' not in plate[well]:
+                            continue
+                        outline = ','.join([f"Source[{i+1}]",util.unguard_pbc(pid,silent=True),plate['plate_type'],
+                                well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
+                        print(outline, file=fout)
+        except Exception as exc:
+            self.log(f'Failure: could not write primer survey {exc}')
+            self.save()
+            return False
+        self.add_reproducible_steps(transactions)
+        self.log(f"Success: written Echo primer survey to {primer_survey_fn}")
         return True
+
 
     def check_ready_echo1(self, dna_plates, pcr_plates, taq_water_plates):
         """
         TODO: Should check that everything required to successfully generate PCR1 picklists is available
         """
+        for pid in pcr_plates:
+            if pid in self.plate_location_sample:
+                if self.plate_location_sample[pid]['purpose'] != 'pcr':
+                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
+                    return False
+            self.log(f'Warning: existing entry for PCR plate {pid}. This will be overwritten!')
+
+        for pid in dna_plates:
+            if pid in self.plate_location_sample:
+                if self.plate_location_sample[pid]['purpose'] != 'dna':
+                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
+                    return False
         return True
+
 
     def check_ready_echo2(self, pcr_plates, taq_water_plates, included_index_plates):
         """
@@ -1027,7 +1227,8 @@ class Experiment():
         """
         return True
 
-    def generate_echo_PCR1_picklist_interface(self, dna_plates, pcr_plates, taq_water_plates):
+
+    def generate_echo_PCR1_picklists(self, dna_plates, pcr_plates, taq_water_plates):
         """
         Calls echo_primer.generate_echo_PCR1_picklist() to do the work, needs a set of accepted DNA_plates,
         the final assay list, and a set of destination PCR plate barcodes, taq+water plates, primer plates, primer volumes.
@@ -1035,17 +1236,13 @@ class Experiment():
         TODO: We need to reduce available taq and water during this operation.
         """
         #print(f"Experiment.generate_echo_PCR1 {dna_plates=} {pcr_plates=} {taq_water_plates=}")
-        for pid in pcr_plates:
-            if pid in self.plate_location_sample:
-                if self.plate_location_sample[pid]['purpose'] != 'pcr':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
-                    return False
-            self.log(f'Warning: existing entry for PCR plate {pid}. This will be overwritten!')
+        
         success = self.generate_echo_primer_survey()
         if not success:
             self.log('Failure: failed to generate primer survey file')
             return False
-        success = generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates)
+        # do transaction handling in generate_echo_PCR1_picklist()
+        success = file_io.generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates)
         if not success:
             self.log('Failure: could not generate PCR1 picklists correctly')
             return False
@@ -1136,6 +1333,7 @@ class Experiment():
                 if pid not in self.deleted_plates:
                     self.deleted_plates[pid] = []
                 self.deleted_plates[pid].append(deepcopy(self.plate_location_sample[pid]))
+                # need to find this in reproducible steps and delete
                 del self.plate_location_sample[pid]
                 self.log(f'Warning: moved {pid} to deleted plate bin')
             else:
@@ -1159,7 +1357,7 @@ class Experiment():
                 stage2_pcr_plates.add(cols[8].strip())
         return stage2_pcr_plates
 
-    def get_index_plates(self):
+    def get_index_pids(self):
         """
         Used by Indexing stage
         """
@@ -1180,14 +1378,15 @@ class Experiment():
                         f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[PID] = {'purpose': 'index', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP', 'barcode':PID}
+                self.plate_location_sample[PID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
+                        'plate_type':util.PLATE_TYPES['Echo384'], 'barcode':PID}
                 self.log(f"Info: Creating new index plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_index_plate.getvalue().decode("utf-8"), newline='')
             for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
                 if i == 0 or row == '':
                     continue  # header or blank
-                well = unpadwell(row[0])
+                well = util.unpadwell(row[0])
                 if well not in self.plate_location_sample[PID]:
                     self.plate_location_sample[PID]['wells'].add(well)
                     self.plate_location_sample[PID][well] = {}
@@ -1218,7 +1417,8 @@ class Experiment():
             PID = uploaded_index_volume.name.split('_')[0]  # assumes first field is PID
             if PID not in self.plate_location_sample:
                 self.log(f"Info: Adding index plate {PID}")
-                self.plate_location_sample[PID] = {'purpose':'index', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP', 'barcode':PID}
+                self.plate_location_sample[PID] = {'purpose':'index', 'source':'user', 'wells':set(), 
+                        'plate_type':util.PLATE_TYPES['Echo384'], 'barcode':PID}
             else:
                 if self.plate_location_sample[PID]['purpose'] != 'index':
                     self.log(f"Error: {PID} plate purpose is "+\
@@ -1264,7 +1464,7 @@ class Experiment():
                         self.hdr = row
                         hdr_seen = True
                     else:
-                        well = unpadwell(row[3])
+                        well = util.unpadwell(row[3])
                         self.plate_location_sample[PID]['wells'].add(well)
                         if well not in self.plate_location_sample[PID]:
                             self.plate_location_sample[PID][well] = {}
@@ -1293,7 +1493,7 @@ class Experiment():
             print(','.join(header), file=fout)
             for i,pid in enumerate(index_pids):
                 plate=self.plate_location_sample[pid]
-                for well in row_ordered_384:
+                for well in util.row_ordered_384:
                     if well not in plate['wells']:
                         continue
                     if 'idt_name' not in plate[well]:
@@ -1301,12 +1501,12 @@ class Experiment():
                     if 'volume' not in plate[well]:
                         continue
                     try:
-                        outline = ','.join([f'Source[{i+1}]',file_io.unguard_pbc(pid,silent=True),plate['plate_type'],
+                        outline = ','.join([f'Source[{i+1}]',util.unguard_pbc(pid,silent=True),plate['plate_type'],
                                 well,plate[well]['idt_name'],plate[well]['index'],plate[well]['bc_name'],
                                 plate[well]['oligo'],str(plate[well]['volume']/1000)])
                     except:
                         print(f"Source[{i+1}]")
-                        print(f"{file_io.unguard_pbc(pid,silent=True)=},{plate['plate_type']=}")
+                        print(f"{util.unguard_pbc(pid,silent=True)=},{plate['plate_type']=}")
                         print(f"{well=},{plate[well]=}")
                         print(f"{plate[well]['idt_name']=}")
                         print(f"{plate[well]['index']=},{plate[well]['bc_name']=}"+\
@@ -1325,24 +1525,29 @@ class Experiment():
             return False
         try:
             for plate_barcode in plate_barcodes:
-                pid = file_io.guard_pbc(plate_barcode, silent=True)
+                pid = util.guard_pbc(plate_barcode, silent=True)
                 if pid in self.plate_location_sample:
                     if self.plate_location_sample[pid]['purpose'] != 'taq_water':
-                        self.log(f"Error: cannot add taq+water plate {file_io.unguard(pid)}. "+\
+                        self.log(f"Error: cannot add taq+water plate {util.unguard(pid)}. "+\
                             f"A plate with this barcode already exists with purpose {self.plate_location_sample[pid]['purpose']}")
                         return False
                     else:
-                        self.log(f"Warning: overwriting existing taq/water plate entry with barcode {file_io.unguard(pid)}")
+                        self.log(f"Warning: overwriting existing taq/water plate entry with barcode {util.unguard(pid)}")
                 else:
                     self.plate_location_sample[pid] = {}
                 self.plate_location_sample[pid]['purpose'] = 'taq_water'
+                self.plate_location_sample[pid]['plate_type'] = util.PLATE_TYPES['Echo6']
+                self.plate_location_sample[pid]['capacity'] = util.CAP_VOLS[util.PLATE_TYPES['Echo6']]
+                self.plate_location_sample[pid]['dead_vol'] = util.DEAD_VOLS[util.PLATE_TYPES['Echo6']]
                 self.plate_location_sample[pid]['wells'] = ['A1','A2','A3','B1','B2','B3']
-                self.plate_location_sample[pid]['A1'] = {'name': 'water', 'volume': CAP_VOLS['6RES_AQ_BP2']}
-                self.plate_location_sample[pid]['A2'] = {'name': 'water', 'volume': CAP_VOLS['6RES_AQ_BP2']}
-                self.plate_location_sample[pid]['A3'] = {'name': 'water', 'volume': CAP_VOLS['6RES_AQ_BP2']}
-                self.plate_location_sample[pid]['B1'] = {'name': 'taq', 'volume': CAP_VOLS['6RES_AQ_BP2']}
-                self.plate_location_sample[pid]['B2'] = {'name': 'taq', 'volume': CAP_VOLS['6RES_AQ_BP2']}
-                self.plate_location_sample[pid]['B3'] = {'name': 'taq', 'volume': CAP_VOLS['6RES_AQ_BP2']}
+                self.plate_location_sample[pid]['water_wells'] = util.WATER_WELLS
+                self.plate_location_sample[pid]['taq_wells'] = util.TAQ_WELLS
+                self.plate_location_sample[pid]['A1'] = {'name': 'water', 'volume': util.CAP_VOLS[util.PLATE_TYPES['Echo6']]}
+                self.plate_location_sample[pid]['A2'] = {'name': 'water', 'volume': util.CAP_VOLS[util.PLATE_TYPES['Echo6']]}
+                self.plate_location_sample[pid]['A3'] = {'name': 'water', 'volume': util.CAP_VOLS[util.PLATE_TYPES['Echo6']]}
+                self.plate_location_sample[pid]['B1'] = {'name': 'taq', 'volume': util.CAP_VOLS[util.PLATE_TYPES['Echo6']]}
+                self.plate_location_sample[pid]['B2'] = {'name': 'taq', 'volume': util.CAP_VOLS[util.PLATE_TYPES['Echo6']]}
+                self.plate_location_sample[pid]['B3'] = {'name': 'taq', 'volume': util.CAP_VOLS[util.PLATE_TYPES['Echo6']]}
         except Exception as exc:
             self.log(f"Error: adding taq+water plate barcode failed {plate_barcodes=}")
             return False
@@ -1364,7 +1569,7 @@ class Experiment():
             with open(os.path.join('run_'+self.name, EXP_FN), 'wt') as f:
                 print(exp, file=f)
         except Exception as exc:
-            output_error(exc, msg=f"Error saving {self.name=}")
+            print(f"Error saving {self.name=} {exc}", file=sys.stderr)
             return False
         return True
 

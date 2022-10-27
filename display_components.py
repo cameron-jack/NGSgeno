@@ -28,11 +28,26 @@ import streamlit.components.v1 as components
 
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
-from bin.experiment import Experiment, EXP_FN, load_experiment
-from bin.util import CAP_VOLS, DEAD_VOLS
-import bin.file_io as file_io
-import bin.db_io as db_io
-from bin.makehtml import generate_heatmap_html
+try:
+    from bin.experiment import Experiment, EXP_FN, load_experiment
+except ModuleNotFoundError:
+    from experiment import Experiment, EXP_FN, load_experiment
+try:
+    import bin.util as util
+except ModuleNoteFoundError:
+    import util                    
+try:
+    import bin.file_io as file_io
+except ModuleNotFoundError:
+    import file_io
+try:
+    import bin.db_io as db_io
+except ModuleNotFoundError:
+    import db_io
+try:
+    from bin.makehtml import generate_heatmap_html
+except ModuleNotFoundError:
+    from makehtml import generate_heatmap_html
 
 def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1):
     """Creates an st-aggrid interactive table based on a dataframe.
@@ -83,13 +98,11 @@ def delete_entries(exp, entries):
     if entries: # list
         for i,entry in enumerate(entries):
             for key in entry:
-                #print(key)
                 if 'PID' in key and entry[key]:
-                    if not file_io.is_guarded_pbc(entry[key]):
-                        entries[i][key] = file_io.guard_pbc(entry[key])
-        print(f"delete_entries {entries=}")
-        #exp.delete_plates(entries)
-        #exp.save()
+                    if not util.is_guarded_pbc(entry[key]):
+                        entries[i][key] = util.guard_pbc(entry[key])
+        exp.delete_plates(entries)
+        exp.save()
     print('delete_entries ran')
 
 
@@ -136,31 +149,31 @@ def data_table(key, options=False, table_option=None):
                 #print(f"{type(df)=}, {df=})")
                 selection = aggrid_interactive_table(df, key=key)
             #print(f"{type(selection)=} {selection=}")
-            # if selection['selected_rows']:
-            #     # only do the code below if this is a fresh selection
-            #     rows = selection["selected_rows"]
-            #     lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
-            #     if 'previous_delete_group_selection' not in st.session_state:
-            #         st.session_state['previous_delete_group_selection'] = None
-            #     if lines and st.session_state['previous_delete_group_selection'] != lines:
-            #         data_container.markdown(f"**You selected {lines}**")
-            #         del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
-            #         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-            #         delete_button = del_col2.button("Yes",on_click=delete_entries, 
-            #                 args=(st.session_state['experiment'], selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
-            #         mistake_button = del_col3.button("No",on_click=delete_entries, args=(st.session_state['experiment'], []), 
-            #                 key="keep " + str(key), help=f"Keep {lines}")
+            if selection['selected_rows']:
+                # only do the code below if this is a fresh selection
+                rows = selection["selected_rows"]
+                lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
+                if 'previous_delete_group_selection' not in st.session_state:
+                    st.session_state['previous_delete_group_selection'] = None
+                if lines and st.session_state['previous_delete_group_selection'] != lines:
+                    data_container.markdown(f"**You selected {lines}**")
+                    del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
+                    del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
+                    delete_button = del_col2.button("Yes",on_click=delete_entries, 
+                            args=(st.session_state['experiment'], selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
+                    mistake_button = del_col3.button("No",on_click=delete_entries, args=(st.session_state['experiment'], []), 
+                            key="keep " + str(key), help=f"Keep {lines}")
                     
-            #         if mistake_button:
-            #             st.session_state['previous_delete_group_selection'] = lines
-            #             lines = None
-            #             selection['selected_rows'] = None
-            #             st.experimental_rerun()
-            #         elif delete_button:
-            #             selection['selected_rows'] = None
-            #             lines = None
-            #             st.session_state['previous_delete_group_selection'] = None
-            #             st.experimental_rerun()
+                    if mistake_button:
+                        st.session_state['previous_delete_group_selection'] = lines
+                        lines = None
+                        selection['selected_rows'] = None
+                        st.experimental_rerun()
+                    elif delete_button:
+                        selection['selected_rows'] = None
+                        lines = None
+                        st.session_state['previous_delete_group_selection'] = None
+                        st.experimental_rerun()
 
     elif table_option == 'Edit Table':
         # Show plates in table form and let the user edit them to fix minor mistakes
@@ -394,7 +407,7 @@ def display_primer_components(assay_usage, expander=True):
             0,{},0,0,0,0 
 
     primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
-    per_use_vol = CAP_VOLS['384PP_AQ_BP'] - DEAD_VOLS['384PP_AQ_BP']
+    per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
     primer_names = set(primer_vols.keys())
 
     for i in range(6):

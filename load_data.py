@@ -30,12 +30,26 @@ import streamlit.components.v1 as components
 
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
-from bin.experiment import Experiment, EXP_FN, load_experiment
-from bin.util import output_error
-from bin.util import CAP_VOLS, DEAD_VOLS
-import bin.file_io as file_io
-import bin.db_io as db_io
-from bin.makehtml import generate_heatmap_html
+#try:
+#    from bin.experiment import Experiment, EXP_FN, load_experiment
+#except ModuleNotFoundError:
+#    from experiment import Experiment, EXP_FN, load_experiment
+try:
+    import bin.util as util
+except ModuleNotFoundError:
+    import util
+try:
+    import bin.file_io as file_io
+except ModuleNotFoundError:
+    import file_io
+try:
+    import bin.db_io as db_io
+except ModuleNotFoundError:
+    import db_io
+try:
+    from bin.makehtml import generate_heatmap_html
+except ModuleNotFoundError:
+    from makehtml import generate_heatmap_html
 import display_components as dc
 
 
@@ -58,7 +72,7 @@ def load_rodentity_data():
     """
     Home page 
     """
-
+    print('HERE')
     rodentity_exp = st.expander('Add data from Rodentity JSON files',expanded=True)
     rod_col1, rod_col2= rodentity_exp.columns(2)
 
@@ -72,12 +86,11 @@ def load_rodentity_data():
     #if 'rod_dp_key' in st.session_state:
     #    print(f"{st.session_state['rod_dp_key']=}")
     if all(exp.unassigned_plates[k] for k in exp.unassigned_plates):
-        rod_up_disabled = True
-                
+        rod_up_disabled = True              
 
     rodentity_epp = rodentity_exp.file_uploader('Rodentity JSON file', type='json', disabled=rod_up_disabled)
     if rodentity_epp:
-        rodentity_plate_name = file_io.guard_pbc(rodentity_epp.name.rstrip('.json'))
+        rodentity_plate_name = util.guard_pbc(rodentity_epp.name.rstrip('.json'))
         if 'prev_rod_upload' not in st.session_state or \
             st.session_state['prev_rod_upload'] != rodentity_plate_name:
             if rodentity_epp.name.rstrip('.json') in exp.unassigned_plates:
@@ -98,7 +111,7 @@ def load_rodentity_data():
     rod_col1.write('Checkboxes required for clearing plate IDs')
                     
     for i,p in enumerate(plates_to_clear):
-        plates_to_clear[i] = rod_col1.checkbox(f"P{str(i+1)}: {file_io.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
+        plates_to_clear[i] = rod_col1.checkbox(f"P{str(i+1)}: {util.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
                 help='Click the checkbox to allow a set plate ID to be cleared', key='check'+str(i+1))
 
     #Accept rodentity button
@@ -106,12 +119,12 @@ def load_rodentity_data():
     rod_dp = rod_col2.text_input('Destination plate barcode', max_chars=20, key='rod_dp_key') 
 
     if rod_dp and any(exp.unassigned_plates):
-        rod_dp = file_io.guard_pbc(rod_dp, silent=True)
+        rod_dp = util.guard_pbc(rod_dp, silent=True)
         if rod_dp in st.session_state['experiment'].dest_sample_plates or \
                 rod_dp in st.session_state['experiment'].plate_location_sample or \
                 rod_dp in st.session_state['experiment'].unassigned_plates:
             rod_col1.markdown('<p style="color:#FF0000">Destination plate barcode already in use: ' +\
-                    file_io.unguard_pbc(rod_dp) + '</p>', unsafe_allow_html=True)
+                    util.unguard_pbc(rod_dp) + '</p>', unsafe_allow_html=True)
     else:
         accept_disabled = True
 
@@ -126,7 +139,6 @@ def load_rodentity_data():
             rod_col2.write('Successfully added plate set')
             rod_dp = ''
             exp.unassigned_plates = {1:'',2:'',3:'',4:''}
-            clear_widget(('rod_dp_key','prev_rod_upload', ))
             plates_to_clear = [False, False, False, False]
             accept_rod_button = False
             exp.save()
@@ -158,11 +170,11 @@ def load_rodentity_data():
             st.experimental_rerun()
                 
              
-def load_custom_csv():
+def load_custom_csv(expanded=False):
     '''
     Upload data from a custom csv file
     '''
-    custom_csv_exp = st.expander('Add data from a custom manifest CSV file', expanded=False)
+    custom_csv_exp = st.expander('Add data from a custom manifest CSV file', expanded=expanded)
     custom_col1,custom_col2 = custom_csv_exp.columns(2)
     
     
@@ -209,9 +221,9 @@ def load_database_data():
         epp_str = db_r1cols[i].text_input(label='', placeholder=epp_msg, key=key_txt).strip()
         if epp_str:
             try:
-                epp_files[i] = file_io.guard_pbc(epp_str)
+                epp_files[i] = util.guard_pbc(epp_str)
             except Exception as exc:
-                output_error(exc, msg=epp_msg)
+                print(f'load_database_data() {epp_msg=} {exc}', file=sys.stderr)
 
     #Row2 column 1: DNA plate ID input
     dnap_str = db_r2cols[0].text_input(label='', placeholder=dnap_msg, key='dnap_input').strip()
@@ -219,7 +231,7 @@ def load_database_data():
         try:
             dnap = file_io.guard_pbc(dnap_str)
         except Exception as exc:
-            output_error(exc, msg=dnap_msg)
+            print(f'load_database_data() {dnap_msg=} {exc}', file=sys.stderr)
 
     # nothing in row2col2
 

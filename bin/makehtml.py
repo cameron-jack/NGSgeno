@@ -18,8 +18,10 @@ import sys
 import csv
 import json
 import collections
-from bin.util import output_error, col_ordered_96, col_ordered_384
-from bin.file_io import unguard
+try:
+    import bin.util as util 
+except ModuleNotFoundError:
+    import bin  
      
 templatefn = os.path.join('library','ResultPlate.tpl') # name of template file
 rtfn = os.path.join('library','ResultTable.tpl')
@@ -170,7 +172,7 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
 
     chart_data_str = "chart.data = ["
     well_entries = []
-    for well in col_ordered_96:
+    for well in util.col_ordered_96:
         entry_str = f'"y" : "{well[0].upper()}", "x" : "{well[1:]}"'
         if well not in exp.plate_location_sample[plate_id]:
             entry_str += ', "color" : colors.empty'
@@ -209,7 +211,7 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
         <h1 align="center">PUPUPU Plate PPPPPP</h1>
         <div id="chartdiv"></div>
     </body>
-    """.replace('PUPUPU', purpose).replace('PPPPPP', str(unguard(plate_id, silent=True)))
+    """.replace('PUPUPU', purpose).replace('PPPPPP', str(util.unguard(plate_id, silent=True)))
 
     return header_str + chart_data_str + footer_str
 
@@ -232,7 +234,7 @@ def rowdata(r):
             rx.pop()
         return ''.join(('<td class="r">' if c in rcol else '<td>')+d+'</td>' for c, d in enumerate(rx))
     except Exception as exc:
-        output_error(exc, msg='Error in makehtml.rowdata')
+        print(exc, msg='Error in makehtml.rowdata')
 
 
 def main():
@@ -321,7 +323,7 @@ def main():
     
         return
     except Exception as exc:
-        output_error(exc, msg='Error in makehtml.main')
+        print(exc, msg='Error in makehtml.main')
 
 
 if __name__ == '__main__':

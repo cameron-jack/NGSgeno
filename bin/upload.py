@@ -20,7 +20,10 @@ import sys
 import argparse
 from collections import defaultdict
 import requests
-from musterer import upload_plate
+try:
+    from bin.db_io import upload_plate
+except ModuleNotFoundError:
+    from db_io import upload_plate
 
 
 class SilentFail(Exception):
