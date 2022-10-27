@@ -302,7 +302,7 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
 
         required_wells = ceil(reactions/AFTER_NIM_WELLS)
         user_supplied_PCR = ', '.join([file_io.unguard_pbc(p, silent=True)\
-                    for p in st.session_state['experiment'].get_pcr_plates()])
+                    for p in st.session_state['experiment'].get_pcr_pids()])
         user_supplied_taqwater = ', '.join([file_io.unguard_pbc(p, silent=True)\
                     for p in st.session_state['experiment'].get_taqwater_avail()[2]])
 

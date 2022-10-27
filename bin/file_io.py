@@ -73,7 +73,7 @@ def nimbus_gen(exp):
             fnstg = exp.get_exp_fp('Stage1-P'+dna_BC+'.csv', transaction=True)
 
             transactions[dna_fn] = {} # add plates and modifications to this
-            
+            transactions[fnstg] = {}
             # rn - row number in Nimbus picklist file - Nimbus needs this
             # wn - count the number of wells needed in the DNA plate
             # plist - list of primer families needed for the samples in the plate
