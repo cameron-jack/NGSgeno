@@ -37,10 +37,6 @@ try:
 except ModuleNoteFoundError:
     import util                    
 try:
-    import bin.file_io as file_io
-except ModuleNotFoundError:
-    import file_io
-try:
     import bin.db_io as db_io
 except ModuleNotFoundError:
     import db_io
@@ -103,7 +99,7 @@ def delete_entries(exp, entries):
                         entries[i][key] = util.guard_pbc(entry[key])
         exp.delete_plates(entries)
         exp.save()
-    print('delete_entries ran')
+    #print('delete_entries ran')
 
 
 def data_table(key, options=False, table_option=None):
@@ -119,7 +115,7 @@ def data_table(key, options=False, table_option=None):
     """
 
     data_container = st.container()
-
+    exp = st.session_state['experiment']
     if options==True:
         table_option = data_container.selectbox('View Data options',
                                 ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'Reference Sequences', 'View Log'),\
@@ -139,10 +135,8 @@ def data_table(key, options=False, table_option=None):
         selection = []
         st.session_state['nuke'] = ''
 
-        #st.session_state['delete_selection'] = False
-        if st.session_state['experiment']:
-            #st.write(st.session_state['experiment'].name)
-            df = st.session_state['experiment'].inputs_as_dataframe()
+        if exp:
+            df = exp.inputs_as_dataframe()
             if df is None or not isinstance(df, pd.DataFrame):
                 st.write('No data loaded')
             else:
@@ -160,8 +154,8 @@ def data_table(key, options=False, table_option=None):
                     del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
                     del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
                     delete_button = del_col2.button("Yes",on_click=delete_entries, 
-                            args=(st.session_state['experiment'], selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
-                    mistake_button = del_col3.button("No",on_click=delete_entries, args=(st.session_state['experiment'], []), 
+                            args=(exp, selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
+                    mistake_button = del_col3.button("No",on_click=delete_entries, args=(exp, []), 
                             key="keep " + str(key), help=f"Keep {lines}")
                     
                     if mistake_button:
@@ -182,16 +176,15 @@ def data_table(key, options=False, table_option=None):
     #Show a visual of the plates
     elif table_option == 'Plate View':
         plate_ids = []
-        for pid in st.session_state['experiment'].plate_location_sample:
-            plate_ids.append(file_io.unguard(pid))
+        for pid in exp.plate_location_sample:
+            plate_ids.append(util.unguard(pid))
 
         #Let user choose which plate to view
         plate_selectbox = data_container.selectbox('Plate ID to view', plate_ids, key=key)
-        #plate_input = data_container.text_input('Plate ID to view', key='plate_input1')
         if plate_selectbox:
-            plate_id = file_io.guard_pbc(plate_selectbox)
-            if plate_id in st.session_state['experiment'].plate_location_sample:
-                heatmap_str = generate_heatmap_html(st.session_state['experiment'], plate_id, scaling=1.2)
+            plate_id = util.guard_pbc(plate_selectbox)
+            if plate_id in exp.plate_location_sample:
+                heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.2)
                 #with open("debug.html", 'wt') as outf:
                 #    print(heatmap_str, file=outf)
                 components.html(heatmap_str, height=700, scrolling=True)
@@ -301,9 +294,9 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
                 st.session_state['assay_filter'] = 1
 
         required_wells = ceil(reactions/AFTER_NIM_WELLS)
-        user_supplied_PCR = ', '.join([file_io.unguard_pbc(p, silent=True)\
+        user_supplied_PCR = ', '.join([util.unguard_pbc(p, silent=True)\
                     for p in st.session_state['experiment'].get_pcr_pids()])
-        user_supplied_taqwater = ', '.join([file_io.unguard_pbc(p, silent=True)\
+        user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
                     for p in st.session_state['experiment'].get_taqwater_avail()[2]])
 
         comp_warning_area = pcr_comps_area.empty()
@@ -311,20 +304,20 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
 
         req_cols = pcr_comps_area.columns(col_size)
         #Wells and plates
-        req_cols[0].markdown('**Number of required PCR plates**', unsafe_allow_html=True)
+        req_cols[0].markdown('**Number of required PCR plates**')
         req_cols[1].write(str(required_wells))
-        req_cols[0].markdown('**Number of required reaction wells**', unsafe_allow_html=True)
+        req_cols[0].markdown('**Number of required reaction wells**')
         req_cols[1].write(str(reactions))
-        req_cols[2].markdown('**User supplied PCR plates**', unsafe_allow_html=True)
+        req_cols[2].markdown('**User supplied PCR plates**')
         if user_supplied_PCR:
             req_cols[3].write(user_supplied_PCR)
         else:
-            req_cols[3].write('None')
+            req_cols[3].markdown('<p style="color:#FF0000">None</p>', unsafe_allow_html=True)
         req_cols[2].markdown('**User supplied taq/water plates**', unsafe_allow_html=True)
         if user_supplied_PCR:
             req_cols[3].write(user_supplied_taqwater)
         else:
-            req_cols[3].write('None')
+            req_cols[3].markdown('<p style="color:#FF0000">None</p>', unsafe_allow_html=True)
         pcr_comps_area.write('')
 
     #PCR1 and PCR2 taq and water 

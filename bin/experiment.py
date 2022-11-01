@@ -789,7 +789,7 @@ class Experiment():
         """ return a list of user supplied PCR plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'pcr']
 
-    def get_assay_usage(self, dna_plate_list=[]):
+    def get_assay_usage(self, dna_plate_list=[], included_guards=util.GUARD_TYPES):
         """ We will want ways to get assay usage from various subsets, but for now do it for everything that 
             has a Nimbus destination plate.
         """
@@ -798,7 +798,8 @@ class Experiment():
             if dna_plate_list and dest not in dna_plate_list:
                 continue
             for samp in self.dest_sample_plates[dest]:
-                assay_usage.update(util.calc_plate_assay_usage(self.plate_location_sample[samp]))
+                assay_usage.update(util.calc_plate_assay_usage(self.plate_location_sample[samp]), 
+                        included_guards=included_guards)
         return assay_usage
 
     def get_volumes_required(self, assay_usage=None, dna_plate_list=[]):
@@ -867,12 +868,18 @@ class Experiment():
         return max_barcode_pairs-reactions, max_barcode_pairs, reaction_vol_capacity
 
 
-    def get_primers_avail(self):
-        """ returns {primer:count}, {primer:vol} from what's been loaded """
+    def get_primers_avail(self, included_pids=None):
+        """ 
+        Returns {primer:count}, {primer:vol} from what's been loaded 
+        If included_pids is an iterable, only include plates with these ids
+        """
         primer_counts = {}
         primer_vols = {}
         for pid in self.plate_location_sample:
             if self.plate_location_sample[pid]['purpose'] == 'primers':
+                if included_pids:
+                    if pid not in included_pids:
+                        continue
                 pmr_plate = self.get_plate(pid)
                 for well in pmr_plate['wells']:
                     if 'primer' in pmr_plate[well]:
@@ -882,8 +889,8 @@ class Experiment():
                         if primer not in primer_vols:
                             primer_vols['primer'] = 0
                         primer_counts['primer'] += 1
-                        if 'volume' in pmr_plate[pid][well]:
-                            primer_vols['primer'] += pmr_plate[pid][well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
+                        if 'volume' in pmr_plate[well]:
+                            primer_vols['primer'] += pmr_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
         return primer_counts, primer_vols
 
     def get_taqwater_avail(self, taqwater_bcs=None, transactions=None):
@@ -1172,7 +1179,7 @@ class Experiment():
         self.save()
         return True
 
-    def get_amplicon_plates(self):
+    def get_amplicon_pids(self):
         """ return a list of user supplied amplicon plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'amplicon']
 

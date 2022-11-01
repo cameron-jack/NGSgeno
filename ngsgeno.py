@@ -267,7 +267,7 @@ def run_generate(exp, target_func, context=None, *args, **kwargs):
     Run target_func() and ask user to respond to any file/pipeline clashes in the given context, if provided
     """
     exp.clear_pending_transactions()
-    success = target_func()
+    success = target_func(*args, **kwargs)
     if not success:
         exp.clear_pending_transactions()
     else:
@@ -385,8 +385,9 @@ def main():
         if pipeline_stage == 0:
             load_data_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Load Data", description=""),
-                stx.TabBarItemData(id=2, title="View Data", description="")
-            ], return_type=int)
+                stx.TabBarItemData(id=2, title="Load Accessory Plates", description=""),
+                stx.TabBarItemData(id=3, title="View Data", description="")
+            ], return_type=int)                            
 
             if not load_data_tab:
                 if 'load_tab' not in st.session_state:
@@ -395,15 +396,23 @@ def main():
 
             #view data
             if load_data_tab == 1:
-                with st.expander(label='Summary of loaded data', expanded=False):
+                summary = exp.summarise_inputs()
+                expanded=False
+                if summary:
+                    expanded = True
+                with st.expander(label='Summary of loaded data', expanded=expanded):
                     dc.data_table('load_data_tab1', options=False, table_option='Summary')
                 ld.load_rodentity_data()
                 ld.load_database_data()
                 ld.load_custom_csv()
                 st.session_state['load_tab'] = 1
 
-            #load data
+            #load accessory plates
             if load_data_tab == 2:
+                ld.upload_pcr_files('all')
+
+            #load data
+            if load_data_tab == 3:
                 assay_usage = st.session_state['experiment'].get_assay_usage()
                 dc.data_table(key=load_data_tab, options=True)
                 dc.display_primer_components(assay_usage, expander=True)
@@ -428,25 +437,24 @@ def main():
             exp = st.session_state['experiment']
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
 
-            if not st.session_state['experiment'].dest_sample_plates:
-                nimbus_title = "Load data inputs to enable Nimbus input file generation."
-            else:
-                # do we have any Nimbus inputs to generate + download
-                yet_to_run = len(exp.dest_sample_plates) - len(nfs)
-                if len(efs) == len(nfs):  # already exists
-                    nimbus_title = 'All Hamilton Nimbus outputs received.'
-                if yet_to_run > 0: 
-                    nimbus_title += ' ' + str(yet_to_run) + " 96-well plate sets need Nimbus input file generation"
 
-                    plates_to_run = [dest_plate for dest_plate in exp.dest_sample_plates\
-                                 if all([dest_plate not in nf for nf in nfs])]
-                    plates_to_run_str = '\n'.join(plates_to_run)
-                    st.write(plates_to_run_str)
-                    
-
-            
             #download nimbus
             if nimbus_tab == 1:
+                if not st.session_state['experiment'].dest_sample_plates:
+                    nimbus_title = "Load data inputs to enable Nimbus input file generation."
+                else:
+                    # do we have any Nimbus inputs to generate + download
+                    yet_to_run = len(exp.dest_sample_plates) - len(nfs)
+                    if len(efs) == len(nfs) and len(efs) != 0:  # already exists
+                        nimbus_title = 'All Hamilton Nimbus outputs received.'
+                    if yet_to_run > 0: 
+                        nimbus_title += ' ' + str(yet_to_run) + " 96-well plate sets need Nimbus input file generation"
+
+                        plates_to_run = [dest_plate for dest_plate in exp.dest_sample_plates\
+                                     if all([dest_plate not in nf for nf in nfs])]
+                        plates_to_run_str = '\n'.join(plates_to_run)
+                        st.write(plates_to_run_str)
+                                
                 st.markdown(f'<h5 style="text-align:center;color:#f63366">{nimbus_title}</h5>',\
                          unsafe_allow_html=True)
                 st.write('')
@@ -488,8 +496,6 @@ def main():
             if nimbus_tab == 2:
                 nim_tab2_title_area = st.empty()
                 nim_tab2_title = ''
-                nim_upload_area = st.container()
-                files_str = None
 
                 if not efs and not xbcs:
                     nim_tab2_title = "Load data inputs to enable Nimbus input file generation."
@@ -502,8 +508,9 @@ def main():
                     nfs, efs, xbcs = exp.get_nimbus_filepaths()
                     missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
                     files_str = '</br>'.join(missing_nims)
-
-                    nim_outputs = st.file_uploader('Echo_384_COC_0001_....csv', type='csv', 
+                    st.write('The following Hamilton Nimbus output files are expected:')
+                    st.markdown(f'<p style="text-align:left;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
+                    nim_outputs = st.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
                             accept_multiple_files=True, help='You can upload more than one file at once')
 
                     if nim_outputs: # and nim_outputs != st.session_state['nim_upload']:
@@ -515,7 +522,7 @@ def main():
                             with open(fp, 'wt') as outf:
                                 #print(nim_output.getvalue().decode("utf-8"))
                                 outf.write(nim_output.getvalue().decode("utf-8").replace('\r\n','\n'))
-        
+                        st.experimental_rerun()
                 nim_tab2_title_area.markdown(f'<h5 style="text-align:center;color:#f63366">{nim_tab2_title}</h5>',\
                                 unsafe_allow_html=True)
                 st.session_state['nimbus_tab'] = 2
@@ -528,6 +535,7 @@ def main():
         #Primer PCR
         if pipeline_stage == 2:
             exp = st.session_state['experiment']
+            st.session_state['assay_filter'] = True
             primer_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="PCR 1", description="Components"),
                 stx.TabBarItemData(id=2, title="Provide", description="Plates"),
@@ -581,7 +589,6 @@ def main():
                         if st.session_state['experiment'].check_ready_echo1(included_DNA_plates,\
                                     included_PCR_plates, included_taqwater_plates):
 
-                            plates = [included_DNA_plates, included_PCR_plates, included_taqwater_plates]
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
 
                             echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',\
@@ -590,7 +597,8 @@ def main():
                             picklist_button_col.write('')
 
                             if echo_picklist_go:
-                                success = run_generate(exp, exp.generate_picklist, plates, pcr_stage=1)
+                                success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
+                                        included_DNA_plates, included_PCR_plates, included_taqwater_plates)
                                 if not success:
                                     st.write('Picklist generation failed. Please see the log')
                                 
@@ -669,7 +677,8 @@ def main():
                         picklist_button_col.write('')
 
                         if echo_picklist_go:
-                            success = run_generate(exp, exp.generate_picklist)
+                            success = run_generate(exp, exp.generate_echo2_picklists, included_PCR_plates,
+                                    included_taqwater_plates, included_amplicon_plates)
                             if not success:
                                 st.write('Picklist generation failed. Please see the log')
                             

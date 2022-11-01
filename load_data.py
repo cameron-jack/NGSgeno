@@ -13,8 +13,6 @@ A web based interactive GUI with Streamlit. Plate and sample barcodes here are u
 In all other code they must be guarded. We guard them here before we send them to any external function.
 """
 
-from ctypes.wintypes import WIN32_FIND_DATAA
-from msilib.schema import File
 import os
 import sys
 from pathlib import PurePath, Path
@@ -72,6 +70,7 @@ def load_rodentity_data():
     """
     Home page 
     """
+    print('HERE')
     rodentity_exp = st.expander('Add data from Rodentity JSON files',expanded=True)
     rod_col1, rod_col2= rodentity_exp.columns(2)
 
@@ -252,14 +251,16 @@ def load_database_data():
 
 
 
-def upload_pcr_files(PCR_stage = 'all'):
+def upload_pcr_files(PCR_stage = 0):
     """
     Make big changes to this
     Home page: load data
 
     Upload options for extra custom data including reference files, assay lists, primer plates, index plates, taq/water plates, and PCR plates (barcode only)
 
-    PCR stage = [1, 2, 'all']
+    PCR stage = [0, 1, 2]
+    As stage 0, all options are available
+
     As stage 1, primer plate layouts and volumes, taq and water plates and/or barcodes, and PCR plate barcodes are required.. 
     Users can also upload custom reference files, assay lists and extra taq and water plates. 
 
@@ -268,7 +269,7 @@ def upload_pcr_files(PCR_stage = 'all'):
     """
     upload_col1, upload_col2 = st.columns(2)
 
-    if PCR_stage == 1:
+    if PCR_stage == 0 or PCR_stage == 1:
         
         uploaded_primer_layouts = upload_col1.file_uploader('Upload Primer Plate Layouts', \
             key='primer_uploader', type='csv', accept_multiple_files=True)
@@ -301,7 +302,7 @@ def upload_pcr_files(PCR_stage = 'all'):
                 st.session_state['pcr_barcode_upload'] = pcr_plate_barcode
 
 
-    if PCR_stage == 2:
+    if PCR_stage == 0 or PCR_stage == 2:
         uploaded_index_layouts = upload_col1.file_uploader('Upload i7i5 Index Plate Layout', \
             key='index_uploader', type='csv', accept_multiple_files=True)
 

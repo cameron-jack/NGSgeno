@@ -82,6 +82,8 @@ PLATE_TYPES = {'Echo6': '6RES_AQ_BP2', 'Echo384': '384PP_AQ_BP',
                'PCR384': 'Hard Shell 384 well PCR Biorad'}
 WATER_WELLS = ['A'+c for c in '123']
 TAQ_WELLS = ['B'+c for c in '123']
+# global - set of all possible guard types
+GUARD_TYPES = set(['m','r','c','p', 'a'])
     
 def output_error(exc, msg=''):
     """ DEPRECATED """
@@ -116,22 +118,31 @@ for c in [str(j+1) for j in range(12)]:
         nimbus_ordered_96.append(r+c)
 
 
-def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied_wells: list=[]) -> defaultdict:
+
+def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied_wells: list=[], included_guards=GUARD_TYPES) -> defaultdict:
     """ 
     Required input: Experiment.plate_location_sample[plateid] dictionary of locations and samples for a single plate
             "wells" is a required field.
-    Optional inputs: lists of denied assays and denied wells, which will be ignored in the calculation
+    Optional inputs: 
+        - lists of denied assays and denied wells, which will be ignored in the calculation
+        - included_guards is an interable of guard types (r,c,m,etc) which will be included. It defaults to all guard types.
     Output: a dictionary of assays and their usage counts
     """
     assay_counts = defaultdict(int)
     for well in location_sample['wells']:
         if well not in denied_wells:
-            for assay in location_sample[well]['assays']:
-                if assay not in denied_assays:
-                    assay_counts[assay] += 1
+            if 'barcode' not in location_sample[well]:
+                continue
+            guard = get_guard_type(location_sample[well]['barcode'])
+            if guard in included_guards:
+                for assay in location_sample[well]['assays']:
+                    if assay not in denied_assays:
+                        assay_counts[assay] += 1
     return assay_counts
  
 ### Helper functions for IO
+
+# See top of file for GUARD_TYPES constant
 
 class UnguardedBarcodeError(Exception):
     """ Exception raised for barcodes with degraded or missing guards
@@ -161,8 +172,7 @@ class ExistingGuardError(Exception):
     def __init__(self, message):
         self.message = message
 
-# global - set of all possible guard types
-GUARD_TYPES = set(['m','r','c','p', 'a'])
+
 
 # Confirm guards
 def is_guarded_mbc(mbc):
@@ -213,6 +223,12 @@ def is_guarded(bc):
     elif is_guarded_abc(bc):
         return True
     return False
+
+def get_guard_type(bc):
+    """ return the character of the guard in a barcode """
+    if is_guarded(bc):
+        return bc[0]
+    return None
 
 
 # Add guards to barcodes
