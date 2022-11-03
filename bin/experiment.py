@@ -771,6 +771,51 @@ class Experiment():
         inputs = {key: [i[key] for i in inputs_dict] for key in inputs_dict[0]}
         return pd.DataFrame(inputs)
 
+    def summarise_consumables(self):
+        """
+        Return a dictionary of all consumables: primers, indexes, taq+water plates
+        The descriptions we provide here will likely vary as we find new things to display
+        TODO: separate custom and NGS primers
+        """
+        d = {'taqwater_pids':[], 'taq_vol':0, 'water_vol':0, 'primer_pids':[], 'primer_count_ngs':0, 
+                'primer_count_custom':0, 'unique_primers':set(), 'primer_well_count':0, 'assay_primer_mappings':0,
+                'reference_files':[], 'unique_references':set(), 'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
+        consumable_plate_purposes = set(['primer', 'taq_water', 'index'])
+        for pid in self.plate_location_sample:
+            if 'purpose' not in self.plate_location_sample[pid]:
+                continue
+            if self.plate_location_sample[pid]['purpose'] not in consumable_plate_purposes:
+                continue
+            plate = self.get_plate(pid)  # get the plate contents with all usage modifications applied
+            if plate['purpose'] == 'taq_water':
+                d['taqwater_pids'].append(pid)
+                for well in util.TAQ_WELLS:
+                    if well in plate and 'volume' in plate[well]:
+                        d['taq_vol'] += plate[well]['volume']
+                for well in util.WATER_WELLS:
+                    if well in plate and 'volume' in plate[well]:
+                        d['water_vol'] += plate[well]['volume']
+            elif plate['purpose'] == 'primer':
+                d['primer_pids'].append(pid)
+                for well in plate['wells']:
+                    if 'primer' in plate[well]:
+                        d['unique_primers'].add(plate[well]['primer'])
+                        d['primer_well_count'] += 1
+            elif plate['purpose'] == 'index':
+                d['index_pids'].append(pid)
+                for well in plate['wells']:
+                    if 'idt_name' in plate[well]:
+                        if '_i7F_' in plate[well]['idt_name']:
+                            d['unique_i7s'].add(plate[well]['idt_name'])
+                        elif '_i5R_' in plate[well]['idt_name']:
+                            d['unique_i5s'].add(plate[well]['idt_name'])
+        for f in self.reference_sequences:
+            d['reference_files'].append(f)
+            for refname in self.reference_sequences[f]:
+                d['unique_references'].add(refname)
+        d['assay_primer_mappings'] = len(self.primer_assay)
+        return d
+
     def add_pcr_plates(self, pcr_plate_list=[]):
         """
         Add one or more empty 384-well PCR plates to self.plate_location_sample
@@ -793,13 +838,13 @@ class Experiment():
         """ We will want ways to get assay usage from various subsets, but for now do it for everything that 
             has a Nimbus destination plate.
         """
-        assay_usage = Counter()
+        assay_usage = {}
         for dest in self.dest_sample_plates:
             if dna_plate_list and dest not in dna_plate_list:
                 continue
-            for samp in self.dest_sample_plates[dest]:
-                assay_usage.update(util.calc_plate_assay_usage(self.plate_location_sample[samp]), 
-                        included_guards=included_guards)
+            for sample_pid in self.dest_sample_plates[dest]:
+                plate = self.get_plate(sample_pid)
+                assay_usage.update(util.calc_plate_assay_usage(plate,included_guards=included_guards))
         return assay_usage
 
     def get_volumes_required(self, assay_usage=None, dna_plate_list=[]):
@@ -808,6 +853,7 @@ class Experiment():
         """
         if not assay_usage:
             assay_usage = self.get_assay_usage(dna_plate_list=dna_plate_list)
+        #print (f'{assay_usage=}', assay_usage.values(), file=sys.stderr)
         reactions = sum([v for v in assay_usage.values()])
 
         primer_taq_vol = reactions * self.transfer_volumes['PRIMER_TAQ_VOL']
@@ -827,6 +873,8 @@ class Experiment():
         for pid in self.plate_location_sample:
             if self.plate_location_sample[pid]['purpose'] == 'index':
                 index_pids.append(pid)
+
+        print(f'get_index_remaining_available_volume() {index_pids=}', file=sys.stderr)
         if not index_pids:
             return 0, 0, False
 
@@ -839,20 +887,24 @@ class Experiment():
         
         for idx_pid in index_pids:
             idx_plate = self.get_plate(idx_pid)
+            #print(f'get_index_remaining_available_volume() {idx_plate=}', file=sys.stderr)
+            
             for well in idx_plate['wells']:
                 if 'idt_name' not in idx_plate[well]:
                     continue
                 name = idx_plate[well]['idt_name']
+                if 'volume' in idx_plate[well]:
+                    print(f"get_index_remaining_available_volume() {idx_plate[well]['volume']=}")
                 if 'i7F' in name:
                     if name not in fwd_barcode_vols:
                         fwd_barcode_vols[name] = []
                     if 'volume' in idx_plate[well]:
-                        fwd_barcode_vols[name].append(idx_plate[well]['volume']) - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']] 
+                        fwd_barcode_vols[name].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
                 elif 'i5R' in name:
                     if name not in rev_barcode_vols:
                         rev_barcode_vols[name] = []
                     if 'volume' in idx_plate[well]:
-                        rev_barcode_vols[name].append(idx_plate[well]['volume']) - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
+                        rev_barcode_vols[name].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
                 else:
                     self.log('Unexpected index name:' + name, level='Warning')
         max_i7F = len(fwd_barcode_vols)
@@ -876,21 +928,21 @@ class Experiment():
         primer_counts = {}
         primer_vols = {}
         for pid in self.plate_location_sample:
-            if self.plate_location_sample[pid]['purpose'] == 'primers':
+            if self.plate_location_sample[pid]['purpose'] == 'primer':
                 if included_pids:
                     if pid not in included_pids:
                         continue
                 pmr_plate = self.get_plate(pid)
                 for well in pmr_plate['wells']:
                     if 'primer' in pmr_plate[well]:
-                        primer = pmr_plate[well]['primer']
-                        if primer not in primer_counts:
-                            primer_counts['primer'] = 0
-                        if primer not in primer_vols:
-                            primer_vols['primer'] = 0
-                        primer_counts['primer'] += 1
+                        primer_name = pmr_plate[well]['primer']
+                        if primer_name not in primer_counts:
+                            primer_counts[primer_name] = 0
+                        if primer_name not in primer_vols:
+                            primer_vols[primer_name] = 0
+                        primer_counts[primer_name] += 1
                         if 'volume' in pmr_plate[well]:
-                            primer_vols['primer'] += pmr_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
+                            primer_vols[primer_name] += max(pmr_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0)
         return primer_counts, primer_vols
 
     def get_taqwater_avail(self, taqwater_bcs=None, transactions=None):
@@ -1054,16 +1106,16 @@ class Experiment():
             self.log('Error: cannot add primer plates while lock is active.')
             return False
         for uploaded_primer_plate in uploaded_primer_plates:
-            PID = uploaded_primer_plate.name.split('_')[0]  # assumes first field is PID
+            PID = util.guard_pbc(uploaded_primer_plate.name.split('_')[0], silent=True)  # assumes first field is PID
             if PID in self.plate_location_sample:
-                if self.plate_location_sample[PID]['purpose'] == 'primers':
+                if self.plate_location_sample[PID]['purpose'] == 'primer':
                     self.log(f"Info: Primer file {PID} already exists, adding data")
                 else:
                     self.log(f"Error: Primer file PID: {uploaded_primer_plate=} matches "+\
                         f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP'}
+                self.plate_location_sample[PID] = {'purpose':'primer', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP'}
                 self.log(f"Info: Creating new primer plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_primer_plate.getvalue().decode("utf-8"), newline='')
@@ -1088,16 +1140,16 @@ class Experiment():
             self.log('Error: cannot add primer plate volumes while lock is active.')
             return False
         for uploaded_primer_volume in uploaded_primer_volumes:
-            PID = uploaded_primer_volume.name.split('_')[0]  # assumes first field is PID
+            PID = util.guard_pbc(uploaded_primer_volume.name.split('_')[0], silent=True)  # assumes first field is PID
             if PID in self.plate_location_sample:
-                if self.plate_location_sample[PID]['purpose'] == 'primers':
+                if self.plate_location_sample[PID]['purpose'] == 'primer':
                     self.log(f"Info: Primer file {PID} already exists, adding data")
                 else:
                     self.log(f"Error: Primer file PID: {uploaded_primer_volume=} matches "+\
                         f"existing plate entry of different purpose {self.plate_location_sample[PID]}")
                     return
             else:  # create new plate entry and set purpose
-                self.plate_location_sample[PID] = {'purpose':'primers', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP'}
+                self.plate_location_sample[PID] = {'purpose':'primer', 'source':'user', 'wells':set(), 'plate_type':'384PP_AQ_BP'}
                 self.log(f"Info: Creating new primer plate record for {PID}")
             # load data into plate
             data = StringIO(uploaded_primer_volume.getvalue().decode("utf-8"), newline='')
@@ -1191,7 +1243,7 @@ class Experiment():
         if self.locked:
             self.log('Error: cannot generate primer survey file while lock is active.')
             return False
-        primer_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primers']
+        primer_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primer']
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
                 'primer names pooled', 'volume']
         transactions = {}                                       
@@ -1319,7 +1371,7 @@ class Experiment():
             self.log('Failure: failed to generate index survey file')
             return False
         self.log('Success: generated index survey file')
-        success = generate_echo_PCR2_picklist(self, pcr_plates, index_plates, taq_water_plates, amplicon_plates)
+        success = file_io.generate_echo_PCR2_picklist(self, pcr_plates, index_plates, taq_water_plates, amplicon_plates)
         if not success:
             self.log('Failure: could not generate PCR2 (index) picklists correctly')
             return False
@@ -1389,7 +1441,7 @@ class Experiment():
             self.log('Error: cannot add index plates while lock is active.')
             return False
         for uploaded_index_plate in uploaded_index_plates:
-            PID = uploaded_index_plate.name.split('_')[0]  # assumes first field is PID
+            PID = util.guard_pbc(uploaded_index_plate.name.split('_')[0], silent=True)  # assumes first field is PID
             if PID in self.plate_location_sample:
                 if self.plate_location_sample[PID]['purpose'] == 'index':
                     self.log(f"Info: Index plate {PID} already exists, adding data")
@@ -1434,7 +1486,7 @@ class Experiment():
             self.log('Error: cannot add index plate volumes while lock is active.')
             return False
         for uploaded_index_volume in uploaded_index_volumes:
-            PID = uploaded_index_volume.name.split('_')[0]  # assumes first field is PID
+            PID = util.guard_pbc(uploaded_index_volume.name.split('_')[0], silent=True)  # assumes first field is PID
             if PID not in self.plate_location_sample:
                 self.log(f"Info: Adding index plate {PID}")
                 self.plate_location_sample[PID] = {'purpose':'index', 'source':'user', 'wells':set(), 

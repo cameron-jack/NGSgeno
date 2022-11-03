@@ -384,8 +384,8 @@ def main():
         #Load data
         if pipeline_stage == 0:
             load_data_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="Load Data", description=""),
-                stx.TabBarItemData(id=2, title="Load Accessory Plates", description=""),
+                stx.TabBarItemData(id=1, title="Load Samples", description=""),
+                stx.TabBarItemData(id=2, title="Load Consumables", description=""),
                 stx.TabBarItemData(id=3, title="View Data", description="")
             ], return_type=int)                            
 
@@ -394,26 +394,27 @@ def main():
                     st.session_state['load_tab'] = 1
                 load_data_tab = st.session_state['load_tab']
 
-            #view data
+            # load sample data
             if load_data_tab == 1:
                 summary = exp.summarise_inputs()
                 expanded=False
-                if summary:
+                if len(summary) > 1:
                     expanded = True
                 with st.expander(label='Summary of loaded data', expanded=expanded):
-                    dc.data_table('load_data_tab1', options=False, table_option='Summary')
+                    dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples')
                 ld.load_rodentity_data()
                 ld.load_database_data()
                 ld.load_custom_csv()
                 st.session_state['load_tab'] = 1
 
-            #load accessory plates
+            #load consumables, references and assays/primer mappings
             if load_data_tab == 2:
-                ld.upload_pcr_files('all')
+                dc.data_table('load_data_tab2', options=False, table_option='Loaded Consumables')
+                ld.upload_pcr_files()     
 
             #load data
             if load_data_tab == 3:
-                assay_usage = st.session_state['experiment'].get_assay_usage()
+                assay_usage = exp.get_assay_usage()
                 dc.data_table(key=load_data_tab, options=True)
                 dc.display_primer_components(assay_usage, expander=True)
                 st.session_state['load_tab'] = 2

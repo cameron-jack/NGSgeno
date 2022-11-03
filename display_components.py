@@ -118,23 +118,20 @@ def data_table(key, options=False, table_option=None):
     exp = st.session_state['experiment']
     if options==True:
         table_option = data_container.selectbox('View Data options',
-                                ('Summary', 'Edit Table', 'Plate View', 'Explore Assays', 'Reference Sequences', 'View Log'),\
-                                             key='select_' + str(key))
+                ('Loaded Samples', 'Loaded Consumables', 'Edit Table', 'Plate View', 'Explore Assays', 
+                'Reference Sequences', 'View Log'), key='select_' + str(key))
     elif options==False and table_option is None:
-        table_option = 'Summary'
+        table_option = 'Loaded Samples'
 
     data_table_title = data_container.title('')
     data_table_title.markdown(f'<h5 style="text-align:center;color:#7eaecc">{table_option}</h5>',\
-        unsafe_allow_html=True)
+            unsafe_allow_html=True)
 
     #exp = st.session_state['experiment']
 
     #Experiment summary - table
 
-    if table_option == 'Summary':
-        selection = []
-        st.session_state['nuke'] = ''
-
+    if table_option == 'Loaded Samples':
         if exp:
             df = exp.inputs_as_dataframe()
             if df is None or not isinstance(df, pd.DataFrame):
@@ -142,32 +139,63 @@ def data_table(key, options=False, table_option=None):
             else:
                 #print(f"{type(df)=}, {df=})")
                 selection = aggrid_interactive_table(df, key=key)
-            #print(f"{type(selection)=} {selection=}")
-            if selection['selected_rows']:
-                # only do the code below if this is a fresh selection
-                rows = selection["selected_rows"]
-                lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
-                if 'previous_delete_group_selection' not in st.session_state:
-                    st.session_state['previous_delete_group_selection'] = None
-                if lines and st.session_state['previous_delete_group_selection'] != lines:
-                    data_container.markdown(f"**You selected {lines}**")
-                    del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
-                    del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                    delete_button = del_col2.button("Yes",on_click=delete_entries, 
-                            args=(exp, selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
-                    mistake_button = del_col3.button("No",on_click=delete_entries, args=(exp, []), 
-                            key="keep " + str(key), help=f"Keep {lines}")
-                    
-                    if mistake_button:
-                        st.session_state['previous_delete_group_selection'] = lines
-                        lines = None
-                        selection['selected_rows'] = None
-                        st.experimental_rerun()
-                    elif delete_button:
-                        selection['selected_rows'] = None
-                        lines = None
+                #print(f"{type(selection)=} {selection=}")
+                if 'selected_rows' in selection and selection['selected_rows']:
+                    # only do the code below if this is a fresh selection
+                    rows = selection["selected_rows"]
+                    lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
+                    if 'previous_delete_group_selection' not in st.session_state:
                         st.session_state['previous_delete_group_selection'] = None
-                        st.experimental_rerun()
+                    if lines and st.session_state['previous_delete_group_selection'] != lines:
+                        data_container.markdown(f"**You selected {lines}**")
+                        del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
+                        del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
+                        delete_button = del_col2.button("Yes",on_click=delete_entries, 
+                                args=(exp, selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
+                        mistake_button = del_col3.button("No",on_click=delete_entries, args=(exp, []), 
+                                key="keep " + str(key), help=f"Keep {lines}")
+                    
+                        if mistake_button:
+                            st.session_state['previous_delete_group_selection'] = lines
+                            lines = None
+                            selection['selected_rows'] = None
+                            st.experimental_rerun()
+                        elif delete_button:
+                            selection['selected_rows'] = None
+                            lines = None
+                            st.session_state['previous_delete_group_selection'] = None
+                            st.experimental_rerun()
+
+    elif table_option == 'Loaded Consumables':
+        # d = {'taqwater_pids':[], 'taq_vol':0, 'water_vol':0, 'primer_pids':[], 'primer_count_ngs':0, 
+        #        'primer_count_custom':0, 'unique_primers':set(), 'primer_well_count':0, 'assay_primer_mappings':0,
+        #        'reference_files':[], 'unique_references':set(), 'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
+        consumables = exp.summarise_consumables()
+        # display pids and files
+        list_col1, list_col2 = data_container.columns([1,4])
+        list_col1.markdown('**Taq+water plates**')
+        list_col2.write(', '.join([util.unguard_pbc(pid, silent=True) for pid in consumables['taqwater_pids']]))
+        list_col1.markdown('**Primer plates**')
+        list_col2.write(', '.join([util.unguard_pbc(pid, silent=True) for pid in consumables['primer_pids']]))
+        list_col1.markdown('**Index plates**')
+        list_col2.write(', '.join([util.unguard_pbc(pid, silent=True) for pid in consumables['index_pids']]))
+        list_col1.markdown('**Reference files**')
+        list_col2.write(', '.join(consumables['reference_files']))
+        numeric_cols = data_container.columns([2,1,2,1,2,1])
+        numeric_cols[0].markdown('**Available taq (uL)**')
+        numeric_cols[1].write(consumables['taq_vol']/1000)
+        numeric_cols[2].markdown('**Available water (uL)**')
+        numeric_cols[3].write(consumables['water_vol']/1000)
+        numeric_cols[4].markdown('**Assay to primer mappings**')
+        numeric_cols[5].write(consumables['assay_primer_mappings'])
+        numeric_cols[0].markdown('**Unique primers**')
+        numeric_cols[1].write(len(consumables['unique_primers']))
+        numeric_cols[2].markdown('**Unique forward indexes**')
+        numeric_cols[3].write(len(consumables['unique_i7s']))
+        numeric_cols[4].markdown('**Unique reverse indexes**')
+        numeric_cols[5].write(len(consumables['unique_i5s']))
+        numeric_cols[0].markdown('**Unique reference sequences**')
+        numeric_cols[1].write(len(consumables['unique_references']))
 
     elif table_option == 'Edit Table':
         # Show plates in table form and let the user edit them to fix minor mistakes
@@ -371,6 +399,7 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
 
 
 def display_primer_components(assay_usage, expander=True):
+    exp  = st.session_state['experiment']
     if expander:
         primer_components_exp = st.expander('Primer Wells, Uses, and Volumes', expanded=False)
         ptab1, ptab2, ptab3, ptab4 = primer_components_exp.tabs(["Wells", "Uses", "Volume μL", "Available μL"])
@@ -394,13 +423,13 @@ def display_primer_components(assay_usage, expander=True):
     #Values
     if assay_usage:
         primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-                st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
+                exp.get_volumes_required(assay_usage=assay_usage)
     else:
         reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
             0,{},0,0,0,0 
 
-    primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
-    per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
+    primer_avail_counts, primer_avail_vols = exp.get_primers_avail()
+    usable_well_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
     primer_names = set(primer_vols.keys())
 
     for i in range(6):
@@ -419,7 +448,7 @@ def display_primer_components(assay_usage, expander=True):
         if p != '':
             r = (k*2)%6  # horizontal offset
             need_vol = primer_vols.get(p,0)
-            num_wells = ceil((need_vol)/per_use_vol)
+            num_wells = ceil((need_vol)/usable_well_vol)
 
             wells_col[r+0].write(p)
             wells_col[r+1].write(num_wells)

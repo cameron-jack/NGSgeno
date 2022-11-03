@@ -128,13 +128,17 @@ def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied
         - included_guards is an interable of guard types (r,c,m,etc) which will be included. It defaults to all guard types.
     Output: a dictionary of assays and their usage counts
     """
-    assay_counts = defaultdict(int)
+    assay_counts = defaultdict(lambda: 0)
+    if 'wells' not in location_sample:
+        return assay_counts
     for well in location_sample['wells']:
         if well not in denied_wells:
             if 'barcode' not in location_sample[well]:
                 continue
             guard = get_guard_type(location_sample[well]['barcode'])
             if guard in included_guards:
+                if 'assays' not in location_sample[well]:
+                    continue
                 for assay in location_sample[well]['assays']:
                     if assay not in denied_assays:
                         assay_counts[assay] += 1

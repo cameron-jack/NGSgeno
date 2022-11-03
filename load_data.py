@@ -25,6 +25,7 @@ import pandas as pd
 
 import streamlit as st
 import streamlit.components.v1 as components
+import extra_streamlit_components as stx
 
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
@@ -251,15 +252,15 @@ def load_database_data():
 
 
 
-def upload_pcr_files(PCR_stage = 0):
+def upload_pcr_files(PCR_stage=None):
     """
     Make big changes to this
     Home page: load data
 
     Upload options for extra custom data including reference files, assay lists, primer plates, index plates, taq/water plates, and PCR plates (barcode only)
 
-    PCR stage = [0, 1, 2]
-    As stage 0, all options are available
+    PCR stage = [None, 1, 2]
+    As stage is None, all options are available
 
     As stage 1, primer plate layouts and volumes, taq and water plates and/or barcodes, and PCR plate barcodes are required.. 
     Users can also upload custom reference files, assay lists and extra taq and water plates. 
@@ -269,7 +270,7 @@ def upload_pcr_files(PCR_stage = 0):
     """
     upload_col1, upload_col2 = st.columns(2)
 
-    if PCR_stage == 0 or PCR_stage == 1:
+    if not PCR_stage or PCR_stage == 1:
         
         uploaded_primer_layouts = upload_col1.file_uploader('Upload Primer Plate Layouts', \
             key='primer_uploader', type='csv', accept_multiple_files=True)
@@ -300,9 +301,8 @@ def upload_pcr_files(PCR_stage = 0):
                 success = st.session_state['experiment'].add_pcr_plates([pcr_plate_barcode])
                 # set the uploaded file in cache so we don't accidentally add it again
                 st.session_state['pcr_barcode_upload'] = pcr_plate_barcode
-
-
-    if PCR_stage == 0 or PCR_stage == 2:
+        
+    if not PCR_stage or PCR_stage == 2:
         uploaded_index_layouts = upload_col1.file_uploader('Upload i7i5 Index Plate Layout', \
             key='index_uploader', type='csv', accept_multiple_files=True)
 
@@ -334,6 +334,19 @@ def upload_pcr_files(PCR_stage = 0):
                     [uap.name for uap in uploaded_amplicon_plates]:
                 success = st.session_state['experiment'].add_amplicon_manifests(uploaded_amplicon_plates)
                 st.session_state['amplicon_plate_upload'] = [uap.name for uap in uploaded_amplicon_plates]
+        with upload_col2:
+            load_data_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="Load Samples", description=""),
+                    stx.TabBarItemData(id=2, title="Load Consumables", description=""),
+                    stx.TabBarItemData(id=3, title="View Data", description="")
+                ], key='dfgrkjdbgdrfjkgb', return_type=int)
+            if load_data_tab == 1:
+                st.write('tab1 hello')
+            elif load_data_tab == 2:
+                st.write('tab2 hello')
+            elif load_data_tab == 3:
+                st.write('tab3 hello')
+
      
     taqwater_barcode = upload_col1.text_input('Taq and Water Plate Barcode', \
         placeholder='Type in the barcode for taq+water plate', key='taq_water_barcode')
