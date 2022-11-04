@@ -262,7 +262,7 @@ async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match
         await asyncio.sleep(1)
 
 
-def run_generate(exp, target_func, context=None, *args, **kwargs):
+def run_generate(exp, target_func, *args, **kwargs):
     """
     Run target_func() and ask user to respond to any file/pipeline clashes in the given context, if provided
     """
@@ -274,14 +274,14 @@ def run_generate(exp, target_func, context=None, *args, **kwargs):
         if exp.pending_steps is not None and len(exp.pending_steps) > 0:
             clashes = exp.clashing_pending_transactions()
             if len(clashes) > 0:
-                if context:
-                    context.warning(f'The following output files already exist {clashes}')
-                    context.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages')
-                    if context.button('Accept'):
-                        exp.accept_pending_transactions()
-                    if context.button('Cancel'):
-                        exp.clear_pending_transactions()
-                else:
+                #if context:
+                #    context.warning(f'The following output files already exist {clashes}')
+                #    context.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages')
+                #    if context.button('Accept'):
+                #        exp.accept_pending_transactions()
+                #    if context.button('Cancel'):
+                #        exp.clear_pending_transactions()
+                #else:
                     st.warning(f'The following output files already exist {clashes}')
                     st.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages')
                     if st.button('Accept'):
@@ -598,10 +598,14 @@ def main():
                             picklist_button_col.write('')
 
                             if echo_picklist_go:
-                                success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
-                                        included_DNA_plates, included_PCR_plates, included_taqwater_plates)
+                                success = run_generate(exp, exp.generate_echo_primer_survey)
                                 if not success:
-                                    st.write('Picklist generation failed. Please see the log')
+                                    st.write('Primer survey file generation failed. Please see the log')
+                                else:
+                                    success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
+                                            included_DNA_plates, included_PCR_plates, included_taqwater_plates)
+                                    if not success:
+                                        st.write('Picklist generation failed. Please see the log')
                                 
                         dc.show_echo1_outputs()
                     

@@ -278,7 +278,7 @@ class Experiment():
         return True
 
 
-    def get_plate(self, PID):
+    def get_plate(self, PID, transactions=None):
         """ 
         Look up a plate ID in self.plate_location_sample and then in self.reproducible_steps
         Apply all changes seen in self.reproducible steps
@@ -300,6 +300,11 @@ class Experiment():
                 if PID in stage[fn]:
                     for well in stage[fn][PID]:
                         mod_plate[well] += stage[fn][PID][well]
+        if transactions:
+            for t in transactions:
+                if PID in transactions[t]:
+                    for well in transactions[t][PID]:
+                        mod_plate[well] += transactions[t][PID][well]
         return mod_plate
 
     ### functions for returning locally held file paths
@@ -383,7 +388,7 @@ class Experiment():
             return False
         try:
             self.log('Adding Rodentity plate set', level='b')  # records the function starting
-            
+            dna_plate_id = util.guard_pbc(dna_plate_id, silent=True)
             sample_plate_ids = sorted([util.guard_pbc(spid, silent=True) for spid in sample_plate_ids if spid])
         
             # check required data is present
@@ -412,6 +417,7 @@ class Experiment():
 
             # no failures so update the experiment
             self.dest_sample_plates[dna_plate_id] = sample_plate_ids
+            self.plate_location_sample[dna_plate_id] = {'purpose':'dna', 'source':','.join(sample_plate_ids), 'wells':set()}
             for spid in sample_plate_ids:
                 if spid not in self.plate_location_sample:
                     self.plate_location_sample[spid] = {'purpose':'sample','source':'rodentity', 'wells':set()}
@@ -710,39 +716,30 @@ class Experiment():
         
 
     def summarise_inputs(self):
-        """ return a dictionary summarising the contents of plate sets """
+        """ return a list of fields and a list of headers, summarising the contents of plate sets """
         plate_set_summary = []
+        plate_set_headers = ['DNA PID', 'Sample PID1', 'Sample PID2', 'Sample PID3', 'Sample PID4', 'Custom samples', 'Rodentity samples']
         total_wells = 0
         total_unique_samples = set()
         total_unique_assays = set()
         total_well_counts = {'c':0,'m':0,'r':0}
         for dna_pid in self.dest_sample_plates:
-            d = {'DNA PID': util.unguard_pbc(dna_pid)}
-            d['Sample PID1'] = ''  # we need to define a regular structure for Pandas dataframe, I know this is ugly
-            d['Sample PID2'] = ''
-            d['Sample PID3'] = ''
-            d['Sample PID4'] = ''
-         
-            #d['Well counts'] = {'c':0,'m':0,'r':0}
-            d['Custom samples'] = 0
-            d['Rodentity samples'] = 0
-            #d['All primers required'] = 0
-            #d['Unique samples'] = set()
-            #d['Unique assays'] = set()
+            plate_set_details = [util.unguard_pbc(dna_pid)]
+            custom_wells = 0
+            rodentity_wells = 0
             
-            for i, sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
-                d['Sample PID'+str(i+1)] = util.unguard_pbc(sample_pid)
+            for i,sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
+                plate_set_details.append(util.unguard_pbc(sample_pid))
                 for info in (self.plate_location_sample[sample_pid][well] for well in self.plate_location_sample[sample_pid]['wells']):
                     samp_barcode = info['barcode']     
-
                     if util.is_guarded_cbc(samp_barcode):
-                        d['Custom samples'] += 1
+                        custom_wells += 1
                         total_well_counts['c'] += 1
                     #elif util.is_guarded_mbc(samp_barcode):
                     #    d[' counts']['m'] += 1
                     #    total_well_counts['m'] += 1  
                     elif util.is_guarded_rbc(samp_barcode):
-                        d['Rodentity samples'] += 1
+                        rodentity_wells += 1
                         total_well_counts['r'] += 1   
                     #for assay in info['assays']:
                     #    d['Primers required'].add(assay)
@@ -750,26 +747,25 @@ class Experiment():
                     
                     #d['Unique samples'].add(info['barcode'])
                     total_unique_samples.add(info['barcode'])
-                    
-            #d['Unique samples'] = len(d['Unique samples'])
-            #d['Unique assays'] = len(d['Unique assays'])
-            #total_wells += sum(k[v] for k,v in d['Well counts'].items())
-            plate_set_summary.append(d)
-        plate_set_summary.append({'DNA PID':'Total','Sample PID1':'','Sample PID2':'','Sample PID3':'',
-                #'Sample PID4':'','Well count':total_wells,'Unique samples': len(total_unique_samples),
-                'Sample PID4':'','Custom samples': total_well_counts['c'], 'Rodentity samples': total_well_counts['r']})
-                # 'Total assays': len(total_unique_assays)})
+            for j in range(3-i):
+                plate_set_details.append('')
+
+            plate_set_details.append(str(custom_wells))
+            plate_set_details.append(str(rodentity_wells))
+            print(f'{plate_set_details=}', file=sys.stderr)
+            plate_set_summary.append(plate_set_details)
+        if len(plate_set_summary) > 0:
+            plate_set_summary.append(['Total','','','','',total_well_counts['c'], total_well_counts['r']])
+                    # 'Total assays': len(total_unique_assays)})
         #print(f"{plate_set_summary=}")
-        return plate_set_summary
+        return plate_set_summary, plate_set_headers
 
     def inputs_as_dataframe(self):
         """ return the experiment contents as a pandas dataframe """
-        inputs_dict = self.summarise_inputs()
-        if not inputs_dict:
+        rows, headers = self.summarise_inputs()
+        if not rows:
             return None
-        # need to reshape this list of dicts as dict of lists
-        inputs = {key: [i[key] for i in inputs_dict] for key in inputs_dict[0]}
-        return pd.DataFrame(inputs)
+        return pd.DataFrame(rows, columns=headers)
 
     def summarise_consumables(self):
         """
@@ -1004,15 +1000,17 @@ class Experiment():
             }]
             Returns True on success
         """                                                                                              
-        print(f"In remove_entries. {selected_rows=}")
+        print(f"In remove_entries. {selected_rows=}", file=sys.stderr)
         for row in selected_rows:
-            if row['DNA PID'] not in self.dest_sample_plates:
+            dest_pid = util.guard_pbc(row['DNA PID'], silent=True)
+            if dest_pid not in self.dest_sample_plates:
                 self.log(f"Error: {row['DNA PID']=} doesn't actually exist in the experiment!")
                 continue
-            dest_pid = row['DNA PID']
-            sample_pids = self.dest_sample_plates.pop(row['DNA PID'])
-            delete_pids = sample_pids.append(dest_pid)
+            sample_pids = self.dest_sample_plates[dest_pid]
+            delete_pids = sample_pids + [dest_pid]
             self.delete_plates(delete_pids)
+            del self.dest_sample_plates[dest_pid]
+            print(f'remove_entries() {self.dest_sample_plates=}', file=sys.stderr)
         self.save()
         return True
 
@@ -1269,7 +1267,7 @@ class Experiment():
             self.log(f'Failure: could not write primer survey {exc}')
             self.save()
             return False
-        self.add_reproducible_steps(transactions)
+        self.add_pending_transactions(transactions)
         self.log(f"Success: written Echo primer survey to {primer_survey_fn}")
         return True
 
@@ -1309,10 +1307,10 @@ class Experiment():
         """
         #print(f"Experiment.generate_echo_PCR1 {dna_plates=} {pcr_plates=} {taq_water_plates=}")
         
-        success = self.generate_echo_primer_survey()
-        if not success:
-            self.log('Failure: failed to generate primer survey file')
-            return False
+        #success = self.generate_echo_primer_survey()
+        #if not success:
+        #    self.log('Failure: failed to generate primer survey file')
+        #    return False
         # do transaction handling in generate_echo_PCR1_picklist()
         success = file_io.generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates)
         if not success:
@@ -1339,7 +1337,7 @@ class Experiment():
         return dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths
 
 
-    def generate_echo_PCR2_picklist_interface(self, pcr_plates, index_plates, taq_water_plates, amplicon_plates=None):
+    def generate_echo_PCR2_picklists(self, pcr_plates, index_plates, taq_water_plates, amplicon_plates=None):
         """
         Calls echo_index.generate_echo_PCR2_picklist() to do the work, needs a set of destination PCR plate barcodes, 
         taq+water plates, index plates, index volumes, and optionally any amplicon plates (post-PCR).

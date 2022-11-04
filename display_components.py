@@ -25,7 +25,7 @@ import pandas as pd
 
 import streamlit as st
 import streamlit.components.v1 as components
-
+import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 try:
@@ -34,7 +34,7 @@ except ModuleNotFoundError:
     from experiment import Experiment, EXP_FN, load_experiment
 try:
     import bin.util as util
-except ModuleNoteFoundError:
+except ModuleNotFoundError:
     import util                    
 try:
     import bin.db_io as db_io
@@ -66,6 +66,7 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
 
     options.configure_selection("multiple", use_checkbox=False, \
                 rowMultiSelectWithClick=False, suppressRowDeselection=False)
+    selection = None
     selection = AgGrid(
         df,
         enable_enterprise_modules=True,
@@ -73,9 +74,9 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
         gridOptions=options.build(),
         # _available_themes = ['streamlit','light','dark', 'blue', 'fresh','material']
         theme="fresh",
-        #update_mode=GridUpdateMode.MODEL_CHANGED,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.VALUE_CHANGED,
         key=key,
+        reload_data=True,
         allow_unsafe_jscode=True,
         rowSelection='multiple',
         selection_mode='multiple',
@@ -84,22 +85,23 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
     return selection
 
 
-def delete_entries(exp, entries):
-    """ removes data from an experiment, called by buttons """
-    print(f"Debug: (delete_entries) {exp.name=} {entries=}")
-    if exp is None:
-        if 'delete_entries' in st.session_state:
-            st.session_state['delete_entries'] = []
-        return
-    if entries: # list
-        for i,entry in enumerate(entries):
-            for key in entry:
-                if 'PID' in key and entry[key]:
-                    if not util.is_guarded_pbc(entry[key]):
-                        entries[i][key] = util.guard_pbc(entry[key])
-        exp.delete_plates(entries)
-        exp.save()
-    #print('delete_entries ran')
+#def delete_entries(exp, entries):
+#    """ removes data from an experiment, called by buttons """
+#    print(f"Debug: (delete_entries) {exp.name=} {entries=}")
+#    if exp is None:
+#        if 'delete_entries' in st.session_state:
+#            st.session_state['delete_entries'] = []
+#        return
+#    if entries: # list
+#        pids = []
+#        for i,entry in enumerate(entries):
+#            for key in entry:
+#                if 'PID' in key and len(entry[key].strip()) != 0:
+#                    pids.append(util.guard_pbc(entry[key], silent=True))
+#        print(f'Following pids selected for deletions {pids=}', file=sys.stderr)
+#        exp.delete_plates(pids)
+#        exp.save()
+#    #print('delete_entries ran')
 
 
 def data_table(key, options=False, table_option=None):
@@ -139,31 +141,26 @@ def data_table(key, options=False, table_option=None):
             else:
                 #print(f"{type(df)=}, {df=})")
                 selection = aggrid_interactive_table(df, key=key)
-                #print(f"{type(selection)=} {selection=}")
-                if 'selected_rows' in selection and selection['selected_rows']:
-                    # only do the code below if this is a fresh selection
-                    rows = selection["selected_rows"]
-                    lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
-                    if 'previous_delete_group_selection' not in st.session_state:
-                        st.session_state['previous_delete_group_selection'] = None
-                    if lines and st.session_state['previous_delete_group_selection'] != lines:
+                if 'table_selection_rows' not in st.session_state or st.session_state['table_selection_rows'] != selection['selected_rows']:
+                    #print(f"{type(selection)=} {selection=}")
+                    if 'selected_rows' in selection and selection['selected_rows']:
+                        # only do the code below if this is a fresh selection
+                        rows = selection["selected_rows"]
+                        print(f'{rows=}', file=sys.stderr)
+                        lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
                         data_container.markdown(f"**You selected {lines}**")
                         del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
                         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                        delete_button = del_col2.button("Yes",on_click=delete_entries, 
-                                args=(exp, selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
-                        mistake_button = del_col3.button("No",on_click=delete_entries, args=(exp, []), 
-                                key="keep " + str(key), help=f"Keep {lines}")
+                        delete_button = del_col2.button("Yes", key="delete " + str(key), help=f"Delete {lines}")
+                        mistake_button = del_col3.button("No", key="keep " + str(key), help=f"Keep {lines}")
                     
                         if mistake_button:
-                            st.session_state['previous_delete_group_selection'] = lines
-                            lines = None
-                            selection['selected_rows'] = None
+                            st.session_state['table_selection_rows'] = selection['selected_rows']
                             st.experimental_rerun()
                         elif delete_button:
-                            selection['selected_rows'] = None
-                            lines = None
-                            st.session_state['previous_delete_group_selection'] = None
+                            st.session_state['table_selection_rows'] = selection['selected_rows']
+                            exp.remove_entries(rows)
+                            df = exp.inputs_as_dataframe()
                             st.experimental_rerun()
 
     elif table_option == 'Loaded Consumables':
@@ -599,3 +596,83 @@ def show_echo2_outputs():
             picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
                     unsafe_allow_html=True)
     
+def display_primers(exp, assay_usage, expander=True):
+    """
+    Alternative display_primer_components using aggrid
+    Designed as a component for a generic display widget
+    """
+    if assay_usage:
+        primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+                exp.get_volumes_required(assay_usage=assay_usage)
+    else:
+        reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+            0,{},0,0,0,0
+
+    primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
+    per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
+    primer_names = set(primer_vols.keys())
+
+    primer_array = []
+    for p in primer_names:
+        need_vol = primer_vols.get(p,0)
+        num_wells = ceil(need_vol/per_use_vol)
+
+        primer_array.append([p, num_wells, assay_usage.get(p,0), primer_vols.get(p,0)/100,\
+                    primer_avail_vols.get(p,0)/1000])
+
+    primer_df = pd.DataFrame(primer_array, columns=['Primer', 'Num Wells','Uses', 'Volume(μL)', 'Available Volume(μL)'])
+    primer_table = aggrid_interactive_table(primer_df, grid_height=350)
+
+
+def display_plates(exp, plate_usage, expander=False):
+    """
+    Simple plate summary using aggrid.
+    To be used as a generic viewing component
+    """
+    plate_array = []
+    for keys, values in exp.plate_location_sample.items():
+        plate_array.append([keys, len(values['wells']), values['purpose']])
+    plate_df = pd.DataFrame(plate_array, columns=['Plates', 'Num Wells', 'Purpose'])
+    plate_table = aggrid_interactive_table(plate_df, grid_height=350, key='plate_aggrid')
+
+
+def display_files(exp, file_usage, expander=False):
+    """
+    Display info for all files that have so far been uploaded into the experiment
+    Give info on name, any plates they contain, whether they are required so far, etc
+    """
+    pass
+
+def info_viewer():
+    """
+    Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
+    Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
+    """
+    exp = st.session_state['experiment']
+    container = st.container()
+    view_tab = stx.tab_bar(data=[
+        stx.TabBarItemData(id=1, title="Files", description=""),
+        stx.TabBarItemData(id=2, title="Plates", description=""),
+        stx.TabBarItemData(id=3, title="Primers", description="")
+    ], return_type=int, default=1)
+
+    if view_tab == 1:
+        #view_expander = container.expander(label='All uploaded files', expanded=False)
+        file_usage = exp.get_file_usage()
+        with container:
+            display_files(exp, file_usage, expander=False)
+
+    if view_tab == 2:
+        plate_usage = exp.get_plate_usage()
+        with container:
+            display_plates(exp, plate_usage, expander=False)
+
+    if view_tab == 3:
+        assay_usage = exp.get_assay_usage()
+        with container:
+            display_primers(exp, assay_usage, expander=False)
+
+    if view_tab == 4:
+        index_usage = exp.get_index_usage()
+        with container:
+            display_indexes(exp, index_usage, expander=False)

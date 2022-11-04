@@ -454,8 +454,9 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         taq_fn = exp.get_exp_fp(outfmt.replace('PCR','PCR1_taqwater'), transaction=True)
         transactions[taq_fn] = {}
         print(f"end of generate_pcr1 {taq_bcs=}")
+        # exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, transactions=None
         success = mk_mytaq_picklist(exp, taq_fn, s2tab.data, taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], 
-                exp.transfer_volumes['PRIMER_WATER_VOL'], util.PLATE_TYPES['Echo6'], transactions[taq_fn])
+                exp.transfer_volumes['PRIMER_WATER_VOL'], transactions[taq_fn])
         if not success:
             transactions[taq_fn] = None
 
