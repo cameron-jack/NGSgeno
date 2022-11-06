@@ -372,10 +372,9 @@ def main():
 
     if st.session_state['experiment']:
         exp = st.session_state['experiment']
-        
         pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Reports"]
         pipeline_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
-                                                                                   
+                                                                                 
         if not pipeline_stage and pipeline_stage != 0: # not pipeline_stage evaluates to 0!
             if 'pipeline_stage' not in st.session_state or st.session_state['pipeline_stage'] is None:
                 st.session_state['pipeline_stage'] = 0
@@ -388,7 +387,7 @@ def main():
                 stx.TabBarItemData(id=2, title="Load Consumables", description=""),
                 stx.TabBarItemData(id=3, title="View Data", description="")
             ], return_type=int)                            
-
+            dc.info_viewer()  
             if not load_data_tab:
                 if 'load_tab' not in st.session_state:
                     st.session_state['load_tab'] = 1

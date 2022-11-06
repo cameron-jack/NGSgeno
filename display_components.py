@@ -596,7 +596,14 @@ def show_echo2_outputs():
             picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
                     unsafe_allow_html=True)
     
-def display_primers(exp, assay_usage, expander=True):
+def display_status(exp, height=350):
+    """
+    Display the progress in the pipeline for this experiment
+    Should use aggrid to display the stages and the changes at each stage
+    """
+    pass
+
+def display_primers(exp, assay_usage, height=350):
     """
     Alternative display_primer_components using aggrid
     Designed as a component for a generic display widget
@@ -624,7 +631,7 @@ def display_primers(exp, assay_usage, expander=True):
     primer_table = aggrid_interactive_table(primer_df, grid_height=350)
 
 
-def display_plates(exp, plate_usage, expander=False):
+def display_plates(exp, plate_usage, height=350):
     """
     Simple plate summary using aggrid.
     To be used as a generic viewing component
@@ -636,12 +643,33 @@ def display_plates(exp, plate_usage, expander=False):
     plate_table = aggrid_interactive_table(plate_df, grid_height=350, key='plate_aggrid')
 
 
-def display_files(exp, file_usage, expander=False):
+def display_files(exp, file_usage, height=350):
     """
     Display info for all files that have so far been uploaded into the experiment
     Give info on name, any plates they contain, whether they are required so far, etc
     """
     pass
+
+def display_indexes(exp, plate_usage, height=350):
+    """
+    Display info for all indexes that have been uploaded into the experiment
+    """
+    pass
+
+def display_log(exp, height=250):
+    """
+    Display the log
+    """
+    func = sys._getframe(1).f_code.co_name
+    func_line = inspect.getframeinfo(sys._getframe(1)).lineno
+    print("Function", func, type(func_line))
+    # display the experiment log and let the user filter the view in a number of ways
+    log_entries = st.session_state['experiment'].get_log(100)
+    if len(log_entries) == 0:
+        st.write('No entries currently in the log')
+    else:
+        df = pd.DataFrame(log_entries, columns=exp.get_log_header())
+        aggrid_interactive_table(df, grid_height=height, key='logs')
 
 def info_viewer():
     """
@@ -650,29 +678,65 @@ def info_viewer():
     """
     exp = st.session_state['experiment']
     container = st.container()
-    view_tab = stx.tab_bar(data=[
-        stx.TabBarItemData(id=1, title="Files", description=""),
-        stx.TabBarItemData(id=2, title="Plates", description=""),
-        stx.TabBarItemData(id=3, title="Primers", description="")
-    ], return_type=int, default=1)
+        
+    col1,col2,col3 = st.columns([2,1,7])
+    with col1:
+        st.markdown('<h4>Display panel</h4>', unsafe_allow_html=True)
+    with col2:
+        view_height = st.number_input('Set display height', min_value=50, max_value=700, value=350, step=25, help="Size of display grid")
+    with col3:
+        view_tab = stx.tab_bar(data=[
+            stx.TabBarItemData(id=1, title="Status", description=""),
+            stx.TabBarItemData(id=2, title="Files", description=""),
+            stx.TabBarItemData(id=3, title="Plates", description=""),
+            stx.TabBarItemData(id=4, title="Primers", description=""),
+            stx.TabBarItemData(id=5, title="Indexes", description=""),
+            stx.TabBarItemData(id=6, title="Log", description=""),
+            stx.TabBarItemData(id=7, title="No display", description="")
+        ], return_type=int, default=7)
+
+        
 
     if view_tab == 1:
+        # Status tab should tell us where we are up to in the pipeline and what's happened so far
+        with container:
+            #with st.expander('Pipeline status', expanded=False):
+                st.write("Pipeline stats")
+                
+                display_status(exp, height=view_height)
+                
+
+    if view_tab == 2:
         #view_expander = container.expander(label='All uploaded files', expanded=False)
         file_usage = exp.get_file_usage()
         with container:
-            display_files(exp, file_usage, expander=False)
-
-    if view_tab == 2:
-        plate_usage = exp.get_plate_usage()
-        with container:
-            display_plates(exp, plate_usage, expander=False)
+            with st.expander('Display files', expanded=False):
+                display_files(exp, file_usage, height=view_height)
 
     if view_tab == 3:
-        assay_usage = exp.get_assay_usage()
+        plate_usage = exp.get_plate_usage()
         with container:
-            display_primers(exp, assay_usage, expander=False)
+            with st.expander('Display plates', expanded=False):
+                display_plates(exp, plate_usage, height=view_height)
 
     if view_tab == 4:
+        assay_usage = exp.get_assay_usage()
+        with container:
+            with st.expander('Display assay/primer usage', expanded=False):
+                display_primers(exp, assay_usage, height=view_height)
+
+    if view_tab == 5:
         index_usage = exp.get_index_usage()
         with container:
-            display_indexes(exp, index_usage, expander=False)
+            with st.expander('Display index usage', expanded=False):
+                display_indexes(exp, index_usage, height=view_height)
+
+    if view_tab == 6:
+        with container:
+            #with st.expander('Display log records', expanded=False):
+                st.write("Log entries")
+                
+                display_log(exp, height=view_height)
+
+    if view_tab == 7:
+        pass
