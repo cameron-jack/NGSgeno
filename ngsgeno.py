@@ -512,7 +512,7 @@ def main():
                             accept_multiple_files=True, help='You can upload more than one file at once')
 
                     if nim_outputs: # and nim_outputs != st.session_state['nim_upload']:
-                        success = run_generate(ld.upload_nimbus_outputs, nim_outputs)
+                        success = run_generate(exp, ld.upload_nimbus_outputs, nim_outputs)
                         if not success:
                            st.write('Upload of Hamilton Nimbus outputs failed. Please see the log')
                         else:
