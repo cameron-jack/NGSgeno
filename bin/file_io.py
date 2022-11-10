@@ -94,7 +94,7 @@ def nimbus_gen(exp):
                     if not shx:
                         print('No plate data found for plate', pbc, file=sys.stdout)
                         continue
-                    transactions[dna_fn][pbc] = []
+                    transactions[dna_fn][pbc] = {}
                     # Get four wells in the same column at a time
                     for pos1,pos2,pos3,pos4 in zip(util.nimbus_ordered_96[0::4], util.nimbus_ordered_96[1::4], 
                             util.nimbus_ordered_96[2::4], util.nimbus_ordered_96[3::4]):
@@ -136,7 +136,7 @@ def nimbus_gen(exp):
                                 row_data['sex'] = ''
                             stage1_f.writerow([row_data[field] for field in stage1_hdr])  # assays are written here
                             wells_used += 1
-                            transactions[dna_fn][pbc].append((pos,-1000)) # 1000 nl of sample is transferred
+                            transactions[dna_fn][pbc][pos] = -1000 # 1000 nl of sample is transferred
         
                 
     except Exception as exc:

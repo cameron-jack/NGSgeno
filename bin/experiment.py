@@ -168,6 +168,32 @@ class Experiment():
             print('These are the pending transactions', self.pending_steps, file=sys.stderr)
         return True
 
+    def convert_pending_to_final(self, pending_name):
+        """
+        take a pending path \example\pending_myfile.csv and convert to final name
+        eg \example\myfile.csv
+        """
+        p = Path(pending_name)
+        parent = p.parent
+        file_name = str(p.name)
+        final_name = file_name[len('pending_'):]  # cut off the leading "pending_"
+        final_path = str(parent / final_name)
+        print(f"{final_path=}", file=sys.stderr)
+        return final_path
+
+    def convert_final_to_pending(self, final_name):
+        """
+        take a final path \example\myfile.csv and convert to pending name
+        eg \example\pending_myfile.csv
+        """
+        p = Path(final_name)
+        parent = p.parent
+        file_name = str(p.name)
+        pending_name = "pending_" + file_name
+        pending_path = str(parent / pending_name)
+        print(f"{pending_path=}", file=sys.stderr)
+        return pending_path
+
 
     def clashing_pending_transactions(self):
         """
@@ -180,14 +206,11 @@ class Experiment():
             return clashes
         
         for transaction in self.pending_steps:
-            p = Path(transaction)
-            parent = p.parent
-            file_name = str(p.name)
-            final_name = file_name[len('pending_'):]  # cut off the leading "pending_"
-            final_path = str(parent / final_name)
+            final_path = self.convert_pending_to_final(transaction)
             #print('Pending and final paths: ', str(p), str(final_path), file=sys.stderr)
             if Path(final_path).exists():
                 clashes.append(final_path)
+                self.log(f'Warning: file path {final_path} already exists and will be overwritten if pending changes are accepted')
             else:
                 for step in self.reproducible_steps:
                     if step is None or len(step) == 0:
@@ -226,55 +249,65 @@ class Experiment():
 
         Returns True on success
         """
+        print("accept_pending_transactions", file=sys.stderr)
         if not self.pending_steps:
             self.log("Warning: there are no pending transactions to record")
             return True  # It didn't actually fail
 
         clashes = self.clashing_pending_transactions()
+        print(f"Clashes seen {clashes=}", file=sys.stderr)
         if len(clashes) == 0:
             for transaction in self.pending_steps:
                 p = Path(transaction)
                 if not p.exists():
                     self.log(f'Warning: {str(p)} not found')
                     continue
-                parent = p.parent
-                file_name = str(p.name)
-                final_name = file_name[len('pending_'):]
-                final_path = parent / final_name
+                final_path = self.convert_pending_to_final(transaction)
                 os.rename(p, final_path)
-            return True
+                print(f"No clash {str(p)=} {str(final_path)=}", file=sys.stderr)
+        else:
+            MAX_STAGES=99999
+            clashing_index = MAX_STAGES
+            print(f"{self.reproducible_steps=}", file=sys.stderr)
+            for i,step in enumerate(self.reproducible_steps):
+                for dest in step:
+                    dp = self.convert_final_to_pending(dest)
+                    print(f"{dp=} {self.pending_steps.keys()=}", file=sys.stderr)
+                    if dp in self.pending_steps:
+                        if i < clashing_index:
+                            clashing_index = i
+                            break
+            print(f"{clashing_index=}", file=sys.stderr)
+            if clashing_index == MAX_STAGES:  # this should NEVER happen
+                self.log(f"Critical: pipeline detects clashing transaction {clashing_index=} for {self.pending_steps=}") 
+                return False
 
-        clashing_index = -1
-        for i,step in enumerate(self.reproducible_steps):
-            for dest in step:
-                if dest in self.pending_steps:
-                    clashing_index = i
-                    break
-        
-        if clashing_index == -1:  # this should NEVER happen
-            self.log(f"Critical: pipeline detects clashing transaction {clashing_index=} for {self.pending_steps=}") 
-            return False
-
-        # keep everything prior to the clash, then add on the pending steps
-        remove_these_steps = self.reproducible_steps[clashing_index:]
-        for step in remove_these_steps:
-            for fp in step:
-                if Path(fp).exists():
-                    os.remove(fp)
-        # rename pending filepaths
-        for transaction in self.pending_steps:
-            p = Path(transaction)
-            if not p.exists():
-                self.log(f'Warning: {str(p)} not found')
-                continue
-            parent = p.parent
-            file_name = str(p.name)
-            final_name = file_name[len('pending_'):]
-            final_path = parent / final_name
-            os.rename(p, final_path)
-        self.reproducible_steps = self.reproducible_steps[0:clashing_index]
-        self.reproducible_steps.append(self.pending_steps.copy())
+            # keep everything prior to the clash, then add on the pending steps
+            remove_these_steps = self.reproducible_steps[clashing_index:]
+            print(f"{remove_these_steps=}", file=sys.stderr)
+            for step in remove_these_steps:
+                for fp in step:
+                    if Path(fp).exists():
+                        print(f"removing the original file: {str(fp)}", file=sys.stderr)
+                        os.remove(fp)
+            # rename pending filepaths
+            for transaction in self.pending_steps:
+                p = Path(transaction)
+                if not p.exists():
+                    self.log(f'Warning: {str(p)} not found')
+                    continue
+                final_path = self.convert_pending_to_final(transaction)
+                print(f"Renaming {str(p)=} to {str(final_path)=}", file=sys.stderr)
+                os.rename(p, final_path)
+            self.reproducible_steps = self.reproducible_steps[0:clashing_index]
+        this_step = {}
+        for ps in self.pending_steps:
+            final_name = self.convert_pending_to_final(ps)
+            record = self.pending_steps[ps].copy()
+            this_step[final_name] = record
+        self.reproducible_steps.append(this_step)
         self.pending_steps = None
+        self.save()
         return True
 
 
@@ -752,7 +785,7 @@ class Experiment():
 
             plate_set_details.append(str(custom_wells))
             plate_set_details.append(str(rodentity_wells))
-            print(f'{plate_set_details=}', file=sys.stderr)
+            # print(f'{plate_set_details=}', file=sys.stderr)
             plate_set_summary.append(plate_set_details)
         if len(plate_set_summary) > 0:
             plate_set_summary.append(['Total','','','','',total_well_counts['c'], total_well_counts['r']])
@@ -870,7 +903,7 @@ class Experiment():
             if self.plate_location_sample[pid]['purpose'] == 'index':
                 index_pids.append(pid)
 
-        print(f'get_index_remaining_available_volume() {index_pids=}', file=sys.stderr)
+        #print(f'get_index_remaining_available_volume() {index_pids=}', file=sys.stderr)
         if not index_pids:
             return 0, 0, False
 
@@ -889,17 +922,16 @@ class Experiment():
                 if 'idt_name' not in idx_plate[well]:
                     continue
                 name = idx_plate[well]['idt_name']
-                if 'volume' in idx_plate[well]:
-                    print(f"get_index_remaining_available_volume() {idx_plate[well]['volume']=}")
+                if 'volume' not in idx_plate[well]:
+                    continue
+                    #print(f"get_index_remaining_available_volume() {idx_plate[well]['volume']=}")
                 if 'i7F' in name:
                     if name not in fwd_barcode_vols:
                         fwd_barcode_vols[name] = []
-                    if 'volume' in idx_plate[well]:
                         fwd_barcode_vols[name].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
                 elif 'i5R' in name:
                     if name not in rev_barcode_vols:
                         rev_barcode_vols[name] = []
-                    if 'volume' in idx_plate[well]:
                         rev_barcode_vols[name].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
                 else:
                     self.log('Unexpected index name:' + name, level='Warning')
@@ -1262,7 +1294,7 @@ class Experiment():
                             continue
                         outline = ','.join([f"Source[{i+1}]",util.unguard_pbc(pid,silent=True),plate['plate_type'],
                                 well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
-                        #print(outline, file=fout)
+                        print(outline, file=fout)
         except Exception as exc:
             self.log(f'Failure: could not write primer survey {exc}')
             self.save()
@@ -1277,17 +1309,31 @@ class Experiment():
         TODO: Should check that everything required to successfully generate PCR1 picklists is available
         """
         for pid in pcr_plates:
+            upid = util.unguard_pbc(pid, silent=True)
             if pid in self.plate_location_sample:
                 if self.plate_location_sample[pid]['purpose'] != 'pcr':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
+                    self.log(f"Error: plate already exists with PID {upid} with purpose {self.plate_location_sample[pid]['purpose']}")
                     return False
             self.log(f'Warning: existing entry for PCR plate {pid}. This will be overwritten!')
 
         for pid in dna_plates:
+            upid = util.unguard_pbc(pid, silent=True)
             if pid in self.plate_location_sample:
                 if self.plate_location_sample[pid]['purpose'] != 'dna':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
+                    self.log(f"Error: plate already exists with PID {upid} with purpose {self.plate_location_sample[pid]['purpose']}")
                     return False
+            else:
+                self.log(f"Critical: No plate exists with barcode {upid}")
+                return False
+
+        for pid in taq_water_plates:
+            upid = util.unguard_pbc(pid, silent=True)
+            if pid in self.plate_location_sample:
+                if self.plate_location_sample[pid]['purpose'] != 'taq_water':
+                    self.log(f"Error: plate already exists with PID {upid} with purpose {self.plate_location_sample[pid]['purpose']}")
+            else:
+                self.log(f"Critical: No plate exists with barcode {upid}")
+                return False
         return True
 
 

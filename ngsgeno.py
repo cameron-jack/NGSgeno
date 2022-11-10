@@ -284,10 +284,8 @@ def run_generate(exp, target_func, *args, **kwargs):
                 #else:
                     st.warning(f'The following output files already exist {clashes}')
                     st.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages')
-                    if st.button('Accept'):
-                        exp.accept_pending_transactions()
-                    if st.button('Cancel'):
-                        exp.clear_pending_transactions()
+                    st.button('Accept', on_click=exp.accept_pending_transactions)
+                    st.button('Cancel', on_click=exp.clear_pending_transactions)
             else:
                 exp.accept_pending_transactions()
     return success
@@ -514,15 +512,11 @@ def main():
                             accept_multiple_files=True, help='You can upload more than one file at once')
 
                     if nim_outputs: # and nim_outputs != st.session_state['nim_upload']:
-                        #st.session_state['nim_uploads'] = nim_outputs
-                        for nim_output in nim_outputs:
-                            #print(f"{nim_output.name=}")
-                            fp = exp.get_exp_fp(nim_output.name)
-                            exp.log(f"Info: copying {fp} to experiment folder")
-                            with open(fp, 'wt') as outf:
-                                #print(nim_output.getvalue().decode("utf-8"))
-                                outf.write(nim_output.getvalue().decode("utf-8").replace('\r\n','\n'))
-                        st.experimental_rerun()
+                        success = run_generate(ld.upload_nimbus_outputs, nim_outputs)
+                        if not success:
+                           st.write('Upload of Hamilton Nimbus outputs failed. Please see the log')
+                        else:
+                            st.experimental_rerun()
                 nim_tab2_title_area.markdown(f'<h5 style="text-align:center;color:#f63366">{nim_tab2_title}</h5>',\
                                 unsafe_allow_html=True)
                 st.session_state['nimbus_tab'] = 2
@@ -600,11 +594,11 @@ def main():
                                 success = run_generate(exp, exp.generate_echo_primer_survey)
                                 if not success:
                                     st.write('Primer survey file generation failed. Please see the log')
-                                else:
-                                    success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
-                                            included_DNA_plates, included_PCR_plates, included_taqwater_plates)
-                                    if not success:
-                                        st.write('Picklist generation failed. Please see the log')
+                                #else:
+                                #    success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
+                                #            included_DNA_plates, included_PCR_plates, included_taqwater_plates)
+                                #    if not success:
+                                #        st.write('Picklist generation failed. Please see the log')
                                 
                         dc.show_echo1_outputs()
                     
