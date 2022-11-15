@@ -183,21 +183,21 @@ def plate_checklist_expander(available_nimbus, pcr_stage=1):
             echo_filename=Path(nim).stem
             inc_dna = checklist_col[0].checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
             if inc_dna:
-                included_DNA_plates.add(echo_filename.split('_')[-2])
+                included_DNA_plates.add(util.guard_pbc(echo_filename.split('_')[-2], silent=True))
     
         checklist_col[1].markdown(f'**{pcr_plate_title}**')
         for pcr_pid in exp.get_pcr_pids():
             inc_pcr = checklist_col[1].checkbox(util.unguard_pbc(pcr_pid, silent=True),\
                             value=True, key='chk_box_pcr_'+pcr_pid)
             if inc_pcr:
-                included_PCR_plates.add(pcr_pid)
+                included_PCR_plates.add(util.guard_pbc(pcr_pid, silent=True))
 
         checklist_col[2].markdown(f'**{taqwater_plate_title}**')
         for taqwater_pid in exp.get_taqwater_pids():
             inc_taqwater = checklist_col[2].checkbox(util.unguard_pbc(taqwater_pid, silent=True), 
                         value=True, key='chk_box_taqwater_'+taqwater_pid)
             if inc_taqwater:
-                included_taqwater_plates.add(taqwater_pid)
+                included_taqwater_plates.add(util.guard_pbc(taqwater_pid, silent=True))
         
         return included_DNA_plates, included_PCR_plates, included_taqwater_plates
 
@@ -267,7 +267,9 @@ def run_generate(exp, target_func, *args, **kwargs):
     Run target_func() and ask user to respond to any file/pipeline clashes in the given context, if provided
     """
     exp.clear_pending_transactions()
+    #print(f"launching {target_func=}", file=sys.stderr)
     success = target_func(*args, **kwargs)
+    #print(f"completed {target_func=} {success=}", file=sys.stderr)
     if not success:
         exp.clear_pending_transactions()
     else:
@@ -504,19 +506,26 @@ def main():
                     st.markdown(f'<p style="text-align:center;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
                 elif xbcs:
                     nfs, efs, xbcs = exp.get_nimbus_filepaths()
+                    uploaded_nims = [Path(ef).name for ef in efs]
+                    files_str = ', '.join(uploaded_nims)
+                    st.write('Uploaded Nimbus output files:')
+                    st.write(files_str)
                     missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
                     files_str = '</br>'.join(missing_nims)
                     st.write('The following Hamilton Nimbus output files are expected:')
                     st.markdown(f'<p style="text-align:left;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
-                    nim_outputs = st.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
+                    with st.form("Nimbus output upload", clear_on_submit=True):
+                        nim_outputs = st.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
                             accept_multiple_files=True, help='You can upload more than one file at once')
+                        submitted = st.form_submit_button("Upload files")
 
-                    if nim_outputs: # and nim_outputs != st.session_state['nim_upload']:
-                        success = run_generate(exp, ld.upload_nimbus_outputs, nim_outputs)
+                    if submitted and nim_outputs is not None:
+                        success = run_generate(exp, exp.add_nimbus_outputs, nim_outputs)
                         if not success:
                            st.write('Upload of Hamilton Nimbus outputs failed. Please see the log')
                         else:
                             st.experimental_rerun()
+                        
                 nim_tab2_title_area.markdown(f'<h5 style="text-align:center;color:#f63366">{nim_tab2_title}</h5>',\
                                 unsafe_allow_html=True)
                 st.session_state['nimbus_tab'] = 2
@@ -578,11 +587,11 @@ def main():
                     with primer_checklist_exp:
                         included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
                                 plate_checklist_expander(efs,pcr_stage=1)
-
+                        
                     if included_DNA_plates:
-                        if st.session_state['experiment'].check_ready_echo1(included_DNA_plates,\
+                        if exp.check_ready_echo1(included_DNA_plates,\
                                     included_PCR_plates, included_taqwater_plates):
-
+                            print(f'{included_DNA_plates=} {included_PCR_plates=} {included_taqwater_plates=}', file=sys.stderr)
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
 
                             echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',\
@@ -594,11 +603,11 @@ def main():
                                 success = run_generate(exp, exp.generate_echo_primer_survey)
                                 if not success:
                                     st.write('Primer survey file generation failed. Please see the log')
-                                #else:
-                                #    success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
-                                #            included_DNA_plates, included_PCR_plates, included_taqwater_plates)
-                                #    if not success:
-                                #        st.write('Picklist generation failed. Please see the log')
+                                else:
+                                    success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
+                                            included_DNA_plates, included_PCR_plates, included_taqwater_plates)
+                                    if not success:
+                                        st.write('Picklist generation failed. Please see the log')
                                 
                         dc.show_echo1_outputs()
                     

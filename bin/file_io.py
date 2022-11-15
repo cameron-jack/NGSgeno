@@ -266,19 +266,38 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
         # iterate over wells forever
         ww_gen = (x for xs in itertools.repeat(twp['water_wells']) for x in xs)
         tw_gen = (x for xs in itertools.repeat(twp['taq_wells']) for x in xs)
-        empty_well_pairs = 0
-        for ww,tw in zip(next(ww_gen),next(tw_gen)):
-            if empty_well_pairs >= 3:
-                break  # time for a new plate
-            if twp[ww] - water_vol - twp['dead_vol'] < 0:
-                empty_well_pairs += 1
+        empty_wells = set()
+        water_well_list = []
+        for ww in next(ww_gen):
+            if len(empty_wells) == 3:
+                break
+            if ww in empty_wells:
                 continue
-            if twp[tw] - taq_vol - twp['dead_vol'] < 0:
-                empty_well_pairs += 1
+            if twp[ww] - water_vol - twp['dead_vol'] < 0:
+                empty_wells.add(ww)
                 continue
             twp[ww] -= water_vol
-            twp[tw] -= taq_vol
-            pid_ww_tw_list.append((pid,ww,tw))
+            water_well_list.append((pid,ww))
+
+        empty_wells = set()
+        taq_well_list = []
+        for tw in next(tw_gen):
+            if len(empty_wells) == 3:
+                break
+            if tw in empty_wells:
+                continue
+            if twp[tw] - taq_vol - twp['dead_vol'] < 0:
+                empty_wells.add(tw)
+                continue
+            twp[tw] -= water_vol
+            water_well_list.append((pid,tw))
+
+        for ww,tw in zip(water_well_list, taq_well_list):
+            water_pid, water_well = ww
+            taq_pid, taq_well = tw
+            if water_pid != taq_pid:
+                continue
+            pid_ww_tw_list.append((water_pid,water_well,taq_well))
 
     if len(pid_ww_tw_list) < len(task_wells):
         exp.log(f'Failure: Not enough taq or water available from plates {taqwater_bcs}')
@@ -319,7 +338,8 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
     """
     Entry point. Takes an experiment instance plus plate barcodes for dna plates, PCR plates, primer plates, taq/water plates.
     """
-    try:
+    #try:
+    if True:
         pcr_bcs = []
         dna_bcs = []
         taq_bcs = []
@@ -460,9 +480,9 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         if not success:
             transactions[taq_fn] = None
 
-    except Exception as exc:
-        exp.log(f"Failure: PCR1 Echo picklists could not be created {exc}")
-        return False
+    #except Exception as exc:
+    #    exp.log(f"Failure: PCR1 Echo picklists could not be created {exc}")
+    #    return False
     exp.add_pending_transactions(transactions)
     exp.log(f'Success: PCR1 Echo picklists created')
     exp.save()

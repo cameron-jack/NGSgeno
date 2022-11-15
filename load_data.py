@@ -516,33 +516,3 @@ def upload_miseq_fastqs(exp):
         file_field.markdown('<h5>Done</h5>', unsafe_allow_html=True)
         copy_progress.progress(100)
 
-def upload_nimbus_outputs(exp, nim_outputs):
-    """
-    Copy Nimbus output files into the project folder
-    """
-    transactions={}
-    try:
-        for nim_output in nim_outputs:
-            #print(f"{nim_output.name=}")
-            fp = exp.get_exp_fp(nim_output.name, transaction=True)
-            exp.log(f"Info: copying {fp} to experiment folder")
-            plate_set = []
-            with open(fp, 'wt') as outf:
-                #print(nim_output.getvalue().decode("utf-8"))
-                nim_outstream = nim_output.getvalue().decode("utf-8").replace('\r\n','\n')
-                outf.write(nim_outstream)
-                for i, line in enumerate(nim_outstream):
-                    if i == 0:
-                        continue
-                    cols = line.split('\t')
-                    # RecordId	TRackBC	TLabwareId	TPositionId	SRackBC	SLabwareId	SPositionId
-                    # 1	p32542p	Echo_384_COC_0001	A1	p83115p	ABg_96_PCR_NoSkirt_0001	A1
-                    plate_set.add(util.guard_pbc(cols[1], silent=True))
-                    plate_set.add(util.guard_pbc(cols[4], silent=True))
-
-            transactions[fp] = {pid:{} for pid in plate_set}
-    except Exception as exc:
-        exp.log(f'Error: could not upload Hamilton Nimbus output files {exc}')
-        return False
-    exp.add_pending_transactions(transactions)
-    return True

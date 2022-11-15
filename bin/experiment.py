@@ -119,6 +119,7 @@ class Experiment():
         # In order to access a plate with all its modifications we need a function for looking up plates and applying 
         #   modifications during the pipeline. We'll call this Experiment.get_plate(PID)
         ###
+        self.uploaded_files = {}
         self.reproducible_steps = []  # a strict subset of the log that only includes working instructions
         self.pending_steps = None # reproducible steps that are awaiting user approval to replace existing steps
         self.log_entries = []  # use self.log(message, level='') to add to this
@@ -310,6 +311,11 @@ class Experiment():
         self.save()
         return True
 
+    def enforce_file_consistency(self):
+        """ 
+        Iterate over all expected files and ensure that they are present. If they aren't, remove these steps and any that follow.
+        """
+        pass
 
     def get_plate(self, PID, transactions=None):
         """ 
@@ -332,12 +338,17 @@ class Experiment():
                     continue
                 if PID in stage[fn]:
                     for well in stage[fn][PID]:
-                        mod_plate[well] += stage[fn][PID][well]
+                        if 'volume' in mod_plate[well]:
+                            mod_plate[well]['volume'] += stage[fn][PID][well]
+                        #except:
+                        #    print(f'{mod_plate[well]=} {stage[fn][PID][well]=} {fn=} {PID=} {well=}', file=sys.stderr)
+                        #    exit()
         if transactions:
             for t in transactions:
                 if PID in transactions[t]:
                     for well in transactions[t][PID]:
-                        mod_plate[well] += transactions[t][PID][well]
+                        if 'volume' in mod_plate[well]:
+                            mod_plate[well] += transactions[t][PID][well]
         return mod_plate
 
     ### functions for returning locally held file paths
@@ -845,6 +856,41 @@ class Experiment():
         d['assay_primer_mappings'] = len(self.primer_assay)
         return d
 
+    def add_nimbus_outputs(self, nim_outputs):
+        """
+        Copy Nimbus output files into the project folder
+        """
+        transactions={}
+        print(f'{type(nim_outputs)=} {len(nim_outputs)=}', file=sys.stderr)
+        try:
+            print('Starting add_nimbus_outputs', file=sys.stderr)
+            for nim_output in nim_outputs:
+                #print(f'{nim_output.name=}', file=sys.stderr) 
+                fp = self.get_exp_fp(nim_output.name, transaction=True)
+                self.log(f"Info: copying {fp} to experiment folder")
+                plate_set = set()
+                with open(fp, 'wt') as outf:
+                    #print(nim_output.getvalue().decode("utf-8"))
+                    nim_outstr = nim_output.getvalue().decode("utf-8").replace('\r\n','\n')
+                    outf.write(nim_outstr)
+                    for i, line in enumerate(nim_outstr.split('\n')):
+                        if i == 0:
+                            continue
+                        cols = line.split('\t')
+                        #print(cols, file=sys.stderr)
+                        if len(cols) != 7:
+                            continue
+                        # RecordId	TRackBC	TLabwareId	TPositionId	SRackBC	SLabwareId	SPositionId
+                        # 1	p32542p	Echo_384_COC_0001	A1	p83115p	ABg_96_PCR_NoSkirt_0001	A1
+                        plate_set.add(util.guard_pbc(cols[1], silent=True))
+                        plate_set.add(util.guard_pbc(cols[4], silent=True))
+                transactions[fp] = {pid:{} for pid in plate_set}
+        except Exception as exc:
+            self.log(f'Error: could not upload Hamilton Nimbus output files, {exc}')
+            return False
+        self.add_pending_transactions(transactions)
+        return True
+
     def add_pcr_plates(self, pcr_plate_list=[]):
         """
         Add one or more empty 384-well PCR plates to self.plate_location_sample
@@ -1308,31 +1354,31 @@ class Experiment():
         """
         TODO: Should check that everything required to successfully generate PCR1 picklists is available
         """
+        return True
         for pid in pcr_plates:
-            upid = util.unguard_pbc(pid, silent=True)
             if pid in self.plate_location_sample:
                 if self.plate_location_sample[pid]['purpose'] != 'pcr':
-                    self.log(f"Error: plate already exists with PID {upid} with purpose {self.plate_location_sample[pid]['purpose']}")
-                    return False
-            self.log(f'Warning: existing entry for PCR plate {pid}. This will be overwritten!')
-
-        for pid in dna_plates:
-            upid = util.unguard_pbc(pid, silent=True)
-            if pid in self.plate_location_sample:
-                if self.plate_location_sample[pid]['purpose'] != 'dna':
-                    self.log(f"Error: plate already exists with PID {upid} with purpose {self.plate_location_sample[pid]['purpose']}")
+                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
                     return False
             else:
-                self.log(f"Critical: No plate exists with barcode {upid}")
+                self.log(f"Critical: No plate exists with barcode {pid}")
                 return False
 
-        for pid in taq_water_plates:
-            upid = util.unguard_pbc(pid, silent=True)
+        for pid in dna_plates:                   
+            if pid in self.plate_location_sample:
+                if self.plate_location_sample[pid]['purpose'] != 'dna':
+                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
+                    return False
+            else:
+                self.log(f"Critical: No plate exists with barcode {pid}")
+                return False
+
+        for pid in taq_water_plates:                  
             if pid in self.plate_location_sample:
                 if self.plate_location_sample[pid]['purpose'] != 'taq_water':
-                    self.log(f"Error: plate already exists with PID {upid} with purpose {self.plate_location_sample[pid]['purpose']}")
+                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
             else:
-                self.log(f"Critical: No plate exists with barcode {upid}")
+                self.log(f"Critical: No plate exists with barcode {pid}")
                 return False
         return True
 
