@@ -638,21 +638,40 @@ class Table:
 class CSVTable(Table):
     "Table with a filename - constructor reads the file"
     def __init__(self, clsname, filename, hdridx=1, fields=None, selector=None):
-        assert hdridx>=0, "hdridx must be non-negative (>=0)"
+        if hdridx < 0:
+            print(f'header index must be at least zero {hdridx=}', file=sys.stderr)
+            return
         self.filename = filename
         with open(filename, errors="ignore", newline='') as src:
             prefix = [x for i, x in zip(range(hdridx-1), src)] # read initial lines
-            #print(f"{prefix=}")
             csvrdr = csv.reader(src)
-            hdrrow = next(csvrdr) if hdridx else None
-            #print(f"{hdrrow=}")
+            hdrrow = next(csvrdr) if hdridx else None 
             if clsname not in Table.tt:
-                assert fields or hdrrow
+                if not fields and not hdrrow:
+                    return
                 Table.newtype(clsname, fields if fields else hdrrow)
             filtfunc = lambda x: len(x)==len(hdrrow) # could do padding?
             # TODO: need a filter-type lambda to apply strip() to everything... covered for now but it's not a safe patch
             Table.__init__(self, clsname, data=filter(filtfunc, csvrdr), headers=hdrrow, prefix=prefix, selector=selector)
-        return
+        
+
+class CSVMemoryTable(Table):
+    "Table in memory from StringIO"
+    def __init__(self, clsname, io_string, hdridx=1, fields=None, selector=None):
+        if hdridx < 0:
+            print(f'header index must be at least zero {hdridx=}', file=sys.stderr)
+            return
+        prefix = [x for i, x in zip(range(hdridx-1), io_string)] # read initial lines
+        csvrdr = csv.reader(io_string)
+        hdrrow = next(csvrdr) if hdridx else None 
+        if clsname not in Table.tt:
+            if not fields and not hdrrow:
+                return
+            Table.newtype(clsname, fields if fields else hdrrow)
+        filtfunc = lambda x: len(x)==len(hdrrow) # could do padding?
+        # TODO: need a filter-type lambda to apply strip() to everything... covered for now but it's not a safe patch
+        Table.__init__(self, clsname, data=filter(filtfunc, csvrdr), headers=hdrrow, prefix=prefix, selector=selector)
+        
 
 
 ## Apparently never used

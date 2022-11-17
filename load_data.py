@@ -114,6 +114,7 @@ def load_rodentity_data():
 
     #Accept rodentity button
     accept_disabled = False
+
     rod_dp = rod_col2.text_input('Destination plate barcode', max_chars=20, key='rod_dp_key') 
 
     if rod_dp and any(exp.unassigned_plates):

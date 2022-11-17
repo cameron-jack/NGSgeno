@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import annotations
+from distutils.fancy_getopt import fancy_getopt
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from experiment import Experiment
@@ -19,6 +20,7 @@ import traceback
 from collections import Counter, OrderedDict
 import itertools
 from copy import deepcopy
+from io import StringIO
 
 """
 @created: Nov 2021
@@ -177,6 +179,33 @@ class PicklistSrc:
             return ['']*4
         dx[l][0][-1] -= vol
         return dx[l][0][:4]
+
+class PicklistMemorySrc:
+    """ read a survey & contents filehandle (StringIO) """ 
+
+    def __init__(self, srcfd, idx=0):
+        src = csv.reader(srcfd, dialect="unix")
+        self.hdr = next(src)
+        def voldata(xs):
+            "last element of each list is an integer"
+            # volumes in nanolitres
+            v = [[s.strip() for s in map(str,x[:-1])]+[int(float(x[-1].strip())*1000)] for x in xs] # contents in nanolitres
+            return v
+        self.data = dict((k.strip(), voldata(gs)) for k, gs in \
+                itertools.groupby(sorted(src, key=lambda x:x[idx]), key=lambda x:x[idx]) if k.strip()!='')
+       
+    
+    def xfersrc(self, l, vol, depleted):
+        """ transfer data for liquid l - reduces volume """
+        dx = self.data
+        while dx[l] and dx[l][0][-1]-vol<util.DEAD_VOLS[dx[l][0][2]]:
+            dx[l].pop(0) # discard depleted wells
+        # assert dx[l], "primer depleted for "+l
+        if not dx[l]:
+            depleted.update([l])
+            return ['']*4
+        dx[l][0][-1] -= vol
+        return dx[l][0][:4]
     
 
 def grouper(xs, kf=lambda x:x[0]):
@@ -209,15 +238,19 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
         exp - an Experiment instance
         fn - output filename
         rows - data rows to write
-        transactions - a dictionary of changes from the input plates
+        transaction - transaction dictionary of changes from the input plates
         output_plate_guards - whether or not to write guard characters on the plate barcodes
     """
-    try:
+    #try:
+    print("mk_picklist", file=sys.stderr)
+    
+    if True:
         plhdr_str = "Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,"+\
                 "Destination Plate Name,Destination Plate Barcode,Destination Plate Type,"+\
                 "Destination Well,Volume"
         plhdr = plhdr_str.split(',')
-       
+        if fn not in transactions:
+            transactions[fn] = {}
         with open(fn, "wt", newline='') as dstfd:
             dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
             dst.writerow(plhdr)
@@ -229,68 +262,74 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
                 src_plate_barcode = row[1]
                 src_plate_well = row[3]
                 vol = row[-1]
-                if src_plate_barcode not in transactions:
-                    transactions[src_plate_barcode] = {}
-                if src_plate_well not in transactions[src_plate_barcode]:
-                    transactions[src_plate_barcode][src_plate_well] = 0
-                transactions[src_plate_barcode][src_plate_well] -= vol
+                print(f"{src_plate_barcode=} {fn=} {transactions=}", file=sys.stderr)
+                if src_plate_barcode not in transactions[fn]:
+                    transactions[fn][src_plate_barcode] = {}
+                if src_plate_well not in transactions[fn][src_plate_barcode]:
+                    transactions[fn][src_plate_barcode][src_plate_well] = 0
+                transactions[fn][src_plate_barcode][src_plate_well] -= vol
 
                 if output_plate_guards:  # guard plate barcodes
                     data.append([str(d) if 'plate barcode' not in h.lower() else util.guard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
                 else:  # unguard plate barcodes
                     data.append([str(d) if 'plate barcode' not in h.lower() else util.unguard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
             dst.writerows(data)
-    except Exception as exc:
-        exp.log(f"Failure: Picklist generation failed for {fn} {exc}")
-        print(f"Failure: Picklist generation failed for {fn} {exc}", file=sys.stderr)
-        if Path(fn).exists():
-            os.remove(fn)
-        transactions = None
-        exp.save()
-        return False
-    exp.add_pending_transactions(transactions)
+    #except Exception as exc:
+    #    exp.log(f"Failure: Picklist generation failed for {fn} {exc}")
+    #    print(f"Failure: Picklist generation failed for {fn} {exc}", file=sys.stderr)
+    #    if Path(fn).exists():
+    #        os.remove(fn)
+    #    transactions = None
+    #    exp.save()
+    #    return False
     exp.log(f'Success: Wrote picklist to {fn}')
     exp.save()
     return True
 
 
-def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, transactions=None):
+def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, transactions):
     """ 
     Create a picklist for Mytaq & H2O transfers
     transactions are passed through to mk_picklist and modified there
     """        
     # build a list of all possible taq/water pids and well pair transfers
     pid_ww_tw_list = []
+    print(f"{task_wells=} {taqwater_bcs=}", file=sys.stderr)
     for pid in taqwater_bcs:
         twp = exp.get_plate(pid, transactions)
+        print(f"{twp=}", file=sys.stderr)
         # iterate over wells forever
-        ww_gen = (x for xs in itertools.repeat(twp['water_wells']) for x in xs)
-        tw_gen = (x for xs in itertools.repeat(twp['taq_wells']) for x in xs)
+        #ww_gen = (x for xs in itertools.repeat(twp['water_wells']) for x in xs)
+        #tw_gen = (x for xs in itertools.repeat(twp['taq_wells']) for x in xs)
         empty_wells = set()
         water_well_list = []
-        for ww in next(ww_gen):
+        for ww in (x for xs in itertools.repeat(twp['water_wells']) for x in xs):
             if len(empty_wells) == 3:
                 break
+            if 'volume' not in twp[ww]:
+                empty_wells.add(ww)
             if ww in empty_wells:
                 continue
-            if twp[ww] - water_vol - twp['dead_vol'] < 0:
+            if twp[ww]['volume'] - water_vol - twp['dead_vol'] < 0:
                 empty_wells.add(ww)
                 continue
-            twp[ww] -= water_vol
+            twp[ww]['volume'] -= water_vol
             water_well_list.append((pid,ww))
 
         empty_wells = set()
         taq_well_list = []
-        for tw in next(tw_gen):
+        for tw in (x for xs in itertools.repeat(twp['taq_wells']) for x in xs):
             if len(empty_wells) == 3:
                 break
+            if 'volume' not in twp[tw]:
+                empty_wells.add(tw)
             if tw in empty_wells:
                 continue
-            if twp[tw] - taq_vol - twp['dead_vol'] < 0:
+            if twp[tw]['volume'] - taq_vol - twp['dead_vol'] < 0:
                 empty_wells.add(tw)
                 continue
-            twp[tw] -= water_vol
-            water_well_list.append((pid,tw))
+            twp[tw]['volume'] -= water_vol
+            taq_well_list.append((pid,tw))
 
         for ww,tw in zip(water_well_list, taq_well_list):
             water_pid, water_well = ww
@@ -302,10 +341,12 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
     if len(pid_ww_tw_list) < len(task_wells):
         exp.log(f'Failure: Not enough taq or water available from plates {taqwater_bcs}')
         exp.save()
+        print(f'Failure: Not enough taq or water available from plates {taqwater_bcs}', file=sys.stderr)
         return False
 
     # now allocate to used wells
-    try:
+    #try:
+    if True:
         pcr_pids = sorted(set([w.pcrplate for w in task_wells]))
         tw_pids = sorted(set([pid for pid,ww,tw in pid_ww_tw_list]))
         dst_dict = dict((pid, "Destination[{}]".format(i)) for i, pid in enumerate(pcr_pids, start=1))
@@ -327,10 +368,10 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
                     util.PLATE_TYPES['PCR384'], task_well.pcrwell, taq_vol]
             output_rows.append(taq_row)
         mk_picklist(exp, fn, output_rows, transactions)         
-    except Exception as exc:
-        exp.log(f"Error: failed to generate taq/water picklist {exc}")
-        exp.save()
-        return False
+    #except Exception as exc:
+    #    exp.log(f"Error: failed to generate taq/water picklist {exc}")
+    #    exp.save()
+    #    return False
     return True
 
 
@@ -356,7 +397,26 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         except Exception as e:
             exp.log(f"{e}")
 
-        primer_survey = exp.get_exp_fp('primer-svy.csv')
+        #primer_survey = exp.get_exp_fp('primer-svy.csv')
+
+        primer_pids = [p for p in exp.plate_location_sample if exp.plate_location_sample[p]['purpose'] == 'primer']
+        primer_survey_lines = []
+        header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
+                'primer names pooled', 'volume']
+        primer_survey_lines.append(','.join(header))
+        for i,pid in enumerate(primer_pids):
+            plate=exp.plate_location_sample[pid]
+            for well in util.row_ordered_384:
+                if well not in plate['wells']:
+                    continue
+                if 'primer' not in plate[well]:
+                    continue
+                if 'volume' not in plate[well]:
+                    continue
+                outline = ','.join([f"Source[{i+1}]",util.unguard_pbc(pid,silent=True),plate['plate_type'],
+                        well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
+                primer_survey_lines.append(outline)
+        
 
         # read Nimbus created DNA plates into experiment and copy source well information
         transactions = {}
@@ -402,8 +462,8 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         # read Stage1 files
         dnadict = dict(((x.srcplate, x.srcwell), (x.dstplate, x.dstwell)) for nt in nimbusTables for x in nt.data)    
         dnas = [util.CSVTable('S1Rec', exp.get_exp_fp('Stage1-P{}.csv'.format(dnabc))) for dnabc in dna_bcs]
-        
-        primerTable = util.CSVTable("PPRec", primer_survey, fields="spn spbc spt well primer volume".split(' '))
+        primer_survey = StringIO('\n'.join(primer_survey_lines))
+        primerTable = util.CSVMemoryTable("PPRec", primer_survey, fields="spn spbc spt well primer volume".split(' '))
         primset = sorted(frozenset(x.primer for x in primerTable.data if x.primer != ''))
         pfdict = dict((k.strip(), list([p.strip() for p in g])) for k, g in itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
 
@@ -423,6 +483,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         s2tab = util.Table(S2Rec, ([x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)), headers=s2flds) 
         # output Stage 2 CSV file - used in Stage 3 below - keeping the plate guards for the next stage (to be safe)
         stage2_fn = exp.get_exp_fp("Stage2.csv", transaction=True)
+        transactions[stage2_fn] = {}
         try:
             s2tab.csvwrite(stage2_fn, output_plate_guards=True)
         except Exception as exc:
@@ -445,12 +506,12 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         gen = ((sdict[r.dnaplate], r.dnaplate, src_plate_type, r.dnawell,
                 ddict[r.pcrplate], r.pcrplate, dst_plate_type, r.pcrwell, volume)
                 for r in s2tab.data)
-        success = mk_picklist(exp, dna_fn, gen, transactions[dna_fn])
+        success = mk_picklist(exp, dna_fn, gen, transactions)
         if not success:
-            transactions[dna_fn] = None
-        # Primer Picklist
-        # [Source[1]', '', '384PP_AQ_BP', 'H6', 'Destination[1]', '3121', 'Hard Shell 384 well PCR Biorad', 'A1', 500]
-        primsrc = PicklistSrc(exp.get_exp_fp("primer-svy.csv"), idx=4) # same name as in cgi-nimbus2.py
+            transactions[dna_fn] = None 
+
+        primer_survey = StringIO('\n'.join(primer_survey_lines))
+        primsrc = PicklistMemorySrc(primer_survey, idx=4) # same name as in cgi-nimbus2.py
         volume = exp.transfer_volumes['PRIMER_VOL']        
         primer_fn = exp.get_exp_fp(outfmt.replace('PCR','PCR1_primer'), transaction=True)
         transactions[primer_fn] = {}
@@ -466,7 +527,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                     [ddict[r.pcrplate], r.pcrplate, util.PLATE_TYPES['PCR384'], r.pcrwell, volume])
             primer_uses[r.primer] += 1
             
-        success = mk_picklist(exp, primer_fn, primer_output_rows, transactions[primer_fn])
+        success = mk_picklist(exp, primer_fn, primer_output_rows, transactions)
         if not success:
             transactions[primer_fn] = None
 
@@ -476,7 +537,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         print(f"end of generate_pcr1 {taq_bcs=}")
         # exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, transactions=None
         success = mk_mytaq_picklist(exp, taq_fn, s2tab.data, taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], 
-                exp.transfer_volumes['PRIMER_WATER_VOL'], transactions[taq_fn])
+                exp.transfer_volumes['PRIMER_WATER_VOL'], transactions)
         if not success:
             transactions[taq_fn] = None
 
@@ -491,12 +552,13 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
 
 def i7i5alloc_rot(exp, vol, wellcount, index_survey_fn='index-svy.csv'):
     """ allocate vol to wellcount wells with unique index pairs - rotates barcode wells to avoid wells being drained """
-    try:
+    #try:
+    if True:
         typebc = util.Table.newtype('BCRecord', "name platebc type well set barcode orderpart oligo volume")
         # typebc = Table.newtype('BCRecord', "well name index indexName oligo volume")
         tab = util.CSVTable(typebc, exp.get_exp_fp(index_survey_fn)) # volumes in file are in uL
 
-        dv = exp.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
+        dv = util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
         #def getvol(x): return x[-1]
         i7s = {(r.barcode, r.set, r.well, r.platebc): float(r.volume)*1000-dv for r in tab.data if '_i7F_' in r.set}
         i5s = {(r.barcode, r.set, r.well, r.platebc): float(r.volume)*1000-dv for r in tab.data if '_i5R_' in r.set}
@@ -546,17 +608,17 @@ def i7i5alloc_rot(exp, vol, wellcount, index_survey_fn='index-svy.csv'):
             used_index_pairs.add((i7[0],i5[0])) 
         return index_info_pairs
       
-    except Exception as exc:
-        exp.log(f"Error: {exc}")
+    #except Exception as exc:
+    #    exp.log(f"Error: {exc}")
 
 
-def generate_miseq_samplesheet(exp, fmtmiseq, s3tab,transactions=None):
+def generate_miseq_samplesheet(exp, miseq_fn, s3tab,transactions):
     """ Now that we have all the required info, generate the Illumina Miseq samplesheet, which drives the sequencing """
-    if transactions is None:
-        transactions = {}
-    try:
-        fnmiseq = exp.get_exp_fp(fmtmiseq.format(exp.name), transaction=True)
-        with open(fnmiseq, "wt", newline='') as dstfd:
+    if miseq_fn not in transactions:
+        transactions[miseq_fn] = {}
+    #try:  
+    if True:
+        with open(miseq_fn, "wt", newline='') as dstfd:
             dstfd.write(f"""[Header],,,,,,,,,,
 IEMFileVersion,4,,,,,,,,,
 Investigator Name,,,,,,,,,,
@@ -585,16 +647,15 @@ Adapter,,,,,,,,,,
                     r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data]
             
             dst.writerows(gen)
-        transactions[fnmiseq] = []
         
-    except Exception as exc:
-        exp.log(f"Failure: Miseq samplesheet generation {fnmiseq} will be deleted {exc}")
-        if Path(fnmiseq).exist():
-            os.remove(fnmiseq)
-        exp.save()
-        return False
-    exp.add_pending_transactions(transactions)
-    exp.log(f'Success: Miseq samplesheet written to {fnmiseq}')
+    #except Exception as exc:
+    #    exp.log(f"Failure: Miseq samplesheet generation {fnmiseq} will be deleted {exc}")
+    #    if Path(fnmiseq).exist():
+    #        os.remove(fnmiseq)
+    #    exp.save()
+    #    return False
+    #exp.add_pending_transactions(transactions)
+    exp.log(f'Success: Miseq samplesheet written to {miseq_fn}')
     exp.save()
     return True
 
@@ -607,7 +668,8 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
     Called from Experiment.generate_echo_PCR2_picklists()
     """
     transactions = {}
-    try:
+    #try:
+    if True:
         pcr_bcs = []
         amplicon_bcs = []
         taq_bcs = []
@@ -629,7 +691,8 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
             exp.log(f"Error: Taq-water plate barcodes in error {taq_water_bcs=} {exc}")
         outfmt = f"PCR-picklist_{exp.name}.csv"
     
-        fnstage2, fnstage3 = "Stage2.csv", "Stage3.csv"
+        fnstage2 = "Stage2.csv"
+        fnstage3 = exp.get_exp_fp("Stage3.csv", transaction=True)
     
         ### i7i5 barcodes
         # read Stage2 csv file
@@ -653,7 +716,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         # output Stage 3 CSV file - used for custom and mouse samples. Amplicons are handled separately
         transactions[fnstage3] = {}
         try:
-            s3tab.csvwrite(exp.get_exp_fp(fnstage3, transaction=True))
+            s3tab.csvwrite(fnstage3)
         except Exception as exc:
             exp.log(f'Critical: could not write {fnstage3}')
             transactions[fnstage3] = None
@@ -676,24 +739,29 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         pt_dst = util.PLATE_TYPES['PCR384']
         rowi7 = ((src_dict[r.index_plate], r.index_plate, pt_src, r.i7well, dest_dict[r.pcrplate], r.pcrplate, pt_dst, r.pcrwell, index_vol) for r in s3tab.data)
         rowi5 = ((src_dict[r.index_plate], r.index_plate, pt_src, r.i5well, dest_dict[r.pcrplate], r.pcrplate, pt_dst, r.pcrwell, index_vol) for r in s3tab.data)
-        fn_index = exp.get_exp_fp(outfmt.replace('PCR','PCR2_index'), transaction=True)
-        mk_picklist(exp, fn_index, (r for rs in (rowi7, rowi5) for r in rs), transactions[fn_index])    
+        outfmt_index = outfmt
+        fn_index = exp.get_exp_fp(outfmt_index.replace('PCR','PCR2_index'), transaction=True)
+        mk_picklist(exp, fn_index, (r for rs in (rowi7, rowi5) for r in rs), transactions)    
         
         # also PCR2 water and Taq
-        fn_taqwater = exp.get_exp_fp(outfmt.replace('PCR','PCR2_taqwater'), transaction=True)
+        outfmt_taq = outfmt
+        fn_taqwater = exp.get_exp_fp(outfmt_taq.replace('PCR','PCR2_taqwater'), transaction=True)
+        transactions[fn_taqwater] = {}
         mk_mytaq_picklist(exp, fn_taqwater, s3tab.data, taq_bcs, exp.transfer_volumes['INDEX_TAQ_VOL'], 
                 exp.transfer_volumes['INDEX_WATER_VOL'], transactions)
         
         # MiSeq file - experiment name, name format, ngid(dir), s3 data, verbosity
-        fmtmiseq = "MiSeq-{}.csv"
-        success = generate_miseq_samplesheet(exp, fmtmiseq, s3tab, transactions)
-        
-        fns3 = "Stage3.html"
+        fmtmiseq = "MiSeq_{}.csv".format(exp.name)
+        miseq_fn = exp.get_exp_fp(fmtmiseq, transaction=True)
+        transactions[miseq_fn] = {}
+        success = generate_miseq_samplesheet(exp, miseq_fn, s3tab, transactions)
+    exp.add_pending_transactions(transactions)
+        #fns3 = "Stage3.html"
         #s2r.build_report(exp, fns3, s3tab.tt._fields, s3tab.data)    
         
-    except Exception as exc:
-        exp.log(f"Error: {exc}")
-        return False
+    #except Exception as exc:
+    #    exp.log(f"Error: {exc}")
+    #    return False
     return True
 
 

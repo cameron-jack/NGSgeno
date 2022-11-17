@@ -58,12 +58,6 @@ EXP_FN = 'experiment.json'
 # Defines content of experiment.ini which stores the current pipeline configuration
 class Experiment():
     """
-    Tracks information on the following file paths (when available)
-    mouse pipeline files:
-    mouse_ref - defaults to library .fa or.txt (.fa takes precedence)
-    
-    assay_list - defaults to library
-    conversions - defaults to library (this file may on borrowed time thanks to Rodentity)
 
     All pipeline inputs go here. Logs are housed here. Everything the pipeline needs to operate can be found here.
     All plates are recorded in self.plate_location_sample which is defined by {barcode/name:{well:{info}}}
@@ -174,6 +168,7 @@ class Experiment():
         take a pending path \example\pending_myfile.csv and convert to final name
         eg \example\myfile.csv
         """
+        print(f"{pending_name=}", file=sys.stderr)
         p = Path(pending_name)
         parent = p.parent
         file_name = str(p.name)
@@ -187,6 +182,8 @@ class Experiment():
         take a final path \example\myfile.csv and convert to pending name
         eg \example\pending_myfile.csv
         """
+        print("convert final to pending", file=sys.stderr)
+        print(f"{final_name=}", file=sys.stderr)
         p = Path(final_name)
         parent = p.parent
         file_name = str(p.name)
@@ -237,6 +234,7 @@ class Experiment():
             pending_files_hanging = Path(self.get_exp_dir()).glob('pending_*')
             for p in pending_files_hanging:
                 os.remove(p)
+                print(f'removing pending file {p}', file=sys.stderr)
         except Exception as exc:
             self.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
             return False
@@ -250,7 +248,7 @@ class Experiment():
 
         Returns True on success
         """
-        print("accept_pending_transactions", file=sys.stderr)
+        print(f"accept_pending_transactions for {self.pending_steps.keys()=}", file=sys.stderr)
         if not self.pending_steps:
             self.log("Warning: there are no pending transactions to record")
             return True  # It didn't actually fail
@@ -301,10 +299,15 @@ class Experiment():
                 print(f"Renaming {str(p)=} to {str(final_path)=}", file=sys.stderr)
                 os.rename(p, final_path)
             self.reproducible_steps = self.reproducible_steps[0:clashing_index]
+        if self.pending_steps is None:
+            self.save()
+            return True
         this_step = {}
         for ps in self.pending_steps:
+            if ps is None:
+                continue
             final_name = self.convert_pending_to_final(ps)
-            record = self.pending_steps[ps].copy()
+            record = self.pending_steps[ps]
             this_step[final_name] = record
         self.reproducible_steps.append(this_step)
         self.pending_steps = None
@@ -315,7 +318,37 @@ class Experiment():
         """ 
         Iterate over all expected files and ensure that they are present. If they aren't, remove these steps and any that follow.
         """
-        pass
+        pids_to_delete = set()
+        files_to_delete = set()
+        for i, step in enumerate(self.reproducible_steps):
+            for f in step:
+                if not Path(f).exists():
+                    files_to_delete.add(f)
+                    if step[f] is None:
+                        continue
+                    for pid in step[f]:
+                        pids_to_delete.add(pid)
+        # clear out files and look for pipeline breakages from missing sections
+        pipe_broken_step = None
+        for i, step in enumerate(self.reproducible_steps):
+            for f in files_to_delete:
+                if f in step:
+                    del step[f]
+                if len(step) == 0:
+                    pipe_broken_step = i
+                    break
+            if pipe_broken_step is not None:
+                break
+        if pipe_broken_step is not None:
+            self.reproducible_steps = self.reproducible_steps[:pipe_broken_step]
+
+        # now clean out pids 
+        for i, step in enumerate(self.reproducible_steps):
+            for f in step:
+                for pid in pids_to_delete:
+                    if pid in step[f]:
+                        del self.reproducible_steps[i][f][pid]
+
 
     def get_plate(self, PID, transactions=None):
         """ 
@@ -935,7 +968,6 @@ class Experiment():
         primer_water_vol = reactions * self.transfer_volumes['PRIMER_WATER_VOL']
         index_water_vol = reactions * self.transfer_volumes['INDEX_WATER_VOL']
         index_taq_vol = reactions * self.transfer_volumes['INDEX_TAQ_VOL']
-
         primer_vols = {a:assay_usage[a]*self.transfer_volumes['PRIMER_VOL'] for a in assay_usage}
         return primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol
         
@@ -1147,16 +1179,15 @@ class Experiment():
             self.log(f'Critical: could not write reference sequences to {target_fn} {exc}')
             self.save()
             return False
-        self.add_reproducible_steps(transactions)
+        self.add_pending_transactions(transactions)
+        self.accept_pending_transactions()
         self.log(f'Success: created reference sequences file {target_fn} containing {counter} sequences')
         self.save()
         return True
         
 
     def add_assaylists(self, uploaded_assaylists):
-        """ mapping of assay to primer name - may not be required in future in this capacity.
-        What we really need/want is a list of allowed assays
-        """
+        """ mapping of assay family to primer family """
         if self.locked:
             self.log('Error: cannot add assay list while lock is active.')
             return False
@@ -1718,7 +1749,7 @@ class Experiment():
 
     def get_miseq_samplesheets(self):
         """ return the MiSeq-XXX.csv samplesheet, if it exists """
-        miseq_fps = Path(self.get_exp_dir()).glob('MiSeq-*.csv')
+        miseq_fps = Path(self.get_exp_dir()).glob('MiSeq_*.csv')
         return miseq_fps
 
      

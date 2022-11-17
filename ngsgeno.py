@@ -267,6 +267,7 @@ def run_generate(exp, target_func, *args, **kwargs):
     Run target_func() and ask user to respond to any file/pipeline clashes in the given context, if provided
     """
     exp.clear_pending_transactions()
+    exp.enforce_file_consistency()
     #print(f"launching {target_func=}", file=sys.stderr)
     success = target_func(*args, **kwargs)
     #print(f"completed {target_func=} {success=}", file=sys.stderr)
@@ -286,8 +287,8 @@ def run_generate(exp, target_func, *args, **kwargs):
                 #else:
                     st.warning(f'The following output files already exist {clashes}')
                     st.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages')
-                    st.button('Accept', on_click=exp.accept_pending_transactions)
-                    st.button('Cancel', on_click=exp.clear_pending_transactions)
+                    st.button('Accept', on_click=exp.accept_pending_transactions, key='accept_overwrite_button')
+                    st.button('Cancel', on_click=exp.clear_pending_transactions, key='cancel_overwrite_button')
             else:
                 exp.accept_pending_transactions()
     return success
@@ -594,20 +595,22 @@ def main():
                             print(f'{included_DNA_plates=} {included_PCR_plates=} {included_taqwater_plates=}', file=sys.stderr)
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
 
-                            echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',\
-                                    key='echo_pcr1_go_button')
-
+                            #primer_survey_go = picklist_button_col.button('Generate Primer Survey File',
+                            #        key='primer_survey_go_button')
+                            #success = False
+                            #if primer_survey_go:
+                            #    success = run_generate(exp, exp.generate_echo_primer_survey)
+                            #    if not success:
+                            #        st.write('Primer survey file generation failed. Please see the log')
+                            #if success:
                             picklist_button_col.write('')
-
+                            echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',
+                                    key='echo_pcr1_go_button')
                             if echo_picklist_go:
-                                success = run_generate(exp, exp.generate_echo_primer_survey)
+                                success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
+                                        included_DNA_plates, included_PCR_plates, included_taqwater_plates)
                                 if not success:
-                                    st.write('Primer survey file generation failed. Please see the log')
-                                else:
-                                    success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
-                                            included_DNA_plates, included_PCR_plates, included_taqwater_plates)
-                                    if not success:
-                                        st.write('Picklist generation failed. Please see the log')
+                                    st.write('Picklist generation failed. Please see the log')
                                 
                         dc.show_echo1_outputs()
                     
@@ -684,8 +687,8 @@ def main():
                         picklist_button_col.write('')
 
                         if echo_picklist_go:
-                            success = run_generate(exp, exp.generate_echo2_picklists, included_PCR_plates,
-                                    included_taqwater_plates, included_amplicon_plates)
+                            success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_plates,
+                                    included_index_plates, included_taqwater_plates, included_amplicon_plates)
                             if not success:
                                 st.write('Picklist generation failed. Please see the log')
                             
@@ -720,7 +723,8 @@ def main():
                         fp_name = str(Path(fp).name)
                         miseq_col1.markdown(f'<strong style="color:#486e7a">{fp_name}</strong>', unsafe_allow_html=True)
                     
-                        download_miseq = miseq_col2.button(label='Download', key='dnld_samplesheet_'+str(fp))
+                        download_miseq = miseq_col2.download_button(label='Download', data=open(fp, 'rt'), 
+                                file_name=fp_name, mime='text/csv', key='dnld_samplesheet_'+str(fp))
                 else:
                     no_miseq_msg = ""
                 st.session_state['miseq_tab'] = 1
@@ -782,6 +786,7 @@ def main():
                         if exhaustive_mode:
                             cmd_str += ' --exhaustive'                     
                         exp.log(f'Info: {cmd_str}')
+                        print(f"{cmd_str=}", file=sys.stderr)
                         cp = subprocess.run(cmd_str.split(' '))
                         st.session_state['match_running'] = True
                         exp.log(f'Debug: {cp}')

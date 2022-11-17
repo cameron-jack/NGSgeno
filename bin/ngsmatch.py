@@ -587,15 +587,17 @@ def main(args):
     log.append(f"Begin: {start_time}")
     raw_pair_list = get_raw_fastq_pairs(os.path.join(args.rundir, 'raw'))
     raw_file_identifiers = set([str(f[0].name).split('_')[0] for f in raw_pair_list])
-    with open(args.stagefile) as srcfd:
+    print(raw_file_identifiers, file=sys.stderr)
+    with open(os.path.join(args.rundir,args.stagefile)) as srcfd:
         src = csv.reader(srcfd, dialect="unix")
         hdr = next(src)
         WRec = collections.namedtuple("WRec", hdr)
         wdata = sorted((WRec(*r) for r in src), key=lambda x:(x.pcrplate, x.pcrwell[0], int(x.pcrwell[1:]), x.primer))
+    print(wdata, file=sys.stderr)
     wdata = [rec for rec in wdata if rec.pcrplate +'-'+ padwell(rec.pcrwell) in raw_file_identifiers]
     
     log.append(f"Info: {len(wdata)} sample wells to process.")
-        
+    print(log, file=sys.stderr)
     ## get a set of assay family names - family name ends with first underscore char  
     #assays = frozenset(r.primer.split('_',1)[0] for r in wdata)
         
@@ -769,6 +771,7 @@ if __name__=="__main__":
     parser.add_argument('-s','--stagefile', default="Stage3.csv", help="Name of the NGS genotyping Stage 3 file (default=Stage3.csv)")
     args = parser.parse_args()
     in_error = False
+    print(f"{args=}", file=sys.stderr)
     lock_path = os.path.join(args.rundir,"ngsgeno_lock") 
     if not os.path.exists(lock_path):
         try:
