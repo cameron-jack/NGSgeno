@@ -51,120 +51,6 @@ def create_run_folder(newpath):
     exp = Experiment(name=newpath.lstrip('run_'))
     return exp, ''
 
-#generalise
-#def generate_picklist(plates, pcr_stage=1):
-#    exp = st.session_state['experiment']
-#    picklist_file_col, picklist_btn_col = st.columns(2)
-#    if pcr_stage == 1:
-#        DNA_plates = plates[0]
-#        PCR_plates = plates[1]
-#        taqwater_plates = plates[2]
-#        error_msgs = []
-        
-#        success = exp.generate_echo_PCR1_picklists(DNA_plates,\
-#                PCR_plates, taqwater_plates)
-#        if not success:
-#            exp.clear_pending_transactions()                 
-#        else:
-#            dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths =\
-#                    exp.get_echo_PCR1_picklist_filepaths()
-
-#            if not dna_picklist_paths:
-#                error_msgs.append('No DNA picklist available')
-
-#            else:
-#                for dpp in dna_picklist_paths:
-#                    dpp_file = str(Path(dpp).name)
-#                    picklist_file_col.markdown(\
-#                                f'<p style="text-align:right;color:#4b778c;padding:5px">{dpp_file}</p>',\
-#                            unsafe_allow_html=True)
-#                    picklist_btn_col.download_button(label=f"Download", 
-#                            data=open(dpp, 'rt'), file_name=dpp, mime='text/csv', key='dna_download_'+dpp)
-
-#            if not primer_picklist_paths:
-#                error_msgs.append('No primer picklist available')
-#            else:
-#                for ppp in primer_picklist_paths:
-#                    ppp_file = str(Path(ppp).name)
-#                    picklist_file_col.markdown(\
-#                                f'<p style="text-align:right;color:#4b778c;padding:5px">{ppp_file}</p>',\
-#                                unsafe_allow_html=True)
-#                    picklist_btn_col.download_button(label=f"Download", 
-#                            data=open(ppp, 'rt'), file_name=ppp, mime='text/csv', key='primer_download_'+dpp)
-            
-#            if not taqwater_picklist_paths:
-#                error_msgs.append('No taq/water picklist available')
-#            else:
-#                for tpp in taqwater_picklist_paths:
-#                    tpp_file = str(Path(tpp).name)
-#                    picklist_file_col.markdown(\
-#                                f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_file}</p>',\
-#                                unsafe_allow_html=True)
-#                    picklist_btn_col.download_button(label=f"Download", 
-#                            data=open(tpp, 'rt'), file_name=tpp, mime='text/csv', key='taqwater_download_'+tpp)
-
-#            if error_msgs:
-#                for msg in error_msgs:
-#                    picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
-#                            unsafe_allow_html=True)
-    
-#    if pcr_stage == 2:                      
-#        PCR_plates = plates[0]
-#        taqwater_plates = plates[1]
-#        index_plates = plates[2]
-#        amplicon_plates = plates[3]
-#        error_msgs = []
-
-#        success = st.session_state['experiment'].generate_echo_PCR2_picklists(\
-#                                PCR_plates, index_plates, taqwater_plates,\
-#                                            amplicon_plates)
-#        if success:
-#            index_picklist_paths, taqwater_picklist_paths, amplicon_picklist_paths =\
-#                    st.session_state['experiment'].get_echo_PCR2_picklist_filepaths()
-            
-#            # amplicon_picklist_paths is a list
-#            if not index_picklist_paths:
-#                error_msgs.append('No index picklist available')
-
-#            else:
-#                for ipp in index_picklist_paths:
-#                    ipp_file = str(Path(ipp).name)
-#                    picklist_file_col.markdown(\
-#                                f'<p style="text-align:right;color:#4b778c;padding:5px">{ipp_file}</p>',\
-#                                        unsafe_allow_html=True)
-#                    picklist_btn_col.download_button(label=f"Download",\
-#                            data=open(ipp, 'rt'), file_name=ipp, mime='text/csv',\
-#                                    key='index_download_'+ipp)
-
-#            if not amplicon_picklist_paths:
-#                error_msgs.append('No amplicon picklist available')
-                
-#            else:
-#                for app in amplicon_picklist_paths:
-#                    app_file = str(Path(app).name)
-#                    picklist_file_col.markdown(\
-#                                f'<p style="text-align:right;color:#4b778c;padding:5px">{app_file}</p>',\
-#                                        unsafe_allow_html=True)
-#                    picklist_btn_col.download_button(label=f"Download",\
-#                            data=open(app, 'rt'), file_name=app, mime='text/csv',\
-#                                    key='amplicon_download_'+app)
-
-#            if not taqwater_picklist_paths:
-#                error_msgs.append('No taq/water picklist available')
-
-#            else:
-#                for tpp in taqwater_picklist_paths:
-#                    tpp_file = str(Path(tpp).name)
-#                    picklist_file_col.markdown(\
-#                                f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_file}</p>',\
-#                                        unsafe_allow_html=True)
-#                    picklist_btn_col.download_button(label=f"Download",\
-#                                data=open(tpp, 'rt'), file_name=tpp, mime='text/csv',\
-#                                        key='taqwater_download_'+tpp)
-#            if error_msgs:
-#                for msg in error_msgs:
-#                    picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
-#                            unsafe_allow_html=True)
 
 def plate_checklist_expander(available_nimbus, pcr_stage=1):
     exp = st.session_state['experiment']
@@ -364,6 +250,13 @@ def main():
                 elif ch_run_path.endswith(exp.name):
                     # success!
                     st.session_state['experiment'] = exp
+                    st.session_state['pipeline_stage'] = 0
+                    st.session_state['load_tab'] = 1
+                    st.session_state['nimbus_tab'] = 1
+                    st.session_state['primer_tab'] = 1
+                    st.session_state['index_tab'] = 1
+                    st.session_state['miseq_tab'] = 1
+                    st.session_state['allele_tab'] = 1
                     st.experimental_rerun()
                 else:
                     error_msg = "Invalid experiment file in: " + ch_run_path
@@ -388,12 +281,13 @@ def main():
                 stx.TabBarItemData(id=2, title="Load Consumables", description=""),
                 stx.TabBarItemData(id=3, title="View Data", description="")
             ], return_type=int)                            
-            dc.info_viewer()  
+            #dc.info_viewer()  
             if not load_data_tab:
                 if 'load_tab' not in st.session_state:
                     st.session_state['load_tab'] = 1
                 load_data_tab = st.session_state['load_tab']
 
+            dc.info_viewer(1)
             # load sample data
             if load_data_tab == 1:
                 summary = exp.summarise_inputs()
@@ -410,7 +304,9 @@ def main():
             #load consumables, references and assays/primer mappings
             if load_data_tab == 2:
                 dc.data_table('load_data_tab2', options=False, table_option='Loaded Consumables')
-                ld.upload_pcr_files()     
+                ld.upload_pcr1_files('tab2')
+                ld.upload_pcr2_files('tab2')
+                ld.upload_extra_consumables('tab2')
 
             #load data
             if load_data_tab == 3:
@@ -429,7 +325,7 @@ def main():
                 stx.TabBarItemData(id=2, title="Upload", description="Nimbus output files"),
                 stx.TabBarItemData(id=3, title="View Data", description="")
             ], return_type=int)
-
+            dc.info_viewer(1)
             if not nimbus_tab:
                 if 'nimbus_tab' not in st.session_state:
                     st.session_state['nimbus_tab'] = 1
@@ -542,10 +438,10 @@ def main():
             st.session_state['assay_filter'] = True
             primer_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="PCR 1", description="Components"),
-                stx.TabBarItemData(id=2, title="Provide", description="Plates"),
-                stx.TabBarItemData(id=3, title="Generate", description="Picklists")
+                #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
+                stx.TabBarItemData(id=2, title="Generate", description="Picklists")
             ], return_type=int)
-
+            dc.info_viewer(1)
             if not primer_tab:
                 if 'primer_tab' not in st.session_state:
                     st.session_state['primer_tab'] = 1
@@ -569,20 +465,23 @@ def main():
                     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                     st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
                             unsafe_allow_html=True)
+
+                ld.provide_barcodes('barcodes_tab1')
+                ld.upload_pcr1_files('pcr1_tab1')
                 st.session_state['primer_tab'] = 1
                 
             #provide plates
-            if primer_tab == 2:
-                primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
-                if efs:
-                    ld.upload_pcr_files(1)
-                    with primer_checklist_exp:
-                        included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                plate_checklist_expander(efs, pcr_stage=1)
-                st.session_state['primer_tab'] = 2
+            #if primer_tab == 2:
+            #    primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
+            #    if efs:
+            #        ld.upload_pcr1_files('tab2')
+            #        with primer_checklist_exp:
+            #            included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
+            #                    plate_checklist_expander(efs, pcr_stage=1)
+            #    st.session_state['primer_tab'] = 2
 
             #generate picklists
-            if primer_tab == 3:
+            if primer_tab == 2:
                 primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
                 if efs:
                     with primer_checklist_exp:
@@ -618,17 +517,17 @@ def main():
                         no_dna_msg = "Include at least one DNA plate to carry on with the pipeline"
                         st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_dna_msg}</h5',\
                             unsafe_allow_html=True)
-                st.session_state['primer_tab'] = 3
+                st.session_state['primer_tab'] = 2
 
         #Index PCR
         if pipeline_stage == 3:
             exp = st.session_state['experiment']
             index_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="PCR 2", description="Components"),
-                stx.TabBarItemData(id=2, title="Provide", description="Plates"),
-                stx.TabBarItemData(id=3, title="Generate", description="Picklists")
+                #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
+                stx.TabBarItemData(id=2, title="Generate", description="Picklists")
             ], return_type=int)
-
+            dc.info_viewer(1)
             if not index_tab:
                 if 'index_tab' not in st.session_state:
                     st.session_state['index_tab'] = 1
@@ -652,23 +551,25 @@ def main():
                     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                     st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
                             unsafe_allow_html=True)
+                ld.provide_barcodes('index_barcodes')
+                ld.upload_pcr2_files('index_upload')
                 st.session_state['index_tab'] = 1
 
             #plate info
-            if index_tab == 2:
-                index_checklist_exp = st.expander('Plate Checklist', expanded=False)
-                if available_nimbus:
-                    with index_checklist_exp:
-                        included_PCR_plates, included_taqwater_plates, included_index_plates,\
-                                    included_amplicon_plates =\
-                                    plate_checklist_expander(available_nimbus, pcr_stage=2)
+            #if index_tab == 2:
+            #    index_checklist_exp = st.expander('Plate Checklist', expanded=False)
+            #    if available_nimbus:
+            #        with index_checklist_exp:
+            #            included_PCR_plates, included_taqwater_plates, included_index_plates,\
+            #                        included_amplicon_plates =\
+            #                        plate_checklist_expander(available_nimbus, pcr_stage=2)
 
-                    ld.upload_pcr_files(2)
-                st.session_state['index_tab'] = 2
+            #        ld.upload_pcr_files(2)
+            #    st.session_state['index_tab'] = 2
 
             #generate picklist
             picklist_err = ''
-            if index_tab == 3:
+            if index_tab == 2:
                 index_checklist_exp = st.expander('Plate Checklist', expanded=False)
                 if available_nimbus:
                     with index_checklist_exp:
@@ -699,7 +600,7 @@ def main():
                 
                         st.markdown(f'<h5 style="color:#f63366;text-align:center">{picklist_err}</h5>',\
                                 unsafe_allow_html=True)
-                st.session_state['index_tab'] = 3
+                st.session_state['index_tab'] = 2
             
         #Miseq
         if pipeline_stage == 4:
@@ -707,7 +608,7 @@ def main():
                 stx.TabBarItemData(id=1, title="Download", description="Samplesheet"),
                 stx.TabBarItemData(id=2, title="Upload", description="Sequence Files"),
             ], default=1, return_type=int)
-
+            dc.info_viewer(1)
             if not miseq_tab:
                 if 'miseq_tab' not in st.session_state:
                     st.session_state['miseq_tab'] = 1
@@ -742,7 +643,7 @@ def main():
                 stx.TabBarItemData(id=2, title="Allele Calling", description=""),
                 stx.TabBarItemData(id=3, title="View Data", description=""),
             ], key='allele_tab_bar' , return_type=int)
-
+            dc.info_viewer(1)
             if not allele_tab:
                 if 'allele_tab' not in st.session_state:
                     st.session_state['allele_tab'] = 1
@@ -810,6 +711,7 @@ def main():
         if pipeline_stage == 6:
             exp = st.session_state['experiment']
             results_fp = exp.get_exp_fp('Results.csv')
+            dc.info_viewer(1)
             if not Path(results_fp).exists():
                 st.markdown('**No allele calling results available**')
             else:

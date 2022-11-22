@@ -68,11 +68,10 @@ def nimbus_gen(exp):
     #if True:
         
         for dna_BC in exp.dest_sample_plates:
-            if not util.is_guarded_pbc(dna_BC):
-                dna_BC = util.guard_pbc(dna_BC)
+            ug_dnaBC = util.unguard_pbc(dna_BC, silent=True)
 
-            dna_fn = exp.get_exp_fp('Nimbus-'+dna_BC+'.csv', transaction=True)
-            fnstg = exp.get_exp_fp('Stage1-P'+dna_BC+'.csv', transaction=True)
+            dna_fn = exp.get_exp_fp('Nimbus-'+ug_dnaBC+'.csv', transaction=True)
+            fnstg = exp.get_exp_fp('Stage1-P'+ug_dnaBC+'.csv', transaction=True)
 
             transactions[dna_fn] = {} # add plates and modifications to this
             transactions[fnstg] = {}
@@ -107,11 +106,11 @@ def nimbus_gen(exp):
                             row_data = {field:'' for field in stage1_hdr}
                             row_data['Sample no'] = row_number
                             if pos in shx:
-                                row_data['Sample barcode'] = shx[pos]['barcode']
+                                row_data['Sample barcode'] = util.unguard(shx[pos]['barcode'], silent=True)
                             else:
                                 row_data['Sample barcode'] = '0'
                             row_data['Well'] = pos
-                            row_data['Plate barcode'] = pbc
+                            row_data['Plate barcode'] = util.unguard_pbc(pbc, silent=True)
                             nimbus_f.writerow([row_data[field] for field in nimbus_hdr])
 
                             if row_data['Sample barcode'] == '0':
@@ -123,9 +122,9 @@ def nimbus_gen(exp):
                                 row_data['sampleNumber'] = shx[pos]['sampleNumber']
                             else:
                                 row_data['sampleNumber'] = 0
-                            row_data['samplePlate'] = pbc
+                            row_data['samplePlate'] = util.unguard_pbc(pbc, silent=True)
                             row_data['sampleWell'] = pos
-                            row_data['sampleBarcode'] = shx[pos]['barcode']
+                            row_data['sampleBarcode'] = util.unguard(shx[pos]['barcode'], silent=True)
                             row_data['assays'] = ';'.join(shx[pos]['assays'])
                             row_data['assayFamilies'] = ';'.join(shx[pos]['assayFamilies'])
                             if 'strain' in shx[pos]:
@@ -422,7 +421,8 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         transactions = {}
         nimbus_outfiles = []
         for d in sorted(dna_bcs):
-            fp = exp.get_exp_fp("Echo_384_COC_0001_" + d + "_0.csv")
+            ug_dnaBC = util.unguard_pbc(d, silent=True)
+            fp = exp.get_exp_fp("Echo_384_COC_0001_" + ug_dnaBC + "_0.csv")
             if not Path(fp).is_file():
                 exp.log(f"{d} has no matching Echo_384_COC file from the Nimbus", level='error')
                 continue
@@ -438,10 +438,10 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                     cols = [c.strip().strip('\"') for c in line.split(',')]
                     source_pos = util.unpadwell(cols[-1])
                     source_plate = cols[-3]
-                    dest_plate = cols[1]
+                    dest_plate = util.unguard_pbc(cols[1], silent=True)
                     dest_pos = util.unpadwell(cols[3])
                     if dest_plate != d:
-                        exp.log(f"{util.unguard_pbc(d, silent=True)} doesn't match {util.unguard_pbc(dest_plate, silent=True)} "+\
+                        exp.log(f"{ug_dnaBC} doesn't match {dest_plate} "+\
                             f"as declared in Echo_384_COC file: {fp}", level="error")
                     exp.plate_location_sample[d]['wells'].add(dest_pos)
                     try:
@@ -461,7 +461,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         
         # read Stage1 files
         dnadict = dict(((x.srcplate, x.srcwell), (x.dstplate, x.dstwell)) for nt in nimbusTables for x in nt.data)    
-        dnas = [util.CSVTable('S1Rec', exp.get_exp_fp('Stage1-P{}.csv'.format(dnabc))) for dnabc in dna_bcs]
+        dnas = [util.CSVTable('S1Rec', exp.get_exp_fp('Stage1-P{}.csv'.format(util.unguard_pbc(dnabc, silent=True)))) for dnabc in dna_bcs]
         primer_survey = StringIO('\n'.join(primer_survey_lines))
         primerTable = util.CSVMemoryTable("PPRec", primer_survey, fields="spn spbc spt well primer volume".split(' '))
         primset = sorted(frozenset(x.primer for x in primerTable.data if x.primer != ''))
@@ -503,8 +503,8 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         volume = exp.transfer_volumes['DNA_VOL']
         dna_fn = exp.get_exp_fp(outfmt.replace('PCR','PCR1_dna'), transaction=True)
         transactions[dna_fn] = {}
-        gen = ((sdict[r.dnaplate], r.dnaplate, src_plate_type, r.dnawell,
-                ddict[r.pcrplate], r.pcrplate, dst_plate_type, r.pcrwell, volume)
+        gen = ((sdict[util.guard_pbc(r.dnaplate, silent=True)], util.guard_pbc(r.dnaplate, silent=True), src_plate_type, r.dnawell,
+                ddict[util.guard_pbc(r.pcrplate, silent=True)], util.guard_pbc(r.pcrplate, silent=True), dst_plate_type, r.pcrwell, volume)
                 for r in s2tab.data)
         success = mk_picklist(exp, dna_fn, gen, transactions)
         if not success:
@@ -643,7 +643,7 @@ Adapter,,,,,,,,,,
             hdr = "Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,I5_Index_ID,index2,Sample_Project,Description".split(',')
             dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
             dst.writerow(hdr)
-            gen = [(r.pcrplate+'_'+util.padwell(r.pcrwell), r.sampleBarcode, '', '',
+            gen = [(util.unguard_pbc(r.pcrplate, silent=True)+'_'+util.padwell(r.pcrwell), util.unguard(r.sampleBarcode, silent=True), '', '',
                     r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data]
             
             dst.writerows(gen)

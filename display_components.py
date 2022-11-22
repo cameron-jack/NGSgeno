@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
@@ -73,7 +73,8 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
         height=grid_height,
         gridOptions=options.build(),
         # _available_themes = ['streamlit','light','dark', 'blue', 'fresh','material']
-        theme="fresh",
+        #theme="alpine",
+        theme='streamlit',
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.VALUE_CHANGED,
         key=key,
         reload_data=True,
@@ -113,17 +114,18 @@ def data_table(key, options=False, table_option=None):
         table_option (str): If options is False, can choose a table_option instead ('Summary', 'Edit Table', 
         'Plate View', 'Explore Assays', 'View Log)
 
-    Need to fix the delete selection part - clicking no should reset the table view. 
+    Need to fix the delete selection part - clicking no should reset the table view and clicking yes creates error
     """
 
     data_container = st.container()
+    selectbox_col,_,_,_ = data_container.columns(4)
     exp = st.session_state['experiment']
     if options==True:
-        table_option = data_container.selectbox('View Data options',
-                ('Loaded Samples', 'Loaded Consumables', 'Edit Table', 'Plate View', 'Explore Assays', 
-                'Reference Sequences', 'View Log'), key='select_' + str(key))
+        table_option = selectbox_col.selectbox('View Data options',
+                                ('Loaded Samples', 'Edit Table', 'Plate View', 'Explore Assays', 'Reference Sequences', 'View Log'),\
+                                             key='select_' + str(key))
     elif options==False and table_option is None:
-        table_option = 'Loaded Samples'
+        table_option = 'Summary'
 
     data_table_title = data_container.title('')
     data_table_title.markdown(f'<h5 style="text-align:center;color:#7eaecc">{table_option}</h5>',\
@@ -134,6 +136,9 @@ def data_table(key, options=False, table_option=None):
     #Experiment summary - table
 
     if table_option == 'Loaded Samples':
+        selection = []
+        st.session_state['nuke'] = ''
+
         if exp:
             df = exp.inputs_as_dataframe()
             if df is None or not isinstance(df, pd.DataFrame):
@@ -141,58 +146,32 @@ def data_table(key, options=False, table_option=None):
             else:
                 #print(f"{type(df)=}, {df=})")
                 selection = aggrid_interactive_table(df, key=key)
-                if 'table_selection_rows' not in st.session_state or st.session_state['table_selection_rows'] != selection['selected_rows']:
-                    #print(f"{type(selection)=} {selection=}")
-                    if 'selected_rows' in selection and selection['selected_rows']:
-                        # only do the code below if this is a fresh selection
-                        rows = selection["selected_rows"]
-                        print(f'{rows=}', file=sys.stderr)
-                        lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
+                #print(f"{type(selection)=} {selection=}")
+                if 'selected_rows' in selection and selection['selected_rows']:
+                    # only do the code below if this is a fresh selection
+                    rows = selection["selected_rows"]
+                    lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
+                    if 'previous_delete_group_selection' not in st.session_state:
+                        st.session_state['previous_delete_group_selection'] = None
+                    if lines and st.session_state['previous_delete_group_selection'] != lines:
                         data_container.markdown(f"**You selected {lines}**")
                         del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
                         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                        delete_button = del_col2.button("Yes", key="delete " + str(key), help=f"Delete {lines}")
-                        mistake_button = del_col3.button("No", key="keep " + str(key), help=f"Keep {lines}")
+                        delete_button = del_col2.button("Yes",on_click=delete_entries, 
+                                args=(exp, selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
+                        mistake_button = del_col3.button("No",on_click=delete_entries, args=(exp, []), 
+                                key="keep " + str(key), help=f"Keep {lines}")
                     
                         if mistake_button:
-                            st.session_state['table_selection_rows'] = selection['selected_rows']
+                            st.session_state['previous_delete_group_selection'] = lines
+                            lines = None
+                            selection['selected_rows'] = None
                             st.experimental_rerun()
                         elif delete_button:
-                            st.session_state['table_selection_rows'] = selection['selected_rows']
-                            exp.remove_entries(rows)
-                            df = exp.inputs_as_dataframe()
+                            selection['selected_rows'] = None
+                            lines = None
+                            st.session_state['previous_delete_group_selection'] = None
                             st.experimental_rerun()
-
-    elif table_option == 'Loaded Consumables':
-        # d = {'taqwater_pids':[], 'taq_vol':0, 'water_vol':0, 'primer_pids':[], 'primer_count_ngs':0, 
-        #        'primer_count_custom':0, 'unique_primers':set(), 'primer_well_count':0, 'assay_primer_mappings':0,
-        #        'reference_files':[], 'unique_references':set(), 'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
-        consumables = exp.summarise_consumables()
-        # display pids and files
-        list_col1, list_col2 = data_container.columns([1,4])
-        list_col1.markdown('**Taq+water plates**')
-        list_col2.write(', '.join([util.unguard_pbc(pid, silent=True) for pid in consumables['taqwater_pids']]))
-        list_col1.markdown('**Primer plates**')
-        list_col2.write(', '.join([util.unguard_pbc(pid, silent=True) for pid in consumables['primer_pids']]))
-        list_col1.markdown('**Index plates**')
-        list_col2.write(', '.join([util.unguard_pbc(pid, silent=True) for pid in consumables['index_pids']]))
-        list_col1.markdown('**Reference files**')
-        list_col2.write(', '.join(consumables['reference_files']))
-        numeric_cols = data_container.columns([2,1,2,1,2,1])
-        numeric_cols[0].markdown('**Available taq (uL)**')
-        numeric_cols[1].write(consumables['taq_vol']/1000)
-        numeric_cols[2].markdown('**Available water (uL)**')
-        numeric_cols[3].write(consumables['water_vol']/1000)
-        numeric_cols[4].markdown('**Assay to primer mappings**')
-        numeric_cols[5].write(consumables['assay_primer_mappings'])
-        numeric_cols[0].markdown('**Unique primers**')
-        numeric_cols[1].write(len(consumables['unique_primers']))
-        numeric_cols[2].markdown('**Unique forward indexes**')
-        numeric_cols[3].write(len(consumables['unique_i7s']))
-        numeric_cols[4].markdown('**Unique reverse indexes**')
-        numeric_cols[5].write(len(consumables['unique_i5s']))
-        numeric_cols[0].markdown('**Unique reference sequences**')
-        numeric_cols[1].write(len(consumables['unique_references']))
 
     elif table_option == 'Edit Table':
         # Show plates in table form and let the user edit them to fix minor mistakes
@@ -210,6 +189,7 @@ def data_table(key, options=False, table_option=None):
             plate_id = util.guard_pbc(plate_selectbox)
             if plate_id in exp.plate_location_sample:
                 heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.2)
+
                 #with open("debug.html", 'wt') as outf:
                 #    print(heatmap_str, file=outf)
                 components.html(heatmap_str, height=700, scrolling=True)
@@ -272,6 +252,14 @@ def data_table(key, options=False, table_option=None):
             aggrid_interactive_table(df, key='logs')
             #data_container.dataframe(df, height=height)
 
+def display_plates():
+    plate_array = []
+    exp = st.session_state['experiment']
+    for keys, values in exp.plate_location_sample.items():
+        plate_array.append([util.unguard(keys), len(values['wells']), values['purpose']])
+    
+    plate_df = pd.DataFrame(plate_array, columns=['Plates', 'Num Wells', 'Purpose']) 
+    plate_table = aggrid_interactive_table(plate_df, grid_height=350, key='plate_aggrid')
 
 def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     """
@@ -289,20 +277,25 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     
     _,filter_col1,_,filter_col2, _ = pcr_comps_area.columns([1,5,1,5,1])
     col_size = [6, 4, 6, 4]
-    
+    comp_warning = ''
+
+    fwd_idx, rev_idx, warning_idxs = st.session_state['experiment'].get_index_avail()
+
     if assay_usage:
         primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
                 st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
         reactions = sum([v for v in assay_usage.values()])
-        index_remain, index_avail, index_vol_capacity =\
-                     st.session_state['experiment'].get_index_remaining_available_volume(assay_usage=assay_usage)
         
+        index_remain, index_avail, index_vol_capacity =\
+                st.session_state['experiment'].get_index_remaining_available_volume(assay_usage=assay_usage,\
+                                fwd_idx=fwd_idx, rev_idx=rev_idx)
+    
     else:
         reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
             0,{},0,0,0,0 
         index_remain, index_avail, index_vol_capacity =\
                 st.session_state['experiment'].get_index_remaining_available_volume()
-
+        
     taq_avail, water_avail, pids = st.session_state['experiment'].get_taqwater_avail()
     
     if show_general:
@@ -325,19 +318,22 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
                     for p in st.session_state['experiment'].get_taqwater_avail()[2]])
 
         comp_warning_area = pcr_comps_area.empty()
-        comp_warning = ''
+
+        num_supplied_PCR = len(st.session_state['experiment'].get_pcr_pids())
+        if num_supplied_PCR < required_wells:
+            comp_warning += f'{required_wells-num_supplied_PCR} PCR plate(s) '
 
         req_cols = pcr_comps_area.columns(col_size)
         #Wells and plates
-        req_cols[0].markdown('**Number of required PCR plates**')
+        req_cols[0].markdown('**Number of required PCR plates**', unsafe_allow_html=True)
         req_cols[1].write(str(required_wells))
-        req_cols[0].markdown('**Number of required reaction wells**')
+        req_cols[0].markdown('**Number of required reaction wells**', unsafe_allow_html=True)
         req_cols[1].write(str(reactions))
-        req_cols[2].markdown('**User supplied PCR plates**')
+        req_cols[2].markdown('**User supplied PCR plates**', unsafe_allow_html=True)
         if user_supplied_PCR:
             req_cols[3].write(user_supplied_PCR)
         else:
-            req_cols[3].markdown('<p style="color:#FF0000">None</p>', unsafe_allow_html=True)
+            req_cols[3].write('None')
         req_cols[2].markdown('**User supplied taq/water plates**', unsafe_allow_html=True)
         if user_supplied_PCR:
             req_cols[3].write(user_supplied_taqwater)
@@ -349,11 +345,18 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     taq_avail_vol = taq_avail/1000
     water_avail_vol = water_avail/1000
 
+    #num_taqwater_plates = ceil(primer_taq_vol / taq_avail_vol)
+
     pcr_cols = pcr_comps_area.columns(col_size)
 
     if PCR_stage == 1:
         if taq_avail < primer_taq_vol or water_avail < primer_water_vol:
-            comp_warning = 'Provide more taq and water plates to fulfill PCR 1 requirements'
+            if comp_warning != '':
+                comp_warning += ' and '
+            
+            comp_warning += f' {ceil((primer_taq_vol/1000)/7650)} taq and water plate(s) '
+    #get actual values for volume of taq water plates
+        
 
         required_water_vol_str = str(primer_water_vol/1000) + ' μl'
         water_avail_vol_str = str(water_avail_vol)+' μl'
@@ -362,7 +365,10 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
 
     if PCR_stage == 2:
         if taq_avail < (primer_taq_vol + index_taq_vol) or water_avail < (primer_water_vol + index_water_vol):
-            comp_warning = "Upload more taq and water plates to fulfill PCR 2 requirements"
+            if comp_warning != '':
+                comp_warning +=  ' and'
+ 
+            comp_warning += ' taq and water plate(s)'
         
         required_water_vol_str = str(index_water_vol/1000)+ ' μl'
         water_avail_vol_str = str(water_avail_vol) + ' μl'
@@ -392,72 +398,101 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     pcr_cols[2].markdown('**Available taq volume**')
     pcr_cols[3].write(avail_taq_vol_str)
 
-    comp_warning_area.markdown(f'<p style="color:#f63366">{comp_warning}</p>', unsafe_allow_html=True)
-
-
-def display_primer_components(assay_usage, expander=True):
-    exp  = st.session_state['experiment']
-    if expander:
-        primer_components_exp = st.expander('Primer Wells, Uses, and Volumes', expanded=False)
-        ptab1, ptab2, ptab3, ptab4 = primer_components_exp.tabs(["Wells", "Uses", "Volume μL", "Available μL"])
+    if comp_warning:
+        msg = 'Provide: ' + comp_warning + ' to fulfill PCR requirements'
     else:
-        ptab1, ptab2, ptab3, ptab4 = st.tabs(["Wells", "Uses", "Volume μL", "Available μL"])
+        msg = None
+        
+    return msg
 
-    #Set up columns
-    col_size = 3
-    num_cols = 6
-    columns = []
-    i = 0
-    while i < num_cols:
-        columns.append(col_size)
-        i+=1
+    # comp_warning_area.markdown(f'<p style="color:#f63366">{comp_warning}</p>', unsafe_allow_html=True)
 
-    wells_col = ptab1.columns(columns)
-    uses_col = ptab2.columns(columns)
-    volume_col = ptab3.columns(columns)
-    avail_col = ptab4.columns(columns)
 
-    #Values
-    if assay_usage:
-        primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-                exp.get_volumes_required(assay_usage=assay_usage)
-    else:
-        reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-            0,{},0,0,0,0 
+# def display_primer_components(assay_usage, expander=True):
+#      #Values
+#     if assay_usage:
+#         primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+#                 st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
+#     else:
+#         reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+#             0,{},0,0,0,0 
 
-    primer_avail_counts, primer_avail_vols = exp.get_primers_avail()
-    usable_well_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
-    primer_names = set(primer_vols.keys())
+#     primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
+#     per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
+#     primer_names = set(primer_vols.keys())
 
-    for i in range(6):
-        if (i+2) % 2 == 0:
-            wells_col[i].markdown('**Primer**')
-            uses_col[i].markdown('**Primer**')
-            volume_col[i].markdown('**Primer**')
-            avail_col[i].markdown('**Primer**')
-        else:
-            wells_col[i].markdown('**Wells**')
-            uses_col[i].markdown('**Uses**')
-            volume_col[i].markdown('**Volume μL**')
-            avail_col[i].markdown('**Available μL**')
+#     primer_array = []
+#     for p in primer_names:
+#         need_vol = primer_vols.get(p,0)
+#         num_wells = ceil(need_vol/per_use_vol)
 
-    for k,p in enumerate(sorted(primer_names)):
-        if p != '':
-            r = (k*2)%6  # horizontal offset
-            need_vol = primer_vols.get(p,0)
-            num_wells = ceil((need_vol)/usable_well_vol)
+#         primer_array.append([p, num_wells, assay_usage.get(p,0), primer_vols.get(p,0)/100,\
+#                     primer_avail_vols.get(p,0)/1000])
+    
+#     primer_df = pd.DataFrame(primer_array, columns=['Primer', 'Num Wells','Uses', 'Volume(μL)', 'Available Volume(μL)'])
+    
+#     primer_table = aggrid_interactive_table(primer_df, grid_height=350)
+    
+    # if expander:
+    #     primer_components_exp = st.expander('Primer Wells, Uses, and Volumes', expanded=False)
+    #     ptab1, ptab2, ptab3 = primer_components_exp.tabs(["Wells", "Uses", "Volume"])
+    # else:
+    #     ptab1, ptab2, ptab3 = st.tabs(["Wells", "Uses", "Volume"])
 
-            wells_col[r+0].write(p)
-            wells_col[r+1].write(num_wells)
+    # #Set up columns
+    # col_size = 3
+    # num_cols = 6
+    # columns = []
+    # i = 0
+    # while i < num_cols:
+    #     columns.append(col_size)
+    #     i+=1
 
-            uses_col[r+0].write(p)
-            uses_col[r+1].write(assay_usage.get(p,0))
+    
+    # wells_col = ptab1.columns(columns)
+    # uses_col = ptab2.columns(columns)
+    # volume_col = ptab3.columns([2, 2, 2, 2, 2, 2, 2, 2,2])
 
-            volume_col[r+0].write(p)
-            volume_col[r+1].write(primer_vols.get(p,0)/1000)
+   
 
-            avail_col[r+0].write(p)
-            avail_col[r+1].write(primer_avail_vols.get(p,0)/1000)
+    
+
+    # for i in range(6):
+    #     if (i+2) % 2 == 0:
+    #         wells_col[i].markdown('**Primer**')
+    #         uses_col[i].markdown('**Primer**')
+    #     else:
+    #         wells_col[i].markdown('**Wells**')
+    #         uses_col[i].markdown('**Uses**')
+            
+    # for i in range(9):
+    #     if i in [0, 3, 6]:
+    #         volume_col[i].markdown('**Primer**')
+    #     elif i in [1, 4, 7]:
+    #         volume_col[i].markdown('**Volume μL**')
+    #     elif i in [2, 5, 8]:
+    #         volume_col[i].markdown('**Available μL**')
+
+    # for k,p in enumerate(sorted(primer_names)):
+    #     if p != '':
+    #         r = (k*2)%6  # horizontal offset
+    #         need_vol = primer_vols.get(p,0)
+    #         num_wells = ceil((need_vol)/per_use_vol)
+
+    #         wells_col[r+0].write(p)
+    #         wells_col[r+1].write(num_wells)
+
+    #         uses_col[r+0].write(p)
+    #         uses_col[r+1].write(assay_usage.get(p,0))
+
+    #         k=(k*3)%9
+    #         volume_col[k+0].write(p)
+    #         if primer_vols.get(p,0) > primer_avail_vols.get(p,0):
+    #             colour = 'red'
+    #         else:
+    #             colour = 'green'
+    #         volume_col[k+1].markdown(f'<p style="colour:{colour}">{primer_vols.get(p,0)/1000}</p>')
+    #         volume_col[k+2].write(primer_avail_vols.get(p,0)/1000)
 
 def st_directory_picker(label='Selected directory:', initial_path=Path(),\
             searched_file_types=['fastq','fastq.gz','fq','fq.gz']):
@@ -501,7 +536,6 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
                     unsafe_allow_html=True)
 
     return st.session_state['path']
-
 
 def show_echo1_outputs():
     exp = st.session_state['experiment']
@@ -601,7 +635,11 @@ def display_status(exp, height=350):
     Display the progress in the pipeline for this experiment
     Should use aggrid to display the stages and the changes at each stage
     """
-    pass
+    steps = st.session_state['experiment'].get_stages()
+    status_df = pd.DataFrame.from_dict(steps, orient='index')
+    status_df.reset_index(inplace=True)
+    status_df = status_df.rename(columns = {'index':'Steps', 'pending':'Pending Steps'})
+    status_df = aggrid_interactive_table(status_df, grid_height=height, key='status_aggrid')
 
 def display_primers(exp, assay_usage, height=350):
     """
@@ -614,47 +652,78 @@ def display_primers(exp, assay_usage, height=350):
     else:
         reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
             0,{},0,0,0,0
-
+    
     primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
     per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
     primer_names = set(primer_vols.keys())
-
+    warning_primers = ''
     primer_array = []
     for p in primer_names:
         need_vol = primer_vols.get(p,0)
         num_wells = ceil(need_vol/per_use_vol)
 
+        if primer_vols.get(p, 0)/100 > primer_avail_vols.get(p,0)/1000:
+            warning_primers += p + ', '
+
         primer_array.append([p, num_wells, assay_usage.get(p,0), primer_vols.get(p,0)/100,\
                     primer_avail_vols.get(p,0)/1000])
-
-    primer_df = pd.DataFrame(primer_array, columns=['Primer', 'Num Wells','Uses', 'Volume(μL)', 'Available Volume(μL)'])
-    primer_table = aggrid_interactive_table(primer_df, grid_height=350)
-
-
+    
+    if warning_primers != '':
+        st.warning('The following primers do not have enough volume: ' + warning_primers[:-1])
+    primer_df = pd.DataFrame(primer_array, columns=['Primer', 'Num Wells','Uses', 'Required Volume(μL)', 'Available Volume(μL)'])
+    primer_table = aggrid_interactive_table(primer_df, grid_height=height, key='primer_display')
+    
 def display_plates(exp, plate_usage, height=350):
     """
     Simple plate summary using aggrid.
     To be used as a generic viewing component
     """
-    plate_array = []
-    for keys, values in exp.plate_location_sample.items():
-        plate_array.append([keys, len(values['wells']), values['purpose']])
-    plate_df = pd.DataFrame(plate_array, columns=['Plates', 'Num Wells', 'Purpose'])
-    plate_table = aggrid_interactive_table(plate_df, grid_height=350, key='plate_aggrid')
-
+    #st.write(exp.get_musterer_pids())
+    plate_df = pd.DataFrame(plate_usage, columns=['Plate', 'Num Wells', 'Purpose'])
+    plate_table = aggrid_interactive_table(plate_df, grid_height=height, key='plate_aggrid')
 
 def display_files(exp, file_usage, height=350):
     """
     Display info for all files that have so far been uploaded into the experiment
     Give info on name, any plates they contain, whether they are required so far, etc
     """
-    pass
+    file_df = pd.DataFrame.from_dict(file_usage, orient='index')
+    file_df.reset_index(inplace=True)
+    file_df = file_df.rename(columns = {'index':'File', 'plates':'Plates', 'purpose':'Purpose'})
+    file_table = aggrid_interactive_table(file_df, grid_height=height, key='file_aggrid')
 
-def display_indexes(exp, plate_usage, height=350):
+def display_indexes(exp, assay_usage, height=350):
     """
     Display info for all indexes that have been uploaded into the experiment
     """
-    pass
+    fwd_idx, rev_idx, warning_idxs = exp.get_index_avail()
+    indexes = {**fwd_idx, **rev_idx}
+    # if fwd_idx_vols:
+    #     idx_remaining, max_idx_pairs, reaction_vol_capacity, fwd_idx_reactions =\
+    #                 exp.get_index_remaining_available_volume(assay_usage, fwd_idx_vols, rev_idx_vols)
+    #     print(idx_remaining, max_idx_pairs, reaction_vol_capacity)
+    #     per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
+    #     fwd_idx_names = fwd_idx_vols.keys()
+        
+    #     for p in fwd_idx_names:
+    #         need_vol = idx_vols.get(p,0)
+    #         num_wells = ceil(need_vol/per_use_vol)
+    #         index_array.append([p, num_wells, idx_vols.get(p,0)/100,\
+    #                     fwd_idx_vols.get(p,0)[0]/1000])
+    #     rev_idx_names = rev_idx_vols.keys()
+    #     for p in rev_idx_names:
+    #         need_vol = idx_vols.get(p,0)
+    #         num_wells = ceil(need_vol/per_use_vol)
+    #         index_array.append([p, num_wells, idx_vols.get(p,0)/100,\
+    #                     rev_idx_vols.get(p,0)[0]/1000])
+    print(f'My indexes! {indexes}', file=sys.stderr)
+    if warning_idxs != '':
+        st.warning("The following indexes do not have enough volume: " + warning_idxs[:-2])
+
+    index_df = pd.DataFrame.from_dict(indexes,  orient='index')
+    index_df.reset_index(inplace=True)
+    index_df = index_df.rename(columns = {'index':'Index', 'count':'Wells', 'req_vol':'Required Volume (μL)', 'avail_vol':'Available Volume (μL)'})
+    index_table = aggrid_interactive_table(index_df,grid_height=height,key='index_display')
 
 def display_log(exp, height=250):
     """
@@ -671,29 +740,30 @@ def display_log(exp, height=250):
         df = pd.DataFrame(log_entries, columns=exp.get_log_header())
         aggrid_interactive_table(df, grid_height=height, key='logs')
 
-def info_viewer():
+def info_viewer(key):
     """
     Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
     Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
     """
     exp = st.session_state['experiment']
-    container = st.container()
+    info_expander = st.expander('Info Panel')
+    container = info_expander.container()
         
-    col1,col2,col3 = st.columns([2,1,7])
+    col1,col2,col3 = info_expander.columns([1 ,7,1])
     with col1:
-        st.markdown('<h4>Display panel</h4>', unsafe_allow_html=True)
-    with col2:
-        view_height = st.number_input('Set display height', min_value=50, max_value=700, value=350, step=25, help="Size of display grid")
+        st.write('')
+        st.markdown('<h5 style="color:#7eafc4">Display panel</h5>', unsafe_allow_html=True)
     with col3:
+        view_height = st.number_input('Set display height', min_value=50, max_value=700, value=350, step=25, help="Size of display grid", key=key)
+    with col2:
         view_tab = stx.tab_bar(data=[
             stx.TabBarItemData(id=1, title="Status", description=""),
             stx.TabBarItemData(id=2, title="Files", description=""),
             stx.TabBarItemData(id=3, title="Plates", description=""),
             stx.TabBarItemData(id=4, title="Primers", description=""),
             stx.TabBarItemData(id=5, title="Indexes", description=""),
-            stx.TabBarItemData(id=6, title="Log", description=""),
-            stx.TabBarItemData(id=7, title="No display", description="")
-        ], return_type=int, default=7)
+            stx.TabBarItemData(id=6, title="Log", description="")
+        ], return_type=int, default=1)
 
         
 
@@ -701,42 +771,29 @@ def info_viewer():
         # Status tab should tell us where we are up to in the pipeline and what's happened so far
         with container:
             #with st.expander('Pipeline status', expanded=False):
-                st.write("Pipeline stats")
-                
                 display_status(exp, height=view_height)
                 
-
     if view_tab == 2:
         #view_expander = container.expander(label='All uploaded files', expanded=False)
         file_usage = exp.get_file_usage()
         with container:
-            with st.expander('Display files', expanded=False):
                 display_files(exp, file_usage, height=view_height)
 
     if view_tab == 3:
         plate_usage = exp.get_plate_usage()
         with container:
-            with st.expander('Display plates', expanded=False):
                 display_plates(exp, plate_usage, height=view_height)
 
     if view_tab == 4:
         assay_usage = exp.get_assay_usage()
         with container:
-            with st.expander('Display assay/primer usage', expanded=False):
-                display_primers(exp, assay_usage, height=view_height)
+            display_primers(exp, assay_usage, height=view_height)
 
     if view_tab == 5:
-        index_usage = exp.get_index_usage()
+        assay_usage = exp.get_assay_usage()
         with container:
-            with st.expander('Display index usage', expanded=False):
-                display_indexes(exp, index_usage, height=view_height)
+            display_indexes(exp, assay_usage, height=view_height)
 
     if view_tab == 6:
         with container:
-            #with st.expander('Display log records', expanded=False):
-                st.write("Log entries")
-                
-                display_log(exp, height=view_height)
-
-    if view_tab == 7:
-        pass
+            display_log(exp, height=view_height)
