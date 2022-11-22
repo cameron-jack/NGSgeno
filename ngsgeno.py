@@ -278,8 +278,8 @@ def main():
         if pipeline_stage == 0:
             load_data_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Load Samples", description=""),
-                stx.TabBarItemData(id=2, title="Load Consumables", description=""),
-                stx.TabBarItemData(id=3, title="View Data", description="")
+                stx.TabBarItemData(id=2, title="Load Consumables", description="")
+                #stx.TabBarItemData(id=3, title="View Data", description="")
             ], return_type=int)                            
             #dc.info_viewer()  
             if not load_data_tab:
@@ -307,13 +307,14 @@ def main():
                 ld.upload_pcr1_files('tab2')
                 ld.upload_pcr2_files('tab2')
                 ld.upload_extra_consumables('tab2')
+                st.session_state['load_tab'] = 2
 
             #load data
-            if load_data_tab == 3:
-                assay_usage = exp.get_assay_usage()
-                dc.data_table(key=load_data_tab, options=True)
-                dc.display_primer_components(assay_usage, expander=True)
-                st.session_state['load_tab'] = 2
+            #if load_data_tab == 3:
+            #    assay_usage = exp.get_assay_usage()
+            #    dc.data_table(key=load_data_tab, options=True)
+            #    dc.display_primer_components(assay_usage, expander=True)
+            #    st.session_state['load_tab'] = 2
         
         #Nimbus
         if pipeline_stage == 1:
@@ -322,8 +323,8 @@ def main():
 
             nimbus_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
-                stx.TabBarItemData(id=2, title="Upload", description="Nimbus output files"),
-                stx.TabBarItemData(id=3, title="View Data", description="")
+                stx.TabBarItemData(id=2, title="Upload", description="Nimbus output files")
+                #stx.TabBarItemData(id=3, title="View Data", description="")
             ], return_type=int)
             dc.info_viewer(1)
             if not nimbus_tab:
@@ -428,9 +429,9 @@ def main():
                 st.session_state['nimbus_tab'] = 2
 
             #view data
-            if nimbus_tab == 3:
-                dc.data_table(key=nimbus_tab, options=True)
-                st.session_state['nimbus_tab'] = 3
+            #if nimbus_tab == 3:
+            #    dc.data_table(key=nimbus_tab, options=True)
+            #    st.session_state['nimbus_tab'] = 3
 
         #Primer PCR
         if pipeline_stage == 2:
@@ -640,8 +641,8 @@ def main():
 
             allele_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
-                stx.TabBarItemData(id=2, title="Allele Calling", description=""),
-                stx.TabBarItemData(id=3, title="View Data", description=""),
+                stx.TabBarItemData(id=2, title="Allele Calling", description="")
+                #stx.TabBarItemData(id=3, title="View Data", description=""),
             ], key='allele_tab_bar' , return_type=int)
             dc.info_viewer(1)
             if not allele_tab:
@@ -656,7 +657,7 @@ def main():
 
             if allele_tab == 2:
                 rundir = exp.get_exp_dir()
-
+                
                 num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
                 num_cpus = st.number_input(\
                             label="Number of processes to run simultaneously (defaults to # of CPUs)",\
@@ -702,9 +703,9 @@ def main():
                     
                 st.session_state['allele_tab'] = 2
 
-            if allele_tab == 3:
-                dc.data_table(key='allele_calling', options=True)
-                st.session_state['allele_tab'] = 3
+            #if allele_tab == 3:
+            #    dc.data_table(key='allele_calling', options=True)
+            #    st.session_state['allele_tab'] = 3
             
         
         # Reports

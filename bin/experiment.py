@@ -992,12 +992,16 @@ class Experiment():
                 assay_usage.update(util.calc_plate_assay_usage(plate,included_guards=included_guards))
         return assay_usage
 
-    def get_volumes_required(self, assay_usage=None, dna_plate_list=[]):
+    def get_volumes_required(self, assay_usage=None, dna_plate_list=[], filtered=True):
         """
             Standard usage is to call get_assay_usage() first and pass it to this.
+            if filtered, only apply those assays allowed by the assay/primer list.
         """
         if not assay_usage:
             assay_usage = self.get_assay_usage(dna_plate_list=dna_plate_list)
+        if filtered and len(self.primer_assay) > 0:
+            assay_list = set([self.primer_assay[prmr] for prmr in self.primer_assay])
+            assay_usage = {a:assay_usage[a] for a in assay_usage if a in assay_list}
         #print (f'{assay_usage=}', assay_usage.values(), file=sys.stderr)
         reactions = sum([v for v in assay_usage.values()])
 
@@ -1691,10 +1695,9 @@ class Experiment():
         plate_usage = []
         for p in self.plate_location_sample:
             if 'purpose' not in self.plate_location_sample[p]:
-                continue
-            plate = self.get_plate(p) #?
-            pid = util.unguard(p)
-            plate_usage.append([pid, len(plate['wells']), plate['purpose']])
+                continue            
+            pid = util.unguard_pbc(p, silent=True)
+            plate_usage.append([pid, len(self.plate_location_sample[p]['wells']), self.plate_location_sample[p]['purpose']])
         return plate_usage
 
     def get_index_pids(self):

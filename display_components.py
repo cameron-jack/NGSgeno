@@ -261,7 +261,7 @@ def display_plates():
     plate_df = pd.DataFrame(plate_array, columns=['Plates', 'Num Wells', 'Purpose']) 
     plate_table = aggrid_interactive_table(plate_df, grid_height=350, key='plate_aggrid')
 
-def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
+def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered=True):
     """
     Expander widget that shows the required componenents for each PCR reaction, 
     including wells, PCR plates, taq+water plates, index pairs 
@@ -272,6 +272,7 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
         including user supplied plates.  
     
     """
+    exp = st.session_state['experiment']
     AFTER_NIM_WELLS = 384
     pcr_comps_area = st.container()
     
@@ -279,15 +280,15 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     col_size = [6, 4, 6, 4]
     comp_warning = ''
 
-    fwd_idx, rev_idx, warning_idxs = st.session_state['experiment'].get_index_avail()
+    fwd_idx, rev_idx, warning_idxs = exp.get_index_avail()
 
     if assay_usage:
         primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-                st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
+                exp.get_volumes_required(assay_usage=assay_usage, filtered=True)
         reactions = sum([v for v in assay_usage.values()])
         
         index_remain, index_avail, index_vol_capacity =\
-                st.session_state['experiment'].get_index_remaining_available_volume(assay_usage=assay_usage,\
+                exp.get_index_remaining_available_volume(assay_usage=assay_usage,\
                                 fwd_idx=fwd_idx, rev_idx=rev_idx)
     
     else:
@@ -299,27 +300,27 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     taq_avail, water_avail, pids = st.session_state['experiment'].get_taqwater_avail()
     
     if show_general:
-        if 'assay_filter' not in st.session_state:
-            st.session_state['assay_filter'] = 1
+        #if 'assay_filter' not in st.session_state:
+        #    st.session_state['assay_filter'] = 1
 
-            filter_assays = filter_col1.button('Filter assays', key='assay_filter_button', disabled=True)
-            unfilter_assays = filter_col2.button('Unfilter assays', key='assay_unfilter_button')
+        #    filter_assays = filter_col1.button('Filter assays', key='assay_filter_button', disabled=True)
+        #    unfilter_assays = filter_col2.button('Unfilter assays', key='assay_unfilter_button')
 
-            if unfilter_assays:
-                st.session_state['assay_filter'] = 0
+        #    if unfilter_assays:
+        #        st.session_state['assay_filter'] = 0
 
-            if filter_assays:
-                st.session_state['assay_filter'] = 1
+        #    if filter_assays:
+        #        st.session_state['assay_filter'] = 1
 
         required_wells = ceil(reactions/AFTER_NIM_WELLS)
         user_supplied_PCR = ', '.join([util.unguard_pbc(p, silent=True)\
-                    for p in st.session_state['experiment'].get_pcr_pids()])
+                    for p in exp.get_pcr_pids()])
         user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
-                    for p in st.session_state['experiment'].get_taqwater_avail()[2]])
+                    for p in exp.get_taqwater_avail()[2]])
 
         comp_warning_area = pcr_comps_area.empty()
 
-        num_supplied_PCR = len(st.session_state['experiment'].get_pcr_pids())
+        num_supplied_PCR = len(exp.get_pcr_pids())
         if num_supplied_PCR < required_wells:
             comp_warning += f'{required_wells-num_supplied_PCR} PCR plate(s) '
 
@@ -408,91 +409,91 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True):
     # comp_warning_area.markdown(f'<p style="color:#f63366">{comp_warning}</p>', unsafe_allow_html=True)
 
 
-# def display_primer_components(assay_usage, expander=True):
-#      #Values
-#     if assay_usage:
-#         primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-#                 st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
-#     else:
-#         reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-#             0,{},0,0,0,0 
+#def display_primer_components(assay_usage, expander=True):
+#    #Values
+#    if assay_usage:
+#        primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+#                st.session_state['experiment'].get_volumes_required(assay_usage=assay_usage)
+#    else:
+#        reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+#            0,{},0,0,0,0 
 
-#     primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
-#     per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
-#     primer_names = set(primer_vols.keys())
+#    primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
+#    per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
+#    primer_names = set(primer_vols.keys())
 
-#     primer_array = []
-#     for p in primer_names:
-#         need_vol = primer_vols.get(p,0)
-#         num_wells = ceil(need_vol/per_use_vol)
+#    primer_array = []
+#    for p in primer_names:
+#        need_vol = primer_vols.get(p,0)
+#        num_wells = ceil(need_vol/per_use_vol)
 
-#         primer_array.append([p, num_wells, assay_usage.get(p,0), primer_vols.get(p,0)/100,\
-#                     primer_avail_vols.get(p,0)/1000])
+#        primer_array.append([p, num_wells, assay_usage.get(p,0), primer_vols.get(p,0)/100,\
+#                    primer_avail_vols.get(p,0)/1000])
     
-#     primer_df = pd.DataFrame(primer_array, columns=['Primer', 'Num Wells','Uses', 'Volume(μL)', 'Available Volume(μL)'])
+#    primer_df = pd.DataFrame(primer_array, columns=['Primer', 'Num Wells','Uses', 'Volume(μL)', 'Available Volume(μL)'])
     
-#     primer_table = aggrid_interactive_table(primer_df, grid_height=350)
+#    primer_table = aggrid_interactive_table(primer_df, grid_height=350)
     
-    # if expander:
-    #     primer_components_exp = st.expander('Primer Wells, Uses, and Volumes', expanded=False)
-    #     ptab1, ptab2, ptab3 = primer_components_exp.tabs(["Wells", "Uses", "Volume"])
-    # else:
-    #     ptab1, ptab2, ptab3 = st.tabs(["Wells", "Uses", "Volume"])
+#    if expander:
+#        primer_components_exp = st.expander('Primer Wells, Uses, and Volumes', expanded=False)
+#        ptab1, ptab2, ptab3 = primer_components_exp.tabs(["Wells", "Uses", "Volume"])
+#    else:
+#        ptab1, ptab2, ptab3 = st.tabs(["Wells", "Uses", "Volume"])
 
-    # #Set up columns
-    # col_size = 3
-    # num_cols = 6
-    # columns = []
-    # i = 0
-    # while i < num_cols:
-    #     columns.append(col_size)
-    #     i+=1
+#    #Set up columns
+#    col_size = 3
+#    num_cols = 6
+#    columns = []
+#    i = 0
+#    while i < num_cols:
+#        columns.append(col_size)
+#        i+=1
 
     
-    # wells_col = ptab1.columns(columns)
-    # uses_col = ptab2.columns(columns)
-    # volume_col = ptab3.columns([2, 2, 2, 2, 2, 2, 2, 2,2])
+#    wells_col = ptab1.columns(columns)
+#    uses_col = ptab2.columns(columns)
+#    volume_col = ptab3.columns([2, 2, 2, 2, 2, 2, 2, 2,2])
 
    
 
     
 
-    # for i in range(6):
-    #     if (i+2) % 2 == 0:
-    #         wells_col[i].markdown('**Primer**')
-    #         uses_col[i].markdown('**Primer**')
-    #     else:
-    #         wells_col[i].markdown('**Wells**')
-    #         uses_col[i].markdown('**Uses**')
+#    for i in range(6):
+#        if (i+2) % 2 == 0:
+#            wells_col[i].markdown('**Primer**')
+#            uses_col[i].markdown('**Primer**')
+#        else:
+#            wells_col[i].markdown('**Wells**')
+#            uses_col[i].markdown('**Uses**')
             
-    # for i in range(9):
-    #     if i in [0, 3, 6]:
-    #         volume_col[i].markdown('**Primer**')
-    #     elif i in [1, 4, 7]:
-    #         volume_col[i].markdown('**Volume μL**')
-    #     elif i in [2, 5, 8]:
-    #         volume_col[i].markdown('**Available μL**')
+#    for i in range(9):
+#        if i in [0, 3, 6]:
+#            volume_col[i].markdown('**Primer**')
+#        elif i in [1, 4, 7]:
+#            volume_col[i].markdown('**Volume μL**')
+#        elif i in [2, 5, 8]:
+#            volume_col[i].markdown('**Available μL**')
 
-    # for k,p in enumerate(sorted(primer_names)):
-    #     if p != '':
-    #         r = (k*2)%6  # horizontal offset
-    #         need_vol = primer_vols.get(p,0)
-    #         num_wells = ceil((need_vol)/per_use_vol)
+#    for k,p in enumerate(sorted(primer_names)):
+#        if p != '':
+#            r = (k*2)%6  # horizontal offset
+#            need_vol = primer_vols.get(p,0)
+#            num_wells = ceil((need_vol)/per_use_vol)
 
-    #         wells_col[r+0].write(p)
-    #         wells_col[r+1].write(num_wells)
+#            wells_col[r+0].write(p)
+#            wells_col[r+1].write(num_wells)
 
-    #         uses_col[r+0].write(p)
-    #         uses_col[r+1].write(assay_usage.get(p,0))
+#            uses_col[r+0].write(p)
+#            uses_col[r+1].write(assay_usage.get(p,0))
 
-    #         k=(k*3)%9
-    #         volume_col[k+0].write(p)
-    #         if primer_vols.get(p,0) > primer_avail_vols.get(p,0):
-    #             colour = 'red'
-    #         else:
-    #             colour = 'green'
-    #         volume_col[k+1].markdown(f'<p style="colour:{colour}">{primer_vols.get(p,0)/1000}</p>')
-    #         volume_col[k+2].write(primer_avail_vols.get(p,0)/1000)
+#            k=(k*3)%9
+#            volume_col[k+0].write(p)
+#            if primer_vols.get(p,0) > primer_avail_vols.get(p,0):
+#                colour = 'red'
+#            else:
+#                colour = 'green'
+#            volume_col[k+1].markdown(f'<p style="colour:{colour}">{primer_vols.get(p,0)/1000}</p>')
+#            volume_col[k+2].write(primer_avail_vols.get(p,0)/1000)
 
 def st_directory_picker(label='Selected directory:', initial_path=Path(),\
             searched_file_types=['fastq','fastq.gz','fq','fq.gz']):
