@@ -105,7 +105,7 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
 #    #print('delete_entries ran')
 
 
-def data_table(key, options=False, table_option=None):
+def data_table(key, options=False, table_option=None, height=350):
     """
     Shows the loaded data in a table.
     Args:
@@ -116,7 +116,7 @@ def data_table(key, options=False, table_option=None):
 
     Need to fix the delete selection part - clicking no should reset the table view and clicking yes creates error
     """
-
+    exp=st.session_state['experiment']
     data_container = st.container()
     selectbox_col,_,_,_ = data_container.columns(4)
     exp = st.session_state['experiment']
@@ -145,8 +145,8 @@ def data_table(key, options=False, table_option=None):
                 st.write('No data loaded')
             else:
                 #print(f"{type(df)=}, {df=})")
-                selection = aggrid_interactive_table(df, key=key)
-                #print(f"{type(selection)=} {selection=}")
+                selection = aggrid_interactive_table(df, key=key, grid_height=height)
+                #print(f"{type(selection)=} {selection['selected_rows']=}")
                 if 'selected_rows' in selection and selection['selected_rows']:
                     # only do the code below if this is a fresh selection
                     rows = selection["selected_rows"]
@@ -157,9 +157,9 @@ def data_table(key, options=False, table_option=None):
                         data_container.markdown(f"**You selected {lines}**")
                         del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
                         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                        delete_button = del_col2.button("Yes",on_click=delete_entries, 
-                                args=(exp, selection['selected_rows']), key="delete " + str(key), help=f"Delete {lines}")
-                        mistake_button = del_col3.button("No",on_click=delete_entries, args=(exp, []), 
+                        delete_button = del_col2.button("Yes",on_click=exp.remove_entries, 
+                                args=rows, key="delete " + str(key), help=f"Delete {lines}")
+                        mistake_button = del_col3.button("No",on_click=exp.remove_entries, args=rows, 
                                 key="keep " + str(key), help=f"Keep {lines}")
                     
                         if mistake_button:
@@ -548,34 +548,34 @@ def show_echo1_outputs():
         error_msgs.append('No DNA picklist available')
     else:
         for dpp in dna_picklist_paths:
-            dpp_file = str(Path(dpp).name)
+            dpp_fn = exp.name + '_' + str(Path(dpp).name)
             picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{dpp_file}</p>',\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{dpp_fn}</p>',\
                     unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download", 
-                    data=open(dpp, 'rt'), file_name=dpp, mime='text/csv', key='dna_download_'+dpp)
+                    data=open(dpp, 'rt'), file_name=dpp_fn, mime='text/csv', key='dna_download_'+dpp)
 
     if not primer_picklist_paths:
         error_msgs.append('No primer picklist available')
     else:
         for ppp in primer_picklist_paths:
-            ppp_file = str(Path(ppp).name)
+            ppp_fn = exp.name +'_' + str(Path(ppp).name)
             picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{ppp_file}</p>',\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{ppp_fn}</p>',\
                         unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download", 
-                    data=open(ppp, 'rt'), file_name=ppp, mime='text/csv', key='primer_download_'+dpp)
+                    data=open(ppp, 'rt'), file_name=ppp_fn, mime='text/csv', key='primer_download_'+dpp)
             
     if not taqwater_picklist_paths:
         error_msgs.append('No taq/water picklist available')
     else:
         for tpp in taqwater_picklist_paths:
-            tpp_file = str(Path(tpp).name)
+            tpp_fn = exp.name + '_' + str(Path(tpp).name)
             picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_file}</p>',\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_fn}</p>',\
                         unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download", 
-                    data=open(tpp, 'rt'), file_name=tpp, mime='text/csv', key='taqwater_download_'+tpp)
+                    data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv', key='taqwater_download_'+tpp)
 
     if error_msgs:
         for msg in error_msgs:
@@ -594,37 +594,35 @@ def show_echo2_outputs():
         error_msgs.append('No index picklist available')
     else:
         for ipp in index_picklist_paths:
-            ipp_file = str(Path(ipp).name)
+            ipp_fn = exp.name + '_' + str(Path(ipp).name)
             picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{ipp_file}</p>',\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{ipp_fn}</p>',\
                                 unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download",\
-                    data=open(ipp, 'rt'), file_name=ipp, mime='text/csv',\
-                            key='index_download_'+ipp)
+                    data=open(ipp, 'rt'), file_name=ipp_fn, mime='text/csv', key='index_download_'+ipp)
 
     if not amplicon_picklist_paths:
         error_msgs.append('No amplicon picklist available')               
     else:
         for app in amplicon_picklist_paths:
-            app_file = str(Path(app).name)
+            app_fn = exp.name + '_' + str(Path(app).name)
             picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{app_file}</p>',\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{app_fn}</p>',\
                                 unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download",\
-                    data=open(app, 'rt'), file_name=app, mime='text/csv',\
-                            key='amplicon_download_'+app)
+            picklist_btn_col.download_button(label=f"Download", \
+                    data=open(app, 'rt'), file_name=app_fn, mime='text/csv', key='amplicon_download_'+app)
 
     if not taqwater_picklist_paths:
         error_msgs.append('No taq/water picklist available')
 
     else:
         for tpp in taqwater_picklist_paths:
-            tpp_file = str(Path(tpp).name)
+            tpp_fn = exp.name + '_' + str(Path(tpp).name)
             picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_file}</p>',\
+                        f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_fn}</p>',\
                                 unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download",\
-                        data=open(tpp, 'rt'), file_name=tpp, mime='text/csv',\
+                        data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv',\
                                 key='taqwater_download_'+tpp)
     if error_msgs:
         for msg in error_msgs:
@@ -636,10 +634,10 @@ def display_status(exp, height=350):
     Display the progress in the pipeline for this experiment
     Should use aggrid to display the stages and the changes at each stage
     """
-    steps = st.session_state['experiment'].get_stages()
-    status_df = pd.DataFrame.from_dict(steps, orient='index')
-    status_df.reset_index(inplace=True)
-    status_df = status_df.rename(columns = {'index':'Steps', 'pending':'Pending Steps'})
+    steps, header = exp.get_stages()
+    status_df = pd.DataFrame(steps, columns=header)
+    #status_df.reset_index(inplace=True)
+    #status_df = status_df.rename(columns = {'index':'Steps', 'pending':'Pending Steps'})
     status_df = aggrid_interactive_table(status_df, grid_height=height, key='status_aggrid')
 
 def display_primers(exp, assay_usage, height=350):

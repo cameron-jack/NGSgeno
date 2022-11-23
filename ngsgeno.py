@@ -295,7 +295,7 @@ def main():
                 if len(summary) > 1:
                     expanded = True
                 with st.expander(label='Summary of loaded data', expanded=expanded):
-                    dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples')
+                    dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples', height=200)
                 ld.load_rodentity_data()
                 ld.load_database_data()
                 ld.load_custom_csv()
@@ -442,17 +442,19 @@ def main():
                 #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
                 stx.TabBarItemData(id=2, title="Generate", description="Picklists")
             ], return_type=int)
-            dc.info_viewer(1)
+            holder = st.empty()
+            with holder:
+                dc.info_viewer(1)
             if not primer_tab:
                 if 'primer_tab' not in st.session_state:
                     st.session_state['primer_tab'] = 1
                 primer_tab = st.session_state['primer_tab']
             
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
-            missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
+            missing_nims = ['Echo_384_COC_0001_'+util.unguard(xbc, silent=True)+'_0.csv' for xbc in xbcs]
 
             if primer_tab == 1:
-                primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                primer_checklist_exp = st.expander('Plate Checklist', expanded=True)
                 if efs:
                     with primer_checklist_exp:
                         included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
@@ -483,7 +485,7 @@ def main():
 
             #generate picklists
             if primer_tab == 2:
-                primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                primer_checklist_exp = st.expander('Plate Checklist', expanded=True)
                 if efs:
                     with primer_checklist_exp:
                         included_DNA_plates, included_PCR_plates, included_taqwater_plates =\

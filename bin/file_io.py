@@ -96,6 +96,7 @@ def nimbus_gen(exp):
                         print('No plate data found for plate', pbc, file=sys.stdout)
                         continue
                     transactions[dna_fn][pbc] = {}
+                    transactions[fnstg][pbc] = {}
                     # Get four wells in the same column at a time
                     for pos1,pos2,pos3,pos4 in zip(util.nimbus_ordered_96[0::4], util.nimbus_ordered_96[1::4], 
                             util.nimbus_ordered_96[2::4], util.nimbus_ordered_96[3::4]):
@@ -103,42 +104,42 @@ def nimbus_gen(exp):
                             continue  # skip missing blocks of 4 contiguous rows in the same column
                         for pos in (pos1, pos2, pos3, pos4):
                             row_number += 1
-                            row_data = {field:'' for field in stage1_hdr}
-                            row_data['Sample no'] = row_number
+                            nim_row_data = {field:'' for field in stage1_hdr}
+                            nim_row_data['Sample no'] = row_number
                             if pos in shx:
-                                row_data['Sample barcode'] = util.unguard(shx[pos]['barcode'], silent=True)
+                                nim_row_data['Sample barcode'] = util.unguard(shx[pos]['barcode'], silent=True)
                             else:
-                                row_data['Sample barcode'] = '0'
-                            row_data['Well'] = pos
-                            row_data['Plate barcode'] = util.unguard_pbc(pbc, silent=True)
-                            nimbus_f.writerow([row_data[field] for field in nimbus_hdr])
+                                nim_row_data['Sample barcode'] = '0'
+                            nim_row_data['Well'] = pos
+                            nim_row_data['Plate barcode'] = util.unguard_pbc(pbc, silent=True)
+                            nimbus_f.writerow([nim_row_data[field] for field in nimbus_hdr])
 
-                            if row_data['Sample barcode'] == '0':
+                            if nim_row_data['Sample barcode'] == '0':
                                 continue
                     
                             # stage files are still used, but only for historical reasons
-                            row_data = {field:'' for field in stage1_hdr}
+                            stage1_row_data = {field:'' for field in stage1_hdr}
                             if 'sampleNumber' in shx[pos]:
-                                row_data['sampleNumber'] = shx[pos]['sampleNumber']
+                                stage1_row_data['sampleNumber'] = shx[pos]['sampleNumber']
                             else:
-                                row_data['sampleNumber'] = 0
-                            row_data['samplePlate'] = util.unguard_pbc(pbc, silent=True)
-                            row_data['sampleWell'] = pos
-                            row_data['sampleBarcode'] = util.unguard(shx[pos]['barcode'], silent=True)
-                            row_data['assays'] = ';'.join(shx[pos]['assays'])
-                            row_data['assayFamilies'] = ';'.join(shx[pos]['assayFamilies'])
+                                stage1_row_data['sampleNumber'] = 0
+                            stage1_row_data['samplePlate'] = pbc
+                            stage1_row_data['sampleWell'] = pos
+                            stage1_row_data['sampleBarcode'] = shx[pos]['barcode']
+                            stage1_row_data['assays'] = ';'.join(shx[pos]['assays'])
+                            stage1_row_data['assayFamilies'] = ';'.join(shx[pos]['assayFamilies'])
                             if 'strain' in shx[pos]:
-                                row_data['strain'] = shx[pos]['strain']
+                                stage1_row_data['strain'] = shx[pos]['strain']
                             else:
-                                row_data['strain'] = ''
+                                stage1_row_data['strain'] = ''
                             if 'sex' in shx[pos]:
-                                row_data['sex'] = shx[pos]['sex']
+                                stage1_row_data['sex'] = shx[pos]['sex']
                             else:
-                                row_data['sex'] = ''
-                            stage1_f.writerow([row_data[field] for field in stage1_hdr])  # assays are written here
+                                stage1_row_data['sex'] = ''
+                            stage1_f.writerow([stage1_row_data[field] for field in stage1_hdr])  # assays are written here
                             wells_used += 1
                             transactions[dna_fn][pbc][pos] = -1000 # 1000 nl of sample is transferred
-        
+                            transactions[fnstg][pbc][pos] = -1000
                 
     except Exception as exc:
         print("Transactions in nimbus_gen on fail: ", transactions, file=sys.stderr)
@@ -261,7 +262,7 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
                 src_plate_barcode = row[1]
                 src_plate_well = row[3]
                 vol = row[-1]
-                print(f"{src_plate_barcode=} {fn=} {transactions=}", file=sys.stderr)
+                #print(f"{src_plate_barcode=} {fn=} {transactions=}", file=sys.stderr)
                 if src_plate_barcode not in transactions[fn]:
                     transactions[fn][src_plate_barcode] = {}
                 if src_plate_well not in transactions[fn][src_plate_barcode]:
@@ -293,10 +294,10 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
     """        
     # build a list of all possible taq/water pids and well pair transfers
     pid_ww_tw_list = []
-    print(f"{task_wells=} {taqwater_bcs=}", file=sys.stderr)
+    #print(f"{task_wells=} {taqwater_bcs=}", file=sys.stderr)
     for pid in taqwater_bcs:
         twp = exp.get_plate(pid, transactions)
-        print(f"{twp=}", file=sys.stderr)
+        #print(f"{twp=}", file=sys.stderr)
         # iterate over wells forever
         #ww_gen = (x for xs in itertools.repeat(twp['water_wells']) for x in xs)
         #tw_gen = (x for xs in itertools.repeat(twp['taq_wells']) for x in xs)
@@ -437,7 +438,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                         continue
                     cols = [c.strip().strip('\"') for c in line.split(',')]
                     source_pos = util.unpadwell(cols[-1])
-                    source_plate = cols[-3]
+                    source_plate = util.unguard_pbc(cols[-3], silent=True)
                     dest_plate = util.unguard_pbc(cols[1], silent=True)
                     dest_pos = util.unpadwell(cols[3])
                     if dest_plate != d:
@@ -460,7 +461,8 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         nimbusTables = [util.CSVTable(typenim, fn) for fn in nimbus_outfiles]
         
         # read Stage1 files
-        dnadict = dict(((x.srcplate, x.srcwell), (x.dstplate, x.dstwell)) for nt in nimbusTables for x in nt.data)    
+        dnadict = dict(((util.guard_pbc(x.srcplate, silent=True), x.srcwell), (util.guard_pbc(x.dstplate, silent=True), x.dstwell))\
+                for nt in nimbusTables for x in nt.data)    
         dnas = [util.CSVTable('S1Rec', exp.get_exp_fp('Stage1-P{}.csv'.format(util.unguard_pbc(dnabc, silent=True)))) for dnabc in dna_bcs]
         primer_survey = StringIO('\n'.join(primer_survey_lines))
         primerTable = util.CSVMemoryTable("PPRec", primer_survey, fields="spn spbc spt well primer volume".split(' '))
@@ -708,15 +710,16 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
 
         index_alloc = i7i5alloc_rot(exp, index_vol, total_wells)
         #print(index_alloc, file=sys.stdout)
-            
+        stage3_index_alloc = [(p2,(p3[0],p3[1],p3[2],util.guard_pbc(p3[3], silent=True))) for p2,p3 in index_alloc]
+        #print(f"{stage3_index_alloc=}", file=sys.stderr)
         s3flds = s2tab.tt._fields+('i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well', 'index_plate')
         S3Rec = util.Table.newtype('S3Rec', s3flds)
         
-        s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2tab.data, index_alloc)), headers=s3flds) 
+        s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2tab.data, stage3_index_alloc)), headers=s3flds) 
         # output Stage 3 CSV file - used for custom and mouse samples. Amplicons are handled separately
         transactions[fnstage3] = {}
         try:
-            s3tab.csvwrite(fnstage3)
+            s3tab.csvwrite(fnstage3, output_plate_guards=True)
         except Exception as exc:
             exp.log(f'Critical: could not write {fnstage3}')
             transactions[fnstage3] = None

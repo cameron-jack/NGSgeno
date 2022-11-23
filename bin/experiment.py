@@ -160,7 +160,7 @@ class Experiment():
                 return False
             self.pending_steps[t] = deepcopy(transactions[t])
             self.log(f'Info: Adding generated file {t} to pending pipeline stage history')
-            print('These are the pending transactions', self.pending_steps, file=sys.stderr)
+            #print('These are the pending transactions', self.pending_steps, file=sys.stderr)
         return True
 
     def convert_pending_to_final(self, pending_name):
@@ -168,13 +168,13 @@ class Experiment():
         take a pending path \example\pending_myfile.csv and convert to final name
         eg \example\myfile.csv
         """
-        print(f"{pending_name=}", file=sys.stderr)
+        #print(f"{pending_name=}", file=sys.stderr)
         p = Path(pending_name)
         parent = p.parent
         file_name = str(p.name)
         final_name = file_name[len('pending_'):]  # cut off the leading "pending_"
         final_path = str(parent / final_name)
-        print(f"{final_path=}", file=sys.stderr)
+        #print(f"{final_path=}", file=sys.stderr)
         return final_path
 
     def convert_final_to_pending(self, final_name):
@@ -182,14 +182,14 @@ class Experiment():
         take a final path \example\myfile.csv and convert to pending name
         eg \example\pending_myfile.csv
         """
-        print("convert final to pending", file=sys.stderr)
-        print(f"{final_name=}", file=sys.stderr)
+        #print("convert final to pending", file=sys.stderr)
+        #print(f"{final_name=}", file=sys.stderr)
         p = Path(final_name)
         parent = p.parent
         file_name = str(p.name)
         pending_name = "pending_" + file_name
         pending_path = str(parent / pending_name)
-        print(f"{pending_path=}", file=sys.stderr)
+        #print(f"{pending_path=}", file=sys.stderr)
         return pending_path
 
 
@@ -200,7 +200,7 @@ class Experiment():
         """
         clashes = []
         if self.pending_steps is None:
-            print('no pending steps')
+            #print('no pending steps')
             return clashes
         
         for transaction in self.pending_steps:
@@ -234,7 +234,7 @@ class Experiment():
             pending_files_hanging = Path(self.get_exp_dir()).glob('pending_*')
             for p in pending_files_hanging:
                 os.remove(p)
-                print(f'removing pending file {p}', file=sys.stderr)
+                #print(f'removing pending file {p}', file=sys.stderr)
         except Exception as exc:
             self.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
             return False
@@ -248,13 +248,13 @@ class Experiment():
 
         Returns True on success
         """
-        print(f"accept_pending_transactions for {self.pending_steps.keys()=}", file=sys.stderr)
+        #print(f"accept_pending_transactions for {self.pending_steps.keys()=}", file=sys.stderr)
         if not self.pending_steps:
             self.log("Warning: there are no pending transactions to record")
             return True  # It didn't actually fail
 
         clashes = self.clashing_pending_transactions()
-        print(f"Clashes seen {clashes=}", file=sys.stderr)
+        #print(f"Clashes seen {clashes=}", file=sys.stderr)
         if len(clashes) == 0:
             for transaction in self.pending_steps:
                 p = Path(transaction)
@@ -263,33 +263,33 @@ class Experiment():
                     continue
                 final_path = self.convert_pending_to_final(transaction)
                 os.rename(p, final_path)
-                print(f"No clash {str(p)=} {str(final_path)=}", file=sys.stderr)
+                #print(f"No clash {str(p)=} {str(final_path)=}", file=sys.stderr)
         else:
             MAX_STAGES=99999
             clashing_index = MAX_STAGES
-            print(f"{self.reproducible_steps=}", file=sys.stderr)
+            #print(f"{self.reproducible_steps=}", file=sys.stderr)
             for i,step in enumerate(self.reproducible_steps):
                 for dest in step:
                     dp = self.convert_final_to_pending(dest)
-                    print(f"{dp=} {self.pending_steps.keys()=}", file=sys.stderr)
+                    #print(f"{dp=} {self.pending_steps.keys()=}", file=sys.stderr)
                     if dp in self.pending_steps:
                         if i < clashing_index:
                             clashing_index = i
                             break
-            print(f"{clashing_index=}", file=sys.stderr)
+            #print(f"{clashing_index=}", file=sys.stderr)
             if clashing_index == MAX_STAGES:  # this should NEVER happen
                 self.log(f"Critical: pipeline detects clashing transaction {clashing_index=} for {self.pending_steps=}") 
                 return False
 
             # keep everything prior to the clash, then add on the pending steps
             remove_these_steps = self.reproducible_steps[clashing_index:]
-            print(f"{remove_these_steps=}", file=sys.stderr)
+            #print(f"{remove_these_steps=}", file=sys.stderr)
             for step in remove_these_steps:
                 for fp in step:
                     if fp in self.uploaded_files:
                         del self.uploaded_files[fp]
                     if Path(fp).exists():
-                        print(f"removing the original file: {str(fp)}", file=sys.stderr)
+                        #print(f"removing the original file: {str(fp)}", file=sys.stderr)
                         os.remove(fp)
             # rename pending filepaths
             for transaction in self.pending_steps:
@@ -298,7 +298,7 @@ class Experiment():
                     self.log(f'Warning: {str(p)} not found')
                     continue
                 final_path = self.convert_pending_to_final(transaction)
-                print(f"Renaming {str(p)=} to {str(final_path)=}", file=sys.stderr)
+                #print(f"Renaming {str(p)=} to {str(final_path)=}", file=sys.stderr)
                 os.rename(p, final_path)
                 op = str(p)
                 if op in self.uploaded_files:
@@ -412,7 +412,8 @@ class Experiment():
         if transaction:
             parent_path = fp.parent
             file_name = 'pending_' + str(fp.name)
-            fp = parent_path / file_name
+            fp = parent_path / file_name                   
+        #print(str(fp), file=sys.stderr)
         return str(fp)
 
     def get_raw_dirpath(self):
@@ -1196,7 +1197,9 @@ class Experiment():
             }]
             Returns True on success
         """                                                                                              
-        print(f"In remove_entries. {selected_rows=}", file=sys.stderr)
+        #print(f"In remove_entries. {selected_rows=}", file=sys.stderr)
+        if type(selected_rows) is dict:
+            selected_rows = [selected_rows]
         for row in selected_rows:
             dest_pid = util.guard_pbc(row['DNA PID'], silent=True)
             if dest_pid not in self.dest_sample_plates:
@@ -1206,7 +1209,7 @@ class Experiment():
             delete_pids = sample_pids + [dest_pid]
             self.delete_plates(delete_pids)
             del self.dest_sample_plates[dest_pid]
-            print(f'remove_entries() {self.dest_sample_plates=}', file=sys.stderr)
+            #print(f'remove_entries() {self.dest_sample_plates=}', file=sys.stderr)
         self.save()
         return True
 
@@ -1653,13 +1656,20 @@ class Experiment():
         self.save()
 
     def get_stages(self):
-        stages = {}
+        """ get all information on reproducible steps and pending steps for display purposes """
+        header = ['Stage order','Staged file', 'Affected plates', 'Status']
+        stages = []
+        counter = 1
         for steps_dict in self.reproducible_steps:
-            for key in steps_dict.keys(): stages[key] = {'pending': []}
+            for file_name in steps_dict:
+                pids = [util.unguard_pbc(pid, silent=True) for pid in steps_dict[file_name].keys()]
+                stages.append([str(counter), file_name, ', '.join(pids), 'committed'])
+            counter += 1
         if self.pending_steps:
-            for step in self.pending_steps:
-                stages[key]['pending'].append(step)
-        return stages
+            for file_name in self.pending_steps:
+                pids = [util.unguard_pbc(pid, silent=True) for pid in self.pending_steps[file_name].keys()]
+                stages.append([str(counter), file_name, ', '.join(pids), 'pending'])
+        return stages, header
 
     def get_stage2_pcr_plates(self):
         """
