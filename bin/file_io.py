@@ -445,7 +445,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                             f"as declared in Echo_384_COC file: {fp}", level="error")
                     exp.plate_location_sample[d]['wells'].add(dest_pos)
                     try:
-                        exp.plate_location_sample[d][dest_pos] = deepcopy(exp.plate_location_sample[source_plate][source_pos])
+                        exp.plate_location_sample[d][dest_pos] = deepcopy(exp.plate_location_sample[util.guard_pbc(source_plate, silent=True)][source_pos])
                     except:
                         exp.log(f"Critical: cannot locate {d=} {dest_pos=} {source_plate=} {source_pos=}")
 
@@ -676,11 +676,11 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         try:
             pcr_bcs = [util.guard_pbc(p,silent=True) for p in pcr_plate_bcs]
         except Exception as exc:
-            exp.log(f"Error: PCR plate barcode in error {pcr_plate_bcs=} {exc}")
+            exp.log(f"Error: PCR plate barcode in error {pcr_bcs=} {exc}")
         try:
             index_bcs = [util.guard_pbc(i, silent=True) for i in index_plate_bcs]
         except Exception as exc:
-            exp.log(f"Error: Index plate parcode in error {index_plate_bcs=} {exc}")
+            exp.log(f"Error: Index plate parcode in error {index_bcs=} {exc}")
         try:
             amplicon_bcs = [util.guard_pbc(d,silent=True) for d in amplicon_plate_bcs] 
         except Exception as exc:
