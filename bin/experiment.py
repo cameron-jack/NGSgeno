@@ -1720,6 +1720,7 @@ class Experiment():
         """
         Returns {primer:count}, {primer:vol} from what's been loaded 
         If included_pids is an iterable, only include plates with these ids
+        TODO: check the validity of line 1768ish fwd_idx and rev_idx. Assignment/comparison...
         """
         index_pids = []
         warning_idxs = ''
@@ -1764,11 +1765,11 @@ class Experiment():
         max_i5R = len(rev_idx)
         for idx in fwd_idx.keys():
             fwd_idx[idx]['req_vol'].append(max_i5R*self.transfer_volumes['INDEX_VOL']/1000)
-            if max_i5R*self.transfer_volumes['INDEX_VOL']/1000 > fwd_idx[idx]['avail_vol'][0]:
+            if 'avail_vol' not in fwd_idx[idx] or max_i5R*self.transfer_volumes['INDEX_VOL']/1000 > fwd_idx[idx]['avail_vol'][0]:
                 warning_idxs += idx + ', '
         for idx in rev_idx.keys():
             rev_idx[idx]['req_vol'].append(max_i7F*self.transfer_volumes['INDEX_VOL']/1000)
-            if max_i7F*self.transfer_volumes['INDEX_VOL']/1000 > rev_idx[idx]['avail_vol'][0]:
+            if 'avail_vol' not in rev_idx[idx] or max_i7F*self.transfer_volumes['INDEX_VOL']/1000 > rev_idx[idx]['avail_vol'][0]:
                 warning_idxs += idx + ', '
 
         return fwd_idx, rev_idx, warning_idxs
