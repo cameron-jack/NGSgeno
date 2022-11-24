@@ -49,6 +49,10 @@ import json
 import time
 from functools import partial
 from math import ceil
+try:
+    import bin.util as util
+except ModuleNotFoundError:
+    import util
 
 import Bio.pairwise2 as pw2
 import Bio.SeqIO
@@ -594,7 +598,7 @@ def main(args):
         WRec = collections.namedtuple("WRec", hdr)
         wdata = sorted((WRec(*r) for r in src), key=lambda x:(x.pcrplate, x.pcrwell[0], int(x.pcrwell[1:]), x.primer))
     print(wdata, file=sys.stderr)
-    wdata = [rec for rec in wdata if rec.pcrplate +'-'+ padwell(rec.pcrwell) in raw_file_identifiers]
+    wdata = [rec for rec in wdata if util.unguard(rec.pcrplate, silent=True) +'-'+ padwell(rec.pcrwell) in raw_file_identifiers]
     
     log.append(f"Info: {len(wdata)} sample wells to process.")
     print(log, file=sys.stderr)
