@@ -441,7 +441,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                     source_plate = util.unguard_pbc(cols[-3], silent=True)
                     dest_plate = util.unguard_pbc(cols[1], silent=True)
                     dest_pos = util.unpadwell(cols[3])
-                    if dest_plate != d:
+                    if dest_plate != ug_dnaBC:
                         exp.log(f"{ug_dnaBC} doesn't match {dest_plate} "+\
                             f"as declared in Echo_384_COC file: {fp}", level="error")
                     exp.plate_location_sample[d]['wells'].add(dest_pos)
