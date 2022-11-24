@@ -303,9 +303,9 @@ def upload_pcr1_files(key):
     exp = st.session_state['experiment']
     with st.form('primer plate upload'+key, clear_on_submit=True):
         col1, col2 = st.columns(2)
-        uploaded_primer_layouts = col1.file_uploader('Upload Primer Plate Layouts', \
+        uploaded_primer_layouts = col1.file_uploader('Upload Primer Plate Layouts - the barcode must be the first part of the filename e.g. 12345_primer_layout.csv', \
             key='primer_layout_uploader'+key, type='csv', accept_multiple_files=True) 
-        uploaded_primer_volumes = col2.file_uploader('Upload Primer Plate Volumes', \
+        uploaded_primer_volumes = col2.file_uploader('Upload Primer Plate Volumes - the barcode must be the first part of the filename e.g. 12345_primer_volume.csv', \
             key='primer_vol_uploader'+key, type='csv', accept_multiple_files=True)
         upload_button = st.form_submit_button("Upload Files")
 
@@ -334,10 +334,10 @@ def upload_pcr2_files(key):
     exp = st.session_state['experiment']
     with st.form('index plate upload'+key, clear_on_submit=True):
         col1, col2 = st.columns(2)
-        uploaded_index_layouts = col1.file_uploader('Upload i7i5 Index Plate Layout',
+        uploaded_index_layouts = col1.file_uploader('Upload i7i5 Index Plate Layout - the barcode must be the first part of the filename e.g. 12345_index_layout.csv',
             key='index_layout_uploader'+key, type='csv', accept_multiple_files=True)
  
-        uploaded_index_volumes = col2.file_uploader('Upload i7i5 Index Plate Volumes', 
+        uploaded_index_volumes = col2.file_uploader('Upload i7i5 Index Plate Volumes - the barcode must be the first part of the filename e.g. 12345_index_volume.csv', 
             key='index_vol_uploader'+key, type='csv', accept_multiple_files=True)
  
         uploaded_amplicon_plates = col1.file_uploader('Upload Extra Amplicon Plates', 
