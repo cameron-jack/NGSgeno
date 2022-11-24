@@ -287,7 +287,8 @@ def main():
                     st.session_state['load_tab'] = 1
                 load_data_tab = st.session_state['load_tab']
 
-            dc.info_viewer(1)
+            info_holder = st.empty()
+            
             # load sample data
             if load_data_tab == 1:
                 summary = exp.summarise_inputs()
@@ -315,6 +316,8 @@ def main():
             #    dc.data_table(key=load_data_tab, options=True)
             #    dc.display_primer_components(assay_usage, expander=True)
             #    st.session_state['load_tab'] = 2
+            with info_holder:
+                dc.info_viewer(1)
         
         #Nimbus
         if pipeline_stage == 1:
@@ -326,7 +329,8 @@ def main():
                 stx.TabBarItemData(id=2, title="Upload", description="Nimbus output files")
                 #stx.TabBarItemData(id=3, title="View Data", description="")
             ], return_type=int)
-            dc.info_viewer(1)
+            info_holder = st.empty()
+            
             if not nimbus_tab:
                 if 'nimbus_tab' not in st.session_state:
                     st.session_state['nimbus_tab'] = 1
@@ -428,10 +432,14 @@ def main():
                                 unsafe_allow_html=True)
                 st.session_state['nimbus_tab'] = 2
 
+            
+
             #view data
             #if nimbus_tab == 3:
             #    dc.data_table(key=nimbus_tab, options=True)
             #    st.session_state['nimbus_tab'] = 3
+            with info_holder:
+                dc.info_viewer(1)
 
         #Primer PCR
         if pipeline_stage == 2:
@@ -442,9 +450,8 @@ def main():
                 #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
                 stx.TabBarItemData(id=2, title="Generate", description="Picklists")
             ], return_type=int)
-            holder = st.empty()
-            with holder:
-                dc.info_viewer(1)
+            info_holder = st.empty()
+            
             if not primer_tab:
                 if 'primer_tab' not in st.session_state:
                     st.session_state['primer_tab'] = 1
@@ -522,6 +529,9 @@ def main():
                             unsafe_allow_html=True)
                 st.session_state['primer_tab'] = 2
 
+            with info_holder:
+                dc.info_viewer(1)
+
         #Index PCR
         if pipeline_stage == 3:
             exp = st.session_state['experiment']
@@ -530,7 +540,8 @@ def main():
                 #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
                 stx.TabBarItemData(id=2, title="Generate", description="Picklists")
             ], return_type=int)
-            dc.info_viewer(1)
+            info_holder = st.empty()
+            
             if not index_tab:
                 if 'index_tab' not in st.session_state:
                     st.session_state['index_tab'] = 1
@@ -604,14 +615,17 @@ def main():
                         st.markdown(f'<h5 style="color:#f63366;text-align:center">{picklist_err}</h5>',\
                                 unsafe_allow_html=True)
                 st.session_state['index_tab'] = 2
-            
+            with info_holder:
+                dc.info_viewer(1)
+
         #Miseq
         if pipeline_stage == 4:
             miseq_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Download", description="Samplesheet"),
                 stx.TabBarItemData(id=2, title="Upload", description="Sequence Files"),
             ], default=1, return_type=int)
-            dc.info_viewer(1)
+            info_holder = st.empty()
+            
             if not miseq_tab:
                 if 'miseq_tab' not in st.session_state:
                     st.session_state['miseq_tab'] = 1
@@ -637,6 +651,9 @@ def main():
                 ld.upload_miseq_fastqs(exp)
                 st.session_state['miseq_tab'] = 2
 
+            with info_holder:
+                dc.info_viewer(1)
+
         #Allele Calling
         if pipeline_stage == 5:
             exp = st.session_state['experiment']
@@ -646,7 +663,8 @@ def main():
                 stx.TabBarItemData(id=2, title="Allele Calling", description="")
                 #stx.TabBarItemData(id=3, title="View Data", description=""),
             ], key='allele_tab_bar' , return_type=int)
-            dc.info_viewer(1)
+            info_holder = st.empty()
+            
             if not allele_tab:
                 if 'allele_tab' not in st.session_state:
                     st.session_state['allele_tab'] = 1
@@ -708,13 +726,15 @@ def main():
             #if allele_tab == 3:
             #    dc.data_table(key='allele_calling', options=True)
             #    st.session_state['allele_tab'] = 3
-            
+            with info_holder:
+                dc.info_viewer(1)
         
         # Reports
         if pipeline_stage == 6:
             exp = st.session_state['experiment']
             results_fp = exp.get_exp_fp('Results.csv')
-            dc.info_viewer(1)
+            info_holder = st.empty()
+            
             if not Path(results_fp).exists():
                 st.markdown('**No allele calling results available**')
             else:
@@ -763,6 +783,9 @@ def main():
                 with other_view:
                     dfo = pd.DataFrame(other_results, columns=hdr)
                     dc.aggrid_interactive_table(dfo, key='other_view_key')
+
+            with info_holder:
+                dc.info_viewer(1)
 
         st.session_state['pipeline_stage'] = pipeline_stage
         #st.session_state['folder'] = None

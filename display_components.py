@@ -548,7 +548,7 @@ def show_echo1_outputs():
         error_msgs.append('No DNA picklist available')
     else:
         for dpp in dna_picklist_paths:
-            dpp_fn = exp.name + '_' + str(Path(dpp).name)
+            dpp_fn = str(Path(dpp).name)
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{dpp_fn}</p>',\
                     unsafe_allow_html=True)
@@ -559,7 +559,7 @@ def show_echo1_outputs():
         error_msgs.append('No primer picklist available')
     else:
         for ppp in primer_picklist_paths:
-            ppp_fn = exp.name +'_' + str(Path(ppp).name)
+            ppp_fn = str(Path(ppp).name)
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{ppp_fn}</p>',\
                         unsafe_allow_html=True)
@@ -570,7 +570,7 @@ def show_echo1_outputs():
         error_msgs.append('No taq/water picklist available')
     else:
         for tpp in taqwater_picklist_paths:
-            tpp_fn = exp.name + '_' + str(Path(tpp).name)
+            tpp_fn = str(Path(tpp).name)
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_fn}</p>',\
                         unsafe_allow_html=True)
@@ -594,7 +594,7 @@ def show_echo2_outputs():
         error_msgs.append('No index picklist available')
     else:
         for ipp in index_picklist_paths:
-            ipp_fn = exp.name + '_' + str(Path(ipp).name)
+            ipp_fn = str(Path(ipp).name)
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{ipp_fn}</p>',\
                                 unsafe_allow_html=True)
@@ -605,7 +605,7 @@ def show_echo2_outputs():
         error_msgs.append('No amplicon picklist available')               
     else:
         for app in amplicon_picklist_paths:
-            app_fn = exp.name + '_' + str(Path(app).name)
+            app_fn = str(Path(app).name)
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{app_fn}</p>',\
                                 unsafe_allow_html=True)
@@ -617,7 +617,7 @@ def show_echo2_outputs():
 
     else:
         for tpp in taqwater_picklist_paths:
-            tpp_fn = exp.name + '_' + str(Path(tpp).name)
+            tpp_fn = str(Path(tpp).name)
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_fn}</p>',\
                                 unsafe_allow_html=True)
