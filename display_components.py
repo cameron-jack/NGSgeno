@@ -667,8 +667,8 @@ def display_primers(exp, assay_usage, height=350):
         primer_array.append([p, num_wells, assay_usage.get(p,0), primer_vols.get(p,0)/100,\
                     primer_avail_vols.get(p,0)/1000])
     
-    if warning_primers != '':
-        st.warning('The following primers do not have enough volume: ' + warning_primers[:-1])
+    # if warning_primers != '':
+    #     st.warning('The following primers do not have enough volume: ' + warning_primers[:-1])
     primer_df = pd.DataFrame(primer_array, columns=['Primer', 'Num Wells','Uses', 'Required Volume(μL)', 'Available Volume(μL)'])
     primer_table = aggrid_interactive_table(primer_df, grid_height=height, key='primer_display')
     

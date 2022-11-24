@@ -413,7 +413,6 @@ def main():
                         plates_to_run = [dest_plate for dest_plate in exp.dest_sample_plates\
                                      if all([dest_plate not in nf for nf in nfs])]
                         plates_to_run_str = '\n'.join(plates_to_run)
-                        st.write(plates_to_run_str)
                                 
                 st.markdown(f'<h5 style="text-align:center;color:#f63366">{nimbus_title}</h5>',\
                          unsafe_allow_html=True)
