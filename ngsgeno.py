@@ -194,19 +194,31 @@ def main():
         st.session_state['folder'] = None
     #Folder inputs
     
-    _, title_column,logo_col, current_folder_col, new_folder_col, ex_folder_col, _ = st.columns([2,4,3,4,4,4,2])
-    with title_column:
-        st.markdown('<h2 align="center">NGS Genotyping</h2>', unsafe_allow_html=True)
-    logo_col.image('ngsg_explorer.png')
+    logo_col, _, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,4,2,1,2,1])
+    # current_experiment_col, _ = st.columns(2)
+    # with title_column:
+    #     st.markdown('<h3 style="align:center; color:#2040a1">NGS Genotyping</h3>', unsafe_allow_html=True)
+    #     
+    #     if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
+    #         experiment_title += (st.session_state['experiment'].name)
+    #     else:
+    #         experiment_title += ('None')
 
-    with current_folder_col:
-        st.markdown('Current experiment folder')
-        if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
-            st.markdown('###### '+st.session_state['experiment'].name)
-        else:
-            st.markdown('###### None')
+    #     st.markdown(f'<p style="color:#83b3c9">{experiment_title}</p>', unsafe_allow_html=True)
+    experiment_title = 'Current Experiment: '
+    if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
+             experiment_title += (st.session_state['experiment'].name)
+    else:
+             experiment_title += ('None')
+
+    logo_col.image('ngsg_explorer.png', caption=f'{experiment_title}')
+
+
 
     add_run_folder = new_folder_col.text_input('Create new run folder')
+    create_button_col.write('')
+    create_button_col.write('')
+    add_run_folder_button = create_button_col.button('Create')
     #create_run_folder_button = ftab1.button(label='Create', key='create_run_folder_button')
 
     try:
@@ -219,7 +231,7 @@ def main():
     error_msg=''
 
     #error message comes up now after entering a new folder name - need to fix
-    if add_run_folder:
+    if add_run_folder and add_run_folder_button:
         add_run_folder_str = 'run_' + add_run_folder
         exp, msg = create_run_folder(add_run_folder_str)
         if exp:
@@ -232,8 +244,50 @@ def main():
             else:
                 error_msg = "Fatal path error: " + msg
         
-        new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
-                unsafe_allow_html=True)
+
+
+
+    #_, title_column,logo_col, current_folder_col, new_folder_col, ex_folder_col, _ = st.columns([2,4,3,4,4,4,2])
+    #with title_column:
+    #    st.markdown('<h2 align="center">NGS Genotyping</h2>', unsafe_allow_html=True)
+    #logo_col.image('ngsg_explorer.png')
+    #new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
+        #        unsafe_allow_html=True)
+    #with current_folder_col:
+    #    st.markdown('Current experiment folder')
+    #    if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
+    #        st.markdown('###### '+st.session_state['experiment'].name)
+    #    else:
+    #        st.markdown('###### None')
+
+    #add_run_folder = new_folder_col.text_input('Create new run folder')
+    ##create_run_folder_button = ftab1.button(label='Create', key='create_run_folder_button')
+
+    #try:
+    #    existing_run_folders = get_run_folders()
+    #except Exception as exc:
+    #    print(f'Cannot locate NGSgeno folder {exc}', file=sys.stderr)
+    #    return
+
+    #run_folder = ex_folder_col.selectbox("Select a run folder to open", existing_run_folders)
+    #error_msg=''
+
+    ##error message comes up now after entering a new folder name - need to fix
+    #if add_run_folder:
+    #    add_run_folder_str = 'run_' + add_run_folder
+    #    exp, msg = create_run_folder(add_run_folder_str)
+    #    if exp:
+    #        exp.save()                                                                      
+    #        st.session_state['experiment'] = exp
+    #        st.experimental_rerun()
+    #    else:
+    #        if 'already exists' in msg:
+    #            error_msg = "Folder name already exists"
+    #        else:
+    #            error_msg = "Fatal path error: " + msg
+        
+    #    new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
+    #            unsafe_allow_html=True)
 
     if 'stage' not in st.session_state:
         st.session_state['stage'] = None
@@ -298,8 +352,10 @@ def main():
                 with st.expander(label='Summary of loaded data', expanded=expanded):
                     dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples', height=200)
                 ld.load_rodentity_data()
-                ld.load_database_data()
+                #ld.load_database_data()
                 ld.load_custom_csv()
+                #ld.upload_rodentity_demo()
+                #ld.upload_custom_demo()
                 st.session_state['load_tab'] = 1
 
             #load consumables, references and assays/primer mappings
@@ -326,7 +382,7 @@ def main():
 
             nimbus_tab = stx.tab_bar(data=[
                 stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
-                stx.TabBarItemData(id=2, title="Upload", description="Nimbus output files")
+                stx.TabBarItemData(id=2, title="Upload", description="Echo input files")
                 #stx.TabBarItemData(id=3, title="View Data", description="")
             ], return_type=int)
             info_holder = st.empty()
@@ -348,7 +404,7 @@ def main():
                     # do we have any Nimbus inputs to generate + download
                     yet_to_run = len(exp.dest_sample_plates) - len(nfs)
                     if len(efs) == len(nfs) and len(efs) != 0:  # already exists
-                        nimbus_title = 'All Hamilton Nimbus outputs received.'
+                        nimbus_title = 'All Echo inputs received.'
                     if yet_to_run > 0: 
                         nimbus_title += ' ' + str(yet_to_run) + " 96-well plate sets need Nimbus input file generation"
 
@@ -402,7 +458,7 @@ def main():
                 if not efs and not xbcs:
                     nim_tab2_title = "Load data inputs to enable Nimbus input file generation."
                 elif efs and not xbcs:
-                    nim_tab2_title = 'All Nimbus outputs now uploaded'
+                    nim_tab2_title = 'All Echo inputs/Nimbus outputs now uploaded'
                     uploaded_nims = [Path(ef).name for ef in efs]
                     files_str = '</br>'.join(uploaded_nims)
                     st.markdown(f'<p style="text-align:center;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
@@ -410,13 +466,13 @@ def main():
                     nfs, efs, xbcs = exp.get_nimbus_filepaths()
                     uploaded_nims = [Path(ef).name for ef in efs]
                     files_str = ', '.join(uploaded_nims)
-                    st.write('Uploaded Nimbus output files:')
+                    st.write('Uploaded Echo input files:')
                     st.write(files_str)
                     missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
                     files_str = '</br>'.join(missing_nims)
-                    st.write('The following Hamilton Nimbus output files are expected:')
+                    st.write('The following Echo input files are expected (from the Nimbus):')
                     st.markdown(f'<p style="text-align:left;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
-                    with st.form("Nimbus output upload", clear_on_submit=True):
+                    with st.form("Echo input upload", clear_on_submit=True):
                         nim_outputs = st.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
                             accept_multiple_files=True, help='You can upload more than one file at once')
                         submitted = st.form_submit_button("Upload files")
@@ -424,7 +480,7 @@ def main():
                     if submitted and nim_outputs is not None:
                         success = run_generate(exp, exp.add_nimbus_outputs, nim_outputs)
                         if not success:
-                           st.write('Upload of Hamilton Nimbus outputs failed. Please see the log')
+                           st.write('Upload of Echo inputs failed. Please see the log')
                         else:
                             st.experimental_rerun()
                         
@@ -678,7 +734,7 @@ def main():
             if allele_tab == 2:
                 rundir = exp.get_exp_dir()
                 
-                num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
+                #num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
                 num_cpus = st.number_input(\
                             label="Number of processes to run simultaneously (defaults to # of CPUs)",\
                                     value=os.cpu_count())
@@ -704,7 +760,7 @@ def main():
                         exp.log('Critical: failed to save reference sequences to target file')
                     else:
                         matching_prog = os.path.join('bin','ngsmatch.py')
-                        cmd_str = f'python {matching_prog} --ncpus {num_cpus} --chunk_size {num_unique_seq} --rundir {rundir}'
+                        cmd_str = f'python {matching_prog} --ncpus {num_cpus}  --rundir {rundir}'
                         if exhaustive_mode:
                             cmd_str += ' --exhaustive'                     
                         exp.log(f'Info: {cmd_str}')

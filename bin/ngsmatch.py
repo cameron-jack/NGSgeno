@@ -766,7 +766,7 @@ if __name__=="__main__":
     parser.add_argument("-t", "--targets", default="targets.fa", help="file of targets in FASTA format (default=targets.fa)")
     # parser.add_argument("-a", "--assays", default=None, help="file linking mice/samples to assay names")
     parser.add_argument('-o','--outfn', default='Results.csv', help='Name of output file (CSV format)')
-    parser.add_argument('-k','--chunk_size', type=int, default=1, help='Number of unique sequences per work unit, (default=1)')
+    parser.add_argument('-k','--chunk_size', type=int, default=4, help='Number of unique sequences per work unit, (default=4)')
     parser.add_argument('-n','--ncpus', type=int, default=os.cpu_count(), help='Number of processes to run simultaneously, default=number of CPUs in system')
     parser.add_argument('-l','--logfn', default='match.log', help='Name of logging file (default=match.log)')
     parser.add_argument('-r','--rundir', required=True, help='Path to experiment folder')

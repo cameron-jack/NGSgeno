@@ -70,105 +70,84 @@ functionality. The Experiment then deals directly with the pipeline logic.
 
 def load_rodentity_data():
     """
-    Home page 
+    Manage combining up to four rodentity plates (from JSON) with one destination PID 
     """
-    rodentity_exp = st.expander('Add data from Rodentity JSON files',expanded=True)
-    rod_col1, rod_col2= rodentity_exp.columns(2)
-
-    rod_dp = ''
-    plates_to_clear = [False, False, False, False]
-    rod_up_disabled = False  # disable uploading more plates until space available
     exp = st.session_state['experiment']
-    #print(f"{exp.unassigned_plates=}")
-    #if 'prev_rod_upload' in st.session_state:
-    #    print(f"{st.session_state['prev_rod_upload']=}")
-    #if 'rod_dp_key' in st.session_state:
-    #    print(f"{st.session_state['rod_dp_key']=}")
-    if all(exp.unassigned_plates[k] for k in exp.unassigned_plates):
-        rod_up_disabled = True              
-
-    rodentity_epp = rodentity_exp.file_uploader('Rodentity JSON file', type='json', disabled=rod_up_disabled)
-    if rodentity_epp:
-        rodentity_plate_name = util.guard_pbc(rodentity_epp.name.rstrip('.json'))
-        if 'prev_rod_upload' not in st.session_state or \
-            st.session_state['prev_rod_upload'] != rodentity_plate_name:
-            if rodentity_epp.name.rstrip('.json') in exp.unassigned_plates:
-                print('We see this already')
-            else: 
-                for k in sorted(exp.unassigned_plates):
-                    if not exp.unassigned_plates[k]:
-                        exp.unassigned_plates[k] = rodentity_plate_name
-                        # Save a copy we can edit and reload
-                        fn = os.path.join('run_'+exp.name, db_io._eppfn_r(rodentity_plate_name))
-                        with open(fn, 'wt') as outf:
-                            outf.write(rodentity_epp.getvalue().decode("utf-8"))
-                        print('here', k)
-                        st.session_state['prev_rod_upload'] = rodentity_plate_name
-                        st.experimental_rerun()     
-
-
-    rod_col1.write('Checkboxes required for clearing plate IDs')
-                    
-    for i,p in enumerate(plates_to_clear):
-        plates_to_clear[i] = rod_col1.checkbox(f"P{str(i+1)}: {util.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
-                help='Click the checkbox to allow a set plate ID to be cleared', key='check'+str(i+1))
-
-    #Accept rodentity button
-    accept_disabled = False
-
-    rod_dp = rod_col2.text_input('Destination plate barcode', max_chars=20, key='rod_dp_key') 
-
-    if rod_dp and any(exp.unassigned_plates):
-        rod_dp = util.guard_pbc(rod_dp, silent=True)
-        if rod_dp in st.session_state['experiment'].dest_sample_plates or \
-                rod_dp in st.session_state['experiment'].plate_location_sample or \
-                rod_dp in st.session_state['experiment'].unassigned_plates:
-            rod_col1.markdown('<p style="color:#FF0000">Destination plate barcode already in use: ' +\
-                    util.unguard_pbc(rod_dp) + '</p>', unsafe_allow_html=True)
-    else:
-        accept_disabled = True
-
-    accept_rod_button = rod_col2.button('Accept', help='Read and confirm plates', 
-                    disabled=accept_disabled, key='accept_rod_button_key')
-
-    if accept_rod_button:
-        success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in exp.unassigned_plates], rod_dp)
-        if not success:
-            rod_col2.markdown('<p style="color:#FF0000">Failed to incorporate plate set. Please read the log.</p>', unsafe_allow_html=True)
+    plates_to_clear = [False, False, False, False]
+    with st.expander('Add data from Rodentity JSON files',expanded=True):
+        if all([exp.unassigned_plates[unass_pid] != '' for unass_pid in exp.unassigned_plates]):
+            disable_uploads = True
         else:
-            rod_col2.write('Successfully added plate set')
-            rod_dp = ''
-            exp.unassigned_plates = {1:'',2:'',3:'',4:''}
-            plates_to_clear = [False, False, False, False]
-            accept_rod_button = False
-            exp.save()
-            #?
-            st.experimental_rerun()
+            disable_uploads = False
 
-    #Clear ID button
-    clear_disabled = True
-    for i,plate in enumerate(plates_to_clear):
-        if plate and exp.unassigned_plates[i+1]:
-            clear_disabled = False
-            break  # only need to enable the button once
+        with st.form('rodentity_upload_form'):
+            rodentity_epps = st.file_uploader('Choose up to four Rodentity JSON files', type='json', accept_multiple_files=True, disabled=disable_uploads)
+            rod_upload_submit_button = st.form_submit_button('Upload')
+            if rod_upload_submit_button and rodentity_epps:
+                used_keys = set()
+                for rod_epp in rodentity_epps:
+                    rod_plate_name = rod_epp.name.rstrip('.json')
+                    guarded_rod_pid = util.guard_pbc(rod_plate_name, silent=True)
+                    if all([exp.unassigned_plates[unass_pid] != '' for unass_pid in exp.unassigned_plates]):
+                        st.markdown(f'<p style="color:#FF0000">Ran out of free slots for {rod_plate_name}</p>', unsafe_allow_html=True)
+                        continue
+                    if guarded_rod_pid in st.session_state['experiment'].dest_sample_plates or \
+                            guarded_rod_pid in st.session_state['experiment'].plate_location_sample or \
+                            guarded_rod_pid in st.session_state['experiment'].unassigned_plates:
+                        st.markdown('<p style="color:#FF0000">Rodentity plate barcode already in use: ' +\
+                                rod_plate_name + '</p>', unsafe_allow_html=True)
+                        sleep(0.5)
+                        continue                     
+                    for key in exp.unassigned_plates:
+                        if key not in used_keys and key != '':
+                            exp.unassigned_plates[key] = guarded_rod_pid
+                            used_keys.add(key)
+                            # Save a copy we can edit and reload
+                            rod_fn = os.path.join('run_'+exp.name, db_io._eppfn_r(guarded_rod_pid))
+                            with open(rod_fn, 'wt') as outf:
+                                outf.write(rod_epp.getvalue().decode("utf-8"))
+                            exp.log(f'Info: uploaded copy Rodentity plate {rod_plate_name} to {rod_fn}')
+                            break
+                exp.save()
+    
+        rod_col1, rod_col2 = st.columns(2)
+        with rod_col1.form('set_rod_plates_form', clear_on_submit=True):
+            for i in range(4):
+                plates_to_clear[i] = st.checkbox(f"P{str(i+1)}: {util.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
+                        help='Click the checkbox to allow a set plate ID to be cleared', key='check'+str(i+1))
+            clear_plates_button = st.form_submit_button('Clear IDs', help='Clear selected Rodentity plate IDs')
+            if clear_plates_button:
+                for i, plate in enumerate(plates_to_clear):
+                    if plate and exp.unassigned_plates[i+1]:
+                        exp.unassigned_plates[i+1] = ''
+                        plates_to_clear[i] = False
+                exp.save()
+                st.experimental_rerun()
 
-    clear_plates_button = rod_col2.button('Clear IDs', help='Clear selected Rodentity plate IDs', disabled=clear_disabled)
+        with rod_col2.form('rod_destination_form', clear_on_submit=True):
+            rod_dp = st.text_input('Destination plate barcode', max_chars=30, key='rod_dp_key')
+            accept_rod_dest_button = st.form_submit_button('Accept')
 
-    cpb_activated = False
-    if clear_plates_button:
-        for i, plate in enumerate(plates_to_clear):
-            if plate and exp.unassigned_plates[i+1]:
-                if 'prev_rod_upload' in st.session_state:
-                    if st.session_state['prev_rod_upload'] == plate:
-                        st.session_state['prev_rod_upload'] = ''
-                exp.unassigned_plates[i+1] = ''
-                plates_to_clear[i] = False
-                cpb_activated = True
-        clear_plates_button = False
-        if cpb_activated:
-            exp.save()
-            st.experimental_rerun()
-                
+            if accept_rod_dest_button and rod_dp:
+                guarded_rod_dp = util.guard_pbc(rod_dp, silent=True)
+                if rod_dp in st.session_state['experiment'].dest_sample_plates or \
+                    rod_dp in st.session_state['experiment'].plate_location_sample or \
+                    rod_dp in st.session_state['experiment'].unassigned_plates:
+                    st.markdown('<p style="color:#FF0000">Destination plate barcode already in use: ' +\
+                            rod_dp + '</p>', unsafe_allow_html=True)
+                    sleep(2)
+                else:
+                    success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in exp.unassigned_plates], guarded_rod_dp)
+                    if not success:
+                        st.markdown('<p style="color:#FF0000">Failed to incorporate plate set. Please read the log.</p>', unsafe_allow_html=True)
+                        sleep(2)
+                    else:
+                        st.write('Successfully added plate set')
+                        sleep(1)
+                        exp.unassigned_plates = {1:'',2:'',3:'',4:''}
+                        exp.save()
+                        st.experimental_rerun()
+                   
              
 def load_custom_csv(expanded=False):
     '''
@@ -427,4 +406,80 @@ def upload_miseq_fastqs(exp):
             copy2(fp, exp.get_raw_dirpath())
         file_field.markdown('<h5>Done</h5>', unsafe_allow_html=True)
         copy_progress.progress(100)
+
+
+#def upload_rodentity_demo():
+#    """ Demonstration upload panel for Rodentity plates - not in use for now """
+#    exp = st.session_state['experiment']
+#    with st.expander('Upload Rodentity Plates', expanded=False):
+#        with st.form(key='rodentity_upload_form', clear_on_submit=True):
+#            col1, col2, col3 = st.columns([4,4,1])
+#            with col1:
+#                rod_up1 = st.file_uploader(label='Rodentity plate upload', key='rod1', accept_multiple_files=False)
+#                rod_up2 = st.file_uploader(label='Rodentity plate upload', key='rod2', accept_multiple_files=False)
+#            with col2:
+#                rod_up3 = st.file_uploader(label='Rodentity plate upload', key='rod3', accept_multiple_files=False)
+#                rod_up4 = st.file_uploader(label='Rodentity plate upload', key='rod4', accept_multiple_files=False)
+#            with col1:
+#                dest_pid = st.text_input(label='Destination plate ID (barcode)', key='dest1')
+#            with col3:
+#                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+#                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+#                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+#                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+#                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+#                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+#                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+#                submit_rodentity = st.form_submit_button()
+#            if submit_rodentity:
+#                if not dest_pid:
+#                    with col2:
+#                        st.markdown('<p style="color:#FF0000">Please provide the destination plate barcode</p>', unsafe_allow_html=True)
+#                if not rod_up1 and not rod_up2 and not rod_up3 and not rod_up4:
+#                    with col2:
+#                        st.markdown('<p style="color:#FF0000">Please provide at least one Rodentity plate file</p>', unsafe_allow_html=True)
+#                else:
+#                    if dest_pid:
+#                        rod_ups = [rod_up for rod_up in [rod_up1, rod_up2, rod_up3, rod_up4] if rod_up is not None]
+#                        success = exp.add_rodentity_plate_set(rod_ups, dest_pid)
+#                    if not success:
+#                        with col2:
+#                            st.markdown('<p style="color:#FF0000">Failed to incorporate plate set. Please read the log.</p>', unsafe_allow_html=True)
+#                    else:
+#                        with col2:
+#                            st.write('Successfully added plate set')
+
+
+def upload_custom_demo():
+    """ Demonstration upload panel for custom manifests """
+    exp = st.session_state['experiment']
+    with st.expander('Upload custom manifests', expanded=False):
+        with st.form(key='manifest_upload_form', clear_on_submit=True):
+            col1, _, col3 = st.columns([3,1,2])
+            with col1:
+                manifest_upload = st.file_uploader(label="Custom manifest upload")
+            with col3:
+                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+                submit_manifest = st.form_submit_button()
+                if submit_manifest and manifest_upload:
+                    success = exp.add_custom_manifest_demo(manifest_upload)
+
+        
+        with st.form(key='selection_form', clear_on_submit=True):
+            st.write('Select up to four 96-well sample plate IDs (barcodes) to combine into a 384-well DNA plate')
+            col1, col2, col3 = st.columns([3,3,1])
+            with col1:
+                p1 = st.selectbox(label='Plate 1', options=['',1234,1235,1236,1237], key='s1')
+                p3 = st.selectbox(label='Plate 3', options=['',1234,1235,1236,1237], key='s3')
+            with col2:
+                p2 = st.selectbox(label='Plate 2', options=['',1234,1235,1236,1237], key='s2')
+                p4 = st.selectbox(label='Plate 4', options=['',1234,1235,1236,1237], key='s4')
+            with col3:
+                dest_pid = st.text_input(label='Destination plate ID (barcode)', key='dest1')
+                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+                submit_selection = st.form_submit_button()
+                if submit_selection and dest_pid:
+                    pass
+
+
 

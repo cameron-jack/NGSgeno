@@ -532,14 +532,34 @@ class Experiment():
                     self.plate_location_sample[spid][pos]['sex'] = record['mouse']['sex']
                     self.plate_location_sample[spid][pos]['mouse'] = deepcopy(record['mouse'])
                     # "alleles":[{alleleKey, name, symbol, options:[], assays:[{assayKey, name, method}]}]
+                    self.plate_location_sample[spid][pos]['assay_records'] = {}
                     assays = []
                     assayFamilies = set()
-                    for allele in record['mouse']['alleles']:  # allele is a dict
-                        for assay in allele['assays']:  # assay is a dict
-                            assays.append(assay['name'])
-                            assayFamilies.add(assay['name'].split('_')[0])
-                    self.plate_location_sample[spid][pos]['assays'] = assays.copy()
-                    self.plate_location_sample[spid][pos]['assayFamilies'] = list(assayFamilies)
+                    ngs_assays = []
+                    ngs_assayFamilies = set()
+                    
+                    if 'alleles' in record['mouse']:
+                        for allele in record['mouse']['alleles']:  # allele is a dict from a list
+                            for assay in allele['assays']:  # assay is a dict from a list
+                                assays.append(assay['name'])
+                                assayFamilies.add(assay['name'].split('_')[0])
+                                if assay['name'] not in self.plate_location_sample[spid][pos]['assay_records']:
+                                    self.plate_location_sample[spid][pos]['assay_records'][assay['name']] = {}
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['alleleKey'] = allele['alleleKey']
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['alleleSymbol'] = allele['symbol']
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayKey'] = assay['assay_key']
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayName'] = assay['name']
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayMethod'] = assay['method']
+                                if assay['method'] == 'NGS':
+                                    ngs_assays.append(assay['name'])
+                                    ngs_assayFamilies.add(assay['name'].split('_')[0])
+                            
+                        self.plate_location_sample[spid][pos]['assays'] = assays.copy()
+                        self.plate_location_sample[spid][pos]['assayFamilies'] = list(assayFamilies)
+                        self.plate_location_sample[spid][pos]['ngs_assays'] = ngs_assays.copy()
+                        self.plate_location_sample[spid][pos]['ngs_assayFamilies'] = list(ngs_assayFamilies)
+                        self.plate_location_sample[spid][pos]['custom_assays'] = []
+                        self.plate_location_sample[spid][pos]['custom_assayFamilies'] = []
                 
                 self.log(f"Success: added sample plate {spid} with destination {dna_plate_id} ")
 
@@ -1016,46 +1036,27 @@ class Experiment():
     
     def get_index_remaining_available_volume(self, assay_usage=None, fwd_idx=None, rev_idx=None):
         """
-
         Returns the barcode pairs remaining, max available barcode pairs, max barcode pairs allowed by volume
-
         """
-
         if not assay_usage:
-
             assay_usage = self.get_assay_usage()
-
         reactions = sum([v for v in assay_usage.values()])
 
-
-
         if not fwd_idx or not rev_idx:
-
             return 0, 0, False
 
         max_i7F = len(fwd_idx)
-
         max_i5R = len(rev_idx)
 
         fwd_idx_reactions = {}
-
         reaction_vol_capacity = 0
-
         for name in fwd_idx.keys():
-
             # get the number of possible reactions and keep the lower number from possible reactions or possible reaction partners
-
             max_reactions = sum([floor((vol-util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])/self.transfer_volumes['INDEX_VOL']) \
-
                     for vol in fwd_idx[name]['avail_vol']])
-
-
-
             reaction_vol_capacity += min(max_reactions, max_i5R)
 
         max_idx_pairs = max_i7F * max_i5R
-
-        
 
         return max_idx_pairs-reactions, max_idx_pairs, reaction_vol_capacity
         

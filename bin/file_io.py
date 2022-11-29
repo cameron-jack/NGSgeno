@@ -126,8 +126,11 @@ def nimbus_gen(exp):
                             stage1_row_data['samplePlate'] = pbc
                             stage1_row_data['sampleWell'] = pos
                             stage1_row_data['sampleBarcode'] = shx[pos]['barcode']
-                            stage1_row_data['assays'] = ';'.join(shx[pos]['assays'])
-                            stage1_row_data['assayFamilies'] = ';'.join(shx[pos]['assayFamilies'])
+                            # Only NGS and Custom assays should be used
+                            stage1_row_data['assays'] = ';'.join(shx[pos]['ngs_assays']+shx[pos]['custom_assays'])
+                            stage1_row_data['assayFamilies'] = ';'.join(shx[pos]['ngs_assayFamilies']+shx[pos]['custom_assayFamilies'])
+                            if len(stage1_row_data['assays']) == 0:
+                                continue
                             if 'strain' in shx[pos]:
                                 stage1_row_data['strain'] = shx[pos]['strain']
                             else:
