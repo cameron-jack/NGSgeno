@@ -22,7 +22,7 @@ import csv
 import jsonpickle
 from itertools import combinations
 from collections import Counter
-from io import StringIO
+from io import StringIO, BytesIO
 import datetime
 import json
 from Bio import SeqIO
@@ -30,6 +30,7 @@ from copy import deepcopy
 from math import ceil, floor
 from pathlib import Path
 import inspect
+import openpyxl
 
 import pandas as pd
 from streamlit import _update_logger
@@ -811,6 +812,140 @@ class Experiment():
         finally:
             self.save()
         return True
+
+    def read_custom_manifests(self, manifests):
+        """
+        Parse any number of custom manifest files and store them in self.unassigned_plates['custom'] =\
+                {plateBarcode={Assay=[],...}}
+        Also add an entry for each file into self.uploaded_files
+        Example headers:
+        sampleNum	plateBarcode	well	sampleBarcode	assay	assay	clientName	sampleName 	alleleSymbol
+        Required columns: [plateBarcode, well, sampleBarcode, assay*, clientName] *Duplicates allowed
+        Optional columns: [sampleNo, sampleName, alleleSymbol] and anything else
+        """
+        if self.locked:
+            self.log('Error: Cannot add manifest while lock is active')
+            return False
+        #try:
+        if True:
+            self.log(f"Begin: read custom manifest")
+        
+            #self.log(f"Debug: {self.name=} {manifest_strm=} {default_manifest_type=}")
+            for manifest_stream in manifests:
+                manifest_name = manifest_stream.name
+                if manifest_name in self.uploaded_files:
+                    self.log(f'Warning: {manifest_name} already present in records')
+                #print(f'{manifest_name=}', file=sys.stderr)
+                if manifest_name.lower().endswith('xlsx'):
+                    workbook = openpyxl.load_workbook(BytesIO(manifest_stream.getvalue()))
+                    sheet = workbook.active
+                    rows = [','.join(map(str,cells)) for cells in sheet.iter_rows(values_only=True)]
+                    #print(rows, file=sys.stderr)
+                else:
+                    rows = StringIO(manifest_stream.getvalue().decode("utf-8"))
+                plate_entries = {}  # looks like self.plate_location_sample, but temporary
+                plate_barcode_col = None
+                assay_cols = []
+                for i, line in enumerate(rows): # csv_reader is super limiting
+                    cols = [c.strip() if c is not None else '' for c in line.split(',')]  # lower case column names
+                    #print(i, cols, file=sys.stderr)
+                    if i==0:  # process header
+                        cols_lower = [c.lower() for c in cols]
+                        header_dict = {k:c for k,c in enumerate(cols_lower)}
+                        #print(header_dict, file=sys.stderr)
+                        matching_cols = [col_name in cols_lower for col_name in ['platebarcode', 'well', 'samplebarcode', 'assay', 'clientname']]
+                        #print(matching_cols, file=sys.stderr)
+                        if not all(matching_cols):
+                            self.log(f'Error: manifest {manifest_name} requires at least columns plateBarcode, well, sampleBarcode, assay, clientName')
+                            return False
+                        else:
+                            self.log(f'Info: parsing manifest {manifest_name}')
+                        for k in header_dict:
+                            if header_dict[k] == 'platebarcode':
+                                plate_barcode_col = k
+                            elif header_dict[k] == 'assay':
+                                assay_cols.append(k)
+                        continue
+                    if len(cols) < 5:  # skip empty rows
+                        continue
+                    gpid = util.guard_pbc(cols[plate_barcode_col], silent=True)
+                    if gpid not in plate_entries:
+                        plate_entries[gpid] = {'purpose':'sample','source':'manifest', 'wells':set()}  # create plate_location_sample entries here
+                    assays = []
+                    # do a first pass to set up recording a sample in a well
+                    for k,c in enumerate(cols):
+                        if k in assay_cols:
+                            if c != '':  # ignore empty assay entries
+                                assays.append(c)  # combine assays into one column
+                        if header_dict[k] == 'well':
+                            well = util.unpadwell(c.upper())
+                            if well in plate_entries[gpid]['wells'] and plate_entries[gpid][well] != {}:
+                                self.log(f"Error: duplicate {c} in {gpid}. Skipping row {i+2} {cols=}")
+                                break
+                            plate_entries[gpid]['wells'].add(well)
+                            plate_entries[gpid][well] = {}
+                    # now do a second pass to collect everything together
+                    for k,c in enumerate(cols):
+                        if header_dict[k] == 'well':
+                            continue
+                        if header_dict[k] == 'samplebarcode':
+                            if c.startswith('C'):
+                                spid = util.guard_cbc(c, silent=True)
+                            elif c.startswith('M'):
+                                spid = util.guard_rbc(c, silent=True)
+                            else:
+                                spid = plate_entries[gpid][well][header_dict[k]] = util.guard_cbc(c, silent=True) # fall back to custom?
+                            plate_entries[gpid][well]['barcode'] = spid
+                        elif header_dict[k] == 'platebarcode':
+                            plate_entries[gpid][well]['platebarcode'] = gpid
+                        elif header_dict[k] == 'sampleno':
+                            plate_entries[gpid][well]['sampleNumber'] = str(c)
+                        elif header_dict[k] == 'assay':
+                            continue
+                        else:
+                            try:
+                                plate_entries[gpid][well][header_dict[k]] = str(c)
+                            except:
+                                print(type(header_dict[k]), header_dict[k], str(c), file=sys.stderr)
+                    plate_entries[gpid][well]['assays'] = assays
+                    plate_entries[gpid][well]['assayFamilies'] = list(set([a.split('_')[0] for a in assays]))
+
+                for gpid in plate_entries:
+                    if gpid in self.unassigned_plates or gpid in self.plate_location_sample:
+                        self.log(f'Warning: plate records exist for {util.unguard_pbc(gpid, silent=True)}, potentially overwriting')
+                    self.unassigned_plates['custom'][gpid] = plate_entries[gpid]
+                self.uploaded_files[manifest_name] = {'plates':plate_entries.keys(), 'purpose':'custom manifest'}
+        return True
+                    
+
+    def accept_custom_manifests(self, dest_pid, sample_pids):
+        """
+        Move four custom plate records from self.unassigned_plates to self.plate_location_sample and self.dest_sample_plates
+        """
+        if self.locked:
+            self.log('Error: Cannot add manifest while lock is active')
+            return False
+        #try:
+        if True:
+            self.log(f"Begin: accept custom manifest")
+            # Do checks
+            dest_pid = util.guard_pbc(dest_pid, silent=True)
+            sample_pids = [util.guard_pbc(pid, silent=True) for pid in sample_pids if pid != 'None' and pid is not None]
+            for pid in [dest_pid] + sample_pids:
+                if pid in self.dest_sample_plates or pid in self.plate_location_sample:
+                        self.log(f'Warning: Plate barcode {util.unguard_pbc(pid, silent=True)} already in use, overwriting')
+            for pid in sample_pids:
+                if pid not in self.unassigned_plates['custom']:
+                    self.log(f'Critical: {util.unguard_pbc(pid, silent=True)} not found in {self.unassigned_plates=}')
+                    return False
+            # do assignment
+            for pid in sample_pids:
+                self.plate_location_sample[pid] = self.unassigned_plates['custom'][pid]
+            self.dest_sample_plates[dest_pid] = sample_pids
+            self.plate_location_sample[dest_pid] = {'purpose':'dna', 'source':','.join(sample_pids), 'wells':set()}
+            self.unassigned_plates['custom'] = {'None':{}}
+        return True
+
 
     def get_musterer_pids(self):
         """ return [pids] with samples that are sourced from Musterer """

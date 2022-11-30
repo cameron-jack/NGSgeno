@@ -86,27 +86,27 @@ def load_rodentity_data():
             if rod_upload_submit_button and rodentity_epps:
                 used_keys = set()
                 for rod_epp in rodentity_epps:
-                    rod_plate_name = rod_epp.name.rstrip('.json')
-                    guarded_rod_pid = util.guard_pbc(rod_plate_name, silent=True)
+                    rod_pid = util.guard_pbc(rod_epp.name.rstrip('.json'), silent=True)
                     if all([exp.unassigned_plates[unass_pid] != '' for unass_pid in exp.unassigned_plates]):
-                        st.markdown(f'<p style="color:#FF0000">Ran out of free slots for {rod_plate_name}</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p style="color:#FF0000">Ran out of free slots for {util.unguard_pbc(rod_pid, silent=True)}</p>', unsafe_allow_html=True)
                         continue
-                    if guarded_rod_pid in st.session_state['experiment'].dest_sample_plates or \
-                            guarded_rod_pid in st.session_state['experiment'].plate_location_sample or \
-                            guarded_rod_pid in st.session_state['experiment'].unassigned_plates:
+                    if rod_pid in exp.dest_sample_plates or rod_pid in exp.plate_location_sample or \
+                            rod_pid in exp.unassigned_plates[1] or rod_pid in exp.unassigned_plates[2] or \
+                            rod_pid in exp.unassigned_plates[3] or rod_pid in exp.unassigned_plates[4] or \
+                            rod_pid in exp.unassigned_plates['custom']:
                         st.markdown('<p style="color:#FF0000">Rodentity plate barcode already in use: ' +\
-                                rod_plate_name + '</p>', unsafe_allow_html=True)
+                                util.unguard_pbc(rod_pid, silent=True) + '</p>', unsafe_allow_html=True)
                         sleep(0.5)
                         continue                     
                     for key in exp.unassigned_plates:
                         if key not in used_keys and key != '':
-                            exp.unassigned_plates[key] = guarded_rod_pid
+                            exp.unassigned_plates[key] = rod_pid
                             used_keys.add(key)
                             # Save a copy we can edit and reload
-                            rod_fn = os.path.join('run_'+exp.name, db_io._eppfn_r(guarded_rod_pid))
+                            rod_fn = os.path.join('run_'+exp.name, db_io._eppfn_r(rod_pid))
                             with open(rod_fn, 'wt') as outf:
                                 outf.write(rod_epp.getvalue().decode("utf-8"))
-                            exp.log(f'Info: uploaded copy Rodentity plate {rod_plate_name} to {rod_fn}')
+                            exp.log(f'Info: uploaded copy Rodentity plate {util.unguard_pbc(rod_pid, silent=True)} to {rod_fn}')
                             break
                 exp.save()
     
@@ -122,22 +122,24 @@ def load_rodentity_data():
                         exp.unassigned_plates[i+1] = ''
                         plates_to_clear[i] = False
                 exp.save()
-                st.experimental_rerun()
+                
 
         with rod_col2.form('rod_destination_form', clear_on_submit=True):
             rod_dp = st.text_input('Destination plate barcode', max_chars=30, key='rod_dp_key')
+            if rod_dp:
+                rod_dp = util.guard_pbc(rod_dp, silent=True)
             accept_rod_dest_button = st.form_submit_button('Accept')
 
             if accept_rod_dest_button and rod_dp:
-                guarded_rod_dp = util.guard_pbc(rod_dp, silent=True)
-                if rod_dp in st.session_state['experiment'].dest_sample_plates or \
-                    rod_dp in st.session_state['experiment'].plate_location_sample or \
-                    rod_dp in st.session_state['experiment'].unassigned_plates:
+                if rod_dp in exp.dest_sample_plates or rod_dp in exp.plate_location_sample or \
+                        rod_dp in exp.unassigned_plates[1] or rod_dp in exp.unassigned_plates[2] or \
+                        rod_dp in exp.unassigned_plates[3] or rod_dp in exp.unassigned_plates[4] or \
+                        rod_dp in exp.unassigned_plates['custom']:
                     st.markdown('<p style="color:#FF0000">Destination plate barcode already in use: ' +\
-                            rod_dp + '</p>', unsafe_allow_html=True)
+                            util.unguard_pbc(rod_dp, silent=True) + '</p>', unsafe_allow_html=True)
                     sleep(2)
                 else:
-                    success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in exp.unassigned_plates], guarded_rod_dp)
+                    success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in exp.unassigned_plates], rod_dp)
                     if not success:
                         st.markdown('<p style="color:#FF0000">Failed to incorporate plate set. Please read the log.</p>', unsafe_allow_html=True)
                         sleep(2)
@@ -147,88 +149,147 @@ def load_rodentity_data():
                         exp.unassigned_plates = {1:'',2:'',3:'',4:''}
                         exp.save()
                         st.experimental_rerun()
+                        
                    
              
-def load_custom_csv(expanded=False):
-    '''
-    Upload data from a custom csv file
-    '''
-    custom_csv_exp = st.expander('Add data from a custom manifest CSV file', expanded=expanded)
-    custom_col1,custom_col2 = custom_csv_exp.columns(2)
+#def load_custom_csv(expanded=False):
+#    '''
+#    Upload data from a custom csv file - DEPRECATED
+#    '''
+#    custom_csv_exp = st.expander('Add data from a custom manifest CSV file', expanded=expanded)
+#    custom_col1,custom_col2 = custom_csv_exp.columns(2)
     
     
-    st.session_state['default_manifest_type'] = 'c'
-    manifest_choice = custom_col1.radio('The default contents of my manifest file (if not declared) are', 
-                        ['Custom', 'Rodentity mouse', 'Musterer mouse'])
+#    st.session_state['default_manifest_type'] = 'c'
+#    manifest_choice = custom_col1.radio('The default contents of my manifest file (if not declared) are', 
+#                        ['Custom', 'Rodentity mouse', 'Musterer mouse'])
 
-    uploaded_file = custom_col2.file_uploader('', type='csv')
+#    uploaded_file = custom_col2.file_uploader('', type='csv')
 
-    if manifest_choice == 'Rodentity mouse':
-        st.session_state['default_manifest_type'] = 'r'
-    elif manifest_choice == 'Musterer mouse':
-        st.session_state['default_manifest_type'] = 'm'
+#    if manifest_choice == 'Rodentity mouse':
+#        st.session_state['default_manifest_type'] = 'r'
+#    elif manifest_choice == 'Musterer mouse':
+#        st.session_state['default_manifest_type'] = 'm'
 
-    if uploaded_file:
-        if 'custom_upload' not in st.session_state or st.session_state['custom_upload'] != uploaded_file.name:
-            success = st.session_state['experiment'].add_manifest(uploaded_file, st.session_state['default_manifest_type'])
-            if not success:
-                custom_col2.markdown('<p style="color:#FF0000">Failed to incorporate manifest. Please read the log.</p>', unsafe_allow_html=True)
-            st.session_state['custom_upload'] = uploaded_file.name
-            #?
-            st.experimental_rerun()
+#    if uploaded_file:
+#        if 'custom_upload' not in st.session_state or st.session_state['custom_upload'] != uploaded_file.name:
+#            success = st.session_state['experiment'].add_manifest(uploaded_file, st.session_state['default_manifest_type'])
+#            if not success:
+#                custom_col2.markdown('<p style="color:#FF0000">Failed to incorporate manifest. Please read the log.</p>', unsafe_allow_html=True)
+#            st.session_state['custom_upload'] = uploaded_file.name
+#            #?
+#            st.experimental_rerun()
+
+def load_custom_manifests():
+    """ Demonstration upload panel for custom manifests """
+    exp = st.session_state['experiment']
+    if 'custom' not in exp.unassigned_plates or not exp.unassigned_plates['custom']:
+        exp.unassigned_plates['custom'] = {'None':{}}
+    with st.expander('Upload custom manifests', expanded=True):
+        with st.form(key='manifest_upload_form', clear_on_submit=True):
+            col1, _, col3 = st.columns([3,1,2])
+            with col1:
+                manifest_uploads = st.file_uploader(label="Custom manifest upload", accept_multiple_files=True)
+            with col3:
+                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+                submit_manifest = st.form_submit_button()
+                if submit_manifest and manifest_uploads:
+                    success = exp.read_custom_manifests(manifest_uploads)
+                    if not success:
+                        st.markdown('<p style="color:#FF0000">Failed to read custom manifests.'+\
+                                'Please see the log</p>', unsafe_allow_html=True)
+                    if success:
+                        st.write('Successfully read custom manifests')
+       
+        with st.form(key='selection_form', clear_on_submit=True):
+            st.write('Select up to four 96-well sample plate IDs (barcodes) to combine into a 384-well DNA plate')
+            col1, col2, col3 = st.columns([3,3,1])
+            plate_options = [util.unguard_pbc(pid, silent=True) for pid in exp.unassigned_plates['custom'].keys()]
+            with col1:
+                p1 = util.guard_pbc(st.selectbox(label='Plate 1', options=plate_options, key='s1'), silent=True)
+                p2 = util.guard_pbc(st.selectbox(label='Plate 2', options=plate_options, key='s2'), silent=True)
+            with col2:
+                p3 = util.guard_pbc(st.selectbox(label='Plate 3', options=plate_options, key='s3'), silent=True)
+                p4 = util.guard_pbc(st.selectbox(label='Plate 4', options=plate_options, key='s4'), silent=True)
+            with col3:
+                dest_pid = st.text_input(label='Destination plate ID (barcode)', key='dest1')
+                if dest_pid:
+                    dest_pid = util.guard_pbc(dest_pid, silent=True)
+                    if dest_pid in exp.dest_sample_plates or dest_pid in exp.plate_location_sample or \
+                            dest_pid in exp.unassigned_plates[1] or dest_pid in exp.unassigned_plates[2] or \
+                            dest_pid in exp.unassigned_plates[3] or dest_pid in exp.unassigned_plates[4] or \
+                            dest_pid in exp.unassigned_plates['custom']:
+                        st.markdown('<p style="color:#FF0000">WARNING! Destination plate barcode already in use: ' +\
+                                util.unguard_pbc(dest_pid, silent=True) + '</p>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+                submit_selection = st.form_submit_button()
+                if submit_selection and dest_pid:
+                    sample_plates = [pid for pid in [p1,p2,p3,p4] if pid != util.guard_pbc('None', silent=True) and pid is not None]
+                    print(f'{sample_plates=}', file=sys.stderr)
+                    success = exp.accept_custom_manifests(dest_pid, sample_plates)
+                    if not success:
+                        st.markdown('<p style="color:#FF0000">Failed to assign custom plates.'+\
+                                'Please see the log</p>', unsafe_allow_html=True)
+                    if success:
+                        st.write('Successfully assigned custom plates')
+    exp.save()
 
 
-def load_database_data():
-    database_exp = st.expander('Add data from a database')
-    #??
-    db_r1cols = database_exp.columns(4)
-    db_r2cols = database_exp.columns(4)
+#def load_database_data():
+#    """
+#    Import Musterer data from the webservice. 
+#    Keep as a template for eventual Rodentity web service 
+#    """
+#    database_exp = st.expander('Add data from a database')
+#    db_r1cols = database_exp.columns(4)
+#    db_r2cols = database_exp.columns(4)
 
-    epp1 = epp2 = epp3 = epp4 = dnap = ''
-    epp1_str = epp2_str = epp3_str = epp4_str = None
-    epp_files = [epp1, epp2, epp3, epp4]
-    epp_strings = [epp1_str, epp2_str, epp3_str, epp4_str]
-    dnap_msg = 'DNA plate barcode'
+#    epp1 = epp2 = epp3 = epp4 = dnap = ''
+#    epp1_str = epp2_str = epp3_str = epp4_str = None
+#    epp_files = [epp1, epp2, epp3, epp4]
+#    epp_strings = [epp1_str, epp2_str, epp3_str, epp4_str]
+#    dnap_msg = 'DNA plate barcode'
 
-    #Create buttons for the four Ear punch plate and file (row 1 columns) - not sure if it works yet
-    for i in range(4):
-        num=str(i+1)
-        epp_msg = f"Ear punch plate {num} barcode"
-        key_txt = f"epp{num}input"
-        epp_str = epp_strings[i]
+#    #Create buttons for the four Ear punch plate and file (row 1 columns) - not sure if it works yet
+#    for i in range(4):
+#        num=str(i+1)
+#        epp_msg = f"Ear punch plate {num} barcode"
+#        key_txt = f"epp{num}input"
+#        epp_str = epp_strings[i]
 
-        epp_str = db_r1cols[i].text_input(label='', placeholder=epp_msg, key=key_txt).strip()
-        if epp_str:
-            try:
-                epp_files[i] = util.guard_pbc(epp_str)
-            except Exception as exc:
-                print(f'load_database_data() {epp_msg=} {exc}', file=sys.stderr)
+#        epp_str = db_r1cols[i].text_input(label='', placeholder=epp_msg, key=key_txt).strip()
+#        if epp_str:
+#            try:
+#                epp_files[i] = util.guard_pbc(epp_str)
+#            except Exception as exc:
+#                print(f'load_database_data() {epp_msg=} {exc}', file=sys.stderr)
 
-    #Row2 column 1: DNA plate ID input
-    dnap_str = db_r2cols[0].text_input(label='', placeholder=dnap_msg, key='dnap_input').strip()
-    if dnap_str:
-        try:
-            dnap = file_io.guard_pbc(dnap_str)
-        except Exception as exc:
-            print(f'load_database_data() {dnap_msg=} {exc}', file=sys.stderr)
+#    #Row2 column 1: DNA plate ID input
+#    dnap_str = db_r2cols[0].text_input(label='', placeholder=dnap_msg, key='dnap_input').strip()
+#    if dnap_str:
+#        try:
+#            dnap = file_io.guard_pbc(dnap_str)
+#        except Exception as exc:
+#            print(f'load_database_data() {dnap_msg=} {exc}', file=sys.stderr)
 
-    # nothing in row2col2
+#    # nothing in row2col2
 
-    #Row2 column 3: Search button
-    db_r2cols[2].markdown('')
-    db_r2cols[2].markdown('')
-    add_musterer_button = db_r2cols[3].button('Search Musterer')
-    if add_musterer_button:
-        epps = [epp.strip() for epp in epp_files if epp.strip() != '']
-        for epp in epps:
-            success = db_io.get_plate_musterer(st.session_state['experiment'].name, epp, True)
-        success = st.session_state['experiment'].add_musterer_plate_set(epps,dnap)
-        if not success:
-            db_r2cols[2].markdown('<p style="color:#FF0000">Failed to incorporate manifest. Please read the log.</p>', unsafe_allow_html=True)
-        st.experimental_rerun() #?
+#    #Row2 column 3: Search button
+#    db_r2cols[2].markdown('')
+#    db_r2cols[2].markdown('')
+#    add_musterer_button = db_r2cols[3].button('Search Musterer')
+#    if add_musterer_button:
+#        epps = [epp.strip() for epp in epp_files if epp.strip() != '']
+#        for epp in epps:
+#            success = db_io.get_plate_musterer(st.session_state['experiment'].name, epp, True)
+#        success = st.session_state['experiment'].add_musterer_plate_set(epps,dnap)
+#        if not success:
+#            db_r2cols[2].markdown('<p style="color:#FF0000">Failed to incorporate manifest. Please read the log.</p>', unsafe_allow_html=True)
+#        st.experimental_rerun() #?
 
-    db_r2cols[3].markdown('')
-    db_r2cols[3].markdown('')
+#    db_r2cols[3].markdown('')
+#    db_r2cols[3].markdown('')
 
 def provide_barcodes(key):
     """
@@ -450,36 +511,7 @@ def upload_miseq_fastqs(exp):
 #                            st.write('Successfully added plate set')
 
 
-def upload_custom_demo():
-    """ Demonstration upload panel for custom manifests """
-    exp = st.session_state['experiment']
-    with st.expander('Upload custom manifests', expanded=False):
-        with st.form(key='manifest_upload_form', clear_on_submit=True):
-            col1, _, col3 = st.columns([3,1,2])
-            with col1:
-                manifest_upload = st.file_uploader(label="Custom manifest upload")
-            with col3:
-                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
-                submit_manifest = st.form_submit_button()
-                if submit_manifest and manifest_upload:
-                    success = exp.add_custom_manifest_demo(manifest_upload)
 
-        
-        with st.form(key='selection_form', clear_on_submit=True):
-            st.write('Select up to four 96-well sample plate IDs (barcodes) to combine into a 384-well DNA plate')
-            col1, col2, col3 = st.columns([3,3,1])
-            with col1:
-                p1 = st.selectbox(label='Plate 1', options=['',1234,1235,1236,1237], key='s1')
-                p3 = st.selectbox(label='Plate 3', options=['',1234,1235,1236,1237], key='s3')
-            with col2:
-                p2 = st.selectbox(label='Plate 2', options=['',1234,1235,1236,1237], key='s2')
-                p4 = st.selectbox(label='Plate 4', options=['',1234,1235,1236,1237], key='s4')
-            with col3:
-                dest_pid = st.text_input(label='Destination plate ID (barcode)', key='dest1')
-                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
-                submit_selection = st.form_submit_button()
-                if submit_selection and dest_pid:
-                    pass
 
 
 

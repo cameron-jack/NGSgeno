@@ -350,13 +350,16 @@ def main():
                 if len(summary) > 1:
                     expanded = True
                 with st.expander(label='Summary of loaded data', expanded=expanded):
-                    dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples', height=200)
+                    summary_holder = st.empty()
+                    
                 ld.load_rodentity_data()
                 #ld.load_database_data()
-                ld.load_custom_csv()
+                #ld.load_custom_csv()
                 #ld.upload_rodentity_demo()
-                #ld.upload_custom_demo()
+                ld.load_custom_manifests()
                 st.session_state['load_tab'] = 1
+                with summary_holder:
+                    dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples', height=180)
 
             #load consumables, references and assays/primer mappings
             if load_data_tab == 2:
@@ -394,7 +397,6 @@ def main():
 
             exp = st.session_state['experiment']
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
-
 
             #download nimbus
             if nimbus_tab == 1:
