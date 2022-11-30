@@ -555,12 +555,12 @@ class Experiment():
                                     ngs_assays.append(assay['name'])
                                     ngs_assayFamilies.add(assay['name'].split('_')[0])
                             
-                        self.plate_location_sample[spid][pos]['assays'] = assays.copy()
-                        self.plate_location_sample[spid][pos]['assayFamilies'] = list(assayFamilies)
-                        self.plate_location_sample[spid][pos]['ngs_assays'] = ngs_assays.copy()
-                        self.plate_location_sample[spid][pos]['ngs_assayFamilies'] = list(ngs_assayFamilies)
-                        self.plate_location_sample[spid][pos]['custom_assays'] = []
-                        self.plate_location_sample[spid][pos]['custom_assayFamilies'] = []
+                    self.plate_location_sample[spid][pos]['assays'] = assays.copy()
+                    self.plate_location_sample[spid][pos]['assayFamilies'] = list(assayFamilies)
+                    self.plate_location_sample[spid][pos]['ngs_assays'] = ngs_assays.copy()
+                    self.plate_location_sample[spid][pos]['ngs_assayFamilies'] = list(ngs_assayFamilies)
+                    self.plate_location_sample[spid][pos]['custom_assays'] = []
+                    self.plate_location_sample[spid][pos]['custom_assayFamilies'] = []
                 
                 self.log(f"Success: added sample plate {spid} with destination {dna_plate_id} ")
 
@@ -874,11 +874,19 @@ class Experiment():
                     if gpid not in plate_entries:
                         plate_entries[gpid] = {'purpose':'sample','source':'manifest', 'wells':set()}  # create plate_location_sample entries here
                     assays = []
+                    ngs_assays = []
+                    custom_assays = []
                     # do a first pass to set up recording a sample in a well
                     for k,c in enumerate(cols):
                         if k in assay_cols:
                             if c != '':  # ignore empty assay entries
-                                assays.append(c)  # combine assays into one column
+                                if c.startswith('NGS::'):
+                                    a = c.lstrip('NGS::')
+                                    assays.append(a)  # combine assays into one column
+                                    ngs_assays.append(a)
+                                else:
+                                    assays.append(c)
+                                    custom_assays.append(c)
                         if header_dict[k] == 'well':
                             well = util.unpadwell(c.upper())
                             if well in plate_entries[gpid]['wells'] and plate_entries[gpid][well] != {}:
@@ -911,6 +919,10 @@ class Experiment():
                                 print(type(header_dict[k]), header_dict[k], str(c), file=sys.stderr)
                     plate_entries[gpid][well]['assays'] = assays
                     plate_entries[gpid][well]['assayFamilies'] = list(set([a.split('_')[0] for a in assays]))
+                    plate_entries[gpid][well]['ngs_assays'] = ngs_assays
+                    plate_entries[gpid][well]['ngs_assayFamilies'] = list(set([a.split('_')[0] for a in ngs_assays]))
+                    plate_entries[gpid][well]['custom_assays'] = custom_assays
+                    plate_entries[gpid][well]['custom_assayFamilies'] = list(set([a.split('_')[0] for a in custom_assays]))
 
                 for gpid in plate_entries:
                     if gpid in self.unassigned_plates or gpid in self.plate_location_sample:

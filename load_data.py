@@ -87,7 +87,7 @@ def load_rodentity_data():
                 used_keys = set()
                 for rod_epp in rodentity_epps:
                     rod_pid = util.guard_pbc(rod_epp.name.rstrip('.json'), silent=True)
-                    if all([exp.unassigned_plates[unass_pid] != '' for unass_pid in exp.unassigned_plates]):
+                    if all([exp.unassigned_plates[slot] != '' for slot in [1,2,3,4]]):
                         st.markdown(f'<p style="color:#FF0000">Ran out of free slots for {util.unguard_pbc(rod_pid, silent=True)}</p>', unsafe_allow_html=True)
                         continue
                     if rod_pid in exp.dest_sample_plates or rod_pid in exp.plate_location_sample or \
@@ -99,7 +99,7 @@ def load_rodentity_data():
                         sleep(0.5)
                         continue                     
                     for key in exp.unassigned_plates:
-                        if key not in used_keys and key != '':
+                        if key not in used_keys and key != 'custom' and key != 'None':
                             exp.unassigned_plates[key] = rod_pid
                             used_keys.add(key)
                             # Save a copy we can edit and reload
@@ -137,12 +137,12 @@ def load_rodentity_data():
                         rod_dp in exp.unassigned_plates['custom']:
                     st.markdown('<p style="color:#FF0000">Destination plate barcode already in use: ' +\
                             util.unguard_pbc(rod_dp, silent=True) + '</p>', unsafe_allow_html=True)
-                    sleep(2)
+                    sleep(1.5)
                 else:
-                    success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in exp.unassigned_plates], rod_dp)
+                    success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in [1,2,3,4] if exp.unassigned_plates[k]], rod_dp)
                     if not success:
                         st.markdown('<p style="color:#FF0000">Failed to incorporate plate set. Please read the log.</p>', unsafe_allow_html=True)
-                        sleep(2)
+                        sleep(1.5)
                     else:
                         st.write('Successfully added plate set')
                         sleep(1)
@@ -308,7 +308,7 @@ def provide_barcodes(key):
                 success = exp.add_pcr_plates([guarded_pcr_plate_barcode])
                 if success:
                     st.write(f'Successfully added PCR plate barcode {pcr_plate_barcode}')
-                    sleep(2)
+                    sleep(1.5)
                     st.experimental_rerun()
                 else:
                     st.write(f'Could not add PCR plate barcode {pcr_plate_barcode}, please see the log')
@@ -326,7 +326,7 @@ def provide_barcodes(key):
                 success = exp.add_standard_taqwater_plates([taqwater_plate_barcode])
                 if success:
                     st.write(f'Successfully added taq+water plate barcode {taqwater_plate_barcode}')
-                    sleep(2)
+                    sleep(1.5)
                     st.experimental_rerun()
                 else:
                     st.write(f'Could not add taq+water plate barcode {taqwater_plate_barcode}, please see the log')

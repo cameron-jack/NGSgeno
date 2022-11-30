@@ -64,8 +64,8 @@ def nimbus_gen(exp):
     As a file generator() it needs to create a transaction (exp.reproducible_steps) entry
     """
     transactions = {}
-    try:
-    #if True:
+    #try:
+    if True:
         
         for dna_BC in exp.dest_sample_plates:
             ug_dnaBC = util.unguard_pbc(dna_BC, silent=True)
@@ -144,11 +144,11 @@ def nimbus_gen(exp):
                             transactions[dna_fn][pbc][pos] = -1000 # 1000 nl of sample is transferred
                             transactions[fnstg][pbc][pos] = -1000
                 
-    except Exception as exc:
-        print("Transactions in nimbus_gen on fail: ", transactions, file=sys.stderr)
-        exp.log(f'Error: Nimbus input file creation {exc}')
-        exp.save()
-        return False
+    #except Exception as exc:
+    #    print("Transactions in nimbus_gen on fail: ", transactions, file=sys.stderr)
+    #    exp.log(f'Error: Nimbus input file creation {exc}')
+    #    exp.save()
+    #    return False
     print("Transactions in nimbus_gen()", transactions, file=sys.stderr)
     exp.add_pending_transactions(transactions)
     exp.log(f'Success: Hamilton Nimbus plate definition files have been generated')
