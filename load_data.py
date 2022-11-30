@@ -81,8 +81,9 @@ def load_rodentity_data():
             disable_uploads = False
 
         with st.form('rodentity_upload_form'):
-            rodentity_epps = st.file_uploader('Choose up to four Rodentity JSON files', type='json', accept_multiple_files=True, disabled=disable_uploads)
-            rod_upload_submit_button = st.form_submit_button('Upload')
+            epps_col1, epps_col2 = st.columns([1,2])
+            rodentity_epps = epps_col1.file_uploader('Choose up to four Rodentity JSON files', type='json', accept_multiple_files=True, disabled=disable_uploads)
+            rod_upload_submit_button = st.form_submit_button('Submit')
             if rod_upload_submit_button and rodentity_epps:
                 used_keys = set()
                 for rod_epp in rodentity_epps:
@@ -110,7 +111,7 @@ def load_rodentity_data():
                             break
                 exp.save()
     
-        rod_col1, rod_col2 = st.columns(2)
+        rod_col1, rod_col2, _ = st.columns([1,1,1])
         with rod_col1.form('set_rod_plates_form', clear_on_submit=True):
             for i in range(4):
                 plates_to_clear[i] = st.checkbox(f"P{str(i+1)}: {util.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
@@ -125,7 +126,7 @@ def load_rodentity_data():
                 
 
         with rod_col2.form('rod_destination_form', clear_on_submit=True):
-            rod_dp = st.text_input('Destination plate barcode', max_chars=30, key='rod_dp_key')
+            rod_dp = st.text_input('Destination plate ID (barcode)', max_chars=30, key='rod_dp_key')
             if rod_dp:
                 rod_dp = util.guard_pbc(rod_dp, silent=True)
             accept_rod_dest_button = st.form_submit_button('Accept')
@@ -187,11 +188,10 @@ def load_custom_manifests():
         exp.unassigned_plates['custom'] = {'None':{}}
     with st.expander('Upload custom manifests', expanded=True):
         with st.form(key='manifest_upload_form', clear_on_submit=True):
-            col1, _, col3 = st.columns([3,1,2])
+            col1, col3 = st.columns([1,2])
             with col1:
                 manifest_uploads = st.file_uploader(label="Custom manifest upload", accept_multiple_files=True)
-            with col3:
-                st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
+                #st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
                 submit_manifest = st.form_submit_button()
                 if submit_manifest and manifest_uploads:
                     success = exp.read_custom_manifests(manifest_uploads)
@@ -203,7 +203,7 @@ def load_custom_manifests():
        
         with st.form(key='selection_form', clear_on_submit=True):
             st.write('Select up to four 96-well sample plate IDs (barcodes) to combine into a 384-well DNA plate')
-            col1, col2, col3 = st.columns([3,3,1])
+            col1, col2, _, col3, _ = st.columns([2,2,1,2,2])
             plate_options = [util.unguard_pbc(pid, silent=True) for pid in exp.unassigned_plates['custom'].keys()]
             with col1:
                 p1 = util.guard_pbc(st.selectbox(label='Plate 1', options=plate_options, key='s1'), silent=True)
@@ -223,7 +223,7 @@ def load_custom_manifests():
                                 util.unguard_pbc(dest_pid, silent=True) + '</p>', unsafe_allow_html=True)
                     else:
                         st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
-                submit_selection = st.form_submit_button()
+                submit_selection = st.form_submit_button("Accept")
                 if submit_selection and dest_pid:
                     sample_plates = [pid for pid in [p1,p2,p3,p4] if pid != util.guard_pbc('None', silent=True) and pid is not None]
                     print(f'{sample_plates=}', file=sys.stderr)

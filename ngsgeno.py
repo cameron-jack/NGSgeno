@@ -298,13 +298,13 @@ def main():
             ch_run_path = 'run_' + run_folder
             if os.path.exists(ch_run_path):
                 exp = load_experiment(ch_run_path)
-                st.session_state['folder'] = 'existing'
+                #st.session_state['folder'] = 'existing'
                 if not exp:
                     error_msg = "Could not load experiment from: "+ ch_run_path
                 elif ch_run_path.endswith(exp.name):
                     # success!
                     st.session_state['experiment'] = exp
-                    st.session_state['pipeline_stage'] = 0
+                    #st.session_state['pipeline_stage'] = 0
                     st.session_state['load_tab'] = 1
                     st.session_state['nimbus_tab'] = 1
                     st.session_state['primer_tab'] = 1
@@ -323,10 +323,10 @@ def main():
         pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Reports"]
         pipeline_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
                                                                                  
-        if not pipeline_stage and pipeline_stage != 0: # not pipeline_stage evaluates to 0!
-            if 'pipeline_stage' not in st.session_state or st.session_state['pipeline_stage'] is None:
-                st.session_state['pipeline_stage'] = 0
-            pipeline_stage = st.session_state['pipeline_stage']
+        # if not pipeline_stage and pipeline_stage != 0: # not pipeline_stage evaluates to 0!
+        #     if 'pipeline_stage' not in st.session_state or st.session_state['pipeline_stage'] is None:
+        #         st.session_state['pipeline_stage'] = 0
+        #     pipeline_stage = st.session_state['pipeline_stage']
         
         #Load data
         if pipeline_stage == 0:
@@ -474,7 +474,8 @@ def main():
                     st.write('The following Echo input files are expected (from the Nimbus):')
                     st.markdown(f'<p style="text-align:left;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
                     with st.form("Echo input upload", clear_on_submit=True):
-                        nim_outputs = st.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
+                        col1, col2 = st.columns([2, 1])
+                        nim_outputs = col1.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
                             accept_multiple_files=True, help='You can upload more than one file at once')
                         submitted = st.form_submit_button("Upload files")
 
@@ -575,10 +576,11 @@ def main():
                             if echo_picklist_go:
                                 success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
                                         included_DNA_plates, included_PCR_plates, included_taqwater_plates)
+                                dc.show_echo1_outputs()
                                 if not success:
                                     st.write('Picklist generation failed. Please see the log')
                                 
-                        dc.show_echo1_outputs()
+                        
                     
                     else:
                         no_dna_msg = "Include at least one DNA plate to carry on with the pipeline"
@@ -610,6 +612,10 @@ def main():
             #PCR components
             if index_tab == 1:
                 index_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                pcr_comp_holder = st.empty()
+                ld.provide_barcodes('index_barcodes')
+                ld.upload_pcr2_files('index_upload')
+                st.session_state['index_tab'] = 1
                 if available_nimbus:
                     with index_checklist_exp:
                         included_PCR_plates, included_taqwater_plates, included_index_plates,\
@@ -617,14 +623,13 @@ def main():
                                     plate_checklist_expander(available_nimbus, pcr_stage=2)
                 
                     assay_usage = exp.get_assay_usage()
-                    dc.display_pcr_components(assay_usage, 2)
+                    with pcr_comp_holder:
+                        dc.display_pcr_components(assay_usage, 2)
                 else:
                     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                     st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
                             unsafe_allow_html=True)
-                ld.provide_barcodes('index_barcodes')
-                ld.upload_pcr2_files('index_upload')
-                st.session_state['index_tab'] = 1
+                
 
             #plate info
             #if index_tab == 2:
@@ -844,7 +849,7 @@ def main():
             with info_holder:
                 dc.info_viewer(1)
 
-        st.session_state['pipeline_stage'] = pipeline_stage
+        #st.session_state['pipeline_stage'] = pipeline_stage
         #st.session_state['folder'] = None
 
 if __name__ == '__main__':
