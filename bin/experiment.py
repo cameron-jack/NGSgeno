@@ -878,6 +878,8 @@ class Experiment():
                     custom_assays = []
                     # do a first pass to set up recording a sample in a well
                     for k,c in enumerate(cols):
+                        if c.lower() == 'none':
+                            continue
                         if k in assay_cols:
                             if c != '':  # ignore empty assay entries
                                 if c.startswith('NGS::'):
@@ -896,6 +898,8 @@ class Experiment():
                             plate_entries[gpid][well] = {}
                     # now do a second pass to collect everything together
                     for k,c in enumerate(cols):
+                        if c.lower() == 'none':
+                            c = ''
                         if header_dict[k] == 'well':
                             continue
                         if header_dict[k] == 'samplebarcode':
