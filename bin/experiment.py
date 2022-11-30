@@ -636,13 +636,14 @@ class Experiment():
             for spid in sample_plate_ids:
                 if spid not in self.plate_location_sample:  # should always be the case
                     self.plate_location_sample[spid] = {'purpose':'sample','source':'musterer','wells':set()}
-                for record in sample_info:  # 'wellLocation', 'mouse', 'mouseBarcode', 'mouseId'
+                for i, record in enumerate(sample_info):  # 'wellLocation', 'mouse', 'mouseBarcode', 'mouseId'
                     pos = util.unpadwell(record['wellLocation'])
                     self.plate_location_sample[spid]['wells'].add(pos)
                     self.plate_location_sample[spid][pos] = record['mouse'].copy()  # dict
                     self.plate_location_sample[spid][pos]['mouseId'] = record['mouseId']
                     self.plate_location_sample[spid][pos]['barcode'] = util.guard_mbc(record['mouseBarcode'])
                     self.plate_location_sample[spid][pos]['must_assays'] = record['mouse']['assays'].copy()
+                    self.plate_location_sample[spid][pos]['sampleNumber'] = i+1
                     assays = [assay['assayName'] for assay in record['mouse']['assays']]
                     assayFamilies = set([a.split('_')[0] for a in assays])
                     self.plate_location_sample[spid][pos]['assays'] = assays.copy()
@@ -655,163 +656,164 @@ class Experiment():
             self.save()
         return True
 
-    def add_manifest(self, manifest_stream, default_manifest_type='c'):
-        """ Because streamlit's uploader is derived from BytesIO we have a byte stream we have to deal with.
-            The manifest is a CSV. Turn this into a list of dicts which can then handle sensibly.
-            We also take an optional default_manifest_type ['c','r','m'] for custom, rodentity, or musterer respectively
-            Returns True on success, False on failure
-        """
-        if self.locked:
-            self.log('Error: Cannot add manifest while lock is active')
-            return False
-        try:
-            self.log(f"Begin: add custom manifest")
+    #def add_manifest(self, manifest_stream, default_manifest_type='c'):
+    #    """ Because streamlit's uploader is derived from BytesIO we have a byte stream we have to deal with.
+    #        The manifest is a CSV. Turn this into a list of dicts which can then handle sensibly.
+    #        We also take an optional default_manifest_type ['c','r','m'] for custom, rodentity, or musterer respectively
+    #        Returns True on success, False on failure
+    #       DEPRECATED
+    #    """
+    #    if self.locked:
+    #        self.log('Error: Cannot add manifest while lock is active')
+    #        return False
+    #    try:
+    #        self.log(f"Begin: add custom manifest")
         
-            #self.log(f"Debug: {self.name=} {manifest_strm=} {default_manifest_type=}")
-            manifest_name = manifest_stream.name
-            if manifest_name in self.uploaded_files:
-                self.log(f'Warning: {manifest_name} already present in records, overwriting')
-            self.uploaded_files[manifest_name] = {'plates':[], 'purpose':'custom manifest'}
-            manifest_io = StringIO(manifest_stream.getvalue().decode("utf-8"))
+    #        #self.log(f"Debug: {self.name=} {manifest_strm=} {default_manifest_type=}")
+    #        manifest_name = manifest_stream.name
+    #        if manifest_name in self.uploaded_files:
+    #            self.log(f'Warning: {manifest_name} already present in records, overwriting')
+    #        self.uploaded_files[manifest_name] = {'plates':[], 'purpose':'custom manifest'}
+    #        manifest_io = StringIO(manifest_stream.getvalue().decode("utf-8"))
         
-            header = ''
-            manifest_info = []
-            in_csv = csv.reader(manifest_io, delimiter=',')
-            for i, row in enumerate(in_csv):
-                if 'barcode' in ''.join(row).lower():
-                    header = row
-                    continue  # header
-                elif all([col.strip() for col in row]) == '': # blank
-                    continue
-                elif any(col.strip() == '' and j < 5 for j,col in enumerate(row)):
-                    self.log(f"Warning: not adding blank manifest entry in row {i+1}: {row}")
-                    continue
-                else:
-                    manifest_info.append({header[i]:r.strip() for i,r in enumerate(row) if i<len(header)})
+    #        header = ''
+    #        manifest_info = []
+    #        in_csv = csv.reader(manifest_io, delimiter=',')
+    #        for i, row in enumerate(in_csv):
+    #            if 'barcode' in ''.join(row).lower():
+    #                header = row
+    #                continue  # header
+    #            elif all([col.strip() for col in row]) == '': # blank
+    #                continue
+    #            elif any(col.strip() == '' and j < 5 for j,col in enumerate(row)):
+    #                self.log(f"Warning: not adding blank manifest entry in row {i+1}: {row}")
+    #                continue
+    #            else:
+    #                manifest_info.append({header[i]:r.strip() for i,r in enumerate(row) if i<len(header)})
 
-            # gather up dest plates and sample plates so we can clear these if we already have them in the experiment
-            dpids_spids = {}  # {dpid:set([spid,..])}
-            # go through entries and guard barcodes as needed
-            for i,entry in enumerate(manifest_info):
-                for key in entry:
-                    if key == 'Dest barcode':
-                        manifest_info[i][key] = util.guard_pbc(entry[key], silent=True)
-                        dpids_spids[manifest_info[i][key]] = set()
-                    if key == 'Plate barcode':
-                        manifest_info[i][key] = util.guard_pbc(entry[key], silent=True)
-                    if key == 'Sample barcode':
-                        if not util.is_guarded(entry[key]):
-                            if default_manifest_type == 'c':
-                                manifest_info[i][key] = util.guard_cbc(entry[key])
-                            elif default_manifest_type == 'r':
-                                manifest_info[i][key] = util.guard_rbc(entry[key])
-                            elif default_manifest_type == 'm':
-                                manifest_info[i][key] = util.guard_mbc(entry[key])
-            for i,entry in enumerate(manifest_info):
-                dpids_spids[entry['Dest barcode']].add(entry['Plate barcode'])
+    #        # gather up dest plates and sample plates so we can clear these if we already have them in the experiment
+    #        dpids_spids = {}  # {dpid:set([spid,..])}
+    #        # go through entries and guard barcodes as needed
+    #        for i,entry in enumerate(manifest_info):
+    #            for key in entry:
+    #                if key == 'Dest barcode':
+    #                    manifest_info[i][key] = util.guard_pbc(entry[key], silent=True)
+    #                    dpids_spids[manifest_info[i][key]] = set()
+    #                if key == 'Plate barcode':
+    #                    manifest_info[i][key] = util.guard_pbc(entry[key], silent=True)
+    #                if key == 'Sample barcode':
+    #                    if not util.is_guarded(entry[key]):
+    #                        if default_manifest_type == 'c':
+    #                            manifest_info[i][key] = util.guard_cbc(entry[key])
+    #                        elif default_manifest_type == 'r':
+    #                            manifest_info[i][key] = util.guard_rbc(entry[key])
+    #                        elif default_manifest_type == 'm':
+    #                            manifest_info[i][key] = util.guard_mbc(entry[key])
+    #        for i,entry in enumerate(manifest_info):
+    #            dpids_spids[entry['Dest barcode']].add(entry['Plate barcode'])
 
-            # now clear any existing plateIds
-            for dpid in dpids_spids:
-                if dpid in self.plate_location_sample:
-                    self.log(f"Info: Clearing existing plate details for {dpid=}")
-                    self.plate_location_sample.pop(dpid)
-                for spid in dpids_spids[dpid]:
-                    if spid in self.plate_location_sample:
-                        self.log(f"Info: Clearing existing plate details for {spid=}")
-                        self.plate_location_sample.pop(spid)
+    #        # now clear any existing plateIds
+    #        for dpid in dpids_spids:
+    #            if dpid in self.plate_location_sample:
+    #                self.log(f"Info: Clearing existing plate details for {dpid=}")
+    #                self.plate_location_sample.pop(dpid)
+    #            for spid in dpids_spids[dpid]:
+    #                if spid in self.plate_location_sample:
+    #                    self.log(f"Info: Clearing existing plate details for {spid=}")
+    #                    self.plate_location_sample.pop(spid)
 
-            #print(f"{manifest_info=}")
-            dest_pids_sample_pids = {}
-            sample_pids = set()
-            for entry in manifest_info:
-                if entry['Dest barcode'] not in dest_pids_sample_pids:
-                    dest_pids_sample_pids[entry['Dest barcode']] = set()
-                dest_pids_sample_pids[entry['Dest barcode']].add(entry['Plate barcode'])
-                sample_pids.add(entry['Plate barcode'])
+    #        #print(f"{manifest_info=}")
+    #        dest_pids_sample_pids = {}
+    #        sample_pids = set()
+    #        for entry in manifest_info:
+    #            if entry['Dest barcode'] not in dest_pids_sample_pids:
+    #                dest_pids_sample_pids[entry['Dest barcode']] = set()
+    #            dest_pids_sample_pids[entry['Dest barcode']].add(entry['Plate barcode'])
+    #            sample_pids.add(entry['Plate barcode'])
         
-            #self.dest_sample_plates = {}  # {dest_pid:[4 sample plate ids]}
-            #self.plate_location_sample = {}  # pid:{well:sample_id}
-            #self.sample_info = {}  # sample_id: {strain:str, assays: [], possible_gts: [], 
-            #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] }
+    #        #self.dest_sample_plates = {}  # {dest_pid:[4 sample plate ids]}
+    #        #self.plate_location_sample = {}  # pid:{well:sample_id}
+    #        #self.sample_info = {}  # sample_id: {strain:str, assays: [], possible_gts: [], 
+    #        #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] }
 
-            # check for overused destination PIDs and clashes with sample plate barcodes. Note: we can't meaningfully check for duplicated destination PIDs
-            dp_count = {dp:len(sps) for dp, sps in dest_pids_sample_pids.items()}     
-            for dp in dp_count:
-                if dp_count[dp] > 4:
-                    self.log(f"Error: 384-well DNA destination plate {dp} used by too many sample plates: {dp_count[dp]}")
-                    return False
-                if dp in sample_pids:
-                    self.log(f"Error: 384-well DNA destination plate barcode also used as a sample plate barcode {dp}")
-                    return False
+    #        # check for overused destination PIDs and clashes with sample plate barcodes. Note: we can't meaningfully check for duplicated destination PIDs
+    #        dp_count = {dp:len(sps) for dp, sps in dest_pids_sample_pids.items()}     
+    #        for dp in dp_count:
+    #            if dp_count[dp] > 4:
+    #                self.log(f"Error: 384-well DNA destination plate {dp} used by too many sample plates: {dp_count[dp]}")
+    #                return False
+    #            if dp in sample_pids:
+    #                self.log(f"Error: 384-well DNA destination plate barcode also used as a sample plate barcode {dp}")
+    #                return False
             
 
-            # Warn for duplicate sample plate barcodes?
-            for sp in sample_pids:
-                dp_set = set()
-                for dp in dest_pids_sample_pids:
-                    for entry in manifest_info:
-                        if entry['Plate barcode'] == sp and entry['Dest barcode'] == dp:
-                            dp_set.add(dp)
-                if len(dp_set) > 1:
-                    self.log(f"Warning: Sample plate barcode {sp} used in multiple 384-well DNA destination plates: {dp_set}")
+    #        # Warn for duplicate sample plate barcodes?
+    #        for sp in sample_pids:
+    #            dp_set = set()
+    #            for dp in dest_pids_sample_pids:
+    #                for entry in manifest_info:
+    #                    if entry['Plate barcode'] == sp and entry['Dest barcode'] == dp:
+    #                        dp_set.add(dp)
+    #            if len(dp_set) > 1:
+    #                self.log(f"Warning: Sample plate barcode {sp} used in multiple 384-well DNA destination plates: {dp_set}")
         
-            # we need to collect destination, sample lists
-            # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], gts: [],
-            #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] } }
-            dp_samples = {}
-            for i,entry in enumerate(manifest_info):
-                if 'Sample No' in entry:
-                    sample_number = entry['Sample No']
-                else:
-                    sample_number = i+1
-                dest_pid = entry['Dest barcode']
-                if dest_pid not in self.uploaded_files[manifest_name]['plates']:
-                    self.uploaded_files[manifest_name]['plates'].append(dest_pid)
-                source_pid = entry['Plate barcode']
-                if source_pid not in self.uploaded_files[manifest_name]['plates']:
-                    self.uploaded_files[manifest_name]['plates'].append(source_pid)
-                well = util.unpadwell(entry['Well'])
-                assays = [entry[key] for key in entry if 'assay' in key.lower() and entry[key].strip()!='']
-                assayFamilies = set([a.split('_')[0] for a in assays])
+    #        # we need to collect destination, sample lists
+    #        # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], gts: [],
+    #        #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] } }
+    #        dp_samples = {}
+    #        for i,entry in enumerate(manifest_info):
+    #            if 'Sample No' in entry:
+    #                sample_number = entry['Sample No']
+    #            else:
+    #                sample_number = i+1
+    #            dest_pid = entry['Dest barcode']
+    #            if dest_pid not in self.uploaded_files[manifest_name]['plates']:
+    #                self.uploaded_files[manifest_name]['plates'].append(dest_pid)
+    #            source_pid = entry['Plate barcode']
+    #            if source_pid not in self.uploaded_files[manifest_name]['plates']:
+    #                self.uploaded_files[manifest_name]['plates'].append(source_pid)
+    #            well = util.unpadwell(entry['Well'])
+    #            assays = [entry[key] for key in entry if 'assay' in key.lower() and entry[key].strip()!='']
+    #            assayFamilies = set([a.split('_')[0] for a in assays])
                 
-                if dest_pid not in dp_samples:
-                    dp_samples[dest_pid] = set()
-                dp_samples[dest_pid].add(source_pid)
-                if source_pid not in self.plate_location_sample:
-                    self.plate_location_sample[source_pid] = {'purpose':'sample','source':'manifest', 'wells':set()}
-                if well in self.plate_location_sample[source_pid] and self.plate_location_sample[source_pid][well] != {}:
-                    self.log(f"Error: duplicate {well=} in {source_pid=}. Continuing...")
+    #            if dest_pid not in dp_samples:
+    #                dp_samples[dest_pid] = set()
+    #            dp_samples[dest_pid].add(source_pid)
+    #            if source_pid not in self.plate_location_sample:
+    #                self.plate_location_sample[source_pid] = {'purpose':'sample','source':'manifest', 'wells':set()}
+    #            if well in self.plate_location_sample[source_pid] and self.plate_location_sample[source_pid][well] != {}:
+    #                self.log(f"Error: duplicate {well=} in {source_pid=}. Continuing...")
 
-                self.plate_location_sample[source_pid]['wells'].add(well)
-                self.plate_location_sample[source_pid][well] = {}
-                self.plate_location_sample[source_pid][well]['barcode'] = entry['Sample barcode']
-                self.plate_location_sample[source_pid][well]['assays'] = assays.copy()
-                self.plate_location_sample[source_pid][well]['assayFamilies'] = list(assayFamilies)
-                self.plate_location_sample[source_pid][well]['sex'] = ''
-                self.plate_location_sample[source_pid][well]['strain'] = ''
-                self.plate_location_sample[source_pid][well]['other_id'] = ''
-                self.plate_location_sample[source_pid][well]['sampleNumber'] = str(sample_number)
-                for key in entry:
-                    if 'sex' in key.lower():
-                        self.plate_location_sample[source_pid][well]['sex'] = entry[key]
-                    elif 'strain' in key.lower():
-                        self.plate_location_sample[source_pid][well]['strain'] = entry[key]
-                    elif 'other_id' in key.lower():
-                        self.plate_location_sample[source_pid][well]['other_id'] = entry[key]
-                self.plate_location_sample[source_pid][well]['gts'] = []
-                self.plate_location_sample[source_pid][well]['possible_gts'] = []
-                self.plate_location_sample[source_pid][well]['parents'] = []      
+    #            self.plate_location_sample[source_pid]['wells'].add(well)
+    #            self.plate_location_sample[source_pid][well] = {}
+    #            self.plate_location_sample[source_pid][well]['barcode'] = entry['Sample barcode']
+    #            self.plate_location_sample[source_pid][well]['assays'] = assays.copy()
+    #            self.plate_location_sample[source_pid][well]['assayFamilies'] = list(assayFamilies)
+    #            self.plate_location_sample[source_pid][well]['sex'] = ''
+    #            self.plate_location_sample[source_pid][well]['strain'] = ''
+    #            self.plate_location_sample[source_pid][well]['other_id'] = ''
+    #            self.plate_location_sample[source_pid][well]['sampleNumber'] = str(sample_number)
+    #            for key in entry:
+    #                if 'sex' in key.lower():
+    #                    self.plate_location_sample[source_pid][well]['sex'] = entry[key]
+    #                elif 'strain' in key.lower():
+    #                    self.plate_location_sample[source_pid][well]['strain'] = entry[key]
+    #                elif 'other_id' in key.lower():
+    #                    self.plate_location_sample[source_pid][well]['other_id'] = entry[key]
+    #            self.plate_location_sample[source_pid][well]['gts'] = []
+    #            self.plate_location_sample[source_pid][well]['possible_gts'] = []
+    #            self.plate_location_sample[source_pid][well]['parents'] = []      
 
-            #print(f"\n{dp_samples=}")
-            for dp in dp_samples:
-                self.dest_sample_plates[dp] = list(dp_samples[dp])
-                for sample_pid in dp_samples[dp]:
-                    self.log(f"Success: added sample plate {sample_pid} with destination {dp}")
-                    #print('')
-                    #print(f"{sample_pid=} {self.plate_location_sample[sample_pid]=}")
-        finally:
-            self.save()
-        return True
+    #        #print(f"\n{dp_samples=}")
+    #        for dp in dp_samples:
+    #            self.dest_sample_plates[dp] = list(dp_samples[dp])
+    #            for sample_pid in dp_samples[dp]:
+    #                self.log(f"Success: added sample plate {sample_pid} with destination {dp}")
+    #                #print('')
+    #                #print(f"{sample_pid=} {self.plate_location_sample[sample_pid]=}")
+    #    finally:
+    #        self.save()
+    #    return True
 
     def read_custom_manifests(self, manifests):
         """
