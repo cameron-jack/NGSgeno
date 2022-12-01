@@ -342,6 +342,7 @@ def main():
                 load_data_tab = st.session_state['load_tab']
 
             info_holder = st.empty()
+            print(exp.plate_location_sample)
             
             # load sample data
             if load_data_tab == 1:

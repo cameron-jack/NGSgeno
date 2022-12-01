@@ -1185,6 +1185,64 @@ class Experiment():
         index_taq_vol = reactions * self.transfer_volumes['INDEX_TAQ_VOL']
         primer_vols = {a:assay_usage[a]*self.transfer_volumes['PRIMER_VOL'] for a in assay_usage}
         return primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol
+    
+    def get_index_avail(self, included_pids=None):
+        """
+        Returns {primer:count}, {primer:vol} from what's been loaded 
+        If included_pids is an iterable, only include plates with these ids
+        TODO: check the validity of line 1768ish fwd_idx and rev_idx. Assignment/comparison...
+        """
+        index_pids = []
+        warning_idxs = ''
+        for pid in self.plate_location_sample:
+            if self.plate_location_sample[pid]['purpose'] == 'index':
+                index_pids.append(pid)
+
+        if included_pids:
+            guarded_included_pids = [util.guard_pbc(pid, silent=True) for pid in included_pids]
+            index_pids = [pid for pid in index_pids if pid in guarded_included_pids]
+                
+        fwd_idx = {}
+        rev_idx = {}
+
+        for idx_pid in index_pids:
+            idx_plate = self.get_plate(idx_pid)
+
+            #print(f'get_index_remaining_available_volume() {idx_plate=}', file=sys.stderr)
+            
+            for well in idx_plate['wells']:
+                if 'idt_name' not in idx_plate[well]:
+                    continue
+                name = idx_plate[well]['idt_name']
+                # if 'volume' in idx_plate[well]:
+                #     #print(f"get_index_remaining_available_volume() {idx_plate[well]['volume']=}")
+                if 'i7F' in name:
+                    if name not in fwd_idx:
+                        fwd_idx[name] = {'count':0, 'req_vol':[], 'avail_vol':[]}
+                    fwd_idx[name]['count'] += 1
+                    if 'volume' in idx_plate[well]:
+                        fwd_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0)/1000)
+                elif 'i5R' in name:
+                    if name not in rev_idx:
+                        rev_idx[name] = {'count':0, 'req_vol':[],'avail_vol':[]}
+                    rev_idx[name]['count'] += 1
+                    if 'volume' in idx_plate[well]:
+                        rev_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0)/1000)
+                else:
+                    self.log('Unexpected index name:' + name, level='Warning')
+
+        max_i7F = len(fwd_idx)
+        max_i5R = len(rev_idx)
+        for idx in fwd_idx.keys():
+            fwd_idx[idx]['req_vol'].append(max_i5R*self.transfer_volumes['INDEX_VOL']/1000)
+            if 'avail_vol' not in fwd_idx[idx] or max_i5R*self.transfer_volumes['INDEX_VOL']/1000 > sum(fwd_idx[idx]['avail_vol']):
+                warning_idxs += idx + ', '
+        for idx in rev_idx.keys():
+            rev_idx[idx]['req_vol'].append(max_i7F*self.transfer_volumes['INDEX_VOL']/1000)
+            if 'avail_vol' not in rev_idx[idx] or max_i7F*self.transfer_volumes['INDEX_VOL']/1000 > sum(rev_idx[idx]['avail_vol']):
+                warning_idxs += idx + ', '
+
+        return fwd_idx, rev_idx, warning_idxs
      
     
     def get_index_remaining_available_volume(self, assay_usage=None, fwd_idx=None, rev_idx=None):
@@ -1205,15 +1263,24 @@ class Experiment():
         reaction_vol_capacity = 0
         for name in fwd_idx.keys():
             # get the number of possible reactions and keep the lower number from possible reactions or possible reaction partners
-            max_reactions = sum([floor((vol-util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])/self.transfer_volumes['INDEX_VOL']) \
+            print(fwd_idx[name]['avail_vol'])
+            print(util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])
+            max_reactions = sum([floor((vol*1000-util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])/self.transfer_volumes['INDEX_VOL']) \
                     for vol in fwd_idx[name]['avail_vol']])
             reaction_vol_capacity += min(max_reactions, max_i5R)
+            print(max_reactions)
+            print(reaction_vol_capacity)
 
         max_idx_pairs = max_i7F * max_i5R
+        print('Index')
+        print(max_idx_pairs)
+        print(reactions)
 
         return max_idx_pairs-reactions, max_idx_pairs, reaction_vol_capacity
+
+    
         
-    #def get_index_remaining_available_volume(self, assay_usage=None):
+    # def get_index_remaining_available_volume(self, assay_usage=None):
     #    """
     #    Returns the barcode pairs remaining, max available barcode pairs, max barcode pairs allowed by volume
     #    """
@@ -1870,63 +1937,7 @@ class Experiment():
         """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'index']
 
-    def get_index_avail(self, included_pids=None):
-        """
-        Returns {primer:count}, {primer:vol} from what's been loaded 
-        If included_pids is an iterable, only include plates with these ids
-        TODO: check the validity of line 1768ish fwd_idx and rev_idx. Assignment/comparison...
-        """
-        index_pids = []
-        warning_idxs = ''
-        for pid in self.plate_location_sample:
-            if self.plate_location_sample[pid]['purpose'] == 'index':
-                index_pids.append(pid)
-
-        if included_pids:
-            guarded_included_pids = [util.guard_pbc(pid, silent=True) for pid in included_pids]
-            index_pids = [pid for pid in index_pids if pid in guarded_included_pids]
-                
-        fwd_idx = {}
-        rev_idx = {}
-
-        for idx_pid in index_pids:
-            idx_plate = self.get_plate(idx_pid)
-
-            #print(f'get_index_remaining_available_volume() {idx_plate=}', file=sys.stderr)
-            
-            for well in idx_plate['wells']:
-                if 'idt_name' not in idx_plate[well]:
-                    continue
-                name = idx_plate[well]['idt_name']
-                # if 'volume' in idx_plate[well]:
-                #     #print(f"get_index_remaining_available_volume() {idx_plate[well]['volume']=}")
-                if 'i7F' in name:
-                    if name not in fwd_idx:
-                        fwd_idx[name] = {'count':0, 'req_vol':[], 'avail_vol':[]}
-                    fwd_idx[name]['count'] += 1
-                    if 'volume' in idx_plate[well]:
-                        fwd_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0)/1000)
-                elif 'i5R' in name:
-                    if name not in rev_idx:
-                        rev_idx[name] = {'count':0, 'req_vol':[],'avail_vol':[]}
-                    rev_idx[name]['count'] += 1
-                    if 'volume' in idx_plate[well]:
-                        rev_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0)/1000)
-                else:
-                    self.log('Unexpected index name:' + name, level='Warning')
-
-        max_i7F = len(fwd_idx)
-        max_i5R = len(rev_idx)
-        for idx in fwd_idx.keys():
-            fwd_idx[idx]['req_vol'].append(max_i5R*self.transfer_volumes['INDEX_VOL']/1000)
-            if 'avail_vol' not in fwd_idx[idx] or max_i5R*self.transfer_volumes['INDEX_VOL']/1000 > sum(fwd_idx[idx]['avail_vol']):
-                warning_idxs += idx + ', '
-        for idx in rev_idx.keys():
-            rev_idx[idx]['req_vol'].append(max_i7F*self.transfer_volumes['INDEX_VOL']/1000)
-            if 'avail_vol' not in rev_idx[idx] or max_i7F*self.transfer_volumes['INDEX_VOL']/1000 > sum(rev_idx[idx]['avail_vol']):
-                warning_idxs += idx + ', '
-
-        return fwd_idx, rev_idx, warning_idxs
+  
 
 
     def add_index_layouts(self, uploaded_index_layouts):

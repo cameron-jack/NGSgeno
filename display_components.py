@@ -288,8 +288,7 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
         reactions = sum([v for v in assay_usage.values()])
         
         index_remain, index_avail, index_vol_capacity =\
-                exp.get_index_remaining_available_volume(assay_usage=assay_usage,\
-                                fwd_idx=fwd_idx, rev_idx=rev_idx)
+                exp.get_index_remaining_available_volume(assay_usage=assay_usage)
     
     else:
         reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
