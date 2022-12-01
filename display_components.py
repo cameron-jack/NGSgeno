@@ -681,6 +681,30 @@ def display_plates(exp, plate_usage, height=350):
     plate_df = pd.DataFrame(plate_usage, columns=['Plate', 'Num Wells', 'Purpose'])
     plate_table = aggrid_interactive_table(plate_df, grid_height=height, key='plate_aggrid')
 
+def view_plates(exp):
+    """
+    Visual view of the plates in the experument
+    """
+    plate_ids = []
+    for pid in exp.plate_location_sample:
+        plate_ids.append(util.unguard(pid))
+
+    #Let user choose which plate to view
+    plate_selectbox = st.selectbox('Plate ID to view', plate_ids, key='plate_viewer')
+    if plate_selectbox:
+        plate_id = util.guard_pbc(plate_selectbox)
+        if plate_id in exp.plate_location_sample:
+            heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.2)
+
+            #with open("debug.html", 'wt') as outf:
+            #    print(heatmap_str, file=outf)
+            components.html(heatmap_str, height=700, scrolling=True)
+        else:
+            plate_barcode_error_msg = "Plate barcode not found in experiment"
+            st.markdown(f'<p style="color:#FF0000">{plate_barcode_error_msg}</p>',\
+            unsafe_allow_html=True)
+
+
 def display_files(exp, file_usage, height=350):
     """
     Display info for all files that have so far been uploaded into the experiment
@@ -715,7 +739,6 @@ def display_indexes(exp, assay_usage, height=350):
     #         num_wells = ceil(need_vol/per_use_vol)
     #         index_array.append([p, num_wells, idx_vols.get(p,0)/100,\
     #                     rev_idx_vols.get(p,0)[0]/1000])
-    print(f'My indexes! {indexes}', file=sys.stderr)
     if warning_idxs != '':
         st.warning("The following indexes do not have enough volume: " + warning_idxs[:-2])
 
@@ -759,18 +782,18 @@ def info_viewer(key):
             stx.TabBarItemData(id=1, title="Status", description=""),
             stx.TabBarItemData(id=2, title="Files", description=""),
             stx.TabBarItemData(id=3, title="Plates", description=""),
-            stx.TabBarItemData(id=4, title="Primers", description=""),
-            stx.TabBarItemData(id=5, title="Indexes", description=""),
-            stx.TabBarItemData(id=6, title="Log", description="")
+            stx.TabBarItemData(id=4, title="Plate Viewer", description=""),
+            stx.TabBarItemData(id=5, title="Primers", description=""),
+            stx.TabBarItemData(id=6, title="Indexes", description=""),
+            stx.TabBarItemData(id=7, title="Log", description="")
         ], return_type=int, default=1)
 
-        
-
+    
     if view_tab == 1:
         # Status tab should tell us where we are up to in the pipeline and what's happened so far
         with container:
             #with st.expander('Pipeline status', expanded=False):
-                display_status(exp, height=view_height)
+                display_status(exp)
                 
     if view_tab == 2:
         #view_expander = container.expander(label='All uploaded files', expanded=False)
@@ -778,21 +801,31 @@ def info_viewer(key):
         with container:
                 display_files(exp, file_usage, height=view_height)
 
+
     if view_tab == 3:
         plate_usage = exp.get_plate_usage()
         with container:
                 display_plates(exp, plate_usage, height=view_height)
 
+
     if view_tab == 4:
-        assay_usage = exp.get_assay_usage()
         with container:
-            display_primers(exp, assay_usage, height=view_height)
+            view_plates(exp)
+
 
     if view_tab == 5:
         assay_usage = exp.get_assay_usage()
         with container:
-            display_indexes(exp, assay_usage, height=view_height)
+            display_primers(exp, assay_usage, height=view_height)
+
 
     if view_tab == 6:
+        assay_usage = exp.get_assay_usage()
+        with container:
+            display_indexes(exp, assay_usage, height=view_height)
+
+
+    if view_tab == 7:
         with container:
             display_log(exp, height=view_height)
+

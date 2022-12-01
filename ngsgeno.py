@@ -304,7 +304,7 @@ def main():
                 elif ch_run_path.endswith(exp.name):
                     # success!
                     st.session_state['experiment'] = exp
-                    #st.session_state['pipeline_stage'] = 0
+                    st.session_state['pipeline_stage'] = 0
                     st.session_state['load_tab'] = 1
                     st.session_state['nimbus_tab'] = 1
                     st.session_state['primer_tab'] = 1
@@ -323,10 +323,10 @@ def main():
         pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Reports"]
         pipeline_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
                                                                                  
-        # if not pipeline_stage and pipeline_stage != 0: # not pipeline_stage evaluates to 0!
-        #     if 'pipeline_stage' not in st.session_state or st.session_state['pipeline_stage'] is None:
-        #         st.session_state['pipeline_stage'] = 0
-        #     pipeline_stage = st.session_state['pipeline_stage']
+        if not pipeline_stage and pipeline_stage != 0: # not pipeline_stage evaluates to 0!
+            if 'pipeline_stage' not in st.session_state or st.session_state['pipeline_stage'] is None:
+                st.session_state['pipeline_stage'] = 0
+            pipeline_stage = st.session_state['pipeline_stage']
         
         #Load data
         if pipeline_stage == 0:
@@ -550,6 +550,8 @@ def main():
 
             #generate picklists
             if primer_tab == 2:
+                if 'primer_picklist' not in st.session_state:
+                    st.session_state['primer_picklist'] = False
                 primer_checklist_exp = st.expander('Plate Checklist', expanded=True)
                 if efs:
                     with primer_checklist_exp:
@@ -574,13 +576,15 @@ def main():
                             echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',
                                     key='echo_pcr1_go_button')
                             if echo_picklist_go:
+                                st.session_state['primer_picklist'] = True
                                 success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
                                         included_DNA_plates, included_PCR_plates, included_taqwater_plates)
-                                dc.show_echo1_outputs()
+                                
                                 if not success:
                                     st.write('Picklist generation failed. Please see the log')
-                                
-                        
+                            
+                            if st.session_state['primer_picklist']:
+                                dc.show_echo1_outputs()
                     
                     else:
                         no_dna_msg = "Include at least one DNA plate to carry on with the pipeline"
@@ -645,6 +649,8 @@ def main():
 
             #generate picklist
             picklist_err = ''
+            if 'idx_picklist' not in st.session_state:
+                st.session_state['idx_picklist'] = False
             if index_tab == 2:
                 index_checklist_exp = st.expander('Plate Checklist', expanded=False)
                 if available_nimbus:
@@ -664,12 +670,15 @@ def main():
                         picklist_button_col.write('')
 
                         if echo_picklist_go:
+                            st.session_state['idx_picklist'] = True
+                            
                             success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_plates,
                                     included_index_plates, included_taqwater_plates, included_amplicon_plates)
                             if not success:
                                 st.write('Picklist generation failed. Please see the log')
-                            
-                        dc.show_echo2_outputs()
+                       
+                        if st.session_state['idx_picklist']:
+                            dc.show_echo2_outputs()
                     else:
                         picklist_err = "Include at lease one PCR plate, "+\
                             "one index plate and one taq/water plate to carry on with the pipeline"
@@ -849,7 +858,7 @@ def main():
             with info_holder:
                 dc.info_viewer(1)
 
-        #st.session_state['pipeline_stage'] = pipeline_stage
+        st.session_state['pipeline_stage'] = pipeline_stage
         #st.session_state['folder'] = None
 
 if __name__ == '__main__':
