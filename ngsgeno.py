@@ -617,6 +617,7 @@ def main():
             #PCR components
             if index_tab == 1:
                 index_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                title_holder = st.empty()
                 pcr_comp_holder = st.empty()
                 ld.provide_barcodes('index_barcodes')
                 ld.upload_pcr2_files('index_upload')
@@ -632,7 +633,7 @@ def main():
                         dc.display_pcr_components(assay_usage, 2)
                 else:
                     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
-                    st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
+                    title_holder.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
                             unsafe_allow_html=True)
                 
 
