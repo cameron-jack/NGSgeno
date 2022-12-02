@@ -117,6 +117,16 @@ for c in [str(j+1) for j in range(12)]:
     for r in 'ACEGBDFH':
         nimbus_ordered_96.append(r+c)
 
+col_ordered_6 = []
+for c in [str(j+1) for j in range(3)]:
+    for r in [chr(65+i) for i in range(2)]:
+        col_ordered_6.append(r+c)
+    
+row_ordered_6 = []
+for c in [str(j+1) for j in range(2)]:
+    for r in [chr(65+i) for i in range(3)]:
+        row_ordered_6.append(r+c)
+
 
 
 def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied_wells: list=[], included_guards=GUARD_TYPES) -> defaultdict:

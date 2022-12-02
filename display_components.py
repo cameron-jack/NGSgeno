@@ -188,10 +188,10 @@ def data_table(key, options=False, table_option=None, height=350):
         if plate_selectbox:
             plate_id = util.guard_pbc(plate_selectbox)
             if plate_id in exp.plate_location_sample:
-                heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.2)
+                heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.5)
 
-                #with open("debug.html", 'wt') as outf:
-                #    print(heatmap_str, file=outf)
+                with open("debug.html", 'wt') as outf:
+                    print(heatmap_str, file=outf)
                 components.html(heatmap_str, height=700, scrolling=True)
             else:
                 plate_barcode_error_msg = "Plate barcode not found in experiment"
@@ -686,14 +686,15 @@ def view_plates(exp):
     """
     plate_ids = []
     for pid in exp.plate_location_sample:
-        plate_ids.append(util.unguard(pid))
+        plate_ids.append(f"{exp.plate_location_sample[pid]['purpose']} plate: {util.unguard(pid)}")
 
     #Let user choose which plate to view
-    plate_selectbox = st.selectbox('Plate ID to view', plate_ids, key='plate_viewer')
+    _, col1, _ = st.columns([2, 1,2])
+    plate_selectbox = col1.selectbox('Plate ID to view', plate_ids, key='plate_viewer')
     if plate_selectbox:
-        plate_id = util.guard_pbc(plate_selectbox)
+        plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
-            heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.2)
+            heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.3)
 
             #with open("debug.html", 'wt') as outf:
             #    print(heatmap_str, file=outf)
