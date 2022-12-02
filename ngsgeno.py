@@ -342,7 +342,6 @@ def main():
                 load_data_tab = st.session_state['load_tab']
 
             info_holder = st.empty()
-            print(exp.plate_location_sample)
             
             # load sample data
             if load_data_tab == 1:
@@ -551,8 +550,6 @@ def main():
 
             #generate picklists
             if primer_tab == 2:
-                if 'primer_picklist' not in st.session_state:
-                    st.session_state['primer_picklist'] = False
                 primer_checklist_exp = st.expander('Plate Checklist', expanded=True)
                 if efs:
                     with primer_checklist_exp:
@@ -577,15 +574,13 @@ def main():
                             echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',
                                     key='echo_pcr1_go_button')
                             if echo_picklist_go:
-                                st.session_state['primer_picklist'] = True
                                 success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
                                         included_DNA_plates, included_PCR_plates, included_taqwater_plates)
                                 
                                 if not success:
                                     st.write('Picklist generation failed. Please see the log')
-                            
-                            if st.session_state['primer_picklist']:
-                                dc.show_echo1_outputs()
+     
+                            dc.show_echo1_outputs()
                     
                     else:
                         no_dna_msg = "Include at least one DNA plate to carry on with the pipeline"
@@ -651,8 +646,6 @@ def main():
 
             #generate picklist
             picklist_err = ''
-            if 'idx_picklist' not in st.session_state:
-                st.session_state['idx_picklist'] = False
             if index_tab == 2:
                 index_checklist_exp = st.expander('Plate Checklist', expanded=False)
                 if available_nimbus:
@@ -679,8 +672,9 @@ def main():
                             if not success:
                                 st.write('Picklist generation failed. Please see the log')
                        
-                        if st.session_state['idx_picklist']:
-                            dc.show_echo2_outputs()
+
+                        dc.show_echo2_outputs()
+                        
                     else:
                         picklist_err = "Include at lease one PCR plate, "+\
                             "one index plate and one taq/water plate to carry on with the pipeline"

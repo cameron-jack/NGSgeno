@@ -42,12 +42,15 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
     #chartdiv {
       width: WWWWWW;
       height: HHHHHH;
-      background-color: grey;
+      position: absolute;
+      top: 10%;
+      left: 32%;
+      background-color: white;
       background-size: 95%;
       border: 10px;
       padding: 10px;
       border-style: solid;
-      border-color: darkgrey;
+      border-color: #bfdbf2;
       border-radius: 25px;
       font-family: helvetica;
     }
@@ -155,7 +158,7 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
     // define colors
     var colors = {
         "empty": "lightgrey",
-        "passed": "#33ff33",
+        "passed": "#94f043",
         "problem": "#ffff33",
         "failed": "#ff1111",
         "critical": "#ca0101",
@@ -208,10 +211,10 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
 
     <!-- HTML -->
     <body>
-        <h1 align="center">PUPUPU Plate PPPPPP</h1>
+        <h1 style="text-align:center;color:#458cde">PUPUPU Plate PPPPPP</h1>
         <div id="chartdiv"></div>
     </body>
-    """.replace('PUPUPU', purpose).replace('PPPPPP', str(util.unguard(plate_id, silent=True)))
+    """.replace('PUPUPU', purpose.capitalize()).replace('PPPPPP', str(util.unguard(plate_id, silent=True)))
 
     return header_str + chart_data_str + footer_str
 

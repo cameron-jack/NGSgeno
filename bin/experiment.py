@@ -1221,13 +1221,13 @@ class Experiment():
                         fwd_idx[name] = {'count':0, 'req_vol':[], 'avail_vol':[]}
                     fwd_idx[name]['count'] += 1
                     if 'volume' in idx_plate[well]:
-                        fwd_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0)/1000)
+                        fwd_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
                 elif 'i5R' in name:
                     if name not in rev_idx:
                         rev_idx[name] = {'count':0, 'req_vol':[],'avail_vol':[]}
                     rev_idx[name]['count'] += 1
                     if 'volume' in idx_plate[well]:
-                        rev_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0)/1000)
+                        rev_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
                 else:
                     self.log('Unexpected index name:' + name, level='Warning')
 
@@ -1263,19 +1263,12 @@ class Experiment():
         reaction_vol_capacity = 0
         for name in fwd_idx.keys():
             # get the number of possible reactions and keep the lower number from possible reactions or possible reaction partners
-            print(fwd_idx[name]['avail_vol'])
-            print(util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])
-            max_reactions = sum([floor((vol*1000-util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])/self.transfer_volumes['INDEX_VOL']) \
+            max_reactions = sum([floor((vol-util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])/self.transfer_volumes['INDEX_VOL']) \
                     for vol in fwd_idx[name]['avail_vol']])
             reaction_vol_capacity += min(max_reactions, max_i5R)
-            print(max_reactions)
-            print(reaction_vol_capacity)
 
         max_idx_pairs = max_i7F * max_i5R
-        print('Index')
-        print(max_idx_pairs)
-        print(reactions)
-
+        
         return max_idx_pairs-reactions, max_idx_pairs, reaction_vol_capacity
 
     

@@ -287,8 +287,8 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
                 exp.get_volumes_required(assay_usage=assay_usage, filtered=True)
         reactions = sum([v for v in assay_usage.values()])
         
-        index_remain, index_avail, index_vol_capacity =\
-                exp.get_index_remaining_available_volume(assay_usage=assay_usage)
+        index_remain, index_avail, index_capacity =\
+                exp.get_index_remaining_available_volume(assay_usage=assay_usage, fwd_idx=fwd_idx, rev_idx=rev_idx)
     
     else:
         reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
@@ -377,10 +377,10 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
 
         index_cols = pcr_comps_area.columns(col_size)
 
-        if index_vol_capacity > (index_avail - index_remain):
-            index_pairs_allowed = '<p style="color:green">'+str(index_vol_capacity)+'</p>'
+        if index_capacity > (index_avail - index_remain):
+            index_pairs_allowed = '<p style="color:green">'+str(index_capacity)+'</p>'
         else:
-            index_pairs_allowed = '<p style="color:red">'+str(index_vol_capacity)+'</p>'
+            index_pairs_allowed = '<p style="color:red">'+str(index_capacity)+'</p>'
 
         index_cols[0].markdown('**Index Pairs Remaining**')
         index_cols[1].write(str(index_remain))
@@ -720,6 +720,8 @@ def display_indexes(exp, assay_usage, height=350):
     """
     fwd_idx, rev_idx, warning_idxs = exp.get_index_avail()
     indexes = {**fwd_idx, **rev_idx}
+    for index in indexes:
+        indexes[index]['avail_vol'] = sum(indexes[index]['avail_vol'])/1000
     # if fwd_idx_vols:
     #     idx_remaining, max_idx_pairs, reaction_vol_capacity, fwd_idx_reactions =\
     #                 exp.get_index_remaining_available_volume(assay_usage, fwd_idx_vols, rev_idx_vols)
