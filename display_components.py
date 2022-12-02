@@ -686,12 +686,13 @@ def view_plates(exp):
     """
     plate_ids = []
     for pid in exp.plate_location_sample:
-        plate_ids.append(util.unguard(pid))
+        plate_ids.append(f"{exp.plate_location_sample[pid]['purpose']} plate: {util.unguard(pid)}")
 
     #Let user choose which plate to view
-    plate_selectbox = st.selectbox('Plate ID to view', plate_ids, key='plate_viewer')
+    _, col1, _ = st.columns([2, 1,2])
+    plate_selectbox = col1.selectbox('Plate ID to view', plate_ids, key='plate_viewer')
     if plate_selectbox:
-        plate_id = util.guard_pbc(plate_selectbox)
+        plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
             heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.2)
 
