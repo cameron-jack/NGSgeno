@@ -1801,14 +1801,13 @@ class Experiment():
         return True
 
 
-    def check_plate_presence(self, pids, purpose):
+    def check_plate_presence(self, pids, purpose, messages):
         """ 
         Check given plate for presence in self.plate_location_sample and compare purpose
-        return success and messages
+        return success (and messages by reference)
         Required by exp.check_ready_pcr1() and exp.check_ready_pcr2()
         """
-        success = True
-        messages = []
+        success = True  
         for pid in pids:
             if pid in self.plate_location_sample:
                 if self.plate_location_sample[pid]['purpose'] != purpose:
@@ -1820,13 +1819,12 @@ class Experiment():
             else:
                 msg = f"Critical: No plate exists with barcode {pid}"
                 self.log(msg)
-                if messages is not None:
-                    messages.append(msg)
+                messages.append(msg)
                 success = False
-        return success, messages
+        return success
 
 
-    def check_ready_pcr1(self, dna_plates, pcr_plates, taq_water_plates, messages=None):
+    def check_ready_pcr1(self, dna_plates, pcr_plates, taq_water_plates, messages):
         """
         Check that everything required to successfully generate PCR1 picklists is available
         TODO: Check that volumes and wells are sufficient!
@@ -1834,66 +1832,44 @@ class Experiment():
         Returns success
         """
         success = True
-        local_messages = []
 
-        dna_success, msgs = self.check_plate_presence(dna_plates, 'dna')
-        if messages:
-            for msg in msgs:
-                messages.append(msg)
+        dna_success= self.check_plate_presence(dna_plates, 'dna', messages)
         if not dna_success:
             success = False
 
-        pcr_success, msgs = self.check_plate_presence(pcr_plates, 'pcr')
-        if messages:
-            for msg in msgs:
-                messages.append(msg)
+        pcr_success = self.check_plate_presence(pcr_plates, 'pcr', messages)
         if not pcr_success:
             success = False
 
-        taq_success, msgs = self.check_plate_presence(taq_water_plates, 'taq_water')
-        if messages:
-            for msg in msgs:
-                messages.append(msg)
+        taq_success = self.check_plate_presence(taq_water_plates, 'taq_water', messages)
         if not taq_success:
             success = False
       
         return success
 
 
-    def check_ready_pcr2(self, pcr_plates, taq_water_plates, index_plates, amplicon_plates, messages=None):
+    def check_ready_pcr2(self, pcr_plates, taq_water_plates, index_plates, amplicon_plates, messages):
         """
         Check the everything required to successfully generate PCR2 picklists is available
         TODO: Check that volumes and wells are sufficient!
-        messages is an optional list, allowing us to pass useful info back to the UI
+        messages is a list, allowing us to pass useful info back to the UI
         Return success
         """
         success = True
 
-        pcr_success, msgs = self.check_plate_presence(pcr_plates, 'dna')
-        if messages:
-            for msg in msgs:
-                messages.append(msg)
+        pcr_success = self.check_plate_presence(pcr_plates, 'dna', messages)
         if not pcr_success:
             success = False
 
-        taq_success, msgs = self.check_plate_presence(taq_water_plates, 'pcr')
-        if messages:
-            for msg in msgs:
-                messages.append(msg)
+        taq_success = self.check_plate_presence(taq_water_plates, 'pcr', messages)
         if not taq_success:
             success = False
 
-        index_success, msgs = self.check_plate_presence(index_plates, 'taq_water')
-        if messages:
-            for msg in msgs:
-                messages.append(msg)
+        index_success = self.check_plate_presence(index_plates, 'taq_water', messages)
         if not index_success:
             success = False
 
-        amplicon_success, msgs = self.check_plate_presence(amplicon_plates, 'amplicon')
-        if messages:
-            for msg in msgs:
-                messages.append(msg)
+        amplicon_success = self.check_plate_presence(amplicon_plates, 'amplicon', messages)
         if not amplicon_success:
             success = False
       

@@ -557,9 +557,14 @@ def main():
                                 plate_checklist_expander(efs,pcr_stage=1)
                         
                     if included_DNA_plates:
-                        if exp.check_ready_pcr1(included_DNA_plates,\
-                                    included_PCR_plates, included_taqwater_plates):
-                            print(f'{included_DNA_plates=} {included_PCR_plates=} {included_taqwater_plates=}', file=sys.stderr)
+                        messages = []
+                        if not exp.check_ready_pcr1(included_DNA_plates,\
+                                    included_PCR_plates, included_taqwater_plates, messages):
+                            for msg in messages:
+                                st.warning(msg)
+                        else:
+                            #print(f'{included_DNA_plates=} {included_PCR_plates=} {included_taqwater_plates=}', file=sys.stderr)
+                           
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
 
                             #primer_survey_go = picklist_button_col.button('Generate Primer Survey File',
@@ -582,10 +587,9 @@ def main():
      
                             dc.show_echo1_outputs()
                     
-                    else:
-                        no_dna_msg = "Include at least one DNA plate to carry on with the pipeline"
-                        st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_dna_msg}</h5',\
-                            unsafe_allow_html=True)
+                else:
+                    st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
+                        
                 st.session_state['primer_tab'] = 2
 
             with info_holder:
@@ -645,7 +649,6 @@ def main():
             #    st.session_state['index_tab'] = 2
 
             #generate picklist
-            picklist_err = ''
             if index_tab == 2:
                 index_checklist_exp = st.expander('Plate Checklist', expanded=False)
                 if available_nimbus:
@@ -653,9 +656,12 @@ def main():
                         included_PCR_plates, included_taqwater_plates, included_index_plates,\
                                     included_amplicon_plates =\
                                     plate_checklist_expander(available_nimbus, pcr_stage=2)
-
-                    if exp.check_ready_pcr2(included_PCR_plates,\
-                                included_taqwater_plates, included_index_plates):
+                    pcr2_messages = []  # pass by reference
+                    if not exp.check_ready_pcr2(included_PCR_plates,\
+                                included_taqwater_plates, included_index_plates, pcr2_messages):
+                        for msg in pcr2_messages:
+                            st.warning(msg)
+                    else:
 
                         _,picklist_button_col,_ = st.columns([2, 2, 1])
 
@@ -671,16 +677,12 @@ def main():
                                     included_index_plates, included_taqwater_plates, included_amplicon_plates)
                             if not success:
                                 st.write('Picklist generation failed. Please see the log')
-                       
 
                         dc.show_echo2_outputs()
                         
-                    else:
-                        picklist_err = "Include at lease one PCR plate, "+\
-                            "one index plate and one taq/water plate to carry on with the pipeline"
-                
-                        st.markdown(f'<h5 style="color:#f63366;text-align:center">{picklist_err}</h5>',\
-                                unsafe_allow_html=True)
+                else:
+                    st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
+                    
                 st.session_state['index_tab'] = 2
             with info_holder:
                 dc.info_viewer(1)
