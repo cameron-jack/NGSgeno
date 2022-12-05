@@ -557,7 +557,7 @@ def main():
                                 plate_checklist_expander(efs,pcr_stage=1)
                         
                     if included_DNA_plates:
-                        if exp.check_ready_echo1(included_DNA_plates,\
+                        if exp.check_ready_pcr1(included_DNA_plates,\
                                     included_PCR_plates, included_taqwater_plates):
                             print(f'{included_DNA_plates=} {included_PCR_plates=} {included_taqwater_plates=}', file=sys.stderr)
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
@@ -654,7 +654,7 @@ def main():
                                     included_amplicon_plates =\
                                     plate_checklist_expander(available_nimbus, pcr_stage=2)
 
-                    if exp.check_ready_echo2(included_PCR_plates,\
+                    if exp.check_ready_pcr2(included_PCR_plates,\
                                 included_taqwater_plates, included_index_plates):
 
                         _,picklist_button_col,_ = st.columns([2, 2, 1])

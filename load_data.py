@@ -81,7 +81,7 @@ def load_rodentity_data():
             disable_uploads = False
 
         with st.form('rodentity_upload_form'):
-            epps_col1, epps_col2 = st.columns([1,2])
+            epps_col1, _ = st.columns([1,1])
             rodentity_epps = epps_col1.file_uploader('Choose up to four Rodentity JSON files', type='json', accept_multiple_files=True, disabled=disable_uploads)
             rod_upload_submit_button = st.form_submit_button('Submit')
             if rod_upload_submit_button and rodentity_epps:
@@ -111,7 +111,7 @@ def load_rodentity_data():
                             break
                 exp.save()
     
-        rod_col1, rod_col2, _ = st.columns([1,1,1])
+        rod_col1, _, rod_col2, _ = st.columns([3,1,2,2])
         with rod_col1.form('set_rod_plates_form', clear_on_submit=True):
             for i in range(4):
                 plates_to_clear[i] = st.checkbox(f"P{str(i+1)}: {util.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
@@ -188,7 +188,7 @@ def load_custom_manifests():
         exp.unassigned_plates['custom'] = {'None':{}}
     with st.expander('Upload custom manifests', expanded=True):
         with st.form(key='manifest_upload_form', clear_on_submit=True):
-            col1, col3 = st.columns([1,2])
+            col1, _ = st.columns([1,1])
             with col1:
                 manifest_uploads = st.file_uploader(label="Custom manifest upload", accept_multiple_files=True)
                 #st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)

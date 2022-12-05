@@ -84,6 +84,8 @@ class Experiment():
         """ set up defaults, an experiment name is required, should match folder name less then run_ prefix """
         self.name = name
         self.description = ''
+        # Use "locked" for everything up to the allele calling stage. Once sequences are available you shouldn't
+        # be allowed to change anything in the pipeline itself
         self.locked = False  # This is meant to prevent modification to the experiment when True
         self.unassigned_plates = {1:'', 2:'', 3:'', 4:''}  # plate_id:info - we can import these and then let users edit the results - they aren't checked until added to a plate set
         self.dest_sample_plates = {}  # {dest_pid:[4 sample plate ids]}
@@ -831,24 +833,26 @@ class Experiment():
         #try:
         if True:
             self.log(f"Begin: read custom manifest")
-        
-            #self.log(f"Debug: {self.name=} {manifest_strm=} {default_manifest_type=}")
-            for manifest_stream in manifests:
-                manifest_name = manifest_stream.name
-                if manifest_name in self.uploaded_files:
-                    self.log(f'Warning: {manifest_name} already present in records')
-                #print(f'{manifest_name=}', file=sys.stderr)
-                if manifest_name.lower().endswith('xlsx'):
-                    workbook = openpyxl.load_workbook(BytesIO(manifest_stream.getvalue()))
-                    sheet = workbook.active
-                    rows = [','.join(map(str,cells)) for cells in sheet.iter_rows(values_only=True)]
-                    #print(rows, file=sys.stderr)
-                else:
-                    rows = StringIO(manifest_stream.getvalue().decode("utf-8"))
+            file_names, file_tables = file_io.read_csv_or_excel_from_stream(manifests)
+            for file_name, file_table in zip(file_names, file_tables):
+                if file_name in self.uploaded_files:
+                    self.log(f'Warning: {file_name} already present in records')
+                #manifest_name = manifest_stream.name
+                #if manifest_name in self.uploaded_files:
+                #    self.log(f'Warning: {manifest_name} already present in records')
+                ##print(f'{manifest_name=}', file=sys.stderr)
+                #if manifest_name.lower().endswith('xlsx'):
+                #    workbook = openpyxl.load_workbook(BytesIO(manifest_stream.getvalue()))
+                #    sheet = workbook.active
+                #    rows = [','.join(map(str,cells)) for cells in sheet.iter_rows(values_only=True)]
+                #    #print(rows, file=sys.stderr)
+                #else:
+                #    rows = StringIO(manifest_stream.getvalue().decode("utf-8"))
+
                 plate_entries = {}  # looks like self.plate_location_sample, but temporary
                 plate_barcode_col = None
                 assay_cols = []
-                for i, line in enumerate(rows): # csv_reader is super limiting
+                for i, line in enumerate(file_table):
                     cols = [c.strip() if c is not None else '' for c in line.split(',')]  # lower case column names
                     #print(i, cols, file=sys.stderr)
                     if i==0:  # process header
@@ -858,10 +862,10 @@ class Experiment():
                         matching_cols = [col_name in cols_lower for col_name in ['platebarcode', 'well', 'samplebarcode', 'assay', 'clientname']]
                         #print(matching_cols, file=sys.stderr)
                         if not all(matching_cols):
-                            self.log(f'Error: manifest {manifest_name} requires at least columns plateBarcode, well, sampleBarcode, assay, clientName')
+                            self.log(f'Error: manifest {file_name} requires at least columns plateBarcode, well, sampleBarcode, assay, clientName')
                             return False
                         else:
-                            self.log(f'Info: parsing manifest {manifest_name}')
+                            self.log(f'Info: parsing manifest {file_name}')
                         for k in header_dict:
                             if header_dict[k] == 'platebarcode':
                                 plate_barcode_col = k
@@ -904,12 +908,12 @@ class Experiment():
                             continue
                         if header_dict[k] == 'samplebarcode':
                             if c.startswith('C'):
-                                spid = util.guard_cbc(c, silent=True)
+                                sid = util.guard_cbc(c, silent=True)
                             elif c.startswith('M'):
-                                spid = util.guard_rbc(c, silent=True)
+                                sid = util.guard_rbc(c, silent=True)
                             else:
-                                spid = plate_entries[gpid][well][header_dict[k]] = util.guard_cbc(c, silent=True) # fall back to custom?
-                            plate_entries[gpid][well]['barcode'] = spid
+                                sid = plate_entries[gpid][well][header_dict[k]] = util.guard_cbc(c, silent=True) # fall back to custom?
+                            plate_entries[gpid][well]['barcode'] = sid
                         elif header_dict[k] == 'platebarcode':
                             plate_entries[gpid][well]['platebarcode'] = gpid
                         elif header_dict[k] == 'sampleno':
@@ -932,7 +936,7 @@ class Experiment():
                     if gpid in self.unassigned_plates or gpid in self.plate_location_sample:
                         self.log(f'Warning: plate records exist for {util.unguard_pbc(gpid, silent=True)}, potentially overwriting')
                     self.unassigned_plates['custom'][gpid] = plate_entries[gpid]
-                self.uploaded_files[manifest_name] = {'plates':plate_entries.keys(), 'purpose':'custom manifest'}
+                self.uploaded_files[file_name] = {'plates':plate_entries.keys(), 'purpose':'custom manifest'}
         return True
                     
 
@@ -966,7 +970,7 @@ class Experiment():
 
 
     def get_musterer_pids(self):
-        """ return [pids] with samples that are sourced from Musterer """
+        """ return [pids] with samples that are sourced from Musterer. DEPRECATED """
         # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], 
         #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] } }
         musterer_pids = set()
@@ -975,6 +979,7 @@ class Experiment():
                 if util.is_guarded_mbc(self.plate_location_sample[pid][well]['sample_barcode']):
                     musterer_pids.add(pid)
         return musterer_pids
+
 
     def get_rodentity_pids(self):
         """ return [pids] with samples that are sourced from Rodentity """
@@ -986,6 +991,7 @@ class Experiment():
                 if util.is_guarded_rbc(self.plate_location_sample[pid][well]['sample_barcode']):
                     rodentity_pids.add(pid)
         return rodentity_pids
+
 
     def get_custom_pids(self):
         """ return [pids] with samples that are sourced as custom - useful for mixed content plates """
@@ -1044,12 +1050,14 @@ class Experiment():
         #print(f"{plate_set_summary=}")
         return plate_set_summary, plate_set_headers
 
+
     def inputs_as_dataframe(self):
         """ return the experiment contents as a pandas dataframe """
         rows, headers = self.summarise_inputs()
         if not rows:
             return None
         return pd.DataFrame(rows, columns=headers)
+
 
     def summarise_consumables(self):
         """
@@ -1095,6 +1103,7 @@ class Experiment():
                 d['unique_references'].add(refname)
         d['assay_primer_mappings'] = len(self.primer_assay)
         return d
+
 
     def add_nimbus_outputs(self, nim_outputs):
         """
@@ -1148,10 +1157,12 @@ class Experiment():
                     'plate_type':util.PLATE_TYPES['PCR384'], 'barcode':p}
         self.save()
         return True
+
                                                                                             
     def get_pcr_pids(self):
         """ return a list of user supplied PCR plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'pcr']
+
 
     def get_assay_usage(self, dna_plate_list=[], included_guards=util.GUARD_TYPES):
         """ We will want ways to get assay usage from various subsets, but for now do it for everything that 
@@ -1165,6 +1176,7 @@ class Experiment():
                 plate = self.get_plate(sample_pid)
                 assay_usage.update(util.calc_plate_assay_usage(plate,included_guards=included_guards))
         return assay_usage
+
 
     def get_volumes_required(self, assay_usage=None, dna_plate_list=[], filtered=True):
         """
@@ -1186,6 +1198,7 @@ class Experiment():
         primer_vols = {a:assay_usage[a]*self.transfer_volumes['PRIMER_VOL'] for a in assay_usage}
         return primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol
     
+
     def get_index_avail(self, included_pids=None):
         """
         Returns {primer:count}, {primer:vol} from what's been loaded 
@@ -1352,6 +1365,7 @@ class Experiment():
                             primer_vols[primer_name] += max(pmr_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0)
         return primer_counts, primer_vols
 
+
     def get_taqwater_avail(self, taqwater_bcs=None, transactions=None):
         """ 
         Returns (int) taq and (int) water volumes (in nanolitres) loaded as available 
@@ -1386,9 +1400,11 @@ class Experiment():
         pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
         return pids
 
+
     def generate_nimbus_inputs(self):
         success = file_io.nimbus_gen(self)
         return success
+
 
     def get_nimbus_filepaths(self):
         """ Return the lists of nimbus input files, echo input file (nimbus outputs), 
@@ -1396,6 +1412,7 @@ class Experiment():
         #print("In get_nimbus_filepaths")
         nimbus_input_filepaths, echo_input_paths, xbc = file_io.match_nimbus_to_echo_files(self)
         return nimbus_input_filepaths, echo_input_paths, xbc
+
 
     def remove_entries(self, selected_rows):
         """ remove JSON elements in selection from experiment
@@ -1470,6 +1487,7 @@ class Experiment():
         
         return True
 
+
     def generate_targets(self):
         """ create target file based on loaded references """
         transactions = {}
@@ -1519,6 +1537,7 @@ class Experiment():
         self.save()
         return True
 
+
     def add_primer_layouts(self, uploaded_primer_layouts):
         """ add primer plate definition with well and name columns """
         if self.locked:
@@ -1560,6 +1579,7 @@ class Experiment():
         self.log(f"Success: added primer layouts from {', '.join([upl.name for upl in uploaded_primer_layouts])}")
         self.save()
         return True
+
 
     def add_primer_volumes(self, uploaded_primer_volumes):
         """ add primer plate volumes with well and volume columns """
@@ -1617,66 +1637,130 @@ class Experiment():
         self.save()
         return True
 
+
     def add_amplicon_manifests(self, uploaded_amplicon_manifests):
         """
         Amplicon plate layouts (containing pre-amplified sequences) are added here via manifest files.
         Only column layout (comma separate) is supported. col1: plate barcode; col2: well position; col3: sample barcode; col4 (optional): volume.
         The first row must be a header row: plate, well, sample, (volume in uL, if provided).
+        plateBarcode, well, sampleBarcode, amplicon* (*multiple columns with this name are allowed)
+        Adding this will result in changing the Miseq and Stage3 output files, so needs to be wrapped as a transaction
+        Needs to check whether there are sufficient indexes 
         """
         if self.locked:
             self.log('Error: cannot add amplicon plate layouts while lock is active.')
             return False
+        file_names, file_tables = file_io.read_csv_or_excel_from_stream(uploaded_amplicon_manifests)
+        for file_name, file_table in zip(file_names, file_tables):
+            if file_name in self.uploaded_files:
+                self.log(f'Warning: {file_name} already present in records')
+                
+            plate_entries = {}  # looks like self.plate_location_sample, but temporary
+            plate_barcode_col = None
+            well_col = None
+            amplicon_cols = []  # combine these
+            for i, line in enumerate(file_table): # csv_reader is super limiting
+                cols = [c.strip() if c is not None else '' for c in line.split(',')]  # lower case column names
+                #print(i, cols, file=sys.stderr)
+                if i==0:  # process header
+                    cols_lower = [c.lower() for c in cols]
+                    header_dict = {k:c for k,c in enumerate(cols_lower)}
+                    matching_cols = [col_name in cols_lower for col_name in ['platebarcode', 'well', 'samplebarcode']] 
+                    if not all(matching_cols):
+                        self.log(f'Error: amplicon manifest {file_name} requires at least columns plateBarcode, well, sampleBarcode')
+                        return False
+                    else:
+                        self.log(f'Info: parsing amplicon manifest {file_name}')
+                    for k in header_dict:
+                        if header_dict[k] == 'platebarcode':
+                            plate_barcode_col = k
+                        elif header_dict[k] == 'well':
+                            well_col = k
+                        elif header_dict[k] == 'amplicon': # combine amplicon columns
+                            amplicon_cols.append(k)
+                    continue
+                if len(cols) < 3:  # skip empty rows
+                    continue
+                # set up plate
+                gpid = util.guard_pbc(cols[plate_barcode_col], silent=True)
+                if gpid not in plate_entries:
+                    # create plate_location_sample entries here and copy them across when we've got them all
+                    plate_entries[gpid] = {'purpose':'amplicon','source':'manifest', 'wells':set(), 
+                            'plate_type':'384PP_AQ_BP', 'barcode':gpid}
+                # set up well
+                well = util.unpadwell(cols[well_col].upper())
+                if well in plate_entries[gpid]['wells'] and plate_entries[gpid][well] != {}:
+                    self.log(f"Error: duplicate {c} in {gpid}. Skipping row {i+2} {cols=}")
+                    continue
+                plate_entries[gpid]['wells'].add(well)
+                plate_entries[gpid][well] = {}
+                amplicons = []
+                # now collect everything together
+                for k,c in enumerate(cols):
+                    if c.lower() == 'none':
+                        c = ''
+                    if header_dict[k] == 'well':
+                        continue  # we've already got this!
+                    if header_dict[k] == 'samplebarcode':
+                        # amplicon guards
+                        sid = plate_entries[gpid][well][header_dict[k]] = util.guard_abc(c, silent=True)
+                        plate_entries[gpid][well]['barcode'] = sid
+                    elif header_dict[k] == 'platebarcode':
+                        # don't really need it but whatever
+                        plate_entries[gpid][well]['platebarcode'] = gpid
+                    elif header_dict[k] == 'sampleno':
+                        plate_entries[gpid][well]['sampleNumber'] = str(c)
+                    elif header_dict[k] == 'amplicon':
+                        if c != '':  # ignore empty amplicon entries
+                            amplicons.append(c)
+                    elif header_dict[k] == 'volume':
+                        plate_entries[gpid][well]['volume'] = float(c)*1000  # save as nL
+                    else:
+                        try:
+                            plate_entries[gpid][well][header_dict[k]] = str(c)
+                        except:
+                            print(type(header_dict[k]), header_dict[k], str(c), file=sys.stderr)
+                plate_entries[gpid][well]['amplicons'] = amplicons
 
-        for uploaded_amplicon_manifest in uploaded_amplicon_manifests:
-            amplicon_filename = uploaded_amplicon_manifest.name
-            # register file and plates with self.uploaded_files
-            if amplicon_filename not in self.uploaded_files:
-                self.uploaded_files[amplicon_filename] = {'plates': [], 'purpose': "amplicon manifest"}
-            else:   
-                self.log(f"Warning: file {amplicon_filename} has already been uploaded")
-            data = StringIO(uploaded_amplicon_manifest.getvalue().decode("utf-8"), newline='')
-            for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
-                if i == 0:
-                    continue  # header
-                cols = [c.strip() for c in row]
-                PID = cols[0]
-                gPID = util.guard_pbc(PID, silent=True)
-                if gPID in self.plate_location_sample and self.plate_location_sample[gPID]['purpose'] != 'amplicon':
-                    self.log(f"Error: Amplicon plate barcode: {PID} matches "+\
-                            f"existing plate entry of different purpose {self.plate_location_sample[gPID]}")
-                    return False
-                if gPID not in self.uploaded_files[uploaded_amplicon_manifest.name]['plates']:
-                    self.uploaded_files[amplicon_filename]['plates'].append(gPID)
-                if gPID not in self.plate_location_sample:
-                    self.plate_location_sample[gPID] = {'purpose':'amplicon', 'source':'user', 'wells':set(), 
-                            'plate_type':'384PP_AQ_BP', 'barcode':PID}
-                    self.log(f"Info: Creating new amplicon plate record for {PID}")
-                well = util.unpadwell(cols[1])
-                try:
-                    sample = util.guard_abc(cols[2], silent=True)
-                except Exception as exc:
-                    self.log(f"Error: Amplicon sample barcode could not be guarded {exc=}")
-                    self.delete_plates([gPID])
-                    return False
-                if len(cols) == 4:
-                    try:
-                        vol = float(cols[3])*1000  # save as nanolitres
-                    except ValueError:
-                        self.log(f"Warning: could not interpret volume as numeric. Ignoring volume {cols[3]=}")
-                        vol = None
-
-                self.plate_location_sample[gPID]['wells'].add(well)
-                self.plate_location_sample[gPID][well] = {'barcode':sample}
-                if vol:
-                    self.plate_location_sample[gPID][well]['volume'] = vol
-            
-        self.log(f"Success: added amplicon plate info from {', '.join([uam.name for uam in uploaded_amplicon_manifests])}")
+            # Check whether we have existing records and clean up if necessary
+            # For amplicons which are added late in the pipeline, this may mean invalidating the final stages of the pipeline
+            kept_pids = []
+            clashing_unassigned_pids = []
+            clashing_existing_pids = []
+            for gpid in plate_entries:
+                if gpid in self.unassigned_plates: 
+                    self.log(f'Warning: uploaded records exist for {util.unguard_pbc(gpid, silent=True)}, overwriting existing plate')
+                    clashing_unassigned_pids.append(gpid)
+                    kept_pids.append(gpid)
+                elif gpid in self.plate_location_sample:
+                    existing_purpose = self.plate_location_sample[gpid]['purpose']
+                    if existing_purpose == 'amplicon':
+                        self.log(f'Warning: Amplicon plate records exist for {util.unguard_pbc(gpid, silent=True)}, overwriting existing plate')
+                        clashing_existing_pids.append(gpid)
+                        kept_pids.append(gpid)
+                    else:
+                        self.log(f'Error: Plate {util.unguard_pbc(gpid, silent=True)} already exists with purpose {existing_purpose}, skipping this plate')
+                        continue
+                else:
+                    kept_pids.append(gpid)
+            for cp in clashing_unassigned_pids:
+                del self.unassigned_plates[cp]
+            for cp in clashing_existing_pids:
+                del self.plate_location_sample[cp]
+            for kp in kept_pids:
+                self.plate_location_sample[kp] = plate_entries[gpid]
+            self.uploaded_files[file_name] = {'plates':kept_pids, 'purpose':'amplicon manifest'}
+            self.log(f"Success: added amplicon plate info from {file_name} for plates '+\
+                    f'{', '.join([util.unguard_pbc(kp, silent=True) for kp in kept_pids])}")
+       
         self.save()
         return True
+
 
     def get_amplicon_pids(self):
         """ return a list of user supplied amplicon plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'amplicon']
+
 
     def generate_echo_primer_survey(self, primer_survey_filename='primer-svy.csv'):
         """ 
@@ -1717,44 +1801,103 @@ class Experiment():
         return True
 
 
-    def check_ready_echo1(self, dna_plates, pcr_plates, taq_water_plates):
+    def check_plate_presence(self, pids, purpose):
+        """ 
+        Check given plate for presence in self.plate_location_sample and compare purpose
+        return success and messages
+        Required by exp.check_ready_pcr1() and exp.check_ready_pcr2()
         """
-        TODO: Should check that everything required to successfully generate PCR1 picklists is available
-        """
-        return True
-        for pid in pcr_plates:
+        success = True
+        messages = []
+        for pid in pids:
             if pid in self.plate_location_sample:
-                if self.plate_location_sample[pid]['purpose'] != 'pcr':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
-                    return False
+                if self.plate_location_sample[pid]['purpose'] != purpose:
+                    msg = f"Error: plate already exists with PID {pid} with purpose "+\
+                            f"{self.plate_location_sample[pid]['purpose']}, expected {purpose}"
+                    self.log(msg)
+                    messages.append(msg)
+                    success = False
             else:
-                self.log(f"Critical: No plate exists with barcode {pid}")
-                return False
-
-        for pid in dna_plates:                   
-            if pid in self.plate_location_sample:
-                if self.plate_location_sample[pid]['purpose'] != 'dna':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
-                    return False
-            else:
-                self.log(f"Critical: No plate exists with barcode {pid}")
-                return False
-
-        for pid in taq_water_plates:                  
-            if pid in self.plate_location_sample:
-                if self.plate_location_sample[pid]['purpose'] != 'taq_water':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
-            else:
-                self.log(f"Critical: No plate exists with barcode {pid}")
-                return False
-        return True
+                msg = f"Critical: No plate exists with barcode {pid}"
+                self.log(msg)
+                if messages is not None:
+                    messages.append(msg)
+                success = False
+        return success, messages
 
 
-    def check_ready_echo2(self, pcr_plates, taq_water_plates, included_index_plates):
+    def check_ready_pcr1(self, dna_plates, pcr_plates, taq_water_plates, messages=None):
         """
-        TODO: Should check the everything required to successfully generate PCR2 picklists is available
+        Check that everything required to successfully generate PCR1 picklists is available
+        TODO: Check that volumes and wells are sufficient!
+        messages is an optional list, allowing us to pass useful info back to the UI
+        Returns success
         """
-        return True
+        success = True
+        local_messages = []
+
+        dna_success, msgs = self.check_plate_presence(dna_plates, 'dna')
+        if messages:
+            for msg in msgs:
+                messages.append(msg)
+        if not dna_success:
+            success = False
+
+        pcr_success, msgs = self.check_plate_presence(pcr_plates, 'pcr')
+        if messages:
+            for msg in msgs:
+                messages.append(msg)
+        if not pcr_success:
+            success = False
+
+        taq_success, msgs = self.check_plate_presence(taq_water_plates, 'taq_water')
+        if messages:
+            for msg in msgs:
+                messages.append(msg)
+        if not taq_success:
+            success = False
+      
+        return success
+
+
+    def check_ready_pcr2(self, pcr_plates, taq_water_plates, index_plates, amplicon_plates, messages=None):
+        """
+        Check the everything required to successfully generate PCR2 picklists is available
+        TODO: Check that volumes and wells are sufficient!
+        messages is an optional list, allowing us to pass useful info back to the UI
+        Return success
+        """
+        success = True
+
+        pcr_success, msgs = self.check_plate_presence(pcr_plates, 'dna')
+        if messages:
+            for msg in msgs:
+                messages.append(msg)
+        if not pcr_success:
+            success = False
+
+        taq_success, msgs = self.check_plate_presence(taq_water_plates, 'pcr')
+        if messages:
+            for msg in msgs:
+                messages.append(msg)
+        if not taq_success:
+            success = False
+
+        index_success, msgs = self.check_plate_presence(index_plates, 'taq_water')
+        if messages:
+            for msg in msgs:
+                messages.append(msg)
+        if not index_success:
+            success = False
+
+        amplicon_success, msgs = self.check_plate_presence(amplicon_plates, 'amplicon')
+        if messages:
+            for msg in msgs:
+                messages.append(msg)
+        if not amplicon_success:
+            success = False
+      
+        return success
 
 
     def generate_echo_PCR1_picklists(self, dna_plates, pcr_plates, taq_water_plates):

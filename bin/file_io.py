@@ -20,7 +20,9 @@ import traceback
 from collections import Counter, OrderedDict
 import itertools
 from copy import deepcopy
-from io import StringIO
+from io import StringIO, BytesIO
+
+import openpyxl
 
 """
 @created: Nov 2021
@@ -791,6 +793,28 @@ def read_html_template(html_fn):
     # template uses {!field!} instead of python format fields - easier to edit.
     htmlfmt = htmlcode.replace('{', '{{').replace('}', '}}').replace('{{!', '{').replace('!}}', '}')
     return htmlfmt
+
+
+def read_csv_or_excel_from_stream(multi_stream):
+    """
+    Take a stream of one or more table files from CSV or Excel and convert to comma delimited rows
+    return a list of names and a list of tables
+    """
+    manifest_names = []
+    manifest_tables = []
+    for file_stream in multi_stream:
+        manifest_name = file_stream.name
+        #print(f'{manifest_name=}', file=sys.stderr)
+        if manifest_name.lower().endswith('xlsx'):
+            workbook = openpyxl.load_workbook(BytesIO(file_stream.getvalue()))
+            sheet = workbook.active
+            rows = [','.join(map(str,cells)) for cells in sheet.iter_rows(values_only=True)]
+            #print(rows, file=sys.stderr)
+        else:
+            rows = StringIO(file_stream.getvalue().decode("utf-8"))
+        manifest_names.append(manifest_name)
+        manifest_tables.append(rows)
+    return manifest_names, manifest_tables
 
 
 ### Readers and writers for stage interlock CSV files (Nimbus -> Echo -> Analysis)
