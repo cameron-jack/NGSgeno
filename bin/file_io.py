@@ -677,25 +677,26 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
     transactions = {}
     #try:
     if True:
-        pcr_bcs = []
-        amplicon_bcs = []
-        taq_bcs = []
         try:
             pcr_bcs = [util.guard_pbc(p,silent=True) for p in pcr_plate_bcs]
         except Exception as exc:
-            exp.log(f"Error: PCR plate barcode in error {pcr_bcs=} {exc}")
+            exp.log(f"Error: PCR plate barcode in error {pcr_plate_bcs=} {exc}")
+            pcr_bcs = []
         try:
             index_bcs = [util.guard_pbc(i, silent=True) for i in index_plate_bcs]
         except Exception as exc:
-            exp.log(f"Error: Index plate parcode in error {index_bcs=} {exc}")
+            exp.log(f"Error: Index plate parcode in error {index_plate_bcs=} {exc}")
+            index_bcs = []
         try:
             amplicon_bcs = [util.guard_pbc(d,silent=True) for d in amplicon_plate_bcs] 
         except Exception as exc:
             exp.log(f"Error: Amplicon plate barcodes in error {amplicon_plate_bcs=} {exc}")
+            amplicon_bcs = []
         try:                          
             taq_bcs = [util.guard_pbc(t, silent=True) for t in taq_water_bcs]
         except Exception as exc:
             exp.log(f"Error: Taq-water plate barcodes in error {taq_water_bcs=} {exc}")
+            taq_bcs = []
         outfmt = f"PCR-picklist_{exp.name}.csv"
     
         fnstage2 = "Stage2.csv"

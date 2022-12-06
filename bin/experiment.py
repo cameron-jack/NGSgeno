@@ -78,6 +78,8 @@ class Experiment():
         - Because it is ordered, we can "rewind" to this location.
         - Transactions store all plate modifications (i.e. +/- volume changes)
         - These modifications are applied to a plate record before any operations are carried out with these plates
+
+    Once sequence data is available, the earlier stages of the pipeline should be locked.
         
     """
     def __init__(self, name):
@@ -138,7 +140,7 @@ class Experiment():
         return str(self.__dict__)
 
     def lock(self):
-        self.log('Info: Locking experiment. Not modification should take place while lock remains')
+        self.log('Info: Locking experiment. No modification allowed to plates while lock remains')
         self.locked = True
 
     def unlock(self):
@@ -1650,6 +1652,7 @@ class Experiment():
         if self.locked:
             self.log('Error: cannot add amplicon plate layouts while lock is active.')
             return False
+
         file_names, file_tables = file_io.read_csv_or_excel_from_stream(uploaded_amplicon_manifests)
         for file_name, file_table in zip(file_names, file_tables):
             if file_name in self.uploaded_files:
@@ -1857,15 +1860,15 @@ class Experiment():
         """
         success = True
 
-        pcr_success = self.check_plate_presence(pcr_plates, 'dna', messages)
+        pcr_success = self.check_plate_presence(pcr_plates, 'pcr', messages)
         if not pcr_success:
             success = False
 
-        taq_success = self.check_plate_presence(taq_water_plates, 'pcr', messages)
+        taq_success = self.check_plate_presence(taq_water_plates, 'taq_water', messages)
         if not taq_success:
             success = False
 
-        index_success = self.check_plate_presence(index_plates, 'taq_water', messages)
+        index_success = self.check_plate_presence(index_plates, 'index', messages)
         if not index_success:
             success = False
 

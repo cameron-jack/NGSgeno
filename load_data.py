@@ -75,40 +75,36 @@ def load_rodentity_data():
     exp = st.session_state['experiment']
     plates_to_clear = [False, False, False, False]
     with st.expander('Add data from Rodentity JSON files',expanded=True):
-        if all([exp.unassigned_plates[unass_pid] != '' for unass_pid in exp.unassigned_plates]):
-            disable_uploads = True
-        else:
-            disable_uploads = False
-
-        with st.form('rodentity_upload_form'):
+        with st.form('rodentity_upload_form', clear_on_submit=True):
             epps_col1, _ = st.columns([1,1])
-            rodentity_epps = epps_col1.file_uploader('Choose up to four Rodentity JSON files', type='json', accept_multiple_files=True, disabled=disable_uploads)
+            rodentity_epps = epps_col1.file_uploader('Choose up to four Rodentity JSON files', type='json', accept_multiple_files=True)
             rod_upload_submit_button = st.form_submit_button('Submit')
             if rod_upload_submit_button and rodentity_epps:
-                used_keys = set()
                 for rod_epp in rodentity_epps:
                     rod_pid = util.guard_pbc(rod_epp.name.rstrip('.json'), silent=True)
                     if all([exp.unassigned_plates[slot] != '' for slot in [1,2,3,4]]):
                         st.markdown(f'<p style="color:#FF0000">Ran out of free slots for {util.unguard_pbc(rod_pid, silent=True)}</p>', unsafe_allow_html=True)
                         continue
-                    if rod_pid in exp.dest_sample_plates or rod_pid in exp.plate_location_sample or \
+                    if rod_pid in exp.dest_sample_plates or \
                             rod_pid in exp.unassigned_plates[1] or rod_pid in exp.unassigned_plates[2] or \
-                            rod_pid in exp.unassigned_plates[3] or rod_pid in exp.unassigned_plates[4] or \
-                            rod_pid in exp.unassigned_plates['custom']:
-                        st.markdown('<p style="color:#FF0000">Rodentity plate barcode already in use: ' +\
-                                util.unguard_pbc(rod_pid, silent=True) + '</p>', unsafe_allow_html=True)
-                        sleep(0.5)
+                            rod_pid in exp.unassigned_plates[3] or rod_pid in exp.unassigned_plates[4]:
+                        st.markdown('<p style="color:#FF0000">Warning: Rodentity plate barcode already used at least once</p>', unsafe_allow_html=True)
+                    if rod_pid in exp.unassigned_plates['custom'] or \
+                            (rod_pid in exp.plate_location_sample and exp.plate_location_sample[rod_pid]['purpose'] != 'sample'):
+                        st.markdown('<p style="color:#FF0000">Error: Rodentity plate barcode already in use for a different purpose</p>', unsafe_allow_html=True)
                         continue                     
-                    for key in exp.unassigned_plates:
-                        if key not in used_keys and key != 'custom' and key != 'None':
-                            exp.unassigned_plates[key] = rod_pid
-                            used_keys.add(key)
-                            # Save a copy we can edit and reload
-                            rod_fn = os.path.join('run_'+exp.name, db_io._eppfn_r(rod_pid))
-                            with open(rod_fn, 'wt') as outf:
-                                outf.write(rod_epp.getvalue().decode("utf-8"))
-                            exp.log(f'Info: uploaded copy Rodentity plate {util.unguard_pbc(rod_pid, silent=True)} to {rod_fn}')
-                            break
+                    for key in [1,2,3,4]:
+                        if exp.unassigned_plates[key] != '':
+                            continue
+                        exp.unassigned_plates[key] = rod_pid
+                            
+                        # Save a copy we can edit and reload
+                        rod_fn = os.path.join('run_'+exp.name, db_io._eppfn_r(rod_pid))
+                        with open(rod_fn, 'wt') as outf:
+                            outf.write(rod_epp.getvalue().decode("utf-8"))
+                        exp.log(f'Info: uploaded copy Rodentity plate {util.unguard_pbc(rod_pid, silent=True)} to {rod_fn}')
+                        break
+                            
                 exp.save()
     
         rod_col1, _, rod_col2, _ = st.columns([3,1,2,2])
@@ -123,6 +119,7 @@ def load_rodentity_data():
                         exp.unassigned_plates[i+1] = ''
                         plates_to_clear[i] = False
                 exp.save()
+                st.experimental_rerun()
                 
 
         with rod_col2.form('rod_destination_form', clear_on_submit=True):
@@ -215,24 +212,25 @@ def load_custom_manifests():
                 dest_pid = st.text_input(label='Destination plate ID (barcode)', key='dest1')
                 if dest_pid:
                     dest_pid = util.guard_pbc(dest_pid, silent=True)
+                    
+                submit_selection = st.form_submit_button("Accept")
+                if submit_selection and dest_pid:
                     if dest_pid in exp.dest_sample_plates or dest_pid in exp.plate_location_sample or \
                             dest_pid in exp.unassigned_plates[1] or dest_pid in exp.unassigned_plates[2] or \
                             dest_pid in exp.unassigned_plates[3] or dest_pid in exp.unassigned_plates[4] or \
                             dest_pid in exp.unassigned_plates['custom']:
-                        st.markdown('<p style="color:#FF0000">WARNING! Destination plate barcode already in use: ' +\
+                        st.markdown('<p style="color:#FF0000">Error: Destination plate barcode already in use: ' +\
                                 util.unguard_pbc(dest_pid, silent=True) + '</p>', unsafe_allow_html=True)
                     else:
                         st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
-                submit_selection = st.form_submit_button("Accept")
-                if submit_selection and dest_pid:
-                    sample_plates = [pid for pid in [p1,p2,p3,p4] if pid != util.guard_pbc('None', silent=True) and pid is not None]
-                    print(f'{sample_plates=}', file=sys.stderr)
-                    success = exp.accept_custom_manifests(dest_pid, sample_plates)
-                    if not success:
-                        st.markdown('<p style="color:#FF0000">Failed to assign custom plates.'+\
-                                'Please see the log</p>', unsafe_allow_html=True)
-                    if success:
-                        st.write('Successfully assigned custom plates')
+                        sample_plates = [pid for pid in [p1,p2,p3,p4] if pid != util.guard_pbc('None', silent=True) and pid is not None]
+                        print(f'{sample_plates=}', file=sys.stderr)
+                        success = exp.accept_custom_manifests(dest_pid, sample_plates)
+                        if not success:
+                            st.markdown('<p style="color:#FF0000">Failed to assign custom plates.'+\
+                                    'Please see the log</p>', unsafe_allow_html=True)
+                        if success:
+                            st.write('Successfully assigned custom plates')
     exp.save()
 
 
@@ -380,8 +378,8 @@ def upload_pcr2_files(key):
         uploaded_index_volumes = col2.file_uploader('Upload i7i5 Index Plate Volumes - the barcode must be the first part of the filename e.g. 12345_index_volume.csv', 
             key='index_vol_uploader'+key, type='csv', accept_multiple_files=True)
  
-        uploaded_amplicon_plates = col1.file_uploader('Upload Extra Amplicon Plates', 
-                key='amplicon_plate_uploader'+key, type='csv', accept_multiple_files=True)
+        uploaded_amplicon_plates = col1.file_uploader('Upload Extra Amplicon Plates - CSV or XLSX. Invalidates MiSeq and Stage3 CSV files if they exist', 
+                key='amplicon_plate_uploader'+key, type=['csv', 'xlsx'], accept_multiple_files=True)
         upload_button = st.form_submit_button("Upload Files")
 
         if upload_button:
@@ -401,13 +399,36 @@ def upload_pcr2_files(key):
                 else:
                     st.write(f'Failed to write at least one set of index volumes, please see the log')    
 
+            def accept_upload(upload_choice):
+                upload_choice.append('upload')
+
+            def cancel_upload(upload_choice):
+                upload_choice.append('cancel')
+
             if uploaded_amplicon_plates:
                 uap_pids = [uap.name for uap in uploaded_amplicon_plates]
-                success = exp.add_amplicon_manifests(uploaded_amplicon_plates)
-                if success:
-                    st.write(f'Successfully added amplicon manifests from files {uap_pids}')
+                miseq_fn = exp.get_exp_fp('MiSeq_'+exp.name+'.csv')
+                stage3_fn = exp.get_exp_fp('Stage3.csv')
+                upload_choice = ['no_action']
+                if Path(miseq_fn).exists() or Path(stage3_fn).exists():
+                    st.warning(f'The Miseq.csv or Stage3.csv files already exists')
+                    st.warning(f'Click "Accept" to remove these files and carry on with uploading amplicons')
+                    st.button('Accept', on_click=accept_upload, args=upload_choice, key='accept_overwrite_button')
+                    st.button('Cancel', on_click=cancel_upload, args=upload_choice, key='cancel_overwrite_button')
                 else:
-                    st.write(f'Failed to upload at least one amplicon manifest, please see the log')
+                    upload_choice.append('upload')
+                if upload_choice[-1] == 'upload':
+                    if Path(miseq_fn).exists():
+                        os.remove(miseq_fn)
+                    if Path(stage3_fn).exists():
+                        os.remove(stage3_fn)
+                    exp.enforce_file_consistency()
+                    success = exp.add_amplicon_manifests(uploaded_amplicon_plates)
+                    if success:
+                        st.write(f'Successfully added amplicon manifests from files {uap_pids}')
+                    else:
+                        st.write(f'Failed to upload at least one amplicon manifest, please see the log')
+                upload_choice.append('no_action')
 
 
 def upload_extra_consumables(key):
@@ -449,6 +470,8 @@ def upload_extra_consumables(key):
 
  
 def upload_miseq_fastqs(exp):
+    if not exp.locked:
+        st.warning('Uploading sequence files will lock previous stages of the pipeline, preventing changes to plate layouts')
     st.markdown('<h4 style="color:#000000">Add Miseq FASTQ files to experiment</h4>', unsafe_allow_html=True)
     fastq_path = dc.st_directory_picker("Select location of Miseq FASTQ files")
     fastq_files = [f for f in fastq_path.glob('*.fastq*')] + [f for f in fastq_path.glob('*.fq*')]
@@ -467,6 +490,9 @@ def upload_miseq_fastqs(exp):
             copy2(fp, exp.get_raw_dirpath())
         file_field.markdown('<h5>Done</h5>', unsafe_allow_html=True)
         copy_progress.progress(100)
+        if not exp.locked:
+            exp.lock()
+            st.warning(f'Experiment {exp.name} is now locked from changes to plate layouts')
 
 
 #def upload_rodentity_demo():

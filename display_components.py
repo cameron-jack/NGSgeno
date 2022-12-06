@@ -179,13 +179,13 @@ def data_table(key, options=False, table_option=None, height=350):
 
     #Show a visual of the plates
     elif table_option == 'Plate View':
-        plate_ids = []
+        plate_ids = [' ']
         for pid in exp.plate_location_sample:
             plate_ids.append(util.unguard(pid))
 
         #Let user choose which plate to view
         plate_selectbox = data_container.selectbox('Plate ID to view', plate_ids, key=key)
-        if plate_selectbox:
+        if plate_selectbox and plate_selectbox != ' ':
             plate_id = util.guard_pbc(plate_selectbox)
             if plate_id in exp.plate_location_sample:
                 heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.5)
@@ -770,7 +770,10 @@ def info_viewer(key):
     Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
     """
     exp = st.session_state['experiment']
-    info_expander = st.expander('Info Panel')
+    if 'info_expand' not in st.session_state:
+        st.session_state['info_expand'] = False
+    
+    info_expander = st.expander('Info Panel', expanded=st.session_state['info_expand'])
     container = info_expander.container()
         
     col1,col2,col3 = info_expander.columns([1 ,7,1])
