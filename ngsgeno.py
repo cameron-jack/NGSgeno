@@ -557,10 +557,10 @@ def main():
                                 plate_checklist_expander(efs,pcr_stage=1)
                         
                     if included_DNA_plates:
-                        messages = []
+                        pcr1_messages = []
                         if not exp.check_ready_pcr1(included_DNA_plates,\
-                                    included_PCR_plates, included_taqwater_plates, messages):
-                            for msg in messages:
+                                    included_PCR_plates, included_taqwater_plates, pcr1_messages):
+                            for msg in pcr1_messages:
                                 st.warning(msg)
                         else:
                             #print(f'{included_DNA_plates=} {included_PCR_plates=} {included_taqwater_plates=}', file=sys.stderr)
@@ -657,8 +657,8 @@ def main():
                                     included_amplicon_plates =\
                                     plate_checklist_expander(available_nimbus, pcr_stage=2)
                     pcr2_messages = []  # pass by reference
-                    if not exp.check_ready_pcr2(included_PCR_plates,\
-                                included_taqwater_plates, included_index_plates, pcr2_messages):
+                    if not exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
+                            included_index_plates, included_amplicon_plates, pcr2_messages):
                         for msg in pcr2_messages:
                             st.warning(msg)
                     else:
