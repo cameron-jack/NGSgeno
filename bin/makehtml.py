@@ -12,7 +12,6 @@ Create SVG plate images, Summary and Result Table HTML files for sequence counts
 Swap r.assays/r.strainName on custom/mouse data
 """
 
-
 import os
 import sys         
 import csv
@@ -31,8 +30,86 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
     In future, add options for which things to highlight or scale, etc.
     Return a string containing html for the heatmap
     """
-    width = str(int(600*scaling)) + 'px'
-    height = str(int(400*scaling)) + 'px'
+    purpose = 'Unknown purpose'
+    if 'purpose' in exp.plate_location_sample[plate_id]:
+        purpose = exp.plate_location_sample[plate_id]['purpose']
+
+    chart_data_str = "chart.data = ["
+    well_entries = []
+
+    well_fields = []
+    #default plate size: 384-wells
+    plate_order = util.col_ordered_384
+    width_num = 950
+    height_num = 500
+    left_padding = str(20)
+    tool_text = "";
+    if purpose == 'dna':
+        #384-well plates
+        well_fields = ['barcode', 'sex', 'strain', 'assays', 'gts']
+        tool_text = '{y}{x}: ID: {barcode}\\nStrain: {strain}\\nAssays: {assays}\\nSex: {sex}\\nObserved GT: {gts}';
+        
+    if purpose == 'sample':
+        #sample plate: 96-wells
+        plate_order = util.col_ordered_96
+        well_fields = ['barcode', 'sex', 'strain', 'assays', 'gts']
+        tool_text = '{y}{x}: ID: {barcode}\\nStrain: {strain}\\nAssays: {assays}\\nSex: {sex}\\nObserved GT: {gts}';
+        width_num = 600
+        height_num = 400
+        left_padding = str(30)
+    
+    if purpose == 'pcr':
+        #384-well plates
+        pass
+
+    if purpose == 'taq_water':
+        #taq/water plate: 6 wells
+        plate_order = util.col_ordered_6
+        well_fields = ['name', 'volume']
+        tool_text = '{y}{x}: Type: {name}\\nVolume: {volume} μL';
+        width_num = 400
+        height_num = 300
+        left_padding = str(37)
+
+    if purpose == 'primer':
+        #384-well plates
+        well_fields = ['primer', 'volume']
+        tool_text = '{y}{x}: Primer: {primer}\\nVolume: {volume} μL';
+
+    if purpose == 'index':
+        #384-well plates
+        well_fields = ['idt_name', 'index', 'bc_name', 'oligo', 'volume']
+        tool_text = '{y}{x}: Index Name: {idt_name}\\nIndex: {index}\\nBarcode Name: {bc_name}\\nVolume: {volume} μL';
+        
+
+    for well in plate_order:
+        entry_str = f'"y" : "{well[0].upper()}", "x" : "{well[1:]}"'
+        if well not in exp.plate_location_sample[plate_id]:
+            entry_str += ', "color" : colors.empty'
+        elif purpose == 'index' and 'idt_name' not in exp.plate_location_sample[plate_id][well]:
+            entry_str += ', "color" : colors.empty'
+        elif purpose == 'primer' and 'primer' not in exp.plate_location_sample[plate_id][well]:
+            entry_str += ', "color" : colors.empty'
+        else:
+            entry_str += ', "color" : colors.passed'
+            sample_data = exp.plate_location_sample[plate_id][well]
+            for field in well_fields:
+                if field in sample_data:
+                    if field in ['assays','gts']:
+                        field_data = '; '.join(sample_data[field])
+                    elif field in ['volume']:
+                        field_data = sample_data[field]/1000
+                    else:
+                        field_data = sample_data[field]
+                    if field_data:
+                        entry_str += f', "{field}" : "{str(field_data)}"'
+        well_entries.append(entry_str)
+    chart_data_str += '\n{' + '},\n{'.join(well_entries) + '}\n' + '];\n'
+
+    
+    
+    width = str(int(width_num*scaling)) + 'px'
+    height = str(int(height_num*scaling)) + 'px'
     font_axis = str(int(20*scaling))
     font_label = str(int(16*scaling))
     font_popup = str(int(14*scaling))
@@ -43,8 +120,8 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
       width: WWWWWW;
       height: HHHHHH;
       position: absolute;
-      top: 10%;
-      left: 32%;
+      top: 11%;
+      left: LLLLLL%;
       background-color: white;
       background-size: 95%;
       border: 10px;
@@ -134,7 +211,7 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
     column.strokeOpacity = 1;
     column.stroke = am4core.color("lightgrey");
     //column.tooltipText = "{y}{x}: {value.workingValue.formatNumber('#.')}";
-    column.tooltipText = "{y}{x}: ID: {barcode}\\nStrain: {strain}\\nAssays: {assays}\\nSex: {sex}\\nObserved GT: {gts}";
+    column.tooltipText = "TTTTTT";
     column.width = am4core.percent(85);
     column.height = am4core.percent(85);
     column.column.cornerRadius(60, 60, 60, 60);
@@ -167,32 +244,9 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
         "good": "#5dbe24",
         "verygood": "#0b7d03"
     };
-    """.replace('WWWWWW',width).replace('HHHHHH',height).replace('FAFAFA',font_axis).replace('FLFLFL', font_label).replace('FPFPFP',font_popup)
-
-    purpose = 'Unknown purpose'
-    if 'purpose' in exp.plate_location_sample[plate_id]:
-        purpose = exp.plate_location_sample[plate_id]['purpose']
-
-    chart_data_str = "chart.data = ["
-    well_entries = []
-    for well in util.col_ordered_96:
-        entry_str = f'"y" : "{well[0].upper()}", "x" : "{well[1:]}"'
-        if well not in exp.plate_location_sample[plate_id]:
-            entry_str += ', "color" : colors.empty'
-        else:
-            entry_str += ', "color" : colors.passed'
-            sample_data = exp.plate_location_sample[plate_id][well]
-            for field in ['barcode', 'sex', 'strain', 'assays', 'gts']:
-                if field in sample_data:
-                    if field in ['assays','gts']:
-                        field_data = '; '.join(sample_data[field])
-                    else:
-                        field_data = sample_data[field]
-                    if field_data:
-                        entry_str += f', "{field}" : "{str(field_data)}"'
-        well_entries.append(entry_str)
-    chart_data_str += '\n{' + '},\n{'.join(well_entries) + '}\n' + '];\n'
-    
+    """.replace('WWWWWW',width).replace('HHHHHH',height).replace('FAFAFA',font_axis).\
+                replace('FLFLFL', font_label).replace('FPFPFP',font_popup).replace('LLLLLL', left_padding).\
+                    replace('TTTTTT', tool_text)
 
     footer_str = """
     var baseWidth = Math.min(chart.plotContainer.maxWidth, chart.plotContainer.maxHeight);
