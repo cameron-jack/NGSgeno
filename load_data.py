@@ -469,7 +469,8 @@ def upload_extra_consumables(key):
 
 
  
-def upload_miseq_fastqs(exp):
+def upload_miseq_fastqs():
+    exp = st.session_state['experiment']
     if not exp.locked:
         st.warning('Uploading sequence files will lock previous stages of the pipeline, preventing changes to plate layouts')
     st.markdown('<h4 style="color:#000000">Add Miseq FASTQ files to experiment</h4>', unsafe_allow_html=True)

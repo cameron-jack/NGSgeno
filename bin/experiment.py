@@ -142,10 +142,12 @@ class Experiment():
     def lock(self):
         self.log('Info: Locking experiment. No modification allowed to plates while lock remains')
         self.locked = True
+        self.save()
 
     def unlock(self):
         self.log('Info: Unlocking experiment. Modification is now possible. There should be good reason for this!')
         self.locked = False
+        self.save()
 
     ### transactions/reproducible steps
 
@@ -1835,6 +1837,8 @@ class Experiment():
         Returns success
         """
         success = True
+        if not dna_plates or not pcr_plates or not taq_water_plates:
+            success = False
 
         dna_success= self.check_plate_presence(dna_plates, 'dna', messages)
         if not dna_success:
@@ -1859,6 +1863,9 @@ class Experiment():
         Return success
         """
         success = True
+
+        if not pcr_plates or not taq_water_plates or not index_plates:
+            success = False
 
         pcr_success = self.check_plate_presence(pcr_plates, 'pcr', messages)
         if not pcr_success:
@@ -2262,8 +2269,60 @@ class Experiment():
 
     def get_miseq_samplesheets(self):
         """ return the MiSeq-XXX.csv samplesheet, if it exists """
-        miseq_fps = Path(self.get_exp_dir()).glob('MiSeq_*.csv')
-        return miseq_fps
+        miseq_fps = list(Path(self.get_exp_dir()).glob('MiSeq_*.csv'))
+        return miseq_fps  
+
+
+    def check_sequence_upload_ready(self, messages):
+        """
+        Prevent users from uploading sequence files without references being loaded, or without generating Stage3 or MiSeq files
+        Requires a list of messages for the GUI which can be appended to (pass by reference)
+        """
+        success = True
+        # check for MiSeq.csv and Stage3 files
+        fn1 = self.get_exp_fp(f'MiSeq_{self.name}.csv')
+        fn2 = self.get_exp_fp(f'Stage3.csv')
+        fns = [fn1, fn2]
+        for fn in fns:
+            if not Path(fn).exists():
+                success = False
+                msg = f"Error: {fn} not present"
+                self.log(msg)
+                messages.append(msg)
+
+        # check that at least one reference sequence has been uploaded
+        if len(self.reference_sequences) == 0:
+            success = False
+            msg = 'No reference sequences have been uploaded yet, please add these'
+            self.log(msg)
+            messages.append(msg)
+
+        self.save()
+        return success
+
+
+    def check_allele_calling_ready(self, messages):
+        """ 
+        Return True if everything needed for allele calling is present
+            - Stage3.csv is present - done in self.check_sequence_upload_ready()
+            - Miseq file is present - done in self.check_sequence_upload_ready()
+            - check that reference sequences are uploaded - done in self.check_sequence_upload_ready()
+            - the raw directory is present (can be empty)
+
+        Requires a list "messages" to be given for returning feedback to the GUI
+        """
+        success = self.check_sequence_upload_ready(messages)
+
+        # check whether the raw directory for FASTQs exists yet - implies at least one FASTQ has been uploaded        
+        dn = self.get_exp_fp(f'raw')
+        if not Path(dn).exists() or not Path(dn).is_dir():
+            success = False
+            msg = f"Error: {dn} does not exist"
+            self.log(msg)
+            messages.append(msg)
+
+        self.save()
+        return success
 
      
     def save(self):

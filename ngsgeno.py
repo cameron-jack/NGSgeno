@@ -27,6 +27,7 @@ import extra_streamlit_components as stx
 import display_components as dc
 import load_data as ld
 import asyncio
+from time import sleep
 
 def get_run_folders():
     """ return an alphabetically sorted list of run folders, without their run_ prefix """
@@ -359,7 +360,7 @@ def main():
                 with st.expander(label='Summary of loaded data', expanded=expanded):
                     summary_holder = st.empty()
                 if exp.locked:
-                    st.warning('Experiment {exp.name} locked from further modification')
+                    st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     ld.load_rodentity_data()
                     #ld.load_database_data()
@@ -374,7 +375,7 @@ def main():
             if load_data_tab == 2:
                 dc.data_table('load_data_tab2', options=False, table_option='Loaded Consumables')
                 if exp.locked:
-                    st.warning('Experiment {exp.name} locked from further modification')
+                    st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     ld.upload_pcr1_files('tab2')
                     ld.upload_pcr2_files('tab2')
@@ -413,7 +414,7 @@ def main():
             #download nimbus
             if nimbus_tab == 1:
                 if exp.locked:
-                    st.warning('Experiment {exp.name} locked from further modification')
+                    st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     if not st.session_state['experiment'].dest_sample_plates:
                         nimbus_title = "Load data inputs to enable Nimbus input file generation."
@@ -444,7 +445,7 @@ def main():
                     if nim_tab1_err:
                         st.write(f'<p style="color:#FF0000">{nim_tab1_err}</p>', unsafe_allow_html=True)
 
-                    _,dl_col1,dl_col2,dl_col3,dl_col4,_= st.columns([1,9,6,9,6,1])
+                _,dl_col1,dl_col2,dl_col3,dl_col4,_= st.columns([1,9,6,9,6,1])
                 
                 #Generate file names to download + download buttons
                 #print(f"{nfs=} {efs=} {xbcs=}")
@@ -469,7 +470,7 @@ def main():
             #upload nimbus
             if nimbus_tab == 2:
                 if exp.locked:
-                    st.warning('Experiment {exp.name} locked from further modification')
+                    st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     nim_tab2_title_area = st.empty()
                     nim_tab2_title = ''
@@ -538,7 +539,7 @@ def main():
 
             if primer_tab == 1:
                 if exp.locked:
-                    st.warning('Experiment {exp.name} locked from further modification')
+                    st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     primer_checklist_exp = st.expander('Plate Checklist', expanded=True)
                     if efs:
@@ -572,7 +573,7 @@ def main():
             #generate picklists
             if primer_tab == 2:
                 if exp.locked:
-                    st.warning('Experiment {exp.name} locked from further modification')
+                    st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     primer_checklist_exp = st.expander('Plate Checklist', expanded=True)
                     if not efs:
@@ -638,7 +639,7 @@ def main():
             #PCR components
             if index_tab == 1:
                 if exp.locked:
-                    st.warning('Experiment {exp.name} locked from further modification')
+                    st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     index_checklist_exp = st.expander('Plate Checklist', expanded=False)
                     title_holder = st.empty()
@@ -664,7 +665,7 @@ def main():
             #generate picklist
             if index_tab == 2:
                 if exp.locked:
-                    st.warning('Experiment {exp.name} locked from further modification')
+                    st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     index_checklist_exp = st.expander('Plate Checklist', expanded=False)
                     if not available_nimbus:
@@ -720,7 +721,7 @@ def main():
             if miseq_tab == 1:
                 _, miseq_col1, miseq_col2, _ =  st.columns([2,1,1,2])
                 if exp.locked:
-                    st.warning('Experiment {exp.name} locked from further modification')
+                    st.warning(f'Experiment {exp.name} locked from further modification')
                 
                 if exp.get_miseq_samplesheets():
                     for fp in exp.get_miseq_samplesheets():
@@ -730,11 +731,17 @@ def main():
                         download_miseq = miseq_col2.download_button(label='Download', data=open(fp, 'rt'), 
                                 file_name=fp_name, mime='text/csv', key='dnld_samplesheet_'+str(fp))
                 else:
-                    no_miseq_msg = ""
+                    st.warning(f'No MiSeq Samplesheet available for download')
                 st.session_state['miseq_tab'] = 1
 
             if miseq_tab == 2:
-                ld.upload_miseq_fastqs(exp)
+                ready_messages = []
+                if not exp.check_sequence_upload_ready(ready_messages):
+                    for msg in ready_messages:
+                        st.error(msg)
+                    st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
+                else:
+                    ld.upload_miseq_fastqs()
                 st.session_state['miseq_tab'] = 2
 
             with info_holder:
@@ -764,51 +771,56 @@ def main():
             # Only offer upload in the Miseq pipeline section
             if allele_tab == 1:
                 rundir = exp.get_exp_dir()
-                
-                #num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
-                num_cpus = st.number_input(\
-                            label="Number of processes to run simultaneously (defaults to # of CPUs)",\
-                                    value=os.cpu_count())
-                exhaustive_mode = st.checkbox(\
-                            "Exhaustive mode: try to match every sequence, no matter how few counts")
-                
-                progress_files = list(Path(rundir).glob('match_progress_*'))
-                if len(progress_files) == 1:
-                    st.session_state['match_running'] = True
+                seq_ready_messages = []
+                call_ready_messages = []
+                ld.upload_extra_consumables('allele_tab1')
+                if not exp.check_sequence_upload_ready(seq_ready_messages):
+                    for msg in seq_ready_messages:
+                        st.error(msg)
+                    st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
+
+                elif not exp.check_allele_calling_ready(call_ready_messages):
+                    for msg in call_ready_messages:
+                        st.error(msg)
+                    st.warning('These resources are required before allele calling can proceed')
+                    ld.upload_miseq_fastqs()
                 else:
-                    st.session_state['match_running'] = False
-
-                disable_calling = False
-                if Path(exp.get_exp_fp('ngsgeno_lock')).exists():
-                    st.markdown('**Analysis in progress**')
-                    disable_calling = True
+                    ld.upload_miseq_fastqs()
+                    with st.form('allele_calling_form', clear_on_submit=True):
+                        #num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
+                        num_cpus = st.number_input(\
+                                label="Number of processes to run simultaneously (defaults to # of CPUs)",\
+                                        value=os.cpu_count())
+                        exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
                 
-                do_matching = st.button("Run allele calling", disabled=disable_calling)
+                        do_matching = st.form_submit_button("Run allele calling")
 
-                if do_matching:
-                    success = exp.generate_targets()
-                    if not success:
-                        exp.log('Critical: failed to save reference sequences to target file')
-                    else:
-                        matching_prog = os.path.join('bin','ngsmatch.py')
-                        cmd_str = f'python {matching_prog} --ncpus {num_cpus}  --rundir {rundir}'
-                        if exhaustive_mode:
-                            cmd_str += ' --exhaustive'                     
-                        exp.log(f'Info: {cmd_str}')
-                        print(f"{cmd_str=}", file=sys.stderr)
-                        cp = subprocess.run(cmd_str.split(' '))
-                        st.session_state['match_running'] = True
-                        exp.log(f'Debug: {cp}')
-                    do_matching = None
+                    if Path(exp.get_exp_fp('ngsgeno_lock')).exists():
+                        st.info('Analysis in progress')
+                    elif do_matching:
+                        success = exp.generate_targets()
+                        if not success:
+                            msg = 'Critical: failed to save reference sequences to target file'
+                            exp.log(msg)
+                            st.error(msg)
+                            sleep(0.5)
+                        else:
+                            matching_prog = os.path.join('bin','ngsmatch.py')
+                            cmd_str = f'python {matching_prog} --ncpus {num_cpus}  --rundir {rundir}'
+                            if exhaustive_mode:
+                                cmd_str += ' --exhaustive'                     
+                            exp.log(f'Info: {cmd_str}')
+                            print(f"{cmd_str=}", file=sys.stderr)
+                            subprocess.Popen(cmd_str.split(' '))    
 
-                if 'match_running' in st.session_state and st.session_state['match_running']:
+                if Path(exp.get_exp_fp('ngsgeno_lock')).exists():
                     launch_msg = st.empty()
                     launch_prog = st.progress(0)
                     completion_msg = st.empty()
                     match_prog = st.progress(0)
                     asyncio.run(report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog))
                     
-                st.session_state['allele_tab'] = 2
+                st.session_state['allele_tab'] = 1
 
             #if allele_tab == 3:
             #    dc.data_table(key='allele_calling', options=True)
