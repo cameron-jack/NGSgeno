@@ -467,6 +467,28 @@ def upload_extra_consumables(key):
             #if uploaded_taqwater_plates:
             #    success = exp.add_taqwater_layout_volume
 
+def upload_reference_sequences(key):
+    """
+    Upload custom references
+    """
+    exp = st.session_state['experiment']
+    with st.form('References upload'+key, clear_on_submit=True):
+        uploaded_references = st.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
+                type=['txt','fa','fasta'], accept_multiple_files=True)
+        
+        upload_button = st.form_submit_button("Upload Files")
+
+        if upload_button:
+            if uploaded_references:
+                success = exp.add_references(uploaded_references)
+                ref_names = [ur.name for ur in uploaded_references]
+                if success:
+                    st.write(f'Successfully added reference sequences from files {ref_names}')
+                else:
+                    st.write(f'Failed to upload at least one reference sequence file, please see the log')
+           
+
+
 
  
 def upload_miseq_fastqs():

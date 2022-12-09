@@ -1455,12 +1455,13 @@ class Experiment():
 
     def add_references(self, uploaded_references):
         """
-        read in reference (target) IDs and sequences
+        read in reference (target) IDs and sequences.
+        May be added when pipeline is locked.
         """
-        if self.locked:
-            self.log('Error: Cannot add reference sequences while lock is active')
-            self.save()
-            return False
+        #if self.locked:
+        #    self.log('Error: Cannot add reference sequences while lock is active')
+        #    self.save()
+        #    return False
         partial_fail = False
         for uploaded_reference in uploaded_references:
             ref_name = uploaded_reference.name

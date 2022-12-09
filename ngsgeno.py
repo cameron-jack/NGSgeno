@@ -722,7 +722,7 @@ def main():
                 _, miseq_col1, miseq_col2, _ =  st.columns([2,1,1,2])
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
-                
+                ld.upload_reference_sequences('miseq2')
                 if exp.get_miseq_samplesheets():
                     for fp in exp.get_miseq_samplesheets():
                         fp_name = str(Path(fp).name)
@@ -735,6 +735,7 @@ def main():
                 st.session_state['miseq_tab'] = 1
 
             if miseq_tab == 2:
+                ld.upload_reference_sequences('miseq2')
                 ready_messages = []
                 if not exp.check_sequence_upload_ready(ready_messages):
                     for msg in ready_messages:
@@ -773,7 +774,7 @@ def main():
                 rundir = exp.get_exp_dir()
                 seq_ready_messages = []
                 call_ready_messages = []
-                ld.upload_extra_consumables('allele_tab1')
+                ld.upload_reference_sequences('miseq2')
                 if not exp.check_sequence_upload_ready(seq_ready_messages):
                     for msg in seq_ready_messages:
                         st.error(msg)
