@@ -385,7 +385,7 @@ def upload_pcr2_files(key):
         if upload_button:
             if uploaded_index_layouts:
                 uil_pids = [uil.name for uil in uploaded_index_layouts]
-                success = st.session_state['experiment'].add_index_layouts(uploaded_index_layouts)
+                success = exp.add_index_layouts(uploaded_index_layouts)
                 if success:
                     st.write(f'Successfully added index layouts for plates {uil_pids}')
                 else:
@@ -393,7 +393,7 @@ def upload_pcr2_files(key):
 
             if uploaded_index_volumes:
                 uiv_pids = [uiv.name for uiv in uploaded_index_volumes]
-                success = st.session_state['experiment'].add_index_volumes(uploaded_index_volumes)
+                success = exp.add_index_volumes(uploaded_index_volumes)
                 if success:
                     st.write(f'Successfully added index volumes for plates {uiv_pids}')
                 else:

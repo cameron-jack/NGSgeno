@@ -682,10 +682,11 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         except Exception as exc:
             exp.log(f"Error: PCR plate barcode in error {pcr_plate_bcs=} {exc}")
             pcr_bcs = []
+        # user chosen index PIDs are already set in exp.generate_echo_index_survey()
         try:
             index_bcs = [util.guard_pbc(i, silent=True) for i in index_plate_bcs]
         except Exception as exc:
-            exp.log(f"Error: Index plate parcode in error {index_plate_bcs=} {exc}")
+            exp.log(f"Error: Index plate barcode in error {index_plate_bcs=} {exc}")
             index_bcs = []
         try:
             amplicon_bcs = [util.guard_pbc(d,silent=True) for d in amplicon_plate_bcs] 
@@ -706,6 +707,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         # read Stage2 csv file
         #sampleNumber	samplePlate	sampleWell	sampleBarcode	assays	assayFamilies	strain	sex	dnaplate	dnawell	primer	pcrplate	pcrwell
         #typebc = Table.newtype('S2Record',
+        # Because this reads from a file and is immutible, we can't filter by user PID choices
         s2tab = util.CSVTable('S2Rec', exp.get_exp_fp(fnstage2))           
             
         index_vol = exp.transfer_volumes['INDEX_VOL']  # 175 nanolitres
@@ -715,13 +717,49 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
             total_wells += len(exp.plate_location_sample[amp_pid]['wells'])
 
         index_alloc = i7i5alloc_rot(exp, index_vol, total_wells)
-        #print(index_alloc, file=sys.stdout)
-        stage3_index_alloc = [(p2,(p3[0],p3[1],p3[2],util.guard_pbc(p3[3], silent=True))) for p2,p3 in index_alloc]
+
+        # we need to decompose S2tab so that we can add the amplicon rows to it
+        s2_header = s2tab.header
+        s2_data = s2tab.data # list of S3 records, each is a namedtuple
+        s2_data_rows = []
+        for s2_record in s2_data:
+            s2_data_rows.append([s2_record[i] for i,h in enumerate(s2_header)])
+        for amp_pid in amplicon_bcs:
+            for well_str in exp.plate_location_sample[amp_pid]['wells']:
+                amp_well = exp.plate_location_sample[amp_pid][well_str]
+                amp_row = [amp_well['sampleNumber'],    # sampleNumber
+                        amp_pid,                        # samplePlate
+                        well_str,                       # sampleWell
+                        amp_well['barcode'],            # sampleBarcode
+                        amp_well['amplicons'][0],           # assays
+                        amp_well['amplicons'][0].split('_')[0], # assayFamilies
+                        '',                             # strain
+                        '',                             # sex
+                        amp_pid,                        # dnaplate
+                        well_str,                       # dnawell
+                        amp_well['amplicons'][0],           # primer
+                        amp_pid,                        # pcrplate
+                        well_str]                       # pcrwell
+                s2_data_rows.append(amp_row)
+
+        # Issue new sample numbers
+        for i, row in enumerate(s2_data_rows):
+            s2_data_rows[i][0] = str(i+1)
+
+        # convert to stream of characters from row*column lists
+        s2amp_stream = StringIO('\n'.join([','.join(row) for row in s2_data_rows]))
+        s2amp_tab = util.CSVMemoryTable('S2Rec', s2amp_stream) 
+
+        # This adds all the index info to the Stage2.csv file and will save it as Stage3.csv
+        s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2amp_tab.data, index_alloc)), headers=s3flds)
+
+#        #print(index_alloc, file=sys.stdout)
+#        stage3_index_alloc = [(p2,(p3[0],p3[1],p3[2],util.guard_pbc(p3[3], silent=True))) for p2,p3 in index_alloc]
         #print(f"{stage3_index_alloc=}", file=sys.stderr)
         s3flds = s2tab.tt._fields+('i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well', 'index_plate')
         S3Rec = util.Table.newtype('S3Rec', s3flds)
         
-        s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2tab.data, stage3_index_alloc)), headers=s3flds) 
+        #s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2tab.data, index_alloc)), headers=s3flds) 
         # output Stage 3 CSV file - used for custom and mouse samples. Amplicons are handled separately
         transactions[fnstage3] = {}
         try:

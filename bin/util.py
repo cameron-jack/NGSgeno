@@ -129,7 +129,7 @@ for c in [str(j+1) for j in range(2)]:
 
 
 
-def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied_wells: list=[], included_guards=GUARD_TYPES) -> defaultdict:
+def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied_wells: list=[], filtered=True, included_guards=GUARD_TYPES) -> defaultdict:
     """ 
     Required input: Experiment.plate_location_sample[plateid] dictionary of locations and samples for a single plate
             "wells" is a required field.
@@ -149,9 +149,17 @@ def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied
             if guard in included_guards:
                 if 'assays' not in location_sample[well]:
                     continue
-                for assay in location_sample[well]['assays']:
-                    if assay not in denied_assays:
-                        assay_counts[assay] += 1
+                if filtered:
+                    for assay in location_sample[well]['ngs_assays']:
+                        if assay not in denied_assays:
+                            assay_counts[assay] += 1
+                    for assay in location_sample[well]['custom_assays']:
+                        if assay not in denied_assays:
+                            assay_counts[assay] += 1
+                else:
+                    for assay in location_sample[well]['assays']:
+                        if assay not in denied_assays:
+                            assay_counts[assay] += 1
     return assay_counts
  
 ### Helper functions for IO
@@ -560,8 +568,8 @@ class Table:
     def csvtype(fn, clsname, hdridx=1, hdrmap=None):
         "workout the field names for the table by reading the header in the CSV file"
         # hdrmap lets us check and name selected field
-        assert os.path.isfile(fn), "needs file {} in folder {}".format(fn, os.getcwd())
-        assert hdridx>0, 'hdridx ({}) must be a positive number.'.format(hdridx)
+        #assert os.path.isfile(fn), "needs file {} in folder {}".format(fn, os.getcwd())
+        #assert hdridx>0, 'hdridx ({}) must be a positive number.'.format(hdridx)
         with open(fn) as srcfd:
             for i in range(hdridx-1):
                 next(srcfd) # skip header lines

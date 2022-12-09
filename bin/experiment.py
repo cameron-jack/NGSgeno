@@ -1168,7 +1168,7 @@ class Experiment():
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'pcr']
 
 
-    def get_assay_usage(self, dna_plate_list=[], included_guards=util.GUARD_TYPES):
+    def get_assay_usage(self, dna_plate_list=[], filtered=True, included_guards=util.GUARD_TYPES):
         """ We will want ways to get assay usage from various subsets, but for now do it for everything that 
             has a Nimbus destination plate.
         """
@@ -1178,7 +1178,7 @@ class Experiment():
                 continue
             for sample_pid in self.dest_sample_plates[dest]:
                 plate = self.get_plate(sample_pid)
-                assay_usage.update(util.calc_plate_assay_usage(plate,included_guards=included_guards))
+                assay_usage.update(util.calc_plate_assay_usage(plate,filtered=filtered, included_guards=included_guards))
         return assay_usage
 
 
@@ -1188,12 +1188,17 @@ class Experiment():
             if filtered, only apply those assays allowed by the assay/primer list.
         """
         if not assay_usage:
-            assay_usage = self.get_assay_usage(dna_plate_list=dna_plate_list)
-        if filtered and len(self.primer_assay) > 0:
-            assay_list = set([self.primer_assay[prmr] for prmr in self.primer_assay])
-            assay_usage = {a:assay_usage[a] for a in assay_usage if a in assay_list}
+            assay_usage = self.get_assay_usage(dna_plate_list=dna_plate_list, filtered=filtered)  # all assays present
+            #assay_list = set([self.primer_assay[prmr] for prmr in self.primer_assay])
+            #assay_usage = {a:assay_usage[a] for a in assay_usage if a in assay_list}
         #print (f'{assay_usage=}', assay_usage.values(), file=sys.stderr)
         reactions = sum([v for v in assay_usage.values()])
+
+        # convert assay name to primer name
+        #for a in assay_usage:
+        #    assay_primer_conversion_list = set([self.primer_assay[prmr] for prmr in self.primer_assay])
+        #    if a in assay_primer_conversion_list:
+        #        assay_usage(self.assay
 
         primer_taq_vol = reactions * self.transfer_volumes['PRIMER_TAQ_VOL']
         primer_water_vol = reactions * self.transfer_volumes['PRIMER_WATER_VOL']
@@ -1952,7 +1957,7 @@ class Experiment():
                     self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
                     return False
             
-        success = self.generate_echo_index_survey()
+        success = self.generate_echo_index_survey(index_plates)
         if not success:
             self.log('Failure: failed to generate index survey file')
             return False
@@ -2187,16 +2192,17 @@ class Experiment():
         self.save()
         return True
 
-    def generate_echo_index_survey(self, index_survey_filename='index-svy.csv'):
+    def generate_echo_index_survey(self, user_index_pids, index_survey_filename='index-svy.csv'):
         """ 
         Generate an index survey file for use by the Echo. Replaces echovolume.py 
         Not strictly necessary, but the old code reads this file in making the picklists.
         Called internally by generate_echo_PCR2_picklist_interface()
+        Requires the set of user chosen user_index_pids
         """
         if self.locked:
             self.log('Error: cannot generate index survey while lock is active.')
             return False
-        index_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'index']
+        index_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'index' and p in user_index_pids]
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'Source well', 
                 'Name for IDT ordering', 'index', 'Name', 'Oligo * -phosphothioate modif. against exonuclease', 'volume']
         fn = self.get_exp_fp(index_survey_filename)
