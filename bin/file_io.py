@@ -743,8 +743,8 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                 s2_data_rows.append(amp_row)
 
         # Issue new sample numbers
-        #for i, row in enumerate(s2_data_rows):
-        #    s2_data_rows[i][0] = str(i+1)
+        for i, row in enumerate(s2_data_rows):
+            s2_data_rows[i][0] = str(i+1)
 
         # convert to stream of characters from row*column lists
         s2amp_stream = StringIO('\n'.join([','.join(row) for row in s2_data_rows]))
