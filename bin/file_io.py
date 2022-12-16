@@ -743,21 +743,17 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                 s2_data_rows.append(amp_row)
 
         # Issue new sample numbers
-        for i, row in enumerate(s2_data_rows):
-            s2_data_rows[i][0] = str(i+1)
+        #for i, row in enumerate(s2_data_rows):
+        #    s2_data_rows[i][0] = str(i+1)
 
         # convert to stream of characters from row*column lists
         s2amp_stream = StringIO('\n'.join([','.join(row) for row in s2_data_rows]))
         s2amp_tab = util.CSVMemoryTable('S2Rec', s2amp_stream) 
 
-        # This adds all the index info to the Stage2.csv file and will save it as Stage3.csv
-        s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2amp_tab.data, index_alloc)), headers=s3flds)
-
-#        #print(index_alloc, file=sys.stdout)
-#        stage3_index_alloc = [(p2,(p3[0],p3[1],p3[2],util.guard_pbc(p3[3], silent=True))) for p2,p3 in index_alloc]
-        #print(f"{stage3_index_alloc=}", file=sys.stderr)
         s3flds = s2tab.tt._fields+('i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well', 'index_plate')
         S3Rec = util.Table.newtype('S3Rec', s3flds)
+        # This adds all the index info to the Stage2.csv file and will save it as Stage3.csv
+        s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2amp_tab.data, index_alloc)), headers=s3flds)
         
         #s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2tab.data, index_alloc)), headers=s3flds) 
         # output Stage 3 CSV file - used for custom and mouse samples. Amplicons are handled separately
