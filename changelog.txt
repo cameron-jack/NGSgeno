@@ -1,0 +1,107 @@
+v0.21.001
+Date: Fri Jan  6 16:11:29 AEDT 2023
+* NEW: version tracking code and new startup code added
+
+v0.21.000
+Date: Fri Jan  6 15:53:47 AEDT 2023
+* New: strain, sex, alleleSymbol, alleleKey, assayKey supported throughout
+* Changed: sampleNo is now only listed at Stage3.csv to uniquely label each sequenced reaction well
+* Fixed: bug in launching of ngsmatch (whitespace)
+* New: nicer reporting of sequence variations, now using native Python library
+* Fixed: using correct referencing for Bio.Align.Alignment
+* New: counts,seqs matching the expected primer are now seqCount,seqName, and others are otherCount,otherName
+* New: Version controller and version management
+* New: --mincov and --minprop parameters for controlling the min coverage and min proportion of unique reads before alignment is skipped
+* Fixed: Result display is now working again with the modified results.csv file
+
+v0.20.005
+Date: Fri Dec 16 11:15:24 2022 +1100
+* Per-amplicon/per-well sample numbering
+
+v0.20.004
+Date: Fri Dec 16 11:00:07 2022 +1100
+* Fixed bug with Stage3 row definition being on the wrong line in the code
+
+v0.20.003
+Date: Fri Dec 9 12:56:02 2022 +1100
+* Update of visual elements
+* No locking for reference sequence upload
+
+v0.20.002
+Date: Fri Dec 9 12:47:25 2022 +1100
+* Amplicon plate capability included
+* Sample numbering set at indexing stage (stage3)
+* Fixed assay filtering for NGS/Custom
+
+v0.20.001
+Date: Wed Dec 7 13:37:20 2022 +1100
+* New checks for readiness in uploading sequence files, or running allele calling
+* New GUI form for allele calling
+* Many extra log and GUI messages for clarity
+* New version numbering to better reflect protracted development and the move to automating change tracking
+* Version tagging introduced
+
+v0.16
+* Initial plan was to allow custom workflows to be added to a mouse pipeline run
+* Now is a complete reworking into an online "application"
+* Replace multiple pipeline pages with a single "Dashboard" interface, with expanding/collapsing sections
+* Never leave the main screen - everything is displayed
+* Incorporates CSS and Javascript for the first time to allow dynamic browser features
+* Refreshes screen on each change
+* Select a "run" folder
+* Compose an "inventory" of samples and plates
+* Plan and track the whole "experiment"
+* Keep a "run log" which allows complete re-running of an experiment
+* There are no longer any "standard" primer plates - all primer plates are built for purpose, after the Nimbus stage concludes
+* Requirements file added for dependencies
+
+v0.15
+* Initial attempt to support Musterer mice in custom manifests (running on the mouse pipeline)
+* Incomplete due to changes planned for version 0.16
+* New error handling/reporting code throughout
+
+v0.14
+* Replaced primercheck.py with validate_assays.py - Only checks against the assay list 
+  (not primer plate), and generates list of required primers
+* Additional protection aganst unguarded Nimbus output barcodes (creates guarded Echo_COC files)
+* Creates guarded copy of custom manifest if it isn't already guarded
+* Much improved analysis interface
+* Caches moved to run folder
+
+v0.13
+* New analysis (stage 3) interface for running ngsmatch.py and gt_mice.py
+* barcode protection for Musterer mnnnm, Rodentity MnnnM, custom cnnnc, plate pnnnp
+* Separate out file interfaces to improve code maintainability
+* Eliminate excess white-space/empty rows in files as an issue?
+
+v0.12
+* Separated Tm1a,b,c,d into their own cases for genotyping - genotyping *works*
+* Removed --fast option from ngsmatch.py
+* i7i5 barcodes now applied in rotating fashion (like primer pairs) in echo.py
+* Sanity checking incorporated
+
+v0.11
+* Much improved genotyping code
+* Hard coded Stage3.bat to run custom pipeline matching
+* ngsmatch can now work with custom assay inputs
+
+v0.10
+* Added per-mouse genotyping report (much more human readable)
+* Replaced genotyping algorithm to simplify and clean up process - needs another reboot sadly
+* Bug fixes in lab pipeline to remove white spaces from names and empty rows from CSV files
+* Improved matching performance by 1000x (9x algorithm, 8x multiprocessing, 15x caching)
+
+v0.9
+* Sequence to target matching now matches against all potential target sequences
+* Inexact matching has been fixed
+* The matching stage is now significantly slower than before
+* Sequences with low coverage are reported as "other"
+* Per-well "calling" has been removed as unnecessary
+* Absence of single outcome assays (e.g. CRE) now results in a NEG genotype rather than a failure to report 
+
+v0.8
+* Extensive UI improvements to clearly delineate mouse runs from custom runs
+* Run folders are generated and/or require mouse_ or custom_ to be prefixed - this will help keep the main project clean after being in use a long time
+* Multiple taq/water plates are now used if one is insufficient
+* Plate dead volumes have been increased to 50 and 700 nl for 384 and 6 well plates respectively
+* Numerous code changes to improve modularity
