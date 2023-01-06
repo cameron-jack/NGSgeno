@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # set -x
 
-VER="v0.21.001"
+VER="v0.21.002"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* NEW: version tracking code and new startup code added\n
+* FIXED: removed the sampleNo field from FASTQ file names\n
 EOM
 
 echo "$COMMENT" | sed '1s/^/1i /' | sed -i -f- changelog.txt

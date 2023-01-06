@@ -1,3 +1,7 @@
+v0.21.002
+Date: Fri Jan  6 16:21:53 AEDT 2023
+* FIXED: removed the sampleNo field from FASTQ file names
+
 v0.21.001
 Date: Fri Jan  6 16:11:29 AEDT 2023
 * NEW: version tracking code and new startup code added
