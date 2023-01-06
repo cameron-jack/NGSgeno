@@ -2,11 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 @created: 22 Feb 2020
-@author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.16
-@version_comment: New, replaces template_files.ini
-@last_edit: 2022-02-22
-@edit_comment: 
+@author: Cameron Jack, Gabrielle Ryan, ANU Bioinformatics Consultancy, JCSMR, Australian National University 
 
 Define an experiment - all parts and steps that go into a NGS Genotyping experiment will be held here (all state).
 The GUI interacts with a single Experiment object at one time. Methods are called on this to activate pipeline
@@ -21,7 +17,6 @@ import sys
 import csv
 import jsonpickle
 from itertools import combinations
-from collections import Counter
 from io import StringIO, BytesIO
 import datetime
 import json
@@ -29,11 +24,9 @@ from Bio import SeqIO
 from copy import deepcopy
 from math import ceil, floor
 from pathlib import Path
-import inspect
-import openpyxl
+import inspect  
 
 import pandas as pd
-from streamlit import _update_logger
 
 ## Ugly hack to find things in ../bin
 #from pathlib import Path
@@ -542,31 +535,31 @@ class Experiment():
                     self.plate_location_sample[spid][pos]['assay_records'] = {}
                     assays = []
                     assayFamilies = set()
-                    ngs_assays = []
-                    ngs_assayFamilies = set()
+                    unknown_assays = []
+                    unknown_assayFamilies = set()
                     
                     if 'alleles' in record['mouse']:
                         for allele in record['mouse']['alleles']:  # allele is a dict from a list
                             for assay in allele['assays']:  # assay is a dict from a list
-                                assays.append(assay['name'])
-                                assayFamilies.add(assay['name'].split('_')[0])
                                 if assay['name'] not in self.plate_location_sample[spid][pos]['assay_records']:
-                                    self.plate_location_sample[spid][pos]['assay_records'][assay['name']] = {}
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['alleleKey'] = allele['alleleKey']
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['alleleSymbol'] = allele['symbol']
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayKey'] = assay['assay_key']
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayName'] = assay['name']
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayMethod'] = assay['method']
-                                if assay['method'] == 'NGS':
-                                    ngs_assays.append(assay['name'])
-                                    ngs_assayFamilies.add(assay['name'].split('_')[0])
+                                    self.plate_location_sample[spid][pos]['assay_records'][assay['name']] =\
+                                            {'assayFamily':assay['name'].split('_')[0]}
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['alleleKey'] = str(allele['alleleKey'])
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['alleleSymbol'] = str(allele['symbol'])
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayKey'] = str(assay['assay_key'])
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayName'] = str(assay['name'])
+                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayMethod'] = str(assay['method'])
+                                if assay['method'] == 'NGS' or assay['name'].startswith('NGS'):
+                                    assays.append(assay['name'])
+                                    assayFamilies.add(assay['name'].split('_')[0])
+                                else:
+                                    unknown_assays.append(assay['name'])
+                                    unknown_assayFamilies.add(assay['name'].split('_')[0])
                             
                     self.plate_location_sample[spid][pos]['assays'] = assays.copy()
                     self.plate_location_sample[spid][pos]['assayFamilies'] = list(assayFamilies)
-                    self.plate_location_sample[spid][pos]['ngs_assays'] = ngs_assays.copy()
-                    self.plate_location_sample[spid][pos]['ngs_assayFamilies'] = list(ngs_assayFamilies)
-                    self.plate_location_sample[spid][pos]['custom_assays'] = []
-                    self.plate_location_sample[spid][pos]['custom_assayFamilies'] = []
+                    self.plate_location_sample[spid][pos]['unknown_assays'] = unknown_assays.copy()
+                    self.plate_location_sample[spid][pos]['unknown_assayFamilies'] = list(unknown_assayFamilies) 
                 
                 self.log(f"Success: added sample plate {spid} with destination {dna_plate_id} ")
 
@@ -587,6 +580,7 @@ class Experiment():
             Checks validity of inputs - duplicate epps is a warning, duplicate dnap is disallowed
             
             Input can come from either DB or JSON files
+            DEPRECATED - keep as template for reading from DB
         """ 
         if self.locked:
             self.log('Error: Cannot add Musterer plate set while lock is turned on')
@@ -881,22 +875,14 @@ class Experiment():
                     gpid = util.guard_pbc(cols[plate_barcode_col], silent=True)
                     if gpid not in plate_entries:
                         plate_entries[gpid] = {'purpose':'sample','source':'manifest', 'wells':set()}  # create plate_location_sample entries here
-                    assays = []
-                    ngs_assays = []
-                    custom_assays = []
+                    assays = [] 
                     # do a first pass to set up recording a sample in a well
                     for k,c in enumerate(cols):
                         if c.lower() == 'none':
                             continue
                         if k in assay_cols:
                             if c != '':  # ignore empty assay entries
-                                if c.startswith('NGS::'):
-                                    a = c.lstrip('NGS::')
-                                    assays.append(a)  # combine assays into one column
-                                    ngs_assays.append(a)
-                                else:
-                                    assays.append(c)
-                                    custom_assays.append(c)
+                                assays.append(c)
                         if header_dict[k] == 'well':
                             well = util.unpadwell(c.upper())
                             if well in plate_entries[gpid]['wells'] and plate_entries[gpid][well] != {}:
@@ -931,10 +917,6 @@ class Experiment():
                                 print(type(header_dict[k]), header_dict[k], str(c), file=sys.stderr)
                     plate_entries[gpid][well]['assays'] = assays
                     plate_entries[gpid][well]['assayFamilies'] = list(set([a.split('_')[0] for a in assays]))
-                    plate_entries[gpid][well]['ngs_assays'] = ngs_assays
-                    plate_entries[gpid][well]['ngs_assayFamilies'] = list(set([a.split('_')[0] for a in ngs_assays]))
-                    plate_entries[gpid][well]['custom_assays'] = custom_assays
-                    plate_entries[gpid][well]['custom_assayFamilies'] = list(set([a.split('_')[0] for a in custom_assays]))
 
                 for gpid in plate_entries:
                     if gpid in self.unassigned_plates or gpid in self.plate_location_sample:
@@ -2330,6 +2312,29 @@ class Experiment():
 
         self.save()
         return success
+
+
+    def read_allele_results(self):
+        """
+        Read in allele_results
+        [SampleNo, EPplate, EPwell, sampleBarcode, assays, assayFamilies, dnaplate, dnawell, 
+        primer, pcrplate, pcrwell, i7bc, i7name, i7well, i5bc, i5name, i5well, allele_prop, 
+        efficiency, readCount, cleanCount, mergeCount, seqCount*, seqName*]
+
+        """
+        pass
+
+
+    def custom_output_report(exp):
+        """
+        """
+        pass
+
+
+    def rodentity_output_report(exp):
+        """
+        """
+        pass
 
      
     def save(self):

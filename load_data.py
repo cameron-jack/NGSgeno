@@ -3,11 +3,7 @@
 
 """
 @created: 1 May 2022
-@author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.16
-@version_comment: New streamlit interactive web interface
-@last_edit: 2022-08-29
-@edit_comment:
+@author: Gabrielle Ryan, Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 
 A web based interactive GUI with Streamlit. Plate and sample barcodes here are unguarded.
 In all other code they must be guarded. We guard them here before we send them to any external function.

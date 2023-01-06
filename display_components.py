@@ -3,11 +3,7 @@
 
 """
 @created: 1 May 2022
-@author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.16
-@version_comment: New streamlit interactive web interface
-@last_edit: 2022-08-29
-@edit_comment:
+@author: Gabrielle Ryan, Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 
 Display methods for the main GUI pipeline. Methods in include data_table, display_pcr_componenent,
 display_pcr_componenent as well as aggrid_interactive_table and delete_entries
@@ -282,19 +278,13 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
 
     fwd_idx, rev_idx, warning_idxs = exp.get_index_avail()
 
-    if assay_usage:
-        primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-                exp.get_volumes_required(assay_usage=assay_usage, filtered=True)
-        reactions = sum([v for v in assay_usage.values()])
+    primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+            exp.get_volumes_required(assay_usage=assay_usage, filtered=True)
+    reactions = sum([v for v in assay_usage.values()])
         
-        index_remain, index_avail, index_capacity =\
-                exp.get_index_remaining_available_volume(assay_usage=assay_usage, fwd_idx=fwd_idx, rev_idx=rev_idx)
-    
-    else:
-        reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-            0,{},0,0,0,0 
-        index_remain, index_avail, index_vol_capacity =\
-                st.session_state['experiment'].get_index_remaining_available_volume()
+    index_remain, index_avail, index_capacity =\
+            exp.get_index_remaining_available_volume(assay_usage=assay_usage, fwd_idx=fwd_idx, rev_idx=rev_idx)
+
         
     taq_avail, water_avail, pids = st.session_state['experiment'].get_taqwater_avail()
     
@@ -376,7 +366,7 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
         avail_taq_vol_str = str(taq_avail_vol)+ ' μl'
 
         index_cols = pcr_comps_area.columns(col_size)
-
+        #TODO: This doesn't seem right! What are we actually trying to compare?
         if index_capacity > (index_avail - index_remain):
             index_pairs_allowed = '<p style="color:green">'+str(index_capacity)+'</p>'
         else:

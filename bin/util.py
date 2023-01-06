@@ -2,11 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 @created: Jan 2022
-@author: Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.16
-@version_comment: Adjusted paths for app folder
-@last_edit: 2022-05-05
-@edit_comment: 
+@author: Cameron Jack, Bob Buckley, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 
 A collection of code functions and definitions that are used throughout the pipeline
 """
@@ -149,17 +145,14 @@ def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied
             if guard in included_guards:
                 if 'assays' not in location_sample[well]:
                     continue
-                if filtered:
-                    for assay in location_sample[well]['ngs_assays']:
+                for assay in location_sample[well]['assays']:
+                    if assay not in denied_assays:
+                        assay_counts[assay] += 1
+                if not filtered:
+                    for assay in location_sample[well]['unknown_assays']:
                         if assay not in denied_assays:
                             assay_counts[assay] += 1
-                    for assay in location_sample[well]['custom_assays']:
-                        if assay not in denied_assays:
-                            assay_counts[assay] += 1
-                else:
-                    for assay in location_sample[well]['assays']:
-                        if assay not in denied_assays:
-                            assay_counts[assay] += 1
+                    
     return assay_counts
  
 ### Helper functions for IO
@@ -690,113 +683,3 @@ class CSVMemoryTable(Table):
         # TODO: need a filter-type lambda to apply strip() to everything... covered for now but it's not a safe patch
         Table.__init__(self, clsname, data=filter(filtfunc, csvrdr), headers=hdrrow, prefix=prefix, selector=selector)
         
-
-
-## Apparently never used
-#class EchoSurvey(Table):
-#    "Echo Survey file"
-#    def __init__(self, filename):
-#        name = 'EchoSurvey'
-#        if name not in Table.tt:
-#            # Echo Plate Survey file headers
-#            # Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,Survey Fluid Height,Survey Fluid Volume,Current Fluid Volume,Fluid Composition,Fluid Units,Fluid Type,Survey Status
-#            clsname = self.newtype(name, 'srcname srcbc srctype srcwell height volume currvolume composition units ftype status'.split())
-#        with open(filename, errors="ignore") as src:
-#            lx = list(src)
-#        hdrlen = next(n for n, line in enumerate(lx, start=1) if line.startswith('[DETAILS]'))
-#        self.tail = lx[-5:]
-#        csvrdr = csv.reader(lx[hdrlen:-5])
-#        Table.__init__(self, clsname, data=csvrdr, header=next(csvrdr), prefix=lx[:hdrlen])
-#        return
-
-## Apparently never used
-#class SourcePlates(dict):
-#    deadvol = { '384PP_AQ_BP': 50, '6RES_AQ_BP2': 700 } # Echo dead volume for plate types 
-#    def __init__(self, pairs):
-#        "add contents and build contents dictionary"
-#        for table, contents in pairs:
-#            wdict = dict((r.srcwell.strip(), [r.srcbc.strip(), r.srctype.strip(), r.srcwell.strip(), r.volume.strip()]) for r in table.data)
-#            def kf(x):
-#                return x[0]
-#            for c, g in itertools.groupby(sorted(contents), key=kf):
-#                self[c]= [wdict[w] for w in g]
-#        return
-#    def source(self, cx, vol):
-#        ""
-#        while self[cx][-1] < self.deadvol[self[cx][1]]+vol:
-#            self[cx].shift() # remove depleted wells
-#            if not self[cx]:
-#                print("run out of "+cx, file=sys.stdout)
-#                exit(1)
-#        self[cx][-1] -= vol
-#        return self[cx][:-1]+(vol,)
-
-## Apparently never used
-#def joiner(tspec1, tspec2):
-#    """ join two tables """
-#    try:
-#        t1, kp1, kv1 = tspec1
-#        t2, kp2, kv2 = tspec2
-#        ts = t1, t2
-#        tspecs = tspec1, tspec2
-#        global ttno
-#        ttno += 1
-#        fx = [ x for t, fp, fv in tspecs for x in fp(t.tt._fields) ]
-#        newtype = Table.newtype('_TMP'+str(ttno).zfill(6), fx)
-#        fkv = lambda rs: (z for r, kv in zip(rs, (kv1, kv2)) for z in kv(r))
-#        for t, fkp, fkv in tspecs:
-#            print("in joiner for", type(t.data[0]))
-#            print("t.dict", t.__dict__.keys())
-#            if t.header:
-#                hx = fkv(t.header) 
-#                print("  hx =", hx)
-#        hx = [ fkv(t.header) for tx in tspecs for t, fkp, fkv in tx ] if all(bool(t.header) for t in ts) else None
-#        data = list(join2gen((t1.data, kp1), (t2.data, kp2)))
-#        return Table(newtype, map(fkv, data, header=hx))
-#    except Exception as exc:
-#        output_error(exc, msg='Error in echo_barcode.joiner')
-
-## Apparently never used
-#def join2gen(xs, ys):
-#    """ a generator that joins two iterables if possible - why? """
-#    try:
-#        xg, yg = grouper(*xs), grouper(*ys)
-#        xk, xvg = next(xg)
-#        xvs = list(xvg)
-#        print("first xk, xv =", xk, xvs)
-#        yk, yvg = next(yg)
-#        yvs = list(yvg)
-#        print("first yk, yv =", yk, yvs)
-#        xp, yp = (xk, xvs), (yk, yvs)
-    
-#        while True:
-#            (xk, xvs), (yk, yvs) = xp, yp
-#            try:
-#                if xk<yk:
-#                    xp = next(xg)
-#                elif xk==yk:
-#                    # print("nextpr returns:", (xp, yp))
-#                    yl = list(yvs)
-#                    for xv in xvs:
-#                        for yv in yl:
-#                            yield (xv, yv)
-#                    xp, yp = next(xg), next(yg)
-#                else:
-#                    yp = next(yg)
-#            except StopIteration:
-#                break
-#        return
-#    except Exception as exc:
-#        output_error(exc, msg='Error in echo_barcode.join2gen')
-
-## Apparently never used
-#def filler(rs):
-#    """ fill blank fields with the value from the previous field - assumes fixed length records """
-#    try:
-#        rp = itertools.repeat(None)
-#        for r in rs:
-#            rp = [v if v else vp for v, vp in zip(r, rp)]
-#            yield rp
-#        return
-#    except Exception as exc:
-#        output_error(exc, msg='Error in echo_barcode.filler')

@@ -3,10 +3,6 @@
 """
 @created: Jul 2020
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy
-@version: 0.16
-@version_comment: renamed template files to Windows friendly .tpl
-@last_edit:
-@edit_comment:
 
 Create SVG plate images, Summary and Result Table HTML files for sequence counts info.
 Swap r.assays/r.strainName on custom/mouse data

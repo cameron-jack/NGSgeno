@@ -26,11 +26,7 @@ import openpyxl
 
 """
 @created: Nov 2021
-@author: Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
-@version: 0.16
-@version_comment: All machine control file reading/writing functions are now here
-@last_edit: 2022-05-05
-@edit_comment: relocated guards to util.py
+@author: Cameron Jack, Bob Buckley, ANU Bioinformatics Consultancy, 2019-2021
 
 Supports:
  * Hamilton Nimbus generate input and read output files
@@ -88,9 +84,10 @@ def nimbus_gen(exp):
                 nimbus_hdr = ['Sample no', 'Plate barcode', 'Well', 'Sample barcode']
                 nimbus_f.writerow(nimbus_hdr)
                 stage1_f = csv.writer(stage1_fd, dialect='unix')
-                stage1_hdr = tuple(['sampleNumber', 'samplePlate','sampleWell', 'sampleBarcode', 'assays', 'assayFamilies', 
-                        'strain', 'sex'])
-            
+                #stage1_hdr = tuple(['sampleNumber', 'samplePlate','sampleWell', 'sampleBarcode', 'assays', 'assayFamilies', 
+                #        'strain', 'sex'])
+                stage1_hdr = tuple(['samplePlate','sampleWell','sampleBarcode','strain','sex','alleleSymbol','alleleKey',
+                        'assayKey','assays','assayFamilies'])
                 stage1_f.writerow(stage1_hdr)
                 for pbc in sorted(exp.dest_sample_plates[dna_BC]):
                     shx = exp.plate_location_sample.get(pbc,None)
@@ -119,7 +116,7 @@ def nimbus_gen(exp):
                             if nim_row_data['Sample barcode'] == '0':
                                 continue
                     
-                            # stage files are still used, but only for historical reasons
+                            # stage files are still used, but as interlocks on stages (transactions)
                             stage1_row_data = {field:'' for field in stage1_hdr}
                             if 'sampleNumber' in shx[pos]:
                                 stage1_row_data['sampleNumber'] = shx[pos]['sampleNumber']
@@ -128,19 +125,33 @@ def nimbus_gen(exp):
                             stage1_row_data['samplePlate'] = pbc
                             stage1_row_data['sampleWell'] = pos
                             stage1_row_data['sampleBarcode'] = shx[pos]['barcode']
+                            stage1_row_data['strain'] = shx[pos].get('strain','')
+                            stage1_row_data['sex'] = shx[pos].get('sex','')
+                            alleleSymbols = []
+                            alleleKeys = []
+                            assayKeys = []
+                            assayNames = []
+                            assayFamilies = []
+                            if 'assay_records' in shx[pos]:
+                                for assay in shx[pos]['assay_records']:
+                                    if not shx[pos]['assay_records'][assay]['assayMethod'].startswith('NGS'):
+                                        continue
+                                    alleleSymbols.append(shx[pos]['assay_records'][assay].get('alleleSymbol',''))
+                                    alleleKeys.append(shx[pos]['assay_records'][assay].get('alleleKey',''))
+                                    assayKeys.append(shx[pos]['assay_records'][assay].get('assayKey',''))
+                                    assayNames.append(assay)
+                                    assayFamilies.append(assay.split('_')[0])
+                            stage1_row_data['alleleSymbol'] = ';'.join(alleleSymbols)
+                            stage1_row_data['alleleKey'] = ';'.join(alleleKeys)
+                            stage1_row_data['assayKey'] = ';'.join(assayKeys)
+                            stage1_row_data['assays'] = ';'.join(assayNames)
+                            stage1_row_data['assayFamilies'] = ';'.join(assayFamilies)
                             # Only NGS and Custom assays should be used
-                            stage1_row_data['assays'] = ';'.join(shx[pos]['ngs_assays']+shx[pos]['custom_assays'])
-                            stage1_row_data['assayFamilies'] = ';'.join(shx[pos]['ngs_assayFamilies']+shx[pos]['custom_assayFamilies'])
+                            stage1_row_data['assays'] = ';'.join(shx[pos]['assays'])
+                            stage1_row_data['assayFamilies'] = ';'.join(shx[pos]['assayFamilies'])
                             if len(stage1_row_data['assays']) == 0:
                                 continue
-                            if 'strain' in shx[pos]:
-                                stage1_row_data['strain'] = shx[pos]['strain']
-                            else:
-                                stage1_row_data['strain'] = ''
-                            if 'sex' in shx[pos]:
-                                stage1_row_data['sex'] = shx[pos]['sex']
-                            else:
-                                stage1_row_data['sex'] = ''
+                            
                             stage1_f.writerow([stage1_row_data[field] for field in stage1_hdr])  # assays are written here
                             wells_used += 1
                             transactions[dna_fn][pbc][pos] = -1000 # 1000 nl of sample is transferred
@@ -650,7 +661,7 @@ Adapter,,,,,,,,,,
             hdr = "Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,I5_Index_ID,index2,Sample_Project,Description".split(',')
             dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
             dst.writerow(hdr)
-            gen = [(util.unguard_pbc(r.pcrplate, silent=True)+'_'+util.padwell(r.pcrwell), util.unguard(r.sampleBarcode, silent=True), '', '',
+            gen = [(util.unguard_pbc(r.pcrplate, silent=True)+'_'+util.padwell(r.pcrwell)+'_S'+str(r.sampleNo), util.unguard(r.sampleBarcode, silent=True), '', '',
                     r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data]
             
             dst.writerows(gen)
@@ -727,7 +738,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         for amp_pid in amplicon_bcs:
             for well_str in exp.plate_location_sample[amp_pid]['wells']:
                 amp_well = exp.plate_location_sample[amp_pid][well_str]
-                amp_row = [amp_well['sampleNumber'],    # sampleNumber
+                amp_row = [# amp_well['sampleNumber'],    # sampleNumber - no longer used
                         amp_pid,                        # samplePlate
                         well_str,                       # sampleWell
                         amp_well['barcode'],            # sampleBarcode
@@ -742,18 +753,28 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                         well_str]                       # pcrwell
                 s2_data_rows.append(amp_row)
 
-        # Issue new sample numbers
-        for i, row in enumerate(s2_data_rows):
-            s2_data_rows[i][0] = str(i+1)
-
         # convert to stream of characters from row*column lists
         s2amp_stream = StringIO('\n'.join([','.join(row) for row in s2_data_rows]))
         s2amp_tab = util.CSVMemoryTable('S2Rec', s2amp_stream) 
 
-        s3flds = s2tab.tt._fields+('i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well', 'index_plate')
+        s3flds = ['sampleNo'] + list(s2tab.tt._fields+('i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well', 'index_plate'))
+        print(f'{s3flds=}', file=sys.stderr)
         S3Rec = util.Table.newtype('S3Rec', s3flds)
         # This adds all the index info to the Stage2.csv file and will save it as Stage3.csv
-        s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2amp_tab.data, index_alloc)), headers=s3flds)
+        s3rows = []
+        counter = 1
+        for p1, (p2, p3) in zip(s2amp_tab.data, index_alloc):
+            row = [counter]  # new sampleNo
+            for p in p1:
+                row.append(p)
+            for p in p2[:3]:  # i7bc, i7name, i7well
+                row.append(p)
+            for p in p3[:4]:  # i5bc, i5name, i5well, index_plate
+                row.append(p)
+            s3rows.append(row)
+            counter += 1
+        s3tab = util.Table(S3Rec, s3rows, headers=s3flds)
+        #s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2amp_tab.data, index_alloc)), headers=s3flds)
         
         #s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2tab.data, index_alloc)), headers=s3flds) 
         # output Stage 3 CSV file - used for custom and mouse samples. Amplicons are handled separately
@@ -850,15 +871,6 @@ def read_csv_or_excel_from_stream(multi_stream):
         manifest_names.append(manifest_name)
         manifest_tables.append(rows)
     return manifest_names, manifest_tables
-
-
-### Readers and writers for stage interlock CSV files (Nimbus -> Echo -> Analysis)
-
-# Define headers for all stages. These can handle both mouse and custom samples
-stage1_hdr = tuple(['sampleNo', 'samplePlate','sampleWell', 'strainName', 'sampleBarcode', 'assays', 'assayFamilies', 
-              'mouseID', 'strainName', 'sex', 'parentLitter', 'parentSequence', 'parentStrain', 'parentDate'])
-stage2_hdr = tuple(list(stage1_hdr) + ['dnaPlate', 'dnaWell', 'primer', 'pcrPlate', 'pcrWell'])
-stage3_hdr = tuple(list(stage2_hdr) + ['i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well'])
 
 
 def match_nimbus_to_echo_files(exp: Experiment) -> tuple(list,list,list):

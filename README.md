@@ -9,7 +9,7 @@ Java https://www.java.com/en/download/manual.jsp
 Python 3.8 or newer (3.10+ recommended)
 Microsoft Edge is the default browser but this can be changed in ngsrun.bat
 
-Python modules:
+Python modules: (see requirements.txt)
 openpyxl - for reading/writing excel files
 biopython - sequence matching 
 requests - connecting to DBs
@@ -18,76 +18,9 @@ streamlit - web interface
 st_aggrid - interactive web tables
 pandas - dataframes to support web tables?
 
-## To do
-* Add column to per-well GT outputs for excess alleles in sequencing
-* Combine custom and Musterer pipelines
-
 ## Changelog:
 
-Pipeline version: 0.16
-* Initial plan was to allow custom workflows to be added to a mouse pipeline run
-* Now is a complete reworking into an online "application"
-* Replace multiple pipeline pages with a single "Dashboard" interface, with expanding/collapsing sections
-* Never leave the main screen - everything is displayed
-* Incorporates CSS and Javascript for the first time to allow dynamic browser features
-* Refreshes screen on each change
-* Select a "run" folder
-* Compose an "inventory" of samples and plates
-* Plan and track the whole "experiment"
-* Keep a "run log" which allows complete re-running of an experiment
-* There are no longer any "standard" primer plates - all primer plates are built for purpose, after the Nimbus stage concludes
-* Requirements file added for dependencies
-
-Pipeline version: 0.15
-* Initial attempt to support Musterer mice in custom manifests (running on the mouse pipeline)
-* Incomplete due to changes planned for version 0.16
-* New error handling/reporting code throughout
-
-Pipeline version: 0.14
-* Replaced primercheck.py with validate_assays.py - Only checks against the assay list 
-  (not primer plate), and generates list of required primers
-* Additional protection aganst unguarded Nimbus output barcodes (creates guarded Echo_COC files)
-* Creates guarded copy of custom manifest if it isn't already guarded
-* Much improved analysis interface
-* Caches moved to run folder
-
-Pipeline version: 0.13
-* New analysis (stage 3) interface for running ngsmatch.py and gt_mice.py
-* barcode protection for Musterer mnnnm, Rodentity MnnnM, custom cnnnc, plate pnnnp
-* Separate out file interfaces to improve code maintainability
-* Eliminate excess white-space/empty rows in files as an issue?
-
-Pipeline version: 0.12
-* Separated Tm1a,b,c,d into their own cases for genotyping - genotyping *works*
-* Removed --fast option from ngsmatch.py
-* i7i5 barcodes now applied in rotating fashion (like primer pairs) in echo.py
-* Sanity checking incorporated
-
-Pipeline version: 0.11
-* Much improved genotyping code
-* Hard coded Stage3.bat to run custom pipeline matching
-* ngsmatch can now work with custom assay inputs
-
-Pipeline version: 0.10
-* Added per-mouse genotyping report (much more human readable)
-* Replaced genotyping algorithm to simplify and clean up process - needs another reboot sadly
-* Bug fixes in lab pipeline to remove white spaces from names and empty rows from CSV files
-* Improved matching performance by 1000x (9x algorithm, 8x multiprocessing, 15x caching)
-
-Pipeline version: 0.9
-* Sequence to target matching now matches against all potential target sequences
-* Inexact matching has been fixed
-* The matching stage is now significantly slower than before
-* Sequences with low coverage are reported as "other"
-* Per-well "calling" has been removed as unnecessary
-* Absence of single outcome assays (e.g. CRE) now results in a NEG genotype rather than a failure to report 
-
-Pipeline version: 0.8
-* Extensive UI improvements to clearly delineate mouse runs from custom runs
-* Run folders are generated and/or require mouse_ or custom_ to be prefixed - this will help keep the main project clean after being in use a long time
-* Multiple taq/water plates are now used if one is insufficient
-* Plate dead volumes have been increased to 50 and 700 nl for 384 and 6 well plates respectively
-* Numerous code changes to improve modularity
+See changelog.txt
 
 ## Robotics operation guide
 
@@ -111,3 +44,7 @@ Efficiency - found in the final reports, this is the total number of sequences t
 Allele ratios - found in the final reports, this is the proportion of sequences that matched to a particular haplotype call e.g. wt/mut may give an allele ratio of 0.61/0.39.
 Other - reported by ngsmatch.py, this is a collective name for all other unique sequences that were in too small a proportion to meaningfully affect a final genotype call. It is comprised of all unique sequences with less than 20% of the total sequences in a well, or less than 50 reads, whichever is larger. This is to keep the processing time reasonable - roughly 1 hour per 1000 wells vs 12 hours per 1000 wells.
 
+## Credits
+The NGS Genotyping Pipeline and NGSXplorer are the creations of The ANU Bioinformatics Consultancy (ABC), The Biomolecular Resource Facility (BRF), The John Curtin School of Medical Research (JCSMR), and The Australian National University (ANU).
+The project was initiated at the end of 2018 by the BRF and the construction was undertaken by the ABC (primarily Bob Buckley assisted by Cameron Jack, and later Cameron Jack assisted by Gabi (Gabrielle) Ryan). 
+Some additional components were built by the Informatics Team at the Australian Phenomics Facility (led by Philip Wu). Laboratory processes were constructed by the BRF Genotyping team, initially led by Sorelle Bowman, and later by Simone Kuelzer and Peter Milburn.

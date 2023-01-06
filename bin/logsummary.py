@@ -3,10 +3,6 @@
 """
 @created Apr 2020
 @author: Bob Buckley, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.16
-@version_comment: 
-@last_edit:
-@edit_comment:
 
 Program to summarise merge log file info.
 Uses the log files in the mclean directory created by the merge.sh script. 

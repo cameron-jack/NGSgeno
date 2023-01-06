@@ -3,10 +3,6 @@
 """
 @created: July 2021
 @author: Bob Buckley & Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
-@version: 0.16
-@version_comment: Adjust for paths relative to app folder. Renamed to "database"
-@last_edit: 2022-05-05
-@edit_comment: 
 
 Common code for connecting to the Musterer database web services. Should be extended to Rodentity when that becomes available.
 """

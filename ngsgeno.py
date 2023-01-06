@@ -1,13 +1,19 @@
-# from asyncio.windows_utils import pipe
-# from distutils.command.upload import upload
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+@created: 1 May 2022
+@author: Gabrielle Ryan, Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
+
+Display methods for the main GUI pipeline. Methods in include data_table, display_pcr_componenent,
+display_pcr_componenent as well as aggrid_interactive_table and delete_entries
+"""
+
 import os
-from ssl import SSLSession
+#from ssl import SSLSession  # We may want this for secure logins in future
 import sys
-from pathlib import PurePath, Path
-import itertools
-from math import fabs, factorial, floor, ceil
-from io import StringIO
-from xml.etree.ElementInclude import include
+from pathlib import Path  
+from math import fabs, floor, ceil  # leave these incase they're needed later
 import subprocess
 
 import pandas as pd
@@ -15,13 +21,10 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from st_aggrid import AgGrid, GridOptionsBuilder
-from st_aggrid.shared import GridUpdateMode
 from bin.experiment import Experiment, EXP_FN, load_experiment
 import bin.util as util
-import bin.file_io as file_io
-import bin.db_io as db_io
-from bin.makehtml import generate_heatmap_html
+#import bin.file_io as file_io
+#import bin.db_io as db_io
 
 import extra_streamlit_components as stx
 import display_components as dc
@@ -137,6 +140,10 @@ async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match
             launch_progress = int(str(progress_files[0]).split('_')[-2])
             match_progress = int(str(progress_files[0]).split('_')[-1])
         
+        if launch_progress > 100:
+            launch_progress = 100
+        if match_progress > 100:
+            match_progress = 100
         launch_msg.write('Allele calling task launch progress: '+str(launch_progress)+'%')
         launch_prog.progress(launch_progress)
         completion_msg.write('Allele calling task completion progress: '+str(match_progress)+'%')
@@ -653,7 +660,7 @@ def main():
                                         included_amplicon_plates =\
                                         plate_checklist_expander(available_nimbus, pcr_stage=2)
                 
-                        assay_usage = exp.get_assay_usage()
+                        assay_usage = exp.get_assay_usage(dna_plate_list=efs)
                         with pcr_comp_holder:
                             dc.display_pcr_components(assay_usage, 2)
                     else:
@@ -789,16 +796,22 @@ def main():
                     ld.upload_miseq_fastqs()
                     with st.form('allele_calling_form', clear_on_submit=True):
                         #num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
+                        cpus_avail = os.cpu_count() -1
                         num_cpus = st.number_input(\
-                                label="Number of processes to run simultaneously (defaults to # of CPUs)",\
-                                        value=os.cpu_count())
+                                label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
+                                        value=cpus_avail)
+                        mincov = st.number_input(label="Do not match unique sequences with less than this "+\
+                                "many reads coverage, default 50", format='%i',min_value=0, step=1,value=50)
+                        minprop = st.number_input(label="Do not match unique sequences with less than this "+\
+                                "proportion of the total number of reads, default 0.2. Must be between 0.0 and 1.0",
+                                format='%f',min_value=0.0, max_value=1.0, value=0.2)
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
                 
                         do_matching = st.form_submit_button("Run allele calling")
 
                     if Path(exp.get_exp_fp('ngsgeno_lock')).exists():
                         st.info('Analysis in progress')
-                    elif do_matching:
+                    if do_matching:
                         success = exp.generate_targets()
                         if not success:
                             msg = 'Critical: failed to save reference sequences to target file'
@@ -807,12 +820,14 @@ def main():
                             sleep(0.5)
                         else:
                             matching_prog = os.path.join('bin','ngsmatch.py')
-                            cmd_str = f'python {matching_prog} --ncpus {num_cpus}  --rundir {rundir}'
+                            cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} --mincov {mincov} --minprop {minprop}'
                             if exhaustive_mode:
                                 cmd_str += ' --exhaustive'                     
                             exp.log(f'Info: {cmd_str}')
-                            print(f"{cmd_str=}", file=sys.stderr)
-                            subprocess.Popen(cmd_str.split(' '))    
+                            #print(f"{cmd_str=}", file=sys.stderr)
+                            subprocess.Popen(cmd_str.split(' '))
+                            st.write(f'Calling {cmd_str}')
+                            sleep(1.0)
 
                 if Path(exp.get_exp_fp('ngsgeno_lock')).exists():
                     launch_msg = st.empty()
@@ -832,7 +847,7 @@ def main():
         # Reports
         if pipeline_stage == 6:
             exp = st.session_state['experiment']
-            results_fp = exp.get_exp_fp('Results.csv')
+            results_fp = exp.get_exp_fp('results.csv')
             info_holder = st.empty()
             
             if not Path(results_fp).exists():
@@ -841,30 +856,22 @@ def main():
                 rodentity_results = []
                 custom_results = []
                 other_results = []
-                with open(results_fp, 'rt') as rfn:
+                with open(results_fp, 'Urt') as rfn:
                     for i, line in enumerate(rfn):
                         l = line.replace('"','')
                         cols = [c.strip() for c in l.split(',')]
                         #print(cols)
                         if i == 0:
                             hdr = cols
-                            hdr.append('More')
                         else:
                             sample = cols[3]
-                            more = ';'.join(map(str, cols[24:]))
-                            data = cols[:24]
-                            #print(f'{type(data)=} {data=}')
-                            #print(f'{type(more)=} {more=}')
-                            data.append(more)
-                            #print(cols)
-                            #print(data)
-                            #print(more)
+                            
                             if util.is_guarded_cbc(sample):
-                                custom_results.append(data)
+                                custom_results.append(cols)
                             elif util.is_guarded_rbc(sample):
-                                rodentity_results.append(data)
+                                rodentity_results.append(cols)
                             else:
-                                other_results.append(data)
+                                other_results.append(cols)
 
                 #print(hdr)
                 #print(custom_results[0:3])
