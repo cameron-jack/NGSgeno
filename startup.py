@@ -84,8 +84,7 @@ def main():
         )
 
   #if there's a remote update to the repo
-  #and latest_ver == current_ver
-  if update_version != "Your branch is up to date with 'origin/master'.":
+  if update_version != "Your branch is up to date with 'origin/master'." and latest_ver == current_ver:
     update_msg = "There is a new update to the pipeline"
     update_color = '#3d2ffa'
 

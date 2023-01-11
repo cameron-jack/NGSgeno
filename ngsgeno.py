@@ -14,6 +14,7 @@ import os
 import sys
 from pathlib import Path  
 from math import fabs, floor, ceil  # leave these incase they're needed later
+from subprocess import check_output, CalledProcessError, STDOUT
 import subprocess
 
 import pandas as pd
@@ -31,6 +32,17 @@ import display_components as dc
 import load_data as ld
 import asyncio
 from time import sleep
+
+def getstatusoutput(cmd):
+    try:
+        data = check_output(cmd, shell=True, universal_newlines=True, stderr=STDOUT)
+        status = 0
+    except CalledProcessError as ex:
+        data = ex.output
+        status = ex.returncode
+    if data[-1:] == '\n':
+        data = data[:-1]
+    return status, data
 
 def get_run_folders():
     """ return an alphabetically sorted list of run folders, without their run_ prefix """
@@ -202,7 +214,7 @@ def main():
         st.session_state['folder'] = None
     #Folder inputs
     
-    logo_col, _, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,4,2,1,2,1])
+    logo_col, ver_col,_, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,2,2,2,1,2,1])
     # current_experiment_col, _ = st.columns(2)
     # with title_column:
     #     st.markdown('<h3 style="align:center; color:#2040a1">NGS Genotyping</h3>', unsafe_allow_html=True)
@@ -218,6 +230,9 @@ def main():
              experiment_title += (st.session_state['experiment'].name)
     else:
              experiment_title += ('None')
+
+    current_status, current_ver = getstatusoutput("git describe")
+    ver_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', unsafe_allow_html=True)
 
     logo_col.image('ngsg_explorer.png', caption=f'{experiment_title}')
 

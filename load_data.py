@@ -63,6 +63,39 @@ The GUI interacts with a single Experiment object at one time. Methods are calle
 functionality. The Experiment then deals directly with the pipeline logic.
 """
 
+def run_add(exp, target_function, *args, **kwargs):
+    exp.clear_pending_transactions()
+    exp.enforce_file_consistency()
+
+    success = target_function(*args, **kwargs)
+
+    if not success:
+        exp.clear_pending_transactions()
+    else:
+        if exp.pending_steps is not None and len(exp.pending_steps) > 0:
+            clashes = exp.clashing_pending_transactions()
+            if len(clashes) > 0:
+                
+                st.warning(f'The following input files already exist {clashes}')
+                st.warning('Click "Accept" to replace older files and clear all' +
+                                    'input files from subsequent pipeline stages')
+                col1, col2,_ = st.columns([2, 2, 10])
+                col1.button('Accept', 
+                            on_click=exp.accept_pending_transactions, 
+                            key=f'accept_overwrite_button for {target_function.__name__}')
+
+                col2.button('Cancel', 
+                            on_click=exp.accept_pending_transactions, 
+                            key=f'cancel_overwrite_button for {target_function.__name__}')
+
+            else:
+                for arg in args:
+                    copy_success = exp.add_file_uploads(arg)
+                    if not copy_success:
+                        return False
+                exp.accept_pending_transactions()
+                
+    return success
 
 def load_rodentity_data():
     """
@@ -187,7 +220,7 @@ def load_custom_manifests():
                 #st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
                 submit_manifest = st.form_submit_button()
                 if submit_manifest and manifest_uploads:
-                    success = exp.read_custom_manifests(manifest_uploads)
+                    success = run_add(exp, exp.read_custom_manifests, manifest_uploads)
                     if not success:
                         st.markdown('<p style="color:#FF0000">Failed to read custom manifests.'+\
                                 'Please see the log</p>', unsafe_allow_html=True)
@@ -346,7 +379,7 @@ def upload_pcr1_files(key):
         if upload_button:
             if uploaded_primer_layouts:
                 upl_pids = [upl.name for upl in uploaded_primer_layouts]
-                success = exp.add_primer_layouts(uploaded_primer_layouts)
+                success = run_add(exp, exp.add_primer_layouts, uploaded_primer_layouts)
                 if success:
                     st.write(f'Successfully added primer layouts for plates {upl_pids}')
                 else:
@@ -354,7 +387,7 @@ def upload_pcr1_files(key):
                      
             if uploaded_primer_volumes:
                 upv_pids = [upv.name for upv in uploaded_primer_volumes]
-                success = exp.add_primer_volumes(uploaded_primer_volumes)
+                success = run_add(exp, exp.add_primer_volumes, uploaded_primer_volumes)
                 if success:
                     st.write(f'Successfully added primer volumes for plates {upv_pids}')
                 else:
@@ -381,7 +414,7 @@ def upload_pcr2_files(key):
         if upload_button:
             if uploaded_index_layouts:
                 uil_pids = [uil.name for uil in uploaded_index_layouts]
-                success = exp.add_index_layouts(uploaded_index_layouts)
+                success = run_add(exp, exp.add_index_layouts, uploaded_index_layouts)
                 if success:
                     st.write(f'Successfully added index layouts for plates {uil_pids}')
                 else:
@@ -389,7 +422,7 @@ def upload_pcr2_files(key):
 
             if uploaded_index_volumes:
                 uiv_pids = [uiv.name for uiv in uploaded_index_volumes]
-                success = exp.add_index_volumes(uploaded_index_volumes)
+                success = run_add(exp, exp.add_index_volumes, uploaded_index_volumes)
                 if success:
                     st.write(f'Successfully added index volumes for plates {uiv_pids}')
                 else:
@@ -419,7 +452,7 @@ def upload_pcr2_files(key):
                     if Path(stage3_fn).exists():
                         os.remove(stage3_fn)
                     exp.enforce_file_consistency()
-                    success = exp.add_amplicon_manifests(uploaded_amplicon_plates)
+                    success = run_add(exp, exp.add_amplicon_manifests, uploaded_amplicon_plates)
                     if success:
                         st.write(f'Successfully added amplicon manifests from files {uap_pids}')
                     else:
@@ -432,36 +465,36 @@ def upload_extra_consumables(key):
     Uploads for extra files such as custom references, assay lists, and taq/water plates
     """
     exp = st.session_state['experiment']
-    with st.form('Consumables upload'+key, clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        uploaded_references = col1.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
-                type=['txt','fa','fasta'], accept_multiple_files=True)
-                                                                        
-        uploaded_assaylists = col2.file_uploader('Upload Assay Lists', key='assaylist_uploader'+key, 
-                type=['txt','csv'], accept_multiple_files=True)
-                                                                                     
-        #uploaded_taqwater_plates = col1.file_uploader('Upload Taq and Water Plates', key='taq_water_upload'+key, 
-        #        type='csv', accept_multiple_files=True)
-        upload_button = st.form_submit_button("Upload Files")
+    #with st.form('Consumables upload'+key, clear_on_submit=True):
+    col1, col2 = st.columns(2)
+    uploaded_references = col1.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
+            type=['txt','fa','fasta'], accept_multiple_files=True)
+                                                                    
+    uploaded_assaylists = col2.file_uploader('Upload Assay Lists', key='assaylist_uploader'+key, 
+            type=['txt','csv'], accept_multiple_files=True)
+                                                                                    
+    #uploaded_taqwater_plates = col1.file_uploader('Upload Taq and Water Plates', key='taq_water_upload'+key, 
+    #        type='csv', accept_multiple_files=True)
+    upload_button = st.button("Upload Files")
 
-        if upload_button:
-            if uploaded_references:
-                success = exp.add_references(uploaded_references)
-                ref_names = [ur.name for ur in uploaded_references]
-                if success:
-                    st.write(f'Successfully added reference sequences from files {ref_names}')
-                else:
-                    st.write(f'Failed to upload at least one reference sequence file, please see the log')
-            if uploaded_assaylists:
-                success = exp.add_assaylists(uploaded_assaylists)
-                assaylist_names = [ual.name for ual in uploaded_assaylists]
-                if success:
-                    st.write(f'Successfully added assay/primer lists from files {assaylist_names}')
-                else:
-                    st.write(f'Failed to upload at least one assay/primer list file, please see the log')
-            # TODO: add the ability to add a custom taq+water plate
-            #if uploaded_taqwater_plates:
-            #    success = exp.add_taqwater_layout_volume
+    if upload_button:
+        if uploaded_references:
+            success = run_add(exp, exp.add_references, uploaded_references)
+            ref_names = [ur.name for ur in uploaded_references]
+            if success:
+                st.write(f'Successfully added reference sequences from files {ref_names}')
+            else:
+                st.write(f'Failed to upload at least one reference sequence file, please see the log')
+        if uploaded_assaylists:
+            success = run_add(exp, exp.add_assaylists, uploaded_assaylists)
+            assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
+            if success:
+                st.write(f'Successfully added assay/primer lists from files {assaylist_names}')
+            else:
+                st.write(f'Failed to upload at least one assay/primer list file, please see the log')
+        # TODO: add the ability to add a custom taq+water plate
+        #if uploaded_taqwater_plates:
+        #    success = exp.add_taqwater_layout_volume
 
 def upload_reference_sequences(key):
     """
@@ -476,16 +509,13 @@ def upload_reference_sequences(key):
 
         if upload_button:
             if uploaded_references:
-                success = exp.add_references(uploaded_references)
+                success = run_add(exp, exp.add_references, uploaded_references)
                 ref_names = [ur.name for ur in uploaded_references]
                 if success:
                     st.write(f'Successfully added reference sequences from files {ref_names}')
                 else:
                     st.write(f'Failed to upload at least one reference sequence file, please see the log')
            
-
-
-
  
 def upload_miseq_fastqs():
     exp = st.session_state['experiment']
