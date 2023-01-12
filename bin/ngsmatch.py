@@ -233,7 +233,7 @@ def best_match(match_cnt, query, n, targets, mtc, sum_parent=True):
             elif len(ins_seq) > 0:
                 final_string_list.append(f'{i+start_pos}:+{ins_seq}')
 
-        diff_str = ', '.join(final_string_list)
+        diff_str = ''.join(final_string_list)
         return diff_str
 
 
@@ -629,13 +629,8 @@ def main(args):
             os.mkdir(dp)
                 
     # process data for each sample well
-    with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd:
-        print(f"Opening {args.outfn} for results", file=sys.stderr)
-        dst = csv.writer(dstfd, dialect="unix")
-        hdrres1 = ("readCount", "cleanCount", "mergeCount")
-        hdrres2 = ("seqCount", "seqName", "otherCount", "otherName")
-        complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))
-        dst.writerow(complete_row_hdr)  
+    
+    if True:
         # process samples wells - code handles bad (manually prepared) plate picklists with >1 assay in a well
         # wdata is already sorted.
 
@@ -710,8 +705,8 @@ def main(args):
                 if any([not r[0].ready() for r in reports]):
                     match_progress = int(100*len([r for r in reports if r[0].ready()])/(len(wrs)/chunksize))
                     report_progress(args.rundir, launch_progress, match_progress)
-                    print('Waiting 1 minute for jobs to complete... you may see many of these messages', file=sys.stderr)
-                    time.sleep(60)
+                    print('Waiting 20 seconds for jobs to complete... you may see many of these messages', file=sys.stderr)
+                    time.sleep(20)
                 else:
                     match_progress = int(100*len([r for r in reports if r[0].ready()])/(len(wrs)/chunksize))
                     report_progress(args.rundir, launch_progress, match_progress)
@@ -734,26 +729,25 @@ def main(args):
                 for l in logm:
                     log.append(l)
 
-            log.append('Info: Writing results to' + args.outfn)
+            #print(f'{list(results)=}', file=sys.stderr)
+            log.append(f'Info: Writing results to {args.outfn}')
             #print('hello0.4', file=sys.stderr)
-            complete_results = {}
+            complete_results = {}  # order results by sampleNo
             for k,r in enumerate(results):
-                # order results by pcrplate and pcrwell
-                #print(f"{k} {len(r)=} {r}", file=sys.stderr)
-                complete_results[(r[11],int(r[12][1:]),r[12][0])] = r
-                
+                complete_results[int(r[0])] = r
 
-                #    try:
-                #        complete_results[(r[9],int(r[10][1:]),r[10][0])] = r
-                #    except IndexError as e:
-                #        log.append(f'Error: {e} {r}')
-                #        write_log(log, os.path.join(args.rundir,args.logfn))
-                #        return
-                #else:
-                #    complete_results[(r[15],int(r[16][1:]),r[16][0])] = r
-                
-            for i,k in enumerate(sorted(complete_results.keys())):
+        with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd:
+            print(f"Opening {args.outfn} for results", file=sys.stderr)
+            dst = csv.writer(dstfd, dialect="unix")
+            hdrres1 = ("readCount", "cleanCount", "mergeCount")
+            hdrres2 = ("seqCount", "seqName", "otherCount", "otherName")
+            complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))
+            dst.writerow(complete_row_hdr)
+            for k in complete_results:
+                print(f'{complete_results[k]=}', file=sys.stderr)
                 dst.writerow(complete_results[k])
+            #for i,k in enumerate(sorted(complete_results.keys())):
+            #    dst.writerow(complete_results[k])
             dstfd.flush()
             #print('hello0.5', file=sys.stderr)
             pool.close()

@@ -672,9 +672,14 @@ class CSVMemoryTable(Table):
         if hdridx < 0:
             print(f'header index must be at least zero {hdridx=}', file=sys.stderr)
             return
-        prefix = [x for i, x in zip(range(hdridx-1), io_string)] # read initial lines
+        if hdridx == 0:
+            prefix = []
+        else:
+            prefix = [x for i, x in zip(range(hdridx-1), io_string)] # read initial lines - why?
+        #print(f'{prefix=}', file=sys.stderr)
         csvrdr = csv.reader(io_string)
         hdrrow = next(csvrdr) if hdridx else None 
+        #print(f'{hdrrow=}', file=sys.stderr)
         if clsname not in Table.tt:
             if not fields and not hdrrow:
                 return

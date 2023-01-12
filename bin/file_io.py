@@ -724,6 +724,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         index_vol = exp.transfer_volumes['INDEX_VOL']  # 175 nanolitres
         # count up all amplicon sample wells
         total_wells = len(s2tab.data)
+        #print(f'{total_wells=}', file=sys.stderr)
         for amp_pid in amplicon_bcs:
             total_wells += len(exp.plate_location_sample[amp_pid]['wells'])
 
@@ -735,6 +736,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         s2_data_rows = []
         for s2_record in s2_data:
             s2_data_rows.append([s2_record[i] for i,h in enumerate(s2_header)])
+        #print(f'{s2_data_rows=}', file=sys.stderr)
         for amp_pid in amplicon_bcs:
             for well_str in exp.plate_location_sample[amp_pid]['wells']:
                 amp_well = exp.plate_location_sample[amp_pid][well_str]
@@ -754,11 +756,12 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                 s2_data_rows.append(amp_row)
 
         # convert to stream of characters from row*column lists
-        s2amp_stream = StringIO('\n'.join([','.join(row) for row in s2_data_rows]))
+        s2hdr_str = ','.join(s2_header)
+        s2amp_stream = StringIO(s2hdr_str + '\n' + '\n'.join([','.join(row) for row in s2_data_rows]))
         s2amp_tab = util.CSVMemoryTable('S2Rec', s2amp_stream) 
 
         s3flds = ['sampleNo'] + list(s2tab.tt._fields+('i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well', 'index_plate'))
-        print(f'{s3flds=}', file=sys.stderr)
+        #print(f'{s3flds=}', file=sys.stderr)
         S3Rec = util.Table.newtype('S3Rec', s3flds)
         # This adds all the index info to the Stage2.csv file and will save it as Stage3.csv
         s3rows = []
@@ -773,6 +776,8 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                 row.append(p)
             s3rows.append(row)
             counter += 1
+
+        #print(f'{s3rows=}', file=sys.stderr)
         s3tab = util.Table(S3Rec, s3rows, headers=s3flds)
         #s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2amp_tab.data, index_alloc)), headers=s3flds)
         

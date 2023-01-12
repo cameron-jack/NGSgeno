@@ -856,11 +856,12 @@ def main():
                 rodentity_results = []
                 custom_results = []
                 other_results = []
-                with open(results_fp, 'Urt') as rfn:
+                with open(results_fp, 'rt') as rfn:
                     for i, line in enumerate(rfn):
                         l = line.replace('"','')
                         cols = [c.strip() for c in l.split(',')]
-                        #print(cols)
+                        #if len(cols) != 30:
+                        #    print(cols)
                         if i == 0:
                             hdr = cols
                         else:
