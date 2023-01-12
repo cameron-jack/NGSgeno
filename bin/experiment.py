@@ -160,7 +160,7 @@ class Experiment():
                 return False
             self.pending_steps[t] = deepcopy(transactions[t])
             self.log(f'Info: Adding generated file {t} to pending pipeline stage history')
-            print('These are the pending transactions', self.pending_steps, file=sys.stderr)
+            #print('These are the pending transactions', self.pending_steps, file=sys.stderr)
         return True
 
     def convert_pending_to_final(self, pending_name):
@@ -252,15 +252,11 @@ class Experiment():
         if not self.pending_steps:
             self.log("Warning: there are no pending transactions to record")
             return True  # It didn't actually fail
-        print(os.getcwd())
         clashes = self.clashing_pending_transactions()
         #print(f"Clashes seen {clashes=}", file=sys.stderr)
         if len(clashes) == 0:
             for transaction in self.pending_steps:
-                print(f"Transaction {transaction=}", file=sys.stderr)
                 p = Path(transaction)
-                print(f"Path {p=}", file=sys.stderr)
-                print(p.exists())
                 if not p.exists():
                     self.log(f'Warning: {str(p)} not found')
                     continue
@@ -318,7 +314,11 @@ class Experiment():
             final_name = self.convert_pending_to_final(ps)
             record = self.pending_steps[ps]
             this_step[final_name] = record
-            self.uploaded_files[final_name] = self.pending_steps[ps].keys()
+            op = str(final_name).split('/')[-1]
+            if self.pending_steps[ps]:
+                self.uploaded_files[op] = {'plates':self.pending_steps[ps].keys()}
+            else:
+                self.uploaded_files[op] = {}
         self.reproducible_steps.append(this_step)
         self.pending_steps = None
         self.save()
@@ -2229,7 +2229,9 @@ class Experiment():
                 file_usage[filename]['purpose'] = self.uploaded_files[filename]['purpose']
             if 'plates' in self.uploaded_files[filename]:
                 for pid in self.uploaded_files[filename]['plates']:
-                    file_usage[filename]['plates'].append(util.unguard_pbc(pid, silent=True))
+                    if util.is_guarded(pid):
+                        pid = util.unguard_pbc(pid)
+                    file_usage[filename]['plates'].append(pid)
             file_usage[filename]['plates'] = ', '.join(file_usage[filename]['plates'])
         return file_usage
 

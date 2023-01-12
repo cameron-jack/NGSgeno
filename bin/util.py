@@ -406,6 +406,7 @@ def unguard_pbc(pbc, silent=False):
         msg = f"Plate barcode is not a string! {pbc} is type {type(pbc)}"
         raise AttributeError(msg)
     if not pbc.startswith('p') and not pbc.endswith('p') and silent:  # just return unguarded barcodes as themselves
+        print(f'{pbc=}', file=sys.stderr)
         return pbc
     if not pbc.startswith('p') or not pbc.endswith('p'):
         msg = f"Plate barcode guards degraded or missing in: {pbc}"

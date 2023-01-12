@@ -94,6 +94,7 @@ def run_add(exp, target_function, *args, **kwargs):
                     if not copy_success:
                         return False
                 exp.accept_pending_transactions()
+    print(f'{exp.reproducible_steps=}', file=sys.stderr)
                 
     return success
 
