@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # set -x
 
-VER="v0.21.003"
+VER="v0.21.004"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* FIXED: skipping first line of Stage3 output. Confused about lack of header \n
-* FIXED: skipping some result outputs due to change of fields \n
-* CHANGED: Now opens results at the end of matching, so no empty files \n
+* CHANGED: custom manifest samples are now always guarded c
+
 EOM
 
 echo "$COMMENT" | sed '1s/^/1i /' | sed -i -f- changelog.txt

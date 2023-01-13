@@ -897,12 +897,12 @@ class Experiment():
                         if header_dict[k] == 'well':
                             continue
                         if header_dict[k] == 'samplebarcode':
-                            if c.startswith('C'):
-                                sid = util.guard_cbc(c, silent=True)
-                            elif c.startswith('M'):
-                                sid = util.guard_rbc(c, silent=True)
-                            else:
-                                sid = plate_entries[gpid][well][header_dict[k]] = util.guard_cbc(c, silent=True) # fall back to custom?
+                            #if c.startswith('C'):
+                            #    sid = util.guard_cbc(c, silent=True)
+                            #elif c.startswith('M'):
+                            #    sid = util.guard_rbc(c, silent=True)
+                            #else:
+                            sid = util.guard_cbc(c, silent=True) # fall back to custom?
                             plate_entries[gpid][well]['barcode'] = sid
                         elif header_dict[k] == 'platebarcode':
                             plate_entries[gpid][well]['platebarcode'] = gpid

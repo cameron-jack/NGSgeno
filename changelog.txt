@@ -1,3 +1,6 @@
+v0.21.004
+Date: Fri Jan 13 12:51:14 AEDT 2023
+* CHANGED: custom manifest samples are now always guarded c
 v0.21.003
 Date: Thu Jan 12 15:25:32 AEDT 2023
 v0.21.002
