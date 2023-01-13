@@ -134,13 +134,13 @@ class Experiment():
 
     def lock(self):
         self.log('Info: Locking experiment. No modification allowed to plates while lock remains')
-        self.locked = True
-        self.save()
+        #self.locked = True
+        #self.save()
 
     def unlock(self):
         self.log('Info: Unlocking experiment. Modification is now possible. There should be good reason for this!')
-        self.locked = False
-        self.save()
+        #self.locked = False
+        #self.save()
 
     ### transactions/reproducible steps
 
