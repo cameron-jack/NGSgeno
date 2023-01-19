@@ -1,3 +1,9 @@
+v0.21.006
+Date: Fri Jan 20 09:11:12 AEDT 2023
+* NEW: Protection against non-ascii characters in reference sequence file
+* NEW: Added checks for open files
+* NEW: Increased reliability and reporting in matching code
+
 v0.21.005
 Date: Fri Jan 13 12:55:42 AEDT 2023
 * CHANGED: Disabled locking of experiments during testing 
