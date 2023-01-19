@@ -202,22 +202,45 @@ class Experiment():
         if self.pending_steps is None:
             #print('no pending steps')
             return clashes
-        
         for transaction in self.pending_steps:
             final_path = self.convert_pending_to_final(transaction)
             #print('Pending and final paths: ', str(transaction), str(final_path), file=sys.stderr)
             if Path(final_path).exists():
                 clashes.append(final_path)
-                self.log(f'Warning: file path {final_path} already exists and will be overwritten if pending changes are accepted')
+                self.log(f'Warning: file path {final_path} already' +
+                        'exists and will be overwritten if pending changes are accepted')
             else:
                 for step in self.reproducible_steps:
                     if step is None or len(step) == 0:
                         continue
                     # each step is dict['filenames'] = {PID: {well:change}}
                     if final_path in step:
-                        self.log(f'Warning: file path {final_path} already exists and will be overwritten if pending changes are accepted')
+                        self.log(f'Warning: file path {final_path} already' +
+                                'exists and will be overwritten if pending changes are accepted')
                         clashes.append(final_path)                  
         return clashes
+    
+    def clashing_pending_transaction(self, file_upload):
+        clashes = self.clashing_pending_transactions()
+        file_path = self.get_input_dp(file_upload.name, transaction=False)
+        if file_path in clashes:
+            return file_path
+        return False
+
+    def clear_pending_transaction(self, file_upload):
+        if self.pending_steps is None:
+            return True
+        try:
+            pf = self.get_input_dp(file_upload, transaction=True)
+            if pf not in self.pending_steps:
+                return False
+            if Path(pf).exists():
+                os.remove(pf)
+            self.pending_steps.pop(pf)
+        except Exception as exc:
+            self.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
+            return False
+        return True
 
 
     def clear_pending_transactions(self):
@@ -239,6 +262,46 @@ class Experiment():
             self.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
             return False
         return True
+    
+    def accept_pending_transaction(self, file_name):
+        pending_file = self.get_input_dp(filename=file_name, transaction=True)
+        if not self.pending_steps:
+            self.log("Warning: there are no pending transactions to record")
+            return True  # It didn't actually fail
+        elif pending_file in self.pending_steps:
+            #print(f'Pending steps: {self.pending_steps}, reproducible steps: {self.reproducible_steps}', 
+             #       file=sys.stderr)
+            clashes = self.clashing_pending_transactions()
+            #print(f'Clashes seen: {clashes}', file=sys.stderr)
+            final_path = self.convert_pending_to_final(pending_file)
+            #print(f'File name: {final_path}', file=sys.stderr)
+
+            #if file already exists, remove original from files and reproducible_steps
+            if final_path in clashes:
+                if Path(final_path).exists():
+                    print(f"Removing the original file: {str(final_path)}", file=sys.stderr)
+                    os.remove(final_path)
+
+                #Need to remove entries from reproducible steps that contain the same plate id?
+                for step in self.reproducible_steps:
+                    if final_path in step:
+                        del step[final_path]
+
+            p = Path(pending_file)
+            if not p.exists():
+                self.log('Warning: file does not exist')
+                return False
+            os.rename(pending_file, final_path)
+
+            this_step = {}
+            record = self.pending_steps[pending_file]
+            this_step[final_path] = record
+            #print(f'{this_step}', file=sys.stderr)
+            self.reproducible_steps.append(this_step)
+
+            self.pending_steps.pop(pending_file)
+
+        return True
 
     def accept_pending_transactions(self):
         """ 
@@ -248,12 +311,12 @@ class Experiment():
 
         Returns True on success
         """
-        #print(f"accept_pending_transactions for {self.pending_steps.keys()=}", file=sys.stderr)
+        print(f"accept_pending_transactions for {self.pending_steps.keys()=}", file=sys.stderr)
         if not self.pending_steps:
             self.log("Warning: there are no pending transactions to record")
             return True  # It didn't actually fail
         clashes = self.clashing_pending_transactions()
-        #print(f"Clashes seen {clashes=}", file=sys.stderr)
+        print(f"Clashes seen {clashes=}", file=sys.stderr)
         if len(clashes) == 0:
             for transaction in self.pending_steps:
                 p = Path(transaction)
@@ -270,7 +333,7 @@ class Experiment():
             for i,step in enumerate(self.reproducible_steps):
                 for dest in step:
                     dp = self.convert_final_to_pending(dest)
-                    #print(f"{dp=} {self.pending_steps.keys()=}", file=sys.stderr)
+                    #print(f"{dp=}", file=sys.stderr)
                     if dp in self.pending_steps:
                         if i < clashing_index:
                             clashing_index = i
@@ -1158,12 +1221,12 @@ class Experiment():
         self.add_pending_transactions(transactions)
         return True
 
-    def add_file_uploads(self, file_uploads):
+    def add_file_uploads(self, uploads):
         """
         Copy uploaded files into the run folder
         """
         try:
-            for file_upload in file_uploads:
+            for file_upload in uploads:
                 fp = self.get_input_dp(file_upload.name, transaction=True)
                 self.log(f"Info: copying {fp} to experiment folder")
                 plate_set = set()
@@ -1171,10 +1234,13 @@ class Experiment():
                     file_outstr = file_upload.getvalue().decode("utf-8").replace('\r\n','\n')
                     #print(file_upload.getvalue().decode("utf-8"))
                     outf.write(file_outstr)
+
+                #print(f'Adding file {fp}', file=sys.stderr)
+
         except Exception as exc:
             self.log(f'Error: could not upload files, {exc}')
             return False
-
+    
         return True
         
     def add_pcr_plates(self, pcr_plate_list=[]):
@@ -2200,7 +2266,7 @@ class Experiment():
             counter += 1
         if self.pending_steps:
             for file_name in self.pending_steps:
-                pids = [util.unguard_pbc(pid, silent=True) for pid in self.pending_steps[file_name].keys()]
+                pids = [util.unguard_pbc(pid, silent=True) for pid in self.pending_steps[file_name]]
                 stages.append([str(counter), file_name, ', '.join(pids), 'pending'])
         return stages, header
 

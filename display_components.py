@@ -745,7 +745,7 @@ def display_log(exp, height=250):
     """
     func = sys._getframe(1).f_code.co_name
     func_line = inspect.getframeinfo(sys._getframe(1)).lineno
-    print("Function", func, type(func_line))
+    #print("Function", func, type(func_line))
     # display the experiment log and let the user filter the view in a number of ways
     log_entries = st.session_state['experiment'].get_log(100)
     if len(log_entries) == 0:

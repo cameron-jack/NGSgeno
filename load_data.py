@@ -63,40 +63,101 @@ The GUI interacts with a single Experiment object at one time. Methods are calle
 functionality. The Experiment then deals directly with the pipeline logic.
 """
 
+# def run_add(exp, warning_area, target_function, *args, **kwargs):
+#     #exp.enforce_file_consistency()
+
+#     success = target_function(*args, **kwargs)
+#     print(f'{success}', file=sys.stderr)
+
+#     if not success:
+#         exp.clear_pending_transactions()
+#     else:
+#         if exp.pending_steps is not None and len(exp.pending_steps) > 0:
+#             clashes = exp.clashing_pending_transactions()
+#             print(f'Clashes: {clashes}', file=sys.stderr)
+#             if len(clashes) > 0:
+#                 warning_area.warning('The following input files already exist ' +
+#                         f'\'{"".join(clash for clash in clashes)}\'')
+
+#                 warning_area.warning('Click "Accept" to replace older files and clear all ' +
+#                                         'input files from subsequent pipeline stages')
+#                 col1, col2,_ = warning_area.columns([2, 2, 10])
+
+#                 col1.button('Accept', 
+#                             on_click=exp.add_file_uploads, args=args,
+#                             key=f'accept_overwrite_button for {target_function.__name__}')
+
+#                 col2.button('Cancel', 
+#                             on_click=exp.clear_pending_transaction, args=args, 
+#                             key=f'cancel_overwrite_button for {target_function.__name__}')
+
+#             else:
+#                 for arg in args:
+#                     copy_success = exp.add_file_uploads(arg)
+#                     if not copy_success:
+#                         return False
+#                 #exp.accept_pending_transactions()
+                
+#     print(f'{exp.reproducible_steps=}', file=sys.stderr)
+
+#     for arg in args:
+#         exp.clear_pending_transaction(arg)
+                
+#     return success
+
 def run_add(exp, target_function, *args, **kwargs):
-    exp.clear_pending_transactions()
-    exp.enforce_file_consistency()
-
+    #exp.enforce_file_consistency()
+    #print(f'Running function {target_function.__name__}', file=sys.stderr)
     success = target_function(*args, **kwargs)
-
+    clash = None
+    
     if not success:
         exp.clear_pending_transactions()
     else:
         if exp.pending_steps is not None and len(exp.pending_steps) > 0:
-            clashes = exp.clashing_pending_transactions()
-            if len(clashes) > 0:
-                
-                st.warning(f'The following input files already exist {clashes}')
-                st.warning('Click "Accept" to replace older files and clear all' +
-                                    'input files from subsequent pipeline stages')
-                col1, col2,_ = st.columns([2, 2, 10])
-                col1.button('Accept', 
-                            on_click=exp.accept_pending_transactions, 
-                            key=f'accept_overwrite_button for {target_function.__name__}')
+            count = 0
+            for arg in args:
+                count +=1
+                for a in arg:
+                    clash = exp.clashing_pending_transaction(a)
+                exp.add_file_uploads(arg)
+    return success, clash
 
-                col2.button('Cancel', 
-                            on_click=exp.accept_pending_transactions, 
-                            key=f'cancel_overwrite_button for {target_function.__name__}')
-
+def pending_file_widget(exp, warning_area, key):
+    clashes=[]
+    overwrite_files = []
+    process_queue = st.session_state.get('run queue', [])
+    if process_queue:
+        for queue in process_queue:
+            fn = [files.name for files in queue[-1]]
+            success, clash = run_add(*queue)
+            if clash:
+                clashes.append(clash)
             else:
-                for arg in args:
-                    copy_success = exp.add_file_uploads(arg)
-                    if not copy_success:
-                        return False
-                exp.accept_pending_transactions()
-    print(f'{exp.reproducible_steps=}', file=sys.stderr)
-                
-    return success
+                if success:
+                    exp.accept_pending_transaction(*fn)
+                    warning_area.write(f'Successfully added file {fn}')
+                else:
+                    exp.clear_pending_transaction(*fn)
+                    warning_area.write(f'Failed to write {fn}, please see the log')
+            
+    if clashes:
+        with st.form(f'clash form {key}', clear_on_submit=True):
+            st.write('The following file(s) have been uploaded previously.'+
+                        'Select the one(s) you want to overwrite and click submit')
+            for clash in clashes:
+                if st.checkbox(clash, key=f'checkbox for {clash}'):
+                    overwrite_files.append(clash)
+            if st.form_submit_button('Submit'):
+                st.write('Overwriting files:', ''.join(fn for fn in overwrite_files))
+                for clash in clashes:
+                    if clash in overwrite_files:
+                        exp.accept_pending_transaction(clash)
+                    else:
+                        exp.clear_pending_transaction(clash)
+        
+                st.session_state['run queue'] = []
+                st.experimental_rerun()
 
 def load_rodentity_data():
     """
@@ -107,21 +168,34 @@ def load_rodentity_data():
     with st.expander('Add data from Rodentity JSON files',expanded=True):
         with st.form('rodentity_upload_form', clear_on_submit=True):
             epps_col1, _ = st.columns([1,1])
-            rodentity_epps = epps_col1.file_uploader('Choose up to four Rodentity JSON files', type='json', accept_multiple_files=True)
+            rodentity_epps = epps_col1.file_uploader(
+                        'Choose up to four Rodentity JSON files',
+                        type='json',
+                        accept_multiple_files=True)
             rod_upload_submit_button = st.form_submit_button('Submit')
             if rod_upload_submit_button and rodentity_epps:
                 for rod_epp in rodentity_epps:
                     rod_pid = util.guard_pbc(rod_epp.name.rstrip('.json'), silent=True)
                     if all([exp.unassigned_plates[slot] != '' for slot in [1,2,3,4]]):
-                        st.markdown(f'<p style="color:#FF0000">Ran out of free slots for {util.unguard_pbc(rod_pid, silent=True)}</p>', unsafe_allow_html=True)
+                        st.markdown(
+                            '<p style="color:#FF0000">'+
+                            f'Ran out of free slots for {util.unguard_pbc(rod_pid, silent=True)}</p>', 
+                            unsafe_allow_html=True)
                         continue
                     if rod_pid in exp.dest_sample_plates or \
                             rod_pid in exp.unassigned_plates[1] or rod_pid in exp.unassigned_plates[2] or \
                             rod_pid in exp.unassigned_plates[3] or rod_pid in exp.unassigned_plates[4]:
-                        st.markdown('<p style="color:#FF0000">Warning: Rodentity plate barcode already used at least once</p>', unsafe_allow_html=True)
+                        st.markdown(
+                            '<p style="color:#FF0000">'+
+                            'Warning: Rodentity plate barcode already used at least once</p>',
+                            unsafe_allow_html=True)
                     if rod_pid in exp.unassigned_plates['custom'] or \
-                            (rod_pid in exp.plate_location_sample and exp.plate_location_sample[rod_pid]['purpose'] != 'sample'):
-                        st.markdown('<p style="color:#FF0000">Error: Rodentity plate barcode already in use for a different purpose</p>', unsafe_allow_html=True)
+                            (rod_pid in exp.plate_location_sample and 
+                                    exp.plate_location_sample[rod_pid]['purpose'] != 'sample'):
+                        st.markdown(
+                                    '<p style="color:#FF0000">'+
+                                    'Error: Rodentity plate barcode already in use for a different purpose</p>', 
+                                    unsafe_allow_html=True)
                         continue                     
                     for key in [1,2,3,4]:
                         if exp.unassigned_plates[key] != '':
@@ -140,9 +214,12 @@ def load_rodentity_data():
         rod_col1, _, rod_col2, _ = st.columns([3,1,2,2])
         with rod_col1.form('set_rod_plates_form', clear_on_submit=True):
             for i in range(4):
-                plates_to_clear[i] = st.checkbox(f"P{str(i+1)}: {util.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
-                        help='Click the checkbox to allow a set plate ID to be cleared', key='check'+str(i+1))
-            clear_plates_button = st.form_submit_button('Clear IDs', help='Clear selected Rodentity plate IDs')
+                plates_to_clear[i] = st.checkbox(
+                            f"P{str(i+1)}: {util.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
+                            help='Click the checkbox to allow a set plate ID to be cleared', 
+                            key='check'+str(i+1))
+            clear_plates_button = st.form_submit_button('Clear IDs', 
+                    help='Clear selected Rodentity plate IDs')
             if clear_plates_button:
                 for i, plate in enumerate(plates_to_clear):
                     if plate and exp.unassigned_plates[i+1]:
@@ -153,7 +230,9 @@ def load_rodentity_data():
                 
 
         with rod_col2.form('rod_destination_form', clear_on_submit=True):
-            rod_dp = st.text_input('Destination plate ID (barcode)', max_chars=30, key='rod_dp_key')
+            rod_dp = st.text_input('Destination plate ID (barcode)', 
+                            max_chars=30, 
+                            key='rod_dp_key')
             if rod_dp:
                 rod_dp = util.guard_pbc(rod_dp, silent=True)
             accept_rod_dest_button = st.form_submit_button('Accept')
@@ -167,9 +246,13 @@ def load_rodentity_data():
                             util.unguard_pbc(rod_dp, silent=True) + '</p>', unsafe_allow_html=True)
                     sleep(1.5)
                 else:
-                    success = exp.add_rodentity_plate_set([exp.unassigned_plates[k] for k in [1,2,3,4] if exp.unassigned_plates[k]], rod_dp)
+                    success = exp.add_rodentity_plate_set(
+                                [exp.unassigned_plates[k] for k in [1,2,3,4] if exp.unassigned_plates[k]], rod_dp)
                     if not success:
-                        st.markdown('<p style="color:#FF0000">Failed to incorporate plate set. Please read the log.</p>', unsafe_allow_html=True)
+                        st.markdown(
+                                    '<p style="color:#FF0000">' +
+                                    'Failed to incorporate plate set. Please read the log.</p>', 
+                                    unsafe_allow_html=True)
                         sleep(1.5)
                     else:
                         st.write('Successfully added plate set')
@@ -253,7 +336,9 @@ def load_custom_manifests():
                                 util.unguard_pbc(dest_pid, silent=True) + '</p>', unsafe_allow_html=True)
                     else:
                         st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
-                        sample_plates = [pid for pid in [p1,p2,p3,p4] if pid != util.guard_pbc('None', silent=True) and pid is not None]
+                        sample_plates = [pid for pid in [p1,p2,p3,p4] 
+                                if pid != util.guard_pbc('None', silent=True) and pid is not None]
+
                         print(f'{sample_plates=}', file=sys.stderr)
                         success = exp.accept_custom_manifests(dest_pid, sample_plates)
                         if not success:
@@ -362,37 +447,65 @@ def provide_barcodes(key):
                 st.write(f'This plate barcode {taqwater_plate_barcode} appears to already be in use')
 
 
-
-
 def upload_pcr1_files(key):
     """
     Uploads for primer layout and volumes
     """
+    count = 0
     exp = st.session_state['experiment']
-    with st.form('primer plate upload'+key, clear_on_submit=True):
+    primer_form = st.form('primer plate upload'+key, clear_on_submit=True)
+    warning_area = st.container()
+    with primer_form:
         col1, col2 = st.columns(2)
-        uploaded_primer_layouts = col1.file_uploader('Upload Primer Plate Layouts - the barcode must be the first part of the filename e.g. 12345_primer_layout.csv', \
-            key='primer_layout_uploader'+key, type='csv', accept_multiple_files=True) 
-        uploaded_primer_volumes = col2.file_uploader('Upload Primer Plate Volumes - the barcode must be the first part of the filename e.g. 12345_primer_volume.csv', \
-            key='primer_vol_uploader'+key, type='csv', accept_multiple_files=True)
+        uploaded_primer_layouts = col1.file_uploader(
+                    'Upload Primer Plate Layouts - the barcode must be the first' +
+                    'part of the filename e.g. 12345_primer_layout.csv', \
+                    key='primer_layout_uploader'+key,
+                    type='csv',
+                    accept_multiple_files=True) 
+        uploaded_primer_volumes = col2.file_uploader(
+                    'Upload Primer Plate Volumes - the barcode must be the first part' +
+                    'of the filename e.g. 12345_primer_volume.csv', \
+                    key='primer_vol_uploader'+key, 
+                    type='csv', 
+                    accept_multiple_files=True)
+
         upload_button = st.form_submit_button("Upload Files")
+        if 'run queue' not in st.session_state:
+                    st.session_state['run queue'] = []
 
         if upload_button:
             if uploaded_primer_layouts:
                 upl_pids = [upl.name for upl in uploaded_primer_layouts]
-                success = run_add(exp, exp.add_primer_layouts, uploaded_primer_layouts)
-                if success:
-                    st.write(f'Successfully added primer layouts for plates {upl_pids}')
-                else:
-                    st.write(f'Failed to write at least one primer layout, please see the log')
+                st.session_state['run queue'].append(
+                            (exp, exp.add_primer_layouts, uploaded_primer_layouts))
+                #success = run_add(exp, warning_area, exp.add_primer_layouts, uploaded_primer_layouts)
+                #if success:
+                    #st.write(f'Successfully added primer layouts for plates {upl_pids}')
+                #else:
+                    #st.write(f'Failed to write at least one primer layout, please see the log')
                      
             if uploaded_primer_volumes:
                 upv_pids = [upv.name for upv in uploaded_primer_volumes]
-                success = run_add(exp, exp.add_primer_volumes, uploaded_primer_volumes)
-                if success:
-                    st.write(f'Successfully added primer volumes for plates {upv_pids}')
-                else:
-                    st.write(f'Failed to write at least one set of primer volumes, please see the log')
+                st.session_state['run queue'].append(
+                            (exp, exp.add_primer_volumes, uploaded_primer_volumes))
+                # success = run_add(exp, warning_area, exp.add_primer_volumes, uploaded_primer_volumes)
+                # if success:
+                #     st.write(f'Successfully added primer volumes for plates {upv_pids}')
+                # else:
+                #     st.write(f'Failed to write at least one set of primer volumes, please see the log')
+    
+    if st.session_state['run queue']:
+        pending_file_widget(exp, warning_area, key=key)
+
+    st.session_state['run queue'] = []
+
+        # if success:
+        #     st.session_state['run queue'].remove(queue)
+        #     st.write(f'Successfully added primer layouts for plates {[fn.name for fn in queue[-1]]}')
+        # else:
+        #     st.write(f'Failed to write at least one primer layout, please see the log')
+
 
  
 def upload_pcr2_files(key):
@@ -402,32 +515,49 @@ def upload_pcr2_files(key):
     exp = st.session_state['experiment']
     with st.form('index plate upload'+key, clear_on_submit=True):
         col1, col2 = st.columns(2)
-        uploaded_index_layouts = col1.file_uploader('Upload i7i5 Index Plate Layout - the barcode must be the first part of the filename e.g. 12345_index_layout.csv',
-            key='index_layout_uploader'+key, type='csv', accept_multiple_files=True)
+        uploaded_index_layouts = col1.file_uploader(
+                    'Upload i7i5 Index Plate Layout - the barcode must be'+
+                    'the first part of the filename e.g. 12345_index_layout.csv',
+                    key='index_layout_uploader'+key, 
+                    type='csv', 
+                    accept_multiple_files=True)
  
-        uploaded_index_volumes = col2.file_uploader('Upload i7i5 Index Plate Volumes - the barcode must be the first part of the filename e.g. 12345_index_volume.csv', 
-            key='index_vol_uploader'+key, type='csv', accept_multiple_files=True)
+        uploaded_index_volumes = col2.file_uploader(
+                    'Upload i7i5 Index Plate Volumes - the barcode must be'+
+                    'the first part of the filename e.g. 12345_index_volume.csv', 
+                    key='index_vol_uploader'+key, 
+                    type='csv', 
+                    accept_multiple_files=True)
  
-        uploaded_amplicon_plates = col1.file_uploader('Upload Extra Amplicon Plates - CSV or XLSX. Invalidates MiSeq and Stage3 CSV files if they exist', 
-                key='amplicon_plate_uploader'+key, type=['csv', 'xlsx'], accept_multiple_files=True)
+        uploaded_amplicon_plates = col1.file_uploader(
+                    'Upload Extra Amplicon Plates - CSV or XLSX.'+
+                    'Invalidates MiSeq and Stage3 CSV files if they exist', 
+                    key='amplicon_plate_uploader'+key, 
+                    type=['csv', 'xlsx'], 
+                    accept_multiple_files=True)
+        
         upload_button = st.form_submit_button("Upload Files")
 
         if upload_button:
             if uploaded_index_layouts:
                 uil_pids = [uil.name for uil in uploaded_index_layouts]
-                success = run_add(exp, exp.add_index_layouts, uploaded_index_layouts)
-                if success:
-                    st.write(f'Successfully added index layouts for plates {uil_pids}')
-                else:
-                    st.write(f'Failed to write at least one index layout, please see the log')    
+                st.session_state['run queue'].append(
+                            (exp, exp.add_index_layouts, uploaded_index_layouts))
+                # success = run_add(exp, warning_area, exp.add_index_layouts, uploaded_index_layouts)
+                # if success:
+                #     st.write(f'Successfully added index layouts for plates {uil_pids}')
+                # else:
+                #     st.write(f'Failed to write at least one index layout, please see the log')    
 
             if uploaded_index_volumes:
                 uiv_pids = [uiv.name for uiv in uploaded_index_volumes]
-                success = run_add(exp, exp.add_index_volumes, uploaded_index_volumes)
-                if success:
-                    st.write(f'Successfully added index volumes for plates {uiv_pids}')
-                else:
-                    st.write(f'Failed to write at least one set of index volumes, please see the log')    
+                st.session_state['run queue'].append(
+                            (exp, exp.add_index_volumes, uploaded_index_volumes))
+                # success = run_add(exp, warning_area, exp.add_index_volumes, uploaded_index_volumes)
+                # if success:
+                #     st.write(f'Successfully added index volumes for plates {uiv_pids}')
+                # else:
+                #     st.write(f'Failed to write at least one set of index volumes, please see the log')    
 
             def accept_upload(upload_choice):
                 upload_choice.append('upload')
@@ -459,6 +589,9 @@ def upload_pcr2_files(key):
                     else:
                         st.write(f'Failed to upload at least one amplicon manifest, please see the log')
                 upload_choice.append('no_action')
+    
+    warning_area = st.container()
+    pending_file_widget(exp, warning_area, key=key)
 
 
 def upload_extra_consumables(key):
@@ -467,7 +600,9 @@ def upload_extra_consumables(key):
     """
     exp = st.session_state['experiment']
     #with st.form('Consumables upload'+key, clear_on_submit=True):
-    col1, col2 = st.columns(2)
+    upload_form = st.form('Consumables upload'+key, clear_on_submit=True)
+    warning_area = st.container()
+    col1, col2 = upload_form.columns(2)
     uploaded_references = col1.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
             type=['txt','fa','fasta'], accept_multiple_files=True)
                                                                     
@@ -476,26 +611,31 @@ def upload_extra_consumables(key):
                                                                                     
     #uploaded_taqwater_plates = col1.file_uploader('Upload Taq and Water Plates', key='taq_water_upload'+key, 
     #        type='csv', accept_multiple_files=True)
-    upload_button = st.button("Upload Files")
+    upload_button = upload_form.form_submit_button("Upload Files")
 
     if upload_button:
         if uploaded_references:
-            success = run_add(exp, exp.add_references, uploaded_references)
-            ref_names = [ur.name for ur in uploaded_references]
-            if success:
-                st.write(f'Successfully added reference sequences from files {ref_names}')
-            else:
-                st.write(f'Failed to upload at least one reference sequence file, please see the log')
+            st.session_state['run queue'].append(
+                            (exp, exp.add_references, uploaded_references))
+            #success = run_add(exp, warning_area, exp.add_references, uploaded_references)
+            # ref_names = [ur.name for ur in uploaded_references]
+            # if success:
+            #     st.write(f'Successfully added reference sequences from files {ref_names}')
+            # else:
+            #     st.write(f'Failed to upload at least one reference sequence file, please see the log')
         if uploaded_assaylists:
-            success = run_add(exp, exp.add_assaylists, uploaded_assaylists)
-            assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
-            if success:
-                st.write(f'Successfully added assay/primer lists from files {assaylist_names}')
-            else:
-                st.write(f'Failed to upload at least one assay/primer list file, please see the log')
+            st.session_state['run queue'].append(
+                            (exp, exp.add_assaylists, uploaded_assaylists))
+            # success = run_add(exp, warning_area, exp.add_assaylists, uploaded_assaylists)
+            # assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
+            # if success:
+            #     st.write(f'Successfully added assay/primer lists from files {assaylist_names}')
+            # else:
+            #     st.write(f'Failed to upload at least one assay/primer list file, please see the log')
         # TODO: add the ability to add a custom taq+water plate
         #if uploaded_taqwater_plates:
         #    success = exp.add_taqwater_layout_volume
+    pending_file_widget(exp, warning_area, key=key)
 
 def upload_reference_sequences(key):
     """
@@ -503,26 +643,38 @@ def upload_reference_sequences(key):
     """
     exp = st.session_state['experiment']
     with st.form('References upload'+key, clear_on_submit=True):
-        uploaded_references = st.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
-                type=['txt','fa','fasta'], accept_multiple_files=True)
+        uploaded_references = st.file_uploader(
+                    'Upload Custom Reference Files',
+                    key='ref_uploader'+key,
+                    type=['txt','fa','fasta'],
+                    accept_multiple_files=True)
         
         upload_button = st.form_submit_button("Upload Files")
 
         if upload_button:
             if uploaded_references:
-                success = run_add(exp, exp.add_references, uploaded_references)
-                ref_names = [ur.name for ur in uploaded_references]
-                if success:
-                    st.write(f'Successfully added reference sequences from files {ref_names}')
-                else:
-                    st.write(f'Failed to upload at least one reference sequence file, please see the log')
+                st.session_state['run queue'].append(
+                (exp, exp.add_references, uploaded_references))
+                
+                # success = run_add(exp, exp.add_references, uploaded_references)
+                # ref_names = [ur.name for ur in uploaded_references]
+                # if success:
+                #     st.write(f'Successfully added reference sequences from files {ref_names}')
+                # else:
+                #     st.write(f'Failed to upload at least one reference sequence file, please see the log')
+    warning_area = st.container()
+    pending_file_widget(exp, warning_area, key=key)
            
  
 def upload_miseq_fastqs():
     exp = st.session_state['experiment']
     if not exp.locked:
-        st.warning('Uploading sequence files will lock previous stages of the pipeline, preventing changes to plate layouts')
-    st.markdown('<h4 style="color:#000000">Add Miseq FASTQ files to experiment</h4>', unsafe_allow_html=True)
+        st.warning(
+                'Uploading sequence files will lock previous stages'+
+                'of the pipeline, preventing changes to plate layouts')
+    st.markdown(
+            '<h4 style="color:#000000">Add Miseq FASTQ files to experiment</h4>', 
+            unsafe_allow_html=True)
     fastq_path = dc.st_directory_picker("Select location of Miseq FASTQ files")
     fastq_files = [f for f in fastq_path.glob('*.fastq*')] + [f for f in fastq_path.glob('*.fq*')]
     if len(fastq_files) > 0:
