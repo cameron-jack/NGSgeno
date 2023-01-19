@@ -5,8 +5,9 @@ VER="v0.21.005"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* CHANGED: Disabled locking of experiments during testing \n
-
+* NEW: Protection against non-ascii characters in reference sequence file \n
+* NEW: Added checks for open files \n
+* NEW: Increased reliability and reporting in matching code \n
 EOM
 
 #echo "$COMMENT" | sed '1s/^/1i /' | sed -i -f- changelog.txt

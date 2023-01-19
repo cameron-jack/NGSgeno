@@ -21,8 +21,10 @@ Note: logging module was removed because it is incompatible with the multiproces
 """
 
 #from ast import Str
+from ast import Bytes, Str
 import os
 from pathlib import Path
+from pickletools import bytes1
 import sys
 import argparse
 import datetime
@@ -196,45 +198,49 @@ def best_match(match_cnt, query, n, targets, mtc, sum_parent=True):
         """
         using difflib, make a modification report string
         """
-        #print('In compare_seq_strings', file=sys.stderr)
-        left_trimmed_best_query_seq = best_query.lstrip('-')
-        start_pos = len(query) - len(left_trimmed_best_query_seq)
-        mod_list = [(i+1,li[0],li[2]) for i,li in enumerate(difflib.ndiff(best_target, left_trimmed_best_query_seq)) if li[0] != ' ']
-        #print(f'{best_query=} {best_target=} {left_trimmed_best_query_seq=}', file=sys.stderr)
-        #print(f'{mod_list=}', file=sys.stderr)
-        merged_list = []
-        for i,s,c in mod_list:  # integer, sign, character
-            if len(merged_list) == 0 and s == '-':
-                merged_list.append([i,c,''])  # [1]: deleted chars, [2]: inserted chars
-            elif len(merged_list) == 0 and s == '+':
-                merged_list.append([i,'',c])
-            else:
-                if merged_list[-1][0] != i-(len(merged_list[-1][1])+len(merged_list[-1][2])):  # not consecutive difference events
-                    if s == '-':
-                        merged_list.append([i,c,''])  # deletion (or substitution)
-                    elif s == '+':
-                        merged_list.append([i,'',c])  # insertion
-                else:  # consecutive with stored sequence
-                    if len(merged_list[-1][1]) > 0 and len(merged_list[-1][2]) == 0 and s == '-':  # longer deletion event
-                        merged_list[-1][1] += c
-                    elif len(merged_list[-1][1]) > 0 and len(merged_list[-1][2]) > 0 and s == '-':  # separate event
-                        merged_list.append([i,c,''])
-                    elif len(merged_list[-1][1]) > 0 and s == '+':  # substitution
-                        merged_list[-1][2] += c
-                    elif len(merged_list[-1][1]) == 0 and s == '+':  # insertion
-                        merged_list[-1][2] += c
-        #print(f'{merged_list=}', file=sys.stderr)     
-        final_string_list = []
-        for i, del_seq, ins_seq in merged_list:
-            if len(del_seq) > 0 and len(ins_seq) > 0:
-                final_string_list.append(f'{i+start_pos}:-{del_seq}/+{ins_seq}')
-            elif len(del_seq) > 0:
-                final_string_list.append(f'{i+start_pos}:-{del_seq}')
-            elif len(ins_seq) > 0:
-                final_string_list.append(f'{i+start_pos}:+{ins_seq}')
+        try:
+            #print('In compare_seq_strings', file=sys.stderr)
+            left_trimmed_best_query_seq = best_query.lstrip('-')
+            start_pos = len(query) - len(left_trimmed_best_query_seq)
+            mod_list = [(i+1,li[0],li[2]) for i,li in enumerate(difflib.ndiff(best_target, left_trimmed_best_query_seq)) if li[0] != ' ']
+            #print(f'{best_query=} {best_target=} {left_trimmed_best_query_seq=}', file=sys.stderr)
+            #print(f'{mod_list=}', file=sys.stderr)
+            merged_list = []
+            for i,s,c in mod_list:  # integer, sign, character
+                if len(merged_list) == 0 and s == '-':
+                    merged_list.append([i,c,''])  # [1]: deleted chars, [2]: inserted chars
+                elif len(merged_list) == 0 and s == '+':
+                    merged_list.append([i,'',c])
+                else:
+                    if merged_list[-1][0] != i-(len(merged_list[-1][1])+len(merged_list[-1][2])):  # not consecutive difference events
+                        if s == '-':
+                            merged_list.append([i,c,''])  # deletion (or substitution)
+                        elif s == '+':
+                            merged_list.append([i,'',c])  # insertion
+                    else:  # consecutive with stored sequence
+                        if len(merged_list[-1][1]) > 0 and len(merged_list[-1][2]) == 0 and s == '-':  # longer deletion event
+                            merged_list[-1][1] += c
+                        elif len(merged_list[-1][1]) > 0 and len(merged_list[-1][2]) > 0 and s == '-':  # separate event
+                            merged_list.append([i,c,''])
+                        elif len(merged_list[-1][1]) > 0 and s == '+':  # substitution
+                            merged_list[-1][2] += c
+                        elif len(merged_list[-1][1]) == 0 and s == '+':  # insertion
+                            merged_list[-1][2] += c
+            #print(f'{merged_list=}', file=sys.stderr)     
+            final_string_list = []
+            for i, del_seq, ins_seq in merged_list:
+                if len(del_seq) > 0 and len(ins_seq) > 0:
+                    final_string_list.append(f'{i+start_pos}-{del_seq}/+{ins_seq}')
+                elif len(del_seq) > 0:
+                    final_string_list.append(f'{i+start_pos}-{del_seq}')
+                elif len(ins_seq) > 0:
+                    final_string_list.append(f'{i+start_pos}+{ins_seq}')
 
-        diff_str = ''.join(final_string_list)
-        return diff_str
+            diff_str = ''.join(final_string_list)
+            return diff_str
+        except Exception as exc:
+            print(f'{exc}', file=sys.stderr)
+            return 'fail'
 
 
     def best_new_align(named_aligns):
@@ -528,20 +534,28 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
         seqNames = []                                        
         otherCounts = []
         otherNames = []
-        for count, key in resx:
-            if varsep not in key and assayfam.lower() in key.lower():
-                seqCounts.append(str(count))
-                seqNames.append(key)
-            else:
-                otherCounts.append(str(count))
-                otherNames.append(key)
+        try:
+            for count, key in resx:
+                if varsep not in key and assayfam.lower() in key.lower():
+                    seqCounts.append(str(count))
+                    seqNames.append(str(key))
+                else:
+                    otherCounts.append(str(count))
+                    otherNames.append(str(key))
+        except Exception as exc:
+            print(f'Exception {exc} for {count=} {key=} in result {resx=}') 
         #res2 = tuple(x for p in resx for x in p)
-        res2 = [';'.join(seqCounts), ';'.join(seqNames), ';'.join(otherCounts), ';'.join(otherNames)]
+        try:
+            res2 = [';'.join(seqCounts), ';'.join(seqNames), ';'.join(otherCounts), ';'.join(otherNames)]
+        except Exception as exc:
+            print(f'Exception {exc} in joining seqCounts and seqNames {seqCounts=} {seqNames=} {otherCounts=} {otherNames=}', file=sys.stderr)
         #print(res2, file=sys.stderr)
-        retval = [str(wr[x]) for x in wr] + res1 + res2
-        #print(retval, file=sys.stderr)
-        with lock_r:
-            results.append(retval)       
+        try:
+            retval = [str(wr[x]) for x in wr] + res1 + res2
+            with lock_r:
+                results.append(retval)
+        except Exception as exc:
+            print(f'Exception {exc} in forming return value from matching {wr=} {res1=} {res2=}', file=sys.stderr)       
 
 
 def write_log(log, logfn):
@@ -613,8 +627,37 @@ def main(args):
         
     # read the target sequence file into a dictionary of target sequences
                     
+    fadict = {}
     with myopen(os.path.join(args.rundir,args.targets)) as src:
-        fadict = dict((x.id, Target(x.id, str(x.seq).upper())) for x in Bio.SeqIO.parse(src, "fasta") if len(x.seq) != 0 and len(x.id) != 0)
+        for id_seq in Bio.SeqIO.parse(src, "fasta"):
+            if len(id_seq.id) > 0 and len(id_seq.seq) > 0:
+                try:
+                    seq_id = bytes(str(id_seq.id).strip(), 'ascii', errors='strict').decode()
+                except Exception as exc:
+                    msg = f'Warning: {exc} non-ascii character in reference sequence id {id_seq.id}'
+                    log.append(msg)
+                    if args.debug:
+                        print(msg, file=sys.stderr)
+                    seq_id = bytes(str(id_seq.id).strip(), 'ascii',errors='ignore').decode()
+
+                try:
+                    seq = bytes(str(id_seq.seq).strip(), 'ascii', errors='strict').decode().upper()
+                except Exception as exc:
+                    msg = f'Warning: {exc} non-ascii character in reference sequence {id_seq.seq}'
+                    log.append(msg)
+                    if args.debug:
+                        print(msg, file=sys.stderr)
+                    seq = bytes(str(id_seq.seq).strip(), 'ascii', errors='ignore').decode().upper()
+
+                if seq_id in fadict:
+                    msg = f"Warning: sequence for {seq_id} already appears in reference target list "+\
+                            f"with sequence {fadict[seq_id]=}, alternative {seq=}"
+                    log.append(msg)
+                    if args.debug:
+                        print(msg, file=sys.stderr)
+
+                fadict[seq_id] = Target(seq_id, seq)
+        #fadict = dict((x.id, Target(x.id, str(x.seq).upper())) for x in Bio.SeqIO.parse(src, "fasta") if len(x.seq) != 0 and len(x.id) != 0)
     
     log.append(f"Info: read {len(fadict)} target sequences.\n")
     
@@ -743,8 +786,9 @@ def main(args):
             hdrres2 = ("seqCount", "seqName", "otherCount", "otherName")
             complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))
             dst.writerow(complete_row_hdr)
-            for k in complete_results:
-                print(f'{complete_results[k]=}', file=sys.stderr)
+            for k in sorted(complete_results):
+                if args.debug:
+                    print(f'{complete_results[k]=}', file=sys.stderr)
                 dst.writerow(complete_results[k])
             #for i,k in enumerate(sorted(complete_results.keys())):
             #    dst.writerow(complete_results[k])
