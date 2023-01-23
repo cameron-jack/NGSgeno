@@ -399,9 +399,11 @@ def main():
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
-                    ld.upload_pcr1_files('tab2')
-                    ld.upload_pcr2_files('tab2')
-                    ld.upload_extra_consumables('tab2')
+                    if 'upload stage' not in st.session_state:
+                        st.session_state['upload stage'] = None
+                    ld.upload_pcr1_files('pcr1_load2')
+                    ld.upload_pcr2_files('pcr2_load2')
+                    ld.upload_extra_consumables('consumables_load2')
                 st.session_state['load_tab'] = 2
 
             #load data
@@ -579,7 +581,10 @@ def main():
                                 unsafe_allow_html=True)
 
                     ld.provide_barcodes('barcodes_tab1')
-                    ld.upload_pcr1_files('pcr1_tab1')
+                    if 'upload option' not in st.session_state:
+                        st.session_state['upload option'] = None
+                    ld.upload_pcr1_files('pcr1_primer1')
+
                 st.session_state['primer_tab'] = 1
                 
             #provide plates
@@ -634,7 +639,7 @@ def main():
                                         st.write('Picklist generation failed. Please see the log')
                         
                 dc.show_echo1_outputs()
-                        
+                
                 st.session_state['primer_tab'] = 2
 
             with info_holder:
@@ -667,7 +672,9 @@ def main():
                     title_holder = st.empty()
                     pcr_comp_holder = st.empty()
                     ld.provide_barcodes('index_barcodes')
-                    ld.upload_pcr2_files('index_upload')
+                    if 'upload option' not in st.session_state:
+                        st.session_state['upload option'] = None
+                    ld.upload_pcr2_files('pcr2_index1')
                     st.session_state['index_tab'] = 1
                     if available_nimbus:
                         with index_checklist_exp:
@@ -744,7 +751,7 @@ def main():
                 _, miseq_col1, miseq_col2, _ =  st.columns([2,1,1,2])
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
-                ld.upload_reference_sequences('miseq2')
+                ld.upload_reference_sequences('reference_miseq1')
                 if exp.get_miseq_samplesheets():
                     for fp in exp.get_miseq_samplesheets():
                         fp_name = str(Path(fp).name)
@@ -757,7 +764,7 @@ def main():
                 st.session_state['miseq_tab'] = 1
 
             if miseq_tab == 2:
-                ld.upload_reference_sequences('miseq2')
+                ld.upload_reference_sequences('reference_miseq2')
                 ready_messages = []
                 if not exp.check_sequence_upload_ready(ready_messages):
                     for msg in ready_messages:
@@ -796,7 +803,7 @@ def main():
                 rundir = exp.get_exp_dir()
                 seq_ready_messages = []
                 call_ready_messages = []
-                ld.upload_reference_sequences('miseq2')
+                ld.upload_reference_sequences('reference_allele1')
                 if not exp.check_sequence_upload_ready(seq_ready_messages):
                     for msg in seq_ready_messages:
                         st.error(msg)

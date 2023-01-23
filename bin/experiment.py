@@ -235,6 +235,7 @@ class Experiment():
             if pf not in self.pending_steps:
                 return False
             if Path(pf).exists():
+                print(f'Clearing pending file {pf}', file=sys.stderr)
                 os.remove(pf)
             self.pending_steps.pop(pf)
         except Exception as exc:
@@ -316,7 +317,7 @@ class Experiment():
             self.log("Warning: there are no pending transactions to record")
             return True  # It didn't actually fail
         clashes = self.clashing_pending_transactions()
-        print(f"Clashes seen {clashes=}", file=sys.stderr)
+        #print(f"Clashes seen {clashes=}", file=sys.stderr)
         if len(clashes) == 0:
             for transaction in self.pending_steps:
                 p = Path(transaction)
