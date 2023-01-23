@@ -1,3 +1,23 @@
+v0.21.006
+Date: Fri Jan 20 09:11:12 AEDT 2023
+* NEW: Protection against non-ascii characters in reference sequence file
+* NEW: Added checks for open files
+* NEW: Increased reliability and reporting in matching code
+
+v0.21.005
+Date: Fri Jan 13 12:55:42 AEDT 2023
+* CHANGED: Disabled locking of experiments during testing 
+
+v0.21.004
+Date: Fri Jan 13 12:51:14 AEDT 2023
+* CHANGED: custom manifest samples are now always guarded c
+
+v0.21.003
+Date: Thu Jan 12 15:25:32 AEDT 2023
+* FIXED: skipping first line of Stage3 output. Confused about lack of header
+* FIXED: skipping some result outputs due to change of fields
+* CHANGED: Now opens results at the end of matching, so no empty files
+
 v0.21.002
 Date: Fri Jan  6 16:21:53 AEDT 2023
 * FIXED: removed the sampleNo field from FASTQ file names

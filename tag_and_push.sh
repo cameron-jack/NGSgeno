@@ -1,20 +1,37 @@
 #!/usr/bin/env bash
-# set -x
 
-VER="v0.21.002"
+VER="v0.21.006"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* FIXED: removed the sampleNo field from FASTQ file names\n
+<<<<<<< HEAD
+* NEW: Protection against non-ascii characters in reference sequence file
+* NEW: Added checks for open files
+* NEW: Increased reliability and reporting in matching code
+=======
+* NEW: Protection against non-ascii characters in reference sequence file \n
+* NEW: Added checks for open files \n
+* NEW: Increased reliability and reporting in matching code \n
+>>>>>>> be6d0962870e18afd9590c4e767b439874955080
 EOM
 
-echo "$COMMENT" | sed '1s/^/1i /' | sed -i -f- changelog.txt
-echo "$DATE" | sed '1s/^/1i /' | sed -i -f- changelog.txt
-echo "$VER" | sed '1s/^/1i /' | sed -i -f- changelog.txt
+mv changelog.txt changelog_old.txt
+echo "$VER" > changelog.txt
+echo "$DATE" >> changelog.txt
+echo "$COMMENT" >> changelog.txt
+echo "" >> changelog.txt
+cat changelog_old.txt >> changelog.txt
+rm changelog_old.txt
+
+#MSG="$(printf "${COMMENT}")"
+#sed -i "$MSG" changelog.txt
+#echo "${COMMENT}" | sed '1s/^/1i /' | sed -i -f- changelog.txt
+#echo "$DATE" | sed '1s/^/1i /' | sed -i -f- changelog.txt
+#echo "$VER" | sed '1s/^/1i /' | sed -i -f- changelog.txt
 
 git add -u
-MSG="$(printf "${COMMENT}")"
-git commit -m "$MSG"
+MSG="$(echo "$COMMENT")"
+git commit --amend -m "$MSG"
 git tag -a "$VER" -m "$MSG"
 
 git push

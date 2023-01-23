@@ -816,6 +816,18 @@ def main():
                     ld.upload_miseq_fastqs()
                 else:
                     ld.upload_miseq_fastqs()
+                    # check whether output files already exist and are opened elsewhere
+                    target_fn = exp.get_exp_fp('target.fa')
+                    results_fn = exp.get_exp_fp('results.csv')
+                    matchlog_fn = exp.get_exp_fp('match.log')
+                    for fn in [target_fn, results_fn, matchlog_fn]:
+                        if Path(fn).exists():
+                            try:
+                                os.rename(fn, fn.replace('.','_tmp_swap.'))
+                                os.rename(fn.replace('.','_tmp_swap.'), fn)
+                            except PermissionError:
+                                st.error(f'{fn} appears to be in use. Please close this file before continuing')
+                            
                     with st.form('allele_calling_form', clear_on_submit=True):
                         #num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
                         cpus_avail = os.cpu_count() -1
@@ -878,11 +890,12 @@ def main():
                 rodentity_results = []
                 custom_results = []
                 other_results = []
-                with open(results_fp, 'Urt') as rfn:
+                with open(results_fp, 'rt') as rfn:
                     for i, line in enumerate(rfn):
                         l = line.replace('"','')
                         cols = [c.strip() for c in l.split(',')]
-                        #print(cols)
+                        #if len(cols) != 30:
+                        #    print(cols)
                         if i == 0:
                             hdr = cols
                         else:
