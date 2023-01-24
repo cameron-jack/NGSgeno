@@ -10,13 +10,13 @@ read -r -d '' COMMENT << EOM
 * CHANGED: improved debugging message handling
 EOM
 
-mv changelog.txt changelog_old.txt
-echo "$VER" > changelog.txt
-echo "$DATE" >> changelog.txt
-echo "$COMMENT" >> changelog.txt
-echo "" >> changelog.txt
-cat changelog_old.txt >> changelog.txt
-rm changelog_old.txt
+#mv changelog.txt changelog_old.txt
+#echo "$VER" > changelog.txt
+#echo "$DATE" >> changelog.txt
+#echo "$COMMENT" >> changelog.txt
+#echo "" >> changelog.txt
+#cat changelog_old.txt >> changelog.txt
+#rm changelog_old.txt
 
 #MSG="$(printf "${COMMENT}")"
 #sed -i "$MSG" changelog.txt
