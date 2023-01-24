@@ -384,11 +384,13 @@ def main():
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
-                    ld.load_rodentity_data()
+                    if 'run queue' not in st.session_state:
+                        st.session_state['run queue'] = []
+                    ld.load_rodentity_data('rodentity_load1')
                     #ld.load_database_data()
                     #ld.load_custom_csv()
                     #ld.upload_rodentity_demo()
-                    ld.load_custom_manifests()
+                    ld.load_custom_manifests('custom_load1')
                 st.session_state['load_tab'] = 1
                 with summary_holder:
                     dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples', height=180)
@@ -477,21 +479,28 @@ def main():
                     nimbus_fn=Path(nf).name
 
                     if (i+1) % 2 != 0:
-                        dl_col1.markdown(f'<p style="text-align:left;color:#4b778c;padding:5px">{nimbus_fn}</p>',\
-                                 unsafe_allow_html=True)
+                        dl_col1.markdown('<p style="text-align:left;color:#4b778c;padding:5px">'+
+                                        f'{nimbus_fn}</p>',
+                                        unsafe_allow_html=True)
 
-                        dl_col2.download_button("Download ", open(nf), file_name=nimbus_fn, 
-                                key='nimbus_input'+str(i), help=f"Download Nimbus input file {nf}")
+                        dl_col2.download_button("Download ", 
+                                                open(nf), 
+                                                file_name=nimbus_fn, 
+                                                key='nimbus_input'+str(i), 
+                                                help=f"Download Nimbus input file {nf}")
                 
                     else:
-                        dl_col3.markdown(f'<p style="text-align:left;color:#4b778c;padding:5px">{nimbus_fn}</p>',\
-                                 unsafe_allow_html=True)
+                        dl_col3.markdown('<p style="text-align:left;color:#4b778c;padding:5px">'+
+                                        f'{nimbus_fn}</p>',
+                                        unsafe_allow_html=True)
                  
-                        dl_col4.download_button("Download ", open(nf), file_name=nimbus_fn,\
-                                key='nimbus_input'+str(i), help=f"Download Nimbus input file {nf}") 
+                        dl_col4.download_button("Download ", 
+                                                open(nf), file_name=nimbus_fn,\
+                                                key='nimbus_input'+str(i), 
+                                                help=f"Download Nimbus input file {nf}") 
                 st.session_state['nimbus_tab'] = 1
 
-            #upload nimbus
+            #Upload nimbus
             if nimbus_tab == 2:
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
@@ -505,7 +514,9 @@ def main():
                         nim_tab2_title = 'All Echo inputs/Nimbus outputs now uploaded'
                         uploaded_nims = [Path(ef).name for ef in efs]
                         files_str = '</br>'.join(uploaded_nims)
-                        st.markdown(f'<p style="text-align:center;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
+                        st.markdown('<p style="text-align:center;color:#17754d">'+
+                                    f'{files_str}</p>', 
+                                    unsafe_allow_html=True)
                     elif xbcs:
                         nfs, efs, xbcs = exp.get_nimbus_filepaths()
                         uploaded_nims = [Path(ef).name for ef in efs]
@@ -515,11 +526,19 @@ def main():
                         missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
                         files_str = '</br>'.join(missing_nims)
                         st.write('The following Echo input files are expected (from the Nimbus):')
-                        st.markdown(f'<p style="text-align:left;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
-                        with st.form("Echo input upload", clear_on_submit=True):
+                        st.markdown('<p style="text-align:left;color:#17754d">'+
+                                    f'{files_str}</p>', 
+                                    unsafe_allow_html=True)
+                        
+                        with st.form("Echo input upload", 
+                                    clear_on_submit=True):
                             col1, col2 = st.columns([2, 1])
-                            nim_outputs = col1.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
-                                accept_multiple_files=True, help='You can upload more than one file at once')
+                            nim_outputs = col1.file_uploader(
+                                        'Upload files: Echo_384_COC_0001_....csv', 
+                                        type='csv', 
+                                        accept_multiple_files=True, 
+                                        help='You can upload more than one file at once'
+                                        )
                             submitted = st.form_submit_button("Upload files")
 
                         if submitted and nim_outputs is not None:
@@ -529,8 +548,12 @@ def main():
                             else:
                                 st.experimental_rerun()
                         
-                    nim_tab2_title_area.markdown(f'<h5 style="text-align:center;color:#f63366">{nim_tab2_title}</h5>',\
-                                    unsafe_allow_html=True)
+                    nim_tab2_title_area.markdown(
+                                    '<h5 style="text-align:center;color:#f63366">'+
+                                    f'{nim_tab2_title}</h5>',
+                                    unsafe_allow_html=True
+                                    )
+                
                 st.session_state['nimbus_tab'] = 2
 
             

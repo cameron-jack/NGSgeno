@@ -235,7 +235,7 @@ class Experiment():
             if pf not in self.pending_steps:
                 return False
             if Path(pf).exists():
-                print(f'Clearing pending file {pf}', file=sys.stderr)
+                print(f'Clearing pending file: {pf}', file=sys.stderr)
                 os.remove(pf)
             self.pending_steps.pop(pf)
         except Exception as exc:
@@ -280,26 +280,26 @@ class Experiment():
             #if file already exists, remove original from files and reproducible_steps
             if final_path in clashes:
                 if Path(final_path).exists():
-                    print(f"Removing the original file: {str(final_path)}", file=sys.stderr)
+                    print(f"Removing the old file: {str(final_path)}", file=sys.stderr)
                     os.remove(final_path)
 
                 #Need to remove entries from reproducible steps that contain the same plate id?
-                for step in self.reproducible_steps:
+                for i, step in enumerate(self.reproducible_steps):
                     if final_path in step:
-                        del step[final_path]
+                        del self.reproducible_steps[i]
 
             p = Path(pending_file)
             if not p.exists():
                 self.log('Warning: file does not exist')
                 return False
             os.rename(pending_file, final_path)
+            print(f'Accepted file: {final_path}', file=sys.stderr)
 
             this_step = {}
             record = self.pending_steps[pending_file]
             this_step[final_path] = record
             #print(f'{this_step}', file=sys.stderr)
             self.reproducible_steps.append(this_step)
-
             self.pending_steps.pop(pending_file)
 
         return True
@@ -341,7 +341,9 @@ class Experiment():
                             break
             #print(f"{clashing_index=}", file=sys.stderr)
             if clashing_index == MAX_STAGES:  # this should NEVER happen
-                self.log(f"Critical: pipeline detects clashing transaction {clashing_index=} for {self.pending_steps=}") 
+                self.log(
+                        'Critical: pipeline detects clashing' +
+                        f'transaction {clashing_index=} for {self.pending_steps=}') 
                 return False
 
             # keep everything prior to the clash, then add on the pending steps

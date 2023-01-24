@@ -233,7 +233,7 @@ def data_table(key, options=False, table_option=None, height=350):
     elif table_option == 'View Log':
         func = sys._getframe(1).f_code.co_name
         func_line = inspect.getframeinfo(sys._getframe(1)).lineno
-        print("Function", func, type(func_line))
+        #print("Function", func, type(func_line))
         # display the experiment log and let the user filter the view in a number of ways
         log_entries = st.session_state['experiment'].get_log(100)
         if len(log_entries) == 0:
@@ -658,7 +658,14 @@ def display_primers(exp, assay_usage, height=350):
     
     # if warning_primers != '':
     #     st.warning('The following primers do not have enough volume: ' + warning_primers[:-1])
-    primer_df = pd.DataFrame(primer_array, columns=['Primer', 'Num Wells','Uses', 'Required Volume(μL)', 'Available Volume(μL)'])
+    primer_df = pd.DataFrame(
+                            primer_array, 
+                            columns=['Primer', 
+                                    'Num Wells',
+                                    'Uses', 
+                                    'Required Volume(μL)', 
+                                    'Available Volume(μL)']
+                            )
     primer_table = aggrid_interactive_table(primer_df, grid_height=height, key='primer_display')
     
 def display_plates(exp, plate_usage, height=350):
@@ -684,15 +691,15 @@ def view_plates(exp):
     if plate_selectbox:
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
-            heatmap_str = generate_heatmap_html(exp, plate_id, scaling=1.3)
+            heatmap_str = generate_heatmap_html(exp, plate_id, scaling=0.9)
 
             #with open("debug.html", 'wt') as outf:
             #    print(heatmap_str, file=outf)
-            components.html(heatmap_str, height=700, scrolling=True)
+            components.html(heatmap_str, height=500, scrolling=True)
         else:
             plate_barcode_error_msg = "Plate barcode not found in experiment"
-            st.markdown(f'<p style="color:#FF0000">{plate_barcode_error_msg}</p>',\
-            unsafe_allow_html=True)
+            st.markdown(f'<p style="color:#FF0000">{plate_barcode_error_msg}</p>',
+                        unsafe_allow_html=True)
 
 
 def display_files(exp, file_usage, height=350):
@@ -746,6 +753,21 @@ def display_log(exp, height=250):
     func = sys._getframe(1).f_code.co_name
     func_line = inspect.getframeinfo(sys._getframe(1)).lineno
     #print("Function", func, type(func_line))
+    # display the experiment log and let the user filter the view in a number of ways
+    log_entries = st.session_state['experiment'].get_log(100)
+    if len(log_entries) == 0:
+        st.write('No entries currently in the log')
+    else:
+        df = pd.DataFrame(log_entries, columns=exp.get_log_header())
+        aggrid_interactive_table(df, grid_height=height, key='logs')
+
+def display_log(exp, height=250):
+    """
+    Display the log
+    """
+    func = sys._getframe(1).f_code.co_name
+    func_line = inspect.getframeinfo(sys._getframe(1)).lineno
+    print("Function", func, type(func_line))
     # display the experiment log and let the user filter the view in a number of ways
     log_entries = st.session_state['experiment'].get_log(100)
     if len(log_entries) == 0:
@@ -823,4 +845,6 @@ def info_viewer(key):
     if view_tab == 7:
         with container:
             display_log(exp, height=view_height)
+
+
 
