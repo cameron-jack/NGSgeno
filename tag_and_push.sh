@@ -1,27 +1,22 @@
 #!/usr/bin/env bash
 
-VER="v0.21.006"
+VER="v0.21.007"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-<<<<<<< HEAD
-* NEW: Protection against non-ascii characters in reference sequence file
-* NEW: Added checks for open files
-* NEW: Increased reliability and reporting in matching code
-=======
-* NEW: Protection against non-ascii characters in reference sequence file \n
-* NEW: Added checks for open files \n
-* NEW: Increased reliability and reporting in matching code \n
->>>>>>> be6d0962870e18afd9590c4e767b439874955080
+* NEW: ngsmatch.py creates debug.log in run directory if using -d
+* FIXED: one too few parameters passed to process_well()
+* FIXED: corrected hard coded paths to bbmap components
+* CHANGED: improved debugging message handling
 EOM
 
-mv changelog.txt changelog_old.txt
-echo "$VER" > changelog.txt
-echo "$DATE" >> changelog.txt
-echo "$COMMENT" >> changelog.txt
-echo "" >> changelog.txt
-cat changelog_old.txt >> changelog.txt
-rm changelog_old.txt
+#mv changelog.txt changelog_old.txt
+#echo "$VER" > changelog.txt
+#echo "$DATE" >> changelog.txt
+#echo "$COMMENT" >> changelog.txt
+#echo "" >> changelog.txt
+#cat changelog_old.txt >> changelog.txt
+#rm changelog_old.txt
 
 #MSG="$(printf "${COMMENT}")"
 #sed -i "$MSG" changelog.txt
