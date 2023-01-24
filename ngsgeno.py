@@ -14,6 +14,7 @@ import os
 import sys
 from pathlib import Path  
 from math import fabs, floor, ceil  # leave these incase they're needed later
+from subprocess import check_output, CalledProcessError, STDOUT
 import subprocess
 
 import pandas as pd
@@ -31,6 +32,17 @@ import display_components as dc
 import load_data as ld
 import asyncio
 from time import sleep
+
+def getstatusoutput(cmd):
+    try:
+        data = check_output(cmd, shell=True, universal_newlines=True, stderr=STDOUT)
+        status = 0
+    except CalledProcessError as ex:
+        data = ex.output
+        status = ex.returncode
+    if data[-1:] == '\n':
+        data = data[:-1]
+    return status, data
 
 def get_run_folders():
     """ return an alphabetically sorted list of run folders, without their run_ prefix """
@@ -187,6 +199,15 @@ def run_generate(exp, target_func, *args, **kwargs):
                 exp.accept_pending_transactions()
     return success
 
+def show_info_viewer_checkbox():
+    if 'show_info_viewer' not in st.session_state:
+        st.session_state['show_info_viewer'] = False
+    
+    if st.checkbox('Info Viewer'):
+        st.session_state['show_info_viewer'] = True
+    else:
+        st.session_state['show_info_viewer'] = False
+
 def main():
     st.set_page_config(
         page_title="NGS Genotyping",
@@ -202,7 +223,7 @@ def main():
         st.session_state['folder'] = None
     #Folder inputs
     
-    logo_col, _, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,4,2,1,2,1])
+    logo_col, ver_col,_, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,2,2,2,1,2,1])
     # current_experiment_col, _ = st.columns(2)
     # with title_column:
     #     st.markdown('<h3 style="align:center; color:#2040a1">NGS Genotyping</h3>', unsafe_allow_html=True)
@@ -218,6 +239,9 @@ def main():
              experiment_title += (st.session_state['experiment'].name)
     else:
              experiment_title += ('None')
+
+    current_status, current_ver = getstatusoutput("git describe")
+    ver_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', unsafe_allow_html=True)
 
     logo_col.image('ngsg_explorer.png', caption=f'{experiment_title}')
 
@@ -345,18 +369,20 @@ def main():
         
         #Load data
         if pipeline_stage == 0:
-            load_data_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="Load Samples", description=""),
-                stx.TabBarItemData(id=2, title="Load Consumables", description="")
-                #stx.TabBarItemData(id=3, title="View Data", description="")
-            ], return_type=int)                            
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                load_data_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="Load Samples", description=""),
+                    stx.TabBarItemData(id=2, title="Load Consumables", description="")
+                    #stx.TabBarItemData(id=3, title="View Data", description="")
+                ], return_type=int)                            
             #dc.info_viewer()  
             if not load_data_tab:
                 if 'load_tab' not in st.session_state:
                     st.session_state['load_tab'] = 1
                 load_data_tab = st.session_state['load_tab']
 
-            info_holder = st.empty()
+            info_holder = st.container()
             
             # load sample data
             if load_data_tab == 1:
@@ -369,11 +395,13 @@ def main():
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
-                    ld.load_rodentity_data()
+                    if 'run queue' not in st.session_state:
+                        st.session_state['run queue'] = []
+                    ld.load_rodentity_data('rodentity_load1')
                     #ld.load_database_data()
                     #ld.load_custom_csv()
                     #ld.upload_rodentity_demo()
-                    ld.load_custom_manifests()
+                    ld.load_custom_manifests('custom_load1')
                 st.session_state['load_tab'] = 1
                 with summary_holder:
                     dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples', height=180)
@@ -384,9 +412,11 @@ def main():
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
-                    ld.upload_pcr1_files('tab2')
-                    ld.upload_pcr2_files('tab2')
-                    ld.upload_extra_consumables('tab2')
+                    if 'upload stage' not in st.session_state:
+                        st.session_state['upload stage'] = None
+                    ld.upload_pcr1_files('pcr1_load2')
+                    ld.upload_pcr2_files('pcr2_load2')
+                    ld.upload_extra_consumables('consumables_load2')
                 st.session_state['load_tab'] = 2
 
             #load data
@@ -395,20 +425,26 @@ def main():
             #    dc.data_table(key=load_data_tab, options=True)
             #    dc.display_primer_components(assay_usage, expander=True)
             #    st.session_state['load_tab'] = 2
+            with tab_col2:
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
         
         #Nimbus
         if pipeline_stage == 1:
             nim_tab1_err = ''
             nimbus_title = ''
 
-            nimbus_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
-                stx.TabBarItemData(id=2, title="Upload", description="Echo input files")
-                #stx.TabBarItemData(id=3, title="View Data", description="")
-            ], return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                nimbus_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
+                    stx.TabBarItemData(id=2, title="Upload", description="Echo input files")
+                    #stx.TabBarItemData(id=3, title="View Data", description="")
+                ], return_type=int)
+            info_holder = st.container()
             
             if not nimbus_tab:
                 if 'nimbus_tab' not in st.session_state:
@@ -460,21 +496,28 @@ def main():
                     nimbus_fn=Path(nf).name
 
                     if (i+1) % 2 != 0:
-                        dl_col1.markdown(f'<p style="text-align:left;color:#4b778c;padding:5px">{nimbus_fn}</p>',\
-                                 unsafe_allow_html=True)
+                        dl_col1.markdown('<p style="text-align:left;color:#4b778c;padding:5px">'+
+                                        f'{nimbus_fn}</p>',
+                                        unsafe_allow_html=True)
 
-                        dl_col2.download_button("Download ", open(nf), file_name=nimbus_fn, 
-                                key='nimbus_input'+str(i), help=f"Download Nimbus input file {nf}")
+                        dl_col2.download_button("Download ", 
+                                                open(nf), 
+                                                file_name=nimbus_fn, 
+                                                key='nimbus_input'+str(i), 
+                                                help=f"Download Nimbus input file {nf}")
                 
                     else:
-                        dl_col3.markdown(f'<p style="text-align:left;color:#4b778c;padding:5px">{nimbus_fn}</p>',\
-                                 unsafe_allow_html=True)
+                        dl_col3.markdown('<p style="text-align:left;color:#4b778c;padding:5px">'+
+                                        f'{nimbus_fn}</p>',
+                                        unsafe_allow_html=True)
                  
-                        dl_col4.download_button("Download ", open(nf), file_name=nimbus_fn,\
-                                key='nimbus_input'+str(i), help=f"Download Nimbus input file {nf}") 
+                        dl_col4.download_button("Download ", 
+                                                open(nf), file_name=nimbus_fn,\
+                                                key='nimbus_input'+str(i), 
+                                                help=f"Download Nimbus input file {nf}") 
                 st.session_state['nimbus_tab'] = 1
 
-            #upload nimbus
+            #Upload nimbus
             if nimbus_tab == 2:
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
@@ -488,7 +531,9 @@ def main():
                         nim_tab2_title = 'All Echo inputs/Nimbus outputs now uploaded'
                         uploaded_nims = [Path(ef).name for ef in efs]
                         files_str = '</br>'.join(uploaded_nims)
-                        st.markdown(f'<p style="text-align:center;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
+                        st.markdown('<p style="text-align:center;color:#17754d">'+
+                                    f'{files_str}</p>', 
+                                    unsafe_allow_html=True)
                     elif xbcs:
                         nfs, efs, xbcs = exp.get_nimbus_filepaths()
                         uploaded_nims = [Path(ef).name for ef in efs]
@@ -498,11 +543,19 @@ def main():
                         missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
                         files_str = '</br>'.join(missing_nims)
                         st.write('The following Echo input files are expected (from the Nimbus):')
-                        st.markdown(f'<p style="text-align:left;color:#17754d">{files_str}</p>', unsafe_allow_html=True)
-                        with st.form("Echo input upload", clear_on_submit=True):
+                        st.markdown('<p style="text-align:left;color:#17754d">'+
+                                    f'{files_str}</p>', 
+                                    unsafe_allow_html=True)
+                        
+                        with st.form("Echo input upload", 
+                                    clear_on_submit=True):
                             col1, col2 = st.columns([2, 1])
-                            nim_outputs = col1.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
-                                accept_multiple_files=True, help='You can upload more than one file at once')
+                            nim_outputs = col1.file_uploader(
+                                        'Upload files: Echo_384_COC_0001_....csv', 
+                                        type='csv', 
+                                        accept_multiple_files=True, 
+                                        help='You can upload more than one file at once'
+                                        )
                             submitted = st.form_submit_button("Upload files")
 
                         if submitted and nim_outputs is not None:
@@ -512,8 +565,12 @@ def main():
                             else:
                                 st.experimental_rerun()
                         
-                    nim_tab2_title_area.markdown(f'<h5 style="text-align:center;color:#f63366">{nim_tab2_title}</h5>',\
-                                    unsafe_allow_html=True)
+                    nim_tab2_title_area.markdown(
+                                    '<h5 style="text-align:center;color:#f63366">'+
+                                    f'{nim_tab2_title}</h5>',
+                                    unsafe_allow_html=True
+                                    )
+                
                 st.session_state['nimbus_tab'] = 2
 
             
@@ -522,19 +579,26 @@ def main():
             #if nimbus_tab == 3:
             #    dc.data_table(key=nimbus_tab, options=True)
             #    st.session_state['nimbus_tab'] = 3
+            with tab_col2:
+                st.write('')
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         #Primer PCR
         if pipeline_stage == 2:
             exp = st.session_state['experiment']
             st.session_state['assay_filter'] = True
-            primer_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="PCR 1", description="Components"),
-                #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
-                stx.TabBarItemData(id=2, title="Generate", description="Picklists")
-            ], return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                primer_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="PCR 1", description="Components"),
+                    #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
+                    stx.TabBarItemData(id=2, title="Generate", description="Picklists")
+                ], return_type=int)
+            info_holder = st.container()
             
             if not primer_tab:
                 if 'primer_tab' not in st.session_state:
@@ -564,7 +628,10 @@ def main():
                                 unsafe_allow_html=True)
 
                     ld.provide_barcodes('barcodes_tab1')
-                    ld.upload_pcr1_files('pcr1_tab1')
+                    if 'upload option' not in st.session_state:
+                        st.session_state['upload option'] = None
+                    ld.upload_pcr1_files('pcr1_primer1')
+
                 st.session_state['primer_tab'] = 1
                 
             #provide plates
@@ -619,21 +686,28 @@ def main():
                                         st.write('Picklist generation failed. Please see the log')
                         
                 dc.show_echo1_outputs()
-                        
+                
                 st.session_state['primer_tab'] = 2
-
+            
+            with tab_col2:
+                st.write('')
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         #Index PCR
         if pipeline_stage == 3:
             exp = st.session_state['experiment']
-            index_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="PCR 2", description="Components"),
-                #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
-                stx.TabBarItemData(id=2, title="Generate", description="Picklists")
-            ], return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                index_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="PCR 2", description="Components"),
+                    #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
+                    stx.TabBarItemData(id=2, title="Generate", description="Picklists")
+                ], return_type=int)
+            info_holder = st.container()
             
             if not index_tab:
                 if 'index_tab' not in st.session_state:
@@ -652,7 +726,9 @@ def main():
                     title_holder = st.empty()
                     pcr_comp_holder = st.empty()
                     ld.provide_barcodes('index_barcodes')
-                    ld.upload_pcr2_files('index_upload')
+                    if 'upload option' not in st.session_state:
+                        st.session_state['upload option'] = None
+                    ld.upload_pcr2_files('pcr2_index1')
                     st.session_state['index_tab'] = 1
                     if available_nimbus:
                         with index_checklist_exp:
@@ -707,16 +783,23 @@ def main():
                 dc.show_echo2_outputs()
                 st.session_state['index_tab'] = 2            
                 
+            with tab_col2:
+                st.write('')
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         #Miseq
         if pipeline_stage == 4:
-            miseq_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="Download", description="Miseq Samplesheet"),
-                stx.TabBarItemData(id=2, title="Upload", description="Miseq Sequence Files"),
-            ], default=1, return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                miseq_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="Download", description="Miseq Samplesheet"),
+                    stx.TabBarItemData(id=2, title="Upload", description="Miseq Sequence Files"),
+                ], default=1, return_type=int)
+            info_holder = st.container()
    
             if not miseq_tab:
                 if 'miseq_tab' not in st.session_state:
@@ -729,7 +812,7 @@ def main():
                 _, miseq_col1, miseq_col2, _ =  st.columns([2,1,1,2])
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
-                ld.upload_reference_sequences('miseq2')
+                ld.upload_reference_sequences('reference_miseq1')
                 if exp.get_miseq_samplesheets():
                     for fp in exp.get_miseq_samplesheets():
                         fp_name = str(Path(fp).name)
@@ -742,7 +825,7 @@ def main():
                 st.session_state['miseq_tab'] = 1
 
             if miseq_tab == 2:
-                ld.upload_reference_sequences('miseq2')
+                ld.upload_reference_sequences('reference_miseq2')
                 ready_messages = []
                 if not exp.check_sequence_upload_ready(ready_messages):
                     for msg in ready_messages:
@@ -752,19 +835,25 @@ def main():
                     ld.upload_miseq_fastqs()
                 st.session_state['miseq_tab'] = 2
 
+            with tab_col2:
+                st.write('')
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         #Allele Calling
         if pipeline_stage == 5:
             exp = st.session_state['experiment']
-
-            allele_tab = stx.tab_bar(data=[
-                #stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
-                stx.TabBarItemData(id=1, title="Allele Calling", description="")
-                #stx.TabBarItemData(id=3, title="View Data", description=""),
-            ], key='allele_tab_bar' , return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                allele_tab = stx.tab_bar(data=[
+                    #stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
+                    stx.TabBarItemData(id=1, title="Allele Calling", description="")
+                    #stx.TabBarItemData(id=3, title="View Data", description=""),
+                ], key='allele_tab_bar' , return_type=int)
+            info_holder = st.container()
             
             if not allele_tab:
                 if 'allele_tab' not in st.session_state:
@@ -781,7 +870,7 @@ def main():
                 rundir = exp.get_exp_dir()
                 seq_ready_messages = []
                 call_ready_messages = []
-                ld.upload_reference_sequences('miseq2')
+                ld.upload_reference_sequences('reference_allele1')
                 if not exp.check_sequence_upload_ready(seq_ready_messages):
                     for msg in seq_ready_messages:
                         st.error(msg)
@@ -853,14 +942,19 @@ def main():
             #if allele_tab == 3:
             #    dc.data_table(key='allele_calling', options=True)
             #    st.session_state['allele_tab'] = 3
+            with tab_col2:
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
         
         # Reports
         if pipeline_stage == 6:
             exp = st.session_state['experiment']
             results_fp = exp.get_exp_fp('results.csv')
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9, 1])
+            info_holder = st.container()
             
             if not Path(results_fp).exists():
                 st.markdown('**No allele calling results available**')
@@ -904,8 +998,12 @@ def main():
                     dfo = pd.DataFrame(other_results, columns=hdr)
                     dc.aggrid_interactive_table(dfo, key='other_view_key')
 
+            with tab_col2:
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         st.session_state['pipeline_stage'] = pipeline_stage
         #st.session_state['folder'] = None

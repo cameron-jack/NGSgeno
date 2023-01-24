@@ -1,3 +1,9 @@
+v0.21.008
+Date: Wed Mar  8 07:25:19 AEDT 2023
+* CHANGED: display viewer now controlled by checkbox
+* NEW: batch file for starting startup.py
+* NEW: first try at managing all uploads
+
 v0.21.007
 Date: Wed Jan 25 09:49:32 AEDT 2023
 * NEW: ngsmatch.py creates debug.log in run directory if using -d

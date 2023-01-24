@@ -21,7 +21,7 @@ except ModuleNotFoundError:
 templatefn = os.path.join('library','ResultPlate.tpl') # name of template file
 rtfn = os.path.join('library','ResultTable.tpl')
 
-def generate_heatmap_html(exp, plate_id, scaling=1.0):
+def generate_heatmap_html(exp, plate_id, scaling=0.5):
     """ Given a given plate_id and the experiment it belongs in, generate a heatmap style plate image
     In future, add options for which things to highlight or scale, etc.
     Return a string containing html for the heatmap
@@ -36,9 +36,9 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
     well_fields = []
     #default plate size: 384-wells
     plate_order = util.col_ordered_384
-    width_num = 950
-    height_num = 500
-    left_padding = str(20)
+    width_num = 980
+    height_num = 550
+    left_padding = str(24)
     tool_text = "";
     if purpose == 'dna':
         #384-well plates
@@ -52,7 +52,7 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
         tool_text = '{y}{x}: ID: {barcode}\\nStrain: {strain}\\nAssays: {assays}\\nSex: {sex}\\nObserved GT: {gts}';
         width_num = 600
         height_num = 400
-        left_padding = str(30)
+        left_padding = str(33)
     
     if purpose == 'pcr':
         #384-well plates
@@ -120,8 +120,8 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
       left: LLLLLL%;
       background-color: white;
       background-size: 95%;
-      border: 10px;
-      padding: 10px;
+      border: 5px;
+      padding: 1px;
       border-style: solid;
       border-color: #bfdbf2;
       border-radius: 25px;
@@ -203,7 +203,7 @@ def generate_heatmap_html(exp, plate_id, scaling=1.0):
 
     // Set up column appearance
     var column = series.columns.template;
-    column.strokeWidth = 5;
+    column.strokeWidth = 3;
     column.strokeOpacity = 1;
     column.stroke = am4core.color("lightgrey");
     //column.tooltipText = "{y}{x}: {value.workingValue.formatNumber('#.')}";
