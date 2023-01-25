@@ -199,6 +199,15 @@ def run_generate(exp, target_func, *args, **kwargs):
                 exp.accept_pending_transactions()
     return success
 
+def show_info_viewer_checkbox():
+    if 'show_info_viewer' not in st.session_state:
+        st.session_state['show_info_viewer'] = False
+    
+    if st.checkbox('Info Viewer'):
+        st.session_state['show_info_viewer'] = True
+    else:
+        st.session_state['show_info_viewer'] = False
+
 def main():
     st.set_page_config(
         page_title="NGS Genotyping",
@@ -360,18 +369,20 @@ def main():
         
         #Load data
         if pipeline_stage == 0:
-            load_data_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="Load Samples", description=""),
-                stx.TabBarItemData(id=2, title="Load Consumables", description="")
-                #stx.TabBarItemData(id=3, title="View Data", description="")
-            ], return_type=int)                            
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                load_data_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="Load Samples", description=""),
+                    stx.TabBarItemData(id=2, title="Load Consumables", description="")
+                    #stx.TabBarItemData(id=3, title="View Data", description="")
+                ], return_type=int)                            
             #dc.info_viewer()  
             if not load_data_tab:
                 if 'load_tab' not in st.session_state:
                     st.session_state['load_tab'] = 1
                 load_data_tab = st.session_state['load_tab']
 
-            info_holder = st.empty()
+            info_holder = st.container()
             
             # load sample data
             if load_data_tab == 1:
@@ -414,20 +425,26 @@ def main():
             #    dc.data_table(key=load_data_tab, options=True)
             #    dc.display_primer_components(assay_usage, expander=True)
             #    st.session_state['load_tab'] = 2
+            with tab_col2:
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
         
         #Nimbus
         if pipeline_stage == 1:
             nim_tab1_err = ''
             nimbus_title = ''
 
-            nimbus_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
-                stx.TabBarItemData(id=2, title="Upload", description="Echo input files")
-                #stx.TabBarItemData(id=3, title="View Data", description="")
-            ], return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                nimbus_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
+                    stx.TabBarItemData(id=2, title="Upload", description="Echo input files")
+                    #stx.TabBarItemData(id=3, title="View Data", description="")
+                ], return_type=int)
+            info_holder = st.container()
             
             if not nimbus_tab:
                 if 'nimbus_tab' not in st.session_state:
@@ -562,19 +579,26 @@ def main():
             #if nimbus_tab == 3:
             #    dc.data_table(key=nimbus_tab, options=True)
             #    st.session_state['nimbus_tab'] = 3
+            with tab_col2:
+                st.write('')
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         #Primer PCR
         if pipeline_stage == 2:
             exp = st.session_state['experiment']
             st.session_state['assay_filter'] = True
-            primer_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="PCR 1", description="Components"),
-                #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
-                stx.TabBarItemData(id=2, title="Generate", description="Picklists")
-            ], return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                primer_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="PCR 1", description="Components"),
+                    #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
+                    stx.TabBarItemData(id=2, title="Generate", description="Picklists")
+                ], return_type=int)
+            info_holder = st.container()
             
             if not primer_tab:
                 if 'primer_tab' not in st.session_state:
@@ -664,19 +688,26 @@ def main():
                 dc.show_echo1_outputs()
                 
                 st.session_state['primer_tab'] = 2
-
+            
+            with tab_col2:
+                st.write('')
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         #Index PCR
         if pipeline_stage == 3:
             exp = st.session_state['experiment']
-            index_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="PCR 2", description="Components"),
-                #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
-                stx.TabBarItemData(id=2, title="Generate", description="Picklists")
-            ], return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                index_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="PCR 2", description="Components"),
+                    #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
+                    stx.TabBarItemData(id=2, title="Generate", description="Picklists")
+                ], return_type=int)
+            info_holder = st.container()
             
             if not index_tab:
                 if 'index_tab' not in st.session_state:
@@ -752,16 +783,23 @@ def main():
                 dc.show_echo2_outputs()
                 st.session_state['index_tab'] = 2            
                 
+            with tab_col2:
+                st.write('')
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         #Miseq
         if pipeline_stage == 4:
-            miseq_tab = stx.tab_bar(data=[
-                stx.TabBarItemData(id=1, title="Download", description="Miseq Samplesheet"),
-                stx.TabBarItemData(id=2, title="Upload", description="Miseq Sequence Files"),
-            ], default=1, return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                miseq_tab = stx.tab_bar(data=[
+                    stx.TabBarItemData(id=1, title="Download", description="Miseq Samplesheet"),
+                    stx.TabBarItemData(id=2, title="Upload", description="Miseq Sequence Files"),
+                ], default=1, return_type=int)
+            info_holder = st.container()
    
             if not miseq_tab:
                 if 'miseq_tab' not in st.session_state:
@@ -797,19 +835,25 @@ def main():
                     ld.upload_miseq_fastqs()
                 st.session_state['miseq_tab'] = 2
 
+            with tab_col2:
+                st.write('')
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         #Allele Calling
         if pipeline_stage == 5:
             exp = st.session_state['experiment']
-
-            allele_tab = stx.tab_bar(data=[
-                #stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
-                stx.TabBarItemData(id=1, title="Allele Calling", description="")
-                #stx.TabBarItemData(id=3, title="View Data", description=""),
-            ], key='allele_tab_bar' , return_type=int)
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9,1])
+            with tab_col1:
+                allele_tab = stx.tab_bar(data=[
+                    #stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
+                    stx.TabBarItemData(id=1, title="Allele Calling", description="")
+                    #stx.TabBarItemData(id=3, title="View Data", description=""),
+                ], key='allele_tab_bar' , return_type=int)
+            info_holder = st.container()
             
             if not allele_tab:
                 if 'allele_tab' not in st.session_state:
@@ -898,14 +942,19 @@ def main():
             #if allele_tab == 3:
             #    dc.data_table(key='allele_calling', options=True)
             #    st.session_state['allele_tab'] = 3
+            with tab_col2:
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
         
         # Reports
         if pipeline_stage == 6:
             exp = st.session_state['experiment']
             results_fp = exp.get_exp_fp('results.csv')
-            info_holder = st.empty()
+            tab_col1, tab_col2 = st.columns([9, 1])
+            info_holder = st.container()
             
             if not Path(results_fp).exists():
                 st.markdown('**No allele calling results available**')
@@ -949,8 +998,12 @@ def main():
                     dfo = pd.DataFrame(other_results, columns=hdr)
                     dc.aggrid_interactive_table(dfo, key='other_view_key')
 
+            with tab_col2:
+                st.write('')
+                show_info_viewer_checkbox()
             with info_holder:
-                dc.info_viewer(1)
+                if st.session_state['show_info_viewer']:
+                    dc.info_viewer(1)
 
         st.session_state['pipeline_stage'] = pipeline_stage
         #st.session_state['folder'] = None

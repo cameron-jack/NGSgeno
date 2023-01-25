@@ -738,8 +738,8 @@ def display_indexes(exp, assay_usage, height=350):
     #         num_wells = ceil(need_vol/per_use_vol)
     #         index_array.append([p, num_wells, idx_vols.get(p,0)/100,\
     #                     rev_idx_vols.get(p,0)[0]/1000])
-    if warning_idxs != '':
-        st.warning("The following indexes do not have enough volume: " + warning_idxs[:-2])
+    # if warning_idxs != '':
+    #     st.warning("The following indexes do not have enough volume: " + warning_idxs[:-2])
 
     index_df = pd.DataFrame.from_dict(indexes,  orient='index')
     index_df.reset_index(inplace=True)
@@ -767,7 +767,7 @@ def display_log(exp, height=250):
     """
     func = sys._getframe(1).f_code.co_name
     func_line = inspect.getframeinfo(sys._getframe(1)).lineno
-    print("Function", func, type(func_line))
+    #print("Function", func, type(func_line))
     # display the experiment log and let the user filter the view in a number of ways
     log_entries = st.session_state['experiment'].get_log(100)
     if len(log_entries) == 0:
@@ -785,16 +785,13 @@ def info_viewer(key):
     if 'info_expand' not in st.session_state:
         st.session_state['info_expand'] = False
     
-    info_expander = st.expander('Info Panel', expanded=st.session_state['info_expand'])
-    container = info_expander.container()
+    #info_expander = st.expander('Info Panel', expanded=st.session_state['info_expand'])
+    container = st.container()
         
-    col1,col2,col3 = info_expander.columns([1 ,7,1])
-    with col1:
-        st.write('')
-        st.markdown('<h5 style="color:#7eafc4">Display panel</h5>', unsafe_allow_html=True)
-    with col3:
-        view_height = st.number_input('Set display height', min_value=50, max_value=700, value=350, step=25, help="Size of display grid", key=key)
+    col1,col2 = st.columns([7,1])
     with col2:
+        view_height = st.number_input('Set display height', min_value=50, max_value=700, value=350, step=25, help="Size of display grid", key=key)
+    with col1:
         view_tab = stx.tab_bar(data=[
             stx.TabBarItemData(id=1, title="Status", description=""),
             stx.TabBarItemData(id=2, title="Files", description=""),
@@ -805,7 +802,6 @@ def info_viewer(key):
             stx.TabBarItemData(id=7, title="Log", description="")
         ], return_type=int, default=1)
 
-    
     if view_tab == 1:
         # Status tab should tell us where we are up to in the pipeline and what's happened so far
         with container:
@@ -823,7 +819,6 @@ def info_viewer(key):
         plate_usage = exp.get_plate_usage()
         with container:
                 display_plates(exp, plate_usage, height=view_height)
-
 
     if view_tab == 4:
         with container:
@@ -845,6 +840,8 @@ def info_viewer(key):
     if view_tab == 7:
         with container:
             display_log(exp, height=view_height)
+    
+
 
 
 
