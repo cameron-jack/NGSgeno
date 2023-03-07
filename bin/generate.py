@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from __future__ import annotations
-from distutils.fancy_getopt import fancy_getopt
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from experiment import Experiment
-
-try:
-    import bin.util as util
-except ModuleNotFoundError:
-    import util
 
 import sys
 import os
@@ -19,10 +9,28 @@ from pathlib import Path
 import traceback
 from collections import Counter, OrderedDict
 import itertools
+import json
 from copy import deepcopy
 from io import StringIO, BytesIO
+from shutil import copyfileobj
+from string import ascii_uppercase
 
 import openpyxl
+from Bio.SeqIO.FastaIO import SimpleFastaParser
+
+try:
+    import bin.util as util
+except ModuleNotFoundError:
+    import util
+
+try:
+    import bin.transaction as transaction
+except ModuleNotFoundError:
+    import transaction
+
+transact = transaction.transact
+untransact = transaction.untransact
+
 
 """
 @created: Nov 2021
@@ -48,10 +56,20 @@ The following rules must be followed to protect users from typing mistakes and M
 * The interface codes are responsible for providing guarded barcodes to all internal functions
 * Internal functions only accept guarded barcodes
 
-The functions below should be organised in the order they are first seen in the operation of the pipeline
+Important note: files are state and are immutable in the eyes of the pipeline. Plates are mutable and are
+never held in Experiment.reproducible_steps at the top level, and they are never saved as files by the pipeline.
+
+Behaves like a C++ "friend" of the Experiment class - very tightly coupled.
 """
 
-### Machine IO functions
+### Generators
+# nimbus_gen
+# mk_picklist
+# mk_mytaq_picklist
+# generate_echo_PCR1_picklist
+# generate_echo_PCR2_picklist
+# generate_miseq_samplesheet
+# generate_targets
 
 def nimbus_gen(exp):
     """
@@ -68,8 +86,8 @@ def nimbus_gen(exp):
         for dna_BC in exp.dest_sample_plates:
             ug_dnaBC = util.unguard_pbc(dna_BC, silent=True)
 
-            dna_fn = exp.get_exp_fp('Nimbus-'+ug_dnaBC+'.csv', transaction=True)
-            fnstg = exp.get_exp_fp('Stage1-P'+ug_dnaBC+'.csv', transaction=True)
+            dna_fn = exp.get_exp_fn('Nimbus-'+ug_dnaBC+'.csv', trans=True)
+            fnstg = exp.get_exp_fn('Stage1-P'+ug_dnaBC+'.csv', trans=True)
 
             transactions[dna_fn] = {} # add plates and modifications to this
             transactions[fnstg] = {}
@@ -163,7 +181,7 @@ def nimbus_gen(exp):
     #    exp.save()
     #    return False
     print("Transactions in nimbus_gen()", transactions, file=sys.stderr)
-    exp.add_pending_transactions(transactions)
+    transaction.add_pending_transactions(exp, transactions)
     exp.log(f'Success: Hamilton Nimbus plate definition files have been generated')
     exp.save()
     return True
@@ -258,7 +276,7 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
         output_plate_guards - whether or not to write guard characters on the plate barcodes
     """
     #try:
-    print("mk_picklist", file=sys.stderr)
+    #print("mk_picklist", file=sys.stderr)
     
     if True:
         plhdr_str = "Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,"+\
@@ -312,7 +330,7 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
     pid_ww_tw_list = []
     #print(f"{task_wells=} {taqwater_bcs=}", file=sys.stderr)
     for pid in taqwater_bcs:
-        twp = exp.get_plate(pid, transactions)
+        twp = transaction.get_plate(exp, pid, transactions)
         #print(f"{twp=}", file=sys.stderr)
         # iterate over wells forever
         #ww_gen = (x for xs in itertools.repeat(twp['water_wells']) for x in xs)
@@ -413,8 +431,6 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         except Exception as e:
             exp.log(f"{e}")
 
-        #primer_survey = exp.get_exp_fp('primer-svy.csv')
-
         primer_pids = [p for p in exp.plate_location_sample if exp.plate_location_sample[p]['purpose'] == 'primer']
         primer_survey_lines = []
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
@@ -439,7 +455,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         nimbus_outfiles = []
         for d in sorted(dna_bcs):
             ug_dnaBC = util.unguard_pbc(d, silent=True)
-            fp = exp.get_exp_fp("Echo_384_COC_0001_" + ug_dnaBC + "_0.csv")
+            fp = exp.get_exp_fn("Echo_384_COC_0001_" + ug_dnaBC + "_0.csv")
             if not Path(fp).is_file():
                 exp.log(f"{d} has no matching Echo_384_COC file from the Nimbus", level='error')
                 continue
@@ -468,10 +484,6 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
 
         outfmt = f"PCR-picklist_{exp.name}.csv"
 
-        #dna_plate_paths = {bc: exp.get_exp_fp(f"Echo_384_COC_0001_{bc}_0.csv") for bc in sorted(dna_bcs) if \
-        #        Path(exp.get_exp_fp(f"Echo_384_COC_0001_{bc}_0.csv")).exists()}
-        #dnafns = [fn for fn in dna_plate_paths if Path(fn).exists()]
-        #dnafns = file_get_check(exp, dna_bcs, exp.get_exp_fp("Echo_384_COC_0001_{0}_?.csv"))
         nimcolmap = (("TRackBC", "dstplate"), ("TPositionId", 'dstwell'), ('SRackBC', 'srcplate'), ('SPositionId', 'srcwell'))
         typenim = util.Table.csvtype(nimbus_outfiles[0], 'NimRec', hdrmap=nimcolmap)
         nimbusTables = [util.CSVTable(typenim, fn) for fn in nimbus_outfiles]
@@ -479,10 +491,11 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         # read Stage1 files
         dnadict = dict(((util.guard_pbc(x.srcplate, silent=True), x.srcwell), (util.guard_pbc(x.dstplate, silent=True), x.dstwell))\
                 for nt in nimbusTables for x in nt.data)    
-        dnas = [util.CSVTable('S1Rec', exp.get_exp_fp('Stage1-P{}.csv'.format(util.unguard_pbc(dnabc, silent=True)))) for dnabc in dna_bcs]
+        dnas = [util.CSVTable('S1Rec', exp.get_exp_fn('Stage1-P{}.csv'.format(util.unguard_pbc(dnabc, silent=True)))) for dnabc in dna_bcs]
         primer_survey = StringIO('\n'.join(primer_survey_lines))
         primerTable = util.CSVMemoryTable("PPRec", primer_survey, fields="spn spbc spt well primer volume".split(' '))
         primset = sorted(frozenset(x.primer for x in primerTable.data if x.primer != ''))
+        # this line requires that the assays share the same family name
         pfdict = dict((k.strip(), list([p.strip() for p in g])) for k, g in itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
 
         # Add record for PCR wells into Stage2 files
@@ -495,12 +508,40 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"]
         pcrwellgen = ((p, w) for p in pcr_bcs for w in wells)
         
-        # allocate PCR well for each sample
+        # allocate PCR well for each sample and reduce the recorded assays/alleles to 1 for a given well
+        # Are we using a primer/assay list file? Assuming no
+        primer_col = len(wgenflds)-1
+        assay_families_col = len(wgenflds)-4
         s2flds = wgenflds+('pcrplate', 'pcrwell')
         S2Rec = util.Table.newtype('S2Rec', s2flds)
-        s2tab = util.Table(S2Rec, ([x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)), headers=s2flds) 
+        record_data = [[x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)]
+        reduced_record_data = []  # single entry per field
+        for i, rd in enumerate(record_data):
+            new_rd = []
+            assay_num = None
+            primer_fam = rd[primer_col].lower().split('_')[0]
+            assay_fams = rd[assay_families_col].lower().split(';')
+            for j,af in enumerate(assay_fams):
+                if primer_fam == af.lower():
+                    assay_num = j
+                    break
+            if assay_num is None:
+                matching_assay = exp.get_assay_from_primer(rd[primer_col])
+                exp.log(f'Critical: Could not identify assay from primer. Primer-Assay mapping file required for {primer_fam=} {assay_fams=}')
+                reduced_record_data.append(rd)
+                continue
+            for j, field in enumerate(rd):
+                if ';' not in field:
+                    new_rd.append(field)
+                else:
+                    new_field = field.split(';')[assay_num]
+                    new_rd.append(new_field)
+            reduced_record_data.append(new_rd)
+
+        s2tab = util.Table(S2Rec, reduced_record_data, headers=s2flds)
+        #s2tab = util.Table(S2Rec, ([x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)), headers=s2flds) 
         # output Stage 2 CSV file - used in Stage 3 below - keeping the plate guards for the next stage (to be safe)
-        stage2_fn = exp.get_exp_fp("Stage2.csv", transaction=True)
+        stage2_fn = exp.get_exp_fn("Stage2.csv", trans=True)
         transactions[stage2_fn] = {}
         try:
             s2tab.csvwrite(stage2_fn, output_plate_guards=True)
@@ -519,7 +560,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         ddict = dict((pbc, f"Destination[{i}]") for i, pbc in enumerate(pcr_bcs, start=1))
         sdict = dict((pbc, f"Source[{i}]")for i, pbc in enumerate(dna_bcs, start=1))
         volume = exp.transfer_volumes['DNA_VOL']
-        dna_fn = exp.get_exp_fp(outfmt.replace('PCR','PCR1_dna'), transaction=True)
+        dna_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_dna'), trans=True)
         transactions[dna_fn] = {}
         gen = ((sdict[util.guard_pbc(r.dnaplate, silent=True)], util.guard_pbc(r.dnaplate, silent=True), src_plate_type, r.dnawell,
                 ddict[util.guard_pbc(r.pcrplate, silent=True)], util.guard_pbc(r.pcrplate, silent=True), dst_plate_type, r.pcrwell, volume)
@@ -531,7 +572,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         primer_survey = StringIO('\n'.join(primer_survey_lines))
         primsrc = PicklistMemorySrc(primer_survey, idx=4) # same name as in cgi-nimbus2.py
         volume = exp.transfer_volumes['PRIMER_VOL']        
-        primer_fn = exp.get_exp_fp(outfmt.replace('PCR','PCR1_primer'), transaction=True)
+        primer_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_primer'), trans=True)
         transactions[primer_fn] = {}
         primer_uses = Counter()
         primer_output_rows = []
@@ -550,7 +591,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
             transactions[primer_fn] = None
 
         # also PCR1 water and Taq
-        taq_fn = exp.get_exp_fp(outfmt.replace('PCR','PCR1_taqwater'), transaction=True)
+        taq_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_taqwater'), trans=True)
         transactions[taq_fn] = {}
         print(f"end of generate_pcr1 {taq_bcs=}")
         # exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, transactions=None
@@ -562,7 +603,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
     #except Exception as exc:
     #    exp.log(f"Failure: PCR1 Echo picklists could not be created {exc}")
     #    return False
-    exp.add_pending_transactions(transactions)
+    transaction.add_pending_transactions(exp, transactions)
     exp.log(f'Success: PCR1 Echo picklists created')
     exp.save()
     return True
@@ -574,7 +615,7 @@ def i7i5alloc_rot(exp, vol, wellcount, index_survey_fn='index-svy.csv'):
     if True:
         typebc = util.Table.newtype('BCRecord', "name platebc type well set barcode orderpart oligo volume")
         # typebc = Table.newtype('BCRecord', "well name index indexName oligo volume")
-        tab = util.CSVTable(typebc, exp.get_exp_fp(index_survey_fn)) # volumes in file are in uL
+        tab = util.CSVTable(typebc, exp.get_exp_fn(index_survey_fn)) # volumes in file are in uL
 
         dv = util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
         #def getvol(x): return x[-1]
@@ -712,30 +753,31 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         outfmt = f"PCR-picklist_{exp.name}.csv"
     
         fnstage2 = "Stage2.csv"
-        fnstage3 = exp.get_exp_fp("Stage3.csv", transaction=True)
+        fnstage3 = exp.get_exp_fn("Stage3.csv", trans=True)
     
         ### i7i5 barcodes
         # read Stage2 csv file
         #sampleNumber	samplePlate	sampleWell	sampleBarcode	assays	assayFamilies	strain	sex	dnaplate	dnawell	primer	pcrplate	pcrwell
         #typebc = Table.newtype('S2Record',
         # Because this reads from a file and is immutible, we can't filter by user PID choices
-        s2tab = util.CSVTable('S2Rec', exp.get_exp_fp(fnstage2))           
+        s2tab = util.CSVTable('S2Rec', exp.get_exp_fn(fnstage2))           
             
         index_vol = exp.transfer_volumes['INDEX_VOL']  # 175 nanolitres
         # count up all amplicon sample wells
         total_wells = len(s2tab.data)
-        #print(f'{total_wells=}', file=sys.stderr)
+        #print(f'{total_wells=}')
         for amp_pid in amplicon_bcs:
             total_wells += len(exp.plate_location_sample[amp_pid]['wells'])
-
+        #print(f'{total_wells=}')
         index_alloc = i7i5alloc_rot(exp, index_vol, total_wells)
-
+        #print(f'{len(index_alloc)=}')
         # we need to decompose S2tab so that we can add the amplicon rows to it
         s2_header = s2tab.header
         s2_data = s2tab.data # list of S3 records, each is a namedtuple
         s2_data_rows = []
         for s2_record in s2_data:
             s2_data_rows.append([s2_record[i] for i,h in enumerate(s2_header)])
+        #print(f'{s2_data_rows=}')
         #print(f'{s2_data_rows=}', file=sys.stderr)
         for amp_pid in amplicon_bcs:
             for well_str in exp.plate_location_sample[amp_pid]['wells']:
@@ -744,28 +786,33 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                         amp_pid,                        # samplePlate
                         well_str,                       # sampleWell
                         amp_well['barcode'],            # sampleBarcode
-                        amp_well['amplicons'][0],           # assays
-                        amp_well['amplicons'][0].split('_')[0], # assayFamilies
                         '',                             # strain
                         '',                             # sex
+                        amp_well['amplicons'][0],       # assays
+                        '',                             # ?
+                        '',                             # ?
+                        amp_well['amplicons'][0].split('_')[0], # assayFamilies
+                        amp_well['amplicons'][0].split('_')[0], # assay family again?
                         amp_pid,                        # dnaplate
                         well_str,                       # dnawell
                         amp_well['amplicons'][0],           # primer
                         amp_pid,                        # pcrplate
                         well_str]                       # pcrwell
                 s2_data_rows.append(amp_row)
-
+        
         # convert to stream of characters from row*column lists
         s2hdr_str = ','.join(s2_header)
         s2amp_stream = StringIO(s2hdr_str + '\n' + '\n'.join([','.join(row) for row in s2_data_rows]))
         s2amp_tab = util.CSVMemoryTable('S2Rec', s2amp_stream) 
-
-        s3flds = ['sampleNo'] + list(s2tab.tt._fields+('i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well', 'index_plate'))
+        #print(f'{len(s2amp_tab.data)=}')
+        s3flds = ['sampleNo'] + list(s2amp_tab.tt._fields+('i7bc', 'i7name', 'i7well', 'i5bc', 'i5name', 'i5well', 'index_plate'))
         #print(f'{s3flds=}', file=sys.stderr)
         S3Rec = util.Table.newtype('S3Rec', s3flds)
         # This adds all the index info to the Stage2.csv file and will save it as Stage3.csv
         s3rows = []
         counter = 1
+        index_alloc = i7i5alloc_rot(exp, index_vol, total_wells)
+        #print(f'{len(s2amp_tab.data)=} {len(index_alloc)=}')
         for p1, (p2, p3) in zip(s2amp_tab.data, index_alloc):
             row = [counter]  # new sampleNo
             for p in p1:
@@ -777,12 +824,13 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
             s3rows.append(row)
             counter += 1
 
-        #print(f'{s3rows=}', file=sys.stderr)
+        #print(f'{len(s3rows)=}', file=sys.stderr)
         s3tab = util.Table(S3Rec, s3rows, headers=s3flds)
         #s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2amp_tab.data, index_alloc)), headers=s3flds)
         
         #s3tab = util.Table(S3Rec, ([x for xs in (p1, p2[:3], p3[:4]) for x in xs] for p1, (p2, p3) in zip(s2tab.data, index_alloc)), headers=s3flds) 
         # output Stage 3 CSV file - used for custom and mouse samples. Amplicons are handled separately
+        #print(f'{len(s3tab.data)=}')
         transactions[fnstage3] = {}
         try:
             s3tab.csvwrite(fnstage3, output_plate_guards=True)
@@ -809,22 +857,22 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         rowi7 = ((src_dict[r.index_plate], r.index_plate, pt_src, r.i7well, dest_dict[r.pcrplate], r.pcrplate, pt_dst, r.pcrwell, index_vol) for r in s3tab.data)
         rowi5 = ((src_dict[r.index_plate], r.index_plate, pt_src, r.i5well, dest_dict[r.pcrplate], r.pcrplate, pt_dst, r.pcrwell, index_vol) for r in s3tab.data)
         outfmt_index = outfmt
-        fn_index = exp.get_exp_fp(outfmt_index.replace('PCR','PCR2_index'), transaction=True)
+        fn_index = exp.get_exp_fn(outfmt_index.replace('PCR','PCR2_index'), trans=True)
         mk_picklist(exp, fn_index, (r for rs in (rowi7, rowi5) for r in rs), transactions)    
         
         # also PCR2 water and Taq
         outfmt_taq = outfmt
-        fn_taqwater = exp.get_exp_fp(outfmt_taq.replace('PCR','PCR2_taqwater'), transaction=True)
+        fn_taqwater = exp.get_exp_fn(outfmt_taq.replace('PCR','PCR2_taqwater'), trans=True)
         transactions[fn_taqwater] = {}
         mk_mytaq_picklist(exp, fn_taqwater, s3tab.data, taq_bcs, exp.transfer_volumes['INDEX_TAQ_VOL'], 
                 exp.transfer_volumes['INDEX_WATER_VOL'], transactions)
         
         # MiSeq file - experiment name, name format, ngid(dir), s3 data, verbosity
         fmtmiseq = "MiSeq_{}.csv".format(exp.name)
-        miseq_fn = exp.get_exp_fp(fmtmiseq, transaction=True)
+        miseq_fn = exp.get_exp_fn(fmtmiseq, trans=True)
         transactions[miseq_fn] = {}
         success = generate_miseq_samplesheet(exp, miseq_fn, s3tab, transactions)
-    exp.add_pending_transactions(transactions)
+    transaction.add_pending_transactions(exp, transactions)
         #fns3 = "Stage3.html"
         #s2r.build_report(exp, fns3, s3tab.tt._fields, s3tab.data)    
         
@@ -856,46 +904,52 @@ def read_html_template(html_fn):
     return htmlfmt
 
 
-def read_csv_or_excel_from_stream(multi_stream):
-    """
-    Take a stream of one or more table files from CSV or Excel and convert to comma delimited rows
-    return a list of names and a list of tables
-    """
-    manifest_names = []
-    manifest_tables = []
-    for file_stream in multi_stream:
-        manifest_name = file_stream.name
-        #print(f'{manifest_name=}', file=sys.stderr)
-        if manifest_name.lower().endswith('xlsx'):
-            workbook = openpyxl.load_workbook(BytesIO(file_stream.getvalue()))
-            sheet = workbook.active
-            rows = [','.join(map(str,cells)) for cells in sheet.iter_rows(values_only=True)]
-            #print(rows, file=sys.stderr)
-        else:
-            rows = StringIO(file_stream.getvalue().decode("utf-8"))
-        manifest_names.append(manifest_name)
-        manifest_tables.append(rows)
-    return manifest_names, manifest_tables
-
-
-def match_nimbus_to_echo_files(exp: Experiment) -> tuple(list,list,list):
+def match_nimbus_to_echo_files(exp):
     """ Make sure there is a 1-1 match of Nimbus to Echo-COC file.
         Assumes plate barcodes are guarded.
         Inputs: an Experiment instance
         Outputs: three lists (nimbus files, echo files, barcodes not matches by echo files)
    """
     try:
-        nimbus_files = list(Path(exp.get_exp_dir()).glob('Nimbus-*.csv'))
-        echo_files = list(Path(exp.get_exp_dir()).glob('Echo_384_COC_00??_*_0.csv'))
+        nimbus_files = list(Path(exp.get_exp_dn()).glob('Nimbus-*.csv'))
+        echo_files = list(Path(exp.get_exp_dn()).glob('Echo_384_COC_00??_*_0.csv'))
         # cleave off the path and file name junk to just get the barcodes
         nbc = frozenset(fp.name.replace('Nimbus-','').replace('.csv','') for fp in nimbus_files)
         ebc = frozenset(fp.name.replace('.csv','').split('_',5)[4] for fp in echo_files)
         xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
         return [str(fp) for fp in nimbus_files], [str(fp) for fp in echo_files], xbc
     except Exception as exc:
-        exp.log('Problem matching Nimbus to Echo files', level='Error')
-        exp.log(traceback.print_exc(limit=2), level='Error')    
+        exp.log(f'Error: Problem matching Nimbus to Echo files {exc}')
+        exp.log(f'Error: {traceback.print_exc(limit=2)=}')
+        exp.save()
         return [], [], []
 
+
+def generate_targets(exp):
+    """ create target file based on loaded references """
+    #transactions = {}
+    #target_fn = exp.get_exp_fn('targets.fa', trans=True)
+    target_fn = exp.get_exp_fn('targets.fa')
+    #transactions[target_fn] = {} # add plates and modifications to this
+    counter = 0
+    try:
+        with open(target_fn, 'wt') as targetf:
+            for group in exp.reference_sequences:
+                for id in exp.reference_sequences[group]:
+                    print(f'>{id}', file=targetf)
+                    print(f'{exp.reference_sequences[group][id]}', file=targetf)
+                    counter += 1    
+    except Exception as exc:
+        exp.log(f'Critical: could not write reference sequences to {target_fn} {exc}')
+        exp.save()
+        return False
+    #transaction.add_pending_transactions(exp, transactions)
+    #transaction.accept_pending_transactions(exp)
+    exp.log(f'Success: created reference sequences file {target_fn} containing {counter} sequences')
+    exp.save()
+    return True
+
+
 if __name__ == '__main__':
+    """ library only """
     pass

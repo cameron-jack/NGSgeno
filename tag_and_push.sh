@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
-VER="v0.21.008"
+VER="v0.21.009"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* CHANGED: display viewer now controlled by checkbox
-* NEW: batch file for starting startup.py
-* NEW: first try at managing all uploads
+* CHANGED: Massive GUI changes and improvements
+* NEW: simplified pending uploads
+* NEW: runs all the way through
+* NEW: graphically stable under testing
 EOM
 
 mv changelog.txt changelog_old.txt

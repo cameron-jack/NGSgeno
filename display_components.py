@@ -82,26 +82,7 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
     return selection
 
 
-#def delete_entries(exp, entries):
-#    """ removes data from an experiment, called by buttons """
-#    print(f"Debug: (delete_entries) {exp.name=} {entries=}")
-#    if exp is None:
-#        if 'delete_entries' in st.session_state:
-#            st.session_state['delete_entries'] = []
-#        return
-#    if entries: # list
-#        pids = []
-#        for i,entry in enumerate(entries):
-#            for key in entry:
-#                if 'PID' in key and len(entry[key].strip()) != 0:
-#                    pids.append(util.guard_pbc(entry[key], silent=True))
-#        print(f'Following pids selected for deletions {pids=}', file=sys.stderr)
-#        exp.delete_plates(pids)
-#        exp.save()
-#    #print('delete_entries ran')
-
-
-def data_table(key, options=False, table_option=None, height=350):
+def data_table(key, options=False, table_option=None, height=350, widget=None):
     """
     Shows the loaded data in a table.
     Args:
@@ -110,64 +91,51 @@ def data_table(key, options=False, table_option=None, height=350):
         table_option (str): If options is False, can choose a table_option instead ('Summary', 'Edit Table', 
         'Plate View', 'Explore Assays', 'View Log)
 
-    Need to fix the delete selection part - clicking no should reset the table view and clicking yes creates error
+    This 'mega' function is largely obsolete and should be broken up.
     """
-    exp=st.session_state['experiment']
-    data_container = st.container()
-    selectbox_col,_,_,_ = data_container.columns(4)
     exp = st.session_state['experiment']
+    if widget:
+        data_container = widget.container()
+    else:
+        data_container = st.container()
+    selectbox_col,_,_,_ = data_container.columns(4)
     if options==True:
         table_option = selectbox_col.selectbox('View Data options',
-                                ('Loaded Samples', 'Edit Table', 'Plate View', 'Explore Assays', 'Reference Sequences', 'View Log'),\
-                                             key='select_' + str(key))
+                ('Loaded Samples', 'Edit Table', 'Plate View', 'Explore Assays', 'Reference Sequences', 'View Log'),\
+                key='select_' + str(key))
     elif options==False and table_option is None:
-        table_option = 'Summary'
+        table_option = 'Loaded Samples'
 
     data_table_title = data_container.title('')
     data_table_title.markdown(f'<h5 style="text-align:center;color:#7eaecc">{table_option}</h5>',\
             unsafe_allow_html=True)
 
-    #exp = st.session_state['experiment']
-
     #Experiment summary - table
-
     if table_option == 'Loaded Samples':
         selection = []
-        st.session_state['nuke'] = ''
-
-        if exp:
-            df = exp.inputs_as_dataframe()
-            if df is None or not isinstance(df, pd.DataFrame):
-                st.write('No data loaded')
-            else:
-                #print(f"{type(df)=}, {df=})")
-                selection = aggrid_interactive_table(df, key=key, grid_height=height)
-                #print(f"{type(selection)=} {selection['selected_rows']=}")
-                if 'selected_rows' in selection and selection['selected_rows']:
-                    # only do the code below if this is a fresh selection
-                    rows = selection["selected_rows"]
-                    lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
-                    if 'previous_delete_group_selection' not in st.session_state:
-                        st.session_state['previous_delete_group_selection'] = None
-                    if lines and st.session_state['previous_delete_group_selection'] != lines:
+        df = exp.inputs_as_dataframe()
+        if df is None or not isinstance(df, pd.DataFrame):
+            st.write('No 384-well DNA plate data loaded')
+        else:        
+            selection = aggrid_interactive_table(df, key=key, grid_height=height)
+            if 'selected_rows' in selection and selection['selected_rows']:
+                rows = selection["selected_rows"]
+                rows = [r for r in rows if 'DNA PID' in r and r['DNA PID'] != 'Total']
+                if rows:
+                    if 'previous_group_delete_selection' not in st.session_state:
+                        st.session_state['previous_group_delete_selection'] = None
+                    if st.session_state['previous_group_delete_selection'] != rows:
+                        # only do the code below if this is a fresh selection
+                        lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
                         data_container.markdown(f"**You selected {lines}**")
                         del_col1, del_col2, del_col3, _ = data_container.columns([2,1,1,4])
                         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                        delete_button = del_col2.button("Yes",on_click=exp.remove_entries, 
-                                args=rows, key="delete " + str(key), help=f"Delete {lines}")
-                        mistake_button = del_col3.button("No",on_click=exp.remove_entries, args=rows, 
+                        del_col2.button("Yes",on_click=manage_delete, 
+                                args=(data_container, 'group',rows), key="delete " + str(key), help=f"Delete {lines}")
+                        del_col3.button("No",on_click=cancel_delete, args=('group',rows), 
                                 key="keep " + str(key), help=f"Keep {lines}")
+            selection = None
                     
-                        if mistake_button:
-                            st.session_state['previous_delete_group_selection'] = lines
-                            lines = None
-                            selection['selected_rows'] = None
-                            st.experimental_rerun()
-                        elif delete_button:
-                            selection['selected_rows'] = None
-                            lines = None
-                            st.session_state['previous_delete_group_selection'] = None
-                            st.experimental_rerun()
 
     elif table_option == 'Edit Table':
         # Show plates in table form and let the user edit them to fix minor mistakes
@@ -231,8 +199,8 @@ def data_table(key, options=False, table_option=None, height=350):
                 aggrid_interactive_table(ref_df, key='seqs'+group)
                 
     elif table_option == 'View Log':
-        func = sys._getframe(1).f_code.co_name
-        func_line = inspect.getframeinfo(sys._getframe(1)).lineno
+        #func = sys._getframe(1).f_code.co_name
+        #func_line = inspect.getframeinfo(sys._getframe(1)).lineno
         #print("Function", func, type(func_line))
         # display the experiment log and let the user filter the view in a number of ways
         log_entries = st.session_state['experiment'].get_log(100)
@@ -248,14 +216,91 @@ def data_table(key, options=False, table_option=None, height=350):
             aggrid_interactive_table(df, key='logs')
             #data_container.dataframe(df, height=height)
 
-def display_plates():
-    plate_array = []
+
+def manage_delete(delbox, category, ids):
+    """
+    Callback for deletion operations
+    """
     exp = st.session_state['experiment']
-    for keys, values in exp.plate_location_sample.items():
-        plate_array.append([util.unguard(keys), len(values['wells']), values['purpose']])
+    if category == 'file':
+        for id in ids:
+            if id not in exp.uploaded_files:
+                continue
+            success = exp.del_file_record(id)     
+            if success:
+                delbox.write(f'{id} removed')
+            else:
+                delbox.write(f'{id} could not be removed')
+            st.session_state['previous_file_delete_selection'] = ids
+    elif category == 'plate':
+        gids = [util.guard_pbc(pid, silent=True) for pid in ids if pid in exp.plate_location_sample]
+        success = exp.delete_plates(gids)
+        if success:
+            delbox.write(f'{ids} removed')
+        else:
+            delbox.write(f'{ids} could not be removed')
+        st.session_state['previous_plate_delete_selection'] = ids
+    elif category == 'group':  # from summary
+        for row in ids:
+            dest_pid = util.guard_pbc(row['DNA PID'], silent=True)
+            if dest_pid not in exp.dest_sample_plates:
+                exp.log(f"Error: {row['DNA PID']=} doesn't actually exist in the experiment!")
+                continue
+            sample_pids = exp.dest_sample_plates[dest_pid]
+            delete_pids = sample_pids + [dest_pid]
+            exp.delete_plates(delete_pids)
+        st.session_state['previous_group_delete_selection'] = ids
+    exp.save()
+    return True
+
+
+def cancel_delete(category, ids):
+    """
+    Callback for delete operations
+    """
+    if category == 'plate':
+        st.session_state['previous_plate_delete_selection'] = ids
+    elif category == 'file':
+        st.session_state['previous_file_delete_selection'] = ids
+    elif category == 'group':  # from summary
+        st.session_state['previous_group_delete_selection'] = ids
+    return True
+
+
+def display_plates(key, plate_usage, height=300): 
+    exp = st.session_state['experiment']
+    plate_df = pd.DataFrame(plate_usage, columns=['Plates', 'Num Wells', 'Purpose'])
+    if plate_df is None or not isinstance(plate_df, pd.DataFrame):
+        st.write('No plates loaded')
+    else:
+        if 'view_box_size' in st.session_state:
+            height = st.session_state['view_box_size']
+        else:
+            height = height
+
+        selection = aggrid_interactive_table(plate_df, grid_height=height, key='plate_aggrid')
+        #print(f'{selection=} {selection["selected_rows"]=} {[row["Plates"] for row in selection["selected_rows"]]=}')
+        if selection and 'selected_rows' in selection:
+            pids = [row['Plates'] for row in selection['selected_rows']]
+            gids = [util.guard_pbc(pid, silent=True) for pid in pids]
+            gids = [gid for gid in gids if gid in exp.plate_location_sample]
+            if gids:
+                #print(f'{pids=}')
+                if 'previous_plate_delete_selection' not in st.session_state:
+                    st.session_state['previous_plate_delete_selection'] = None
+                if st.session_state['previous_plate_delete_selection'] == pids:
+                    st.session_state['previous_plate_delete_selection'] = None
+                else:
+                    if pids != st.session_state['previous_plate_delete_selection']:
+                        st.markdown(f"**You selected {pids}**")
+                    delbox = st.container()
+                    del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
+                    del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
+                    del_col2.button("Yes",on_click=manage_delete,
+                            args=(delbox,'plate',pids), key="delete " + str(key), help=f"Delete {pids}")
+                    del_col3.button("No", on_click=cancel_delete,
+                            args=('plate',pids), key="keep " + str(key), help=f"Keep {pids}")
     
-    plate_df = pd.DataFrame(plate_array, columns=['Plates', 'Num Wells', 'Purpose']) 
-    plate_table = aggrid_interactive_table(plate_df, grid_height=350, key='plate_aggrid')
 
 def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered=True):
     """
@@ -269,7 +314,8 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
     
     """
     exp = st.session_state['experiment']
-    AFTER_NIM_WELLS = 384
+    DNA_PLATE_WELLS = 384
+    ul_conv = 1000
     pcr_comps_area = st.container()
     
     _,filter_col1,_,filter_col2, _ = pcr_comps_area.columns([1,5,1,5,1])
@@ -286,7 +332,7 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
             exp.get_index_remaining_available_volume(assay_usage=assay_usage, fwd_idx=fwd_idx, rev_idx=rev_idx)
 
         
-    taq_avail, water_avail, pids = st.session_state['experiment'].get_taqwater_avail()
+    taq_avail, water_avail, pids = exp.get_taqwater_avail()
     
     if show_general:
         #if 'assay_filter' not in st.session_state:
@@ -301,7 +347,7 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
         #    if filter_assays:
         #        st.session_state['assay_filter'] = 1
 
-        required_wells = ceil(reactions/AFTER_NIM_WELLS)
+        required_plates = ceil(reactions/DNA_PLATE_WELLS)
         user_supplied_PCR = ', '.join([util.unguard_pbc(p, silent=True)\
                     for p in exp.get_pcr_pids()])
         user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
@@ -310,14 +356,14 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
         comp_warning_area = pcr_comps_area.empty()
 
         num_supplied_PCR = len(exp.get_pcr_pids())
-        if num_supplied_PCR < required_wells:
-            comp_warning += f'{required_wells-num_supplied_PCR} PCR plate(s) '
+        if num_supplied_PCR < required_plates:
+            comp_warning += f'{required_plates-num_supplied_PCR} PCR plate(s) '
 
         req_cols = pcr_comps_area.columns(col_size)
         #Wells and plates
         req_cols[0].markdown('**Number of required PCR plates**', unsafe_allow_html=True)
-        req_cols[1].write(str(required_wells))
-        req_cols[0].markdown('**Number of required reaction wells**', unsafe_allow_html=True)
+        req_cols[1].write(str(required_plates))
+        req_cols[0].markdown('**Worst case required reaction wells**', unsafe_allow_html=True)
         req_cols[1].write(str(reactions))
         req_cols[2].markdown('**User supplied PCR plates**', unsafe_allow_html=True)
         if user_supplied_PCR:
@@ -332,8 +378,8 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
         pcr_comps_area.write('')
 
     #PCR1 and PCR2 taq and water 
-    taq_avail_vol = taq_avail/1000
-    water_avail_vol = water_avail/1000
+    taq_avail_vol = taq_avail/ul_conv
+    water_avail_vol = water_avail/ul_conv
 
     #num_taqwater_plates = ceil(primer_taq_vol / taq_avail_vol)
 
@@ -344,13 +390,13 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
             if comp_warning != '':
                 comp_warning += ' and '
             
-            comp_warning += f' {ceil((primer_taq_vol/1000)/7650)} taq and water plate(s) '
+            comp_warning += f' {ceil((primer_taq_vol/ul_conv)/7650)} taq and water plate(s) '
     #get actual values for volume of taq water plates
         
 
-        required_water_vol_str = str(primer_water_vol/1000) + ' μl'
+        required_water_vol_str = str(primer_water_vol/ul_conv) + ' μl'
         water_avail_vol_str = str(water_avail_vol)+' μl'
-        required_taq_vol_str = str(primer_taq_vol/1000)+' μl'
+        required_taq_vol_str = str(primer_taq_vol/ul_conv) + ' μl'
         avail_taq_vol_str = str(taq_avail_vol)+' μl'
 
     if PCR_stage == 2:
@@ -360,9 +406,9 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
  
             comp_warning += ' taq and water plate(s)'
         
-        required_water_vol_str = str(index_water_vol/1000)+ ' μl'
+        required_water_vol_str = str(index_water_vol/ul_conv)+ ' μl'
         water_avail_vol_str = str(water_avail_vol) + ' μl'
-        required_taq_vol_str = str(index_taq_vol/1000)+ ' μl'
+        required_taq_vol_str = str(index_taq_vol/ul_conv)+ ' μl'
         avail_taq_vol_str = str(taq_avail_vol)+ ' μl'
 
         index_cols = pcr_comps_area.columns(col_size)
@@ -527,6 +573,7 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
 
     return st.session_state['path']
 
+
 def show_echo1_outputs():
     exp = st.session_state['experiment']
     picklist_file_col, picklist_btn_col = st.columns(2)
@@ -537,111 +584,116 @@ def show_echo1_outputs():
         error_msgs.append('No DNA picklist available')
     else:
         for dpp in dna_picklist_paths:
-            dpp_fn = str(Path(dpp).name)
+            dpp_fn = Path(dpp).name
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{dpp_fn}</p>',\
                     unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download", 
-                    data=open(dpp, 'rt'), file_name=dpp_fn, mime='text/csv', key='dna_download_'+dpp)
+                    data=open(dpp, 'rt'), file_name=dpp_fn, mime='text/csv', key='dna_download_'+dpp_fn)
 
     if not primer_picklist_paths:
         error_msgs.append('No primer picklist available')
     else:
         for ppp in primer_picklist_paths:
-            ppp_fn = str(Path(ppp).name)
+            ppp_fn = Path(ppp).name
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{ppp_fn}</p>',\
                         unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download", 
-                    data=open(ppp, 'rt'), file_name=ppp_fn, mime='text/csv', key='primer_download_'+dpp)
+                    data=open(ppp, 'rt'), file_name=ppp_fn, mime='text/csv', key='primer_download_'+dpp_fn)
             
     if not taqwater_picklist_paths:
         error_msgs.append('No taq/water picklist available')
     else:
         for tpp in taqwater_picklist_paths:
-            tpp_fn = str(Path(tpp).name)
+            tpp_fn = Path(tpp).name
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_fn}</p>',\
                         unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download", 
-                    data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv', key='taqwater_download_'+tpp)
+                    data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv', key='taqwater_download_'+tpp_fn)
 
     if error_msgs:
         for msg in error_msgs:
             picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
                     unsafe_allow_html=True)
 
+
 def show_echo2_outputs():
     exp = st.session_state['experiment']
     picklist_file_col, picklist_btn_col = st.columns(2)
-    index_picklist_paths, taqwater_picklist_paths, amplicon_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
+    index_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
     
     error_msgs = []
 
-    # amplicon_picklist_paths is a list
     if not index_picklist_paths:
         error_msgs.append('No index picklist available')
     else:
         for ipp in index_picklist_paths:
-            ipp_fn = str(Path(ipp).name)
+            ipp_fn = Path(ipp).name
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{ipp_fn}</p>',\
                                 unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download",\
-                    data=open(ipp, 'rt'), file_name=ipp_fn, mime='text/csv', key='index_download_'+ipp)
-
-    if not amplicon_picklist_paths:
-        error_msgs.append('No amplicon picklist available')               
-    else:
-        for app in amplicon_picklist_paths:
-            app_fn = str(Path(app).name)
-            picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{app_fn}</p>',\
-                                unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download", \
-                    data=open(app, 'rt'), file_name=app_fn, mime='text/csv', key='amplicon_download_'+app)
+                    data=open(ipp, 'rt'), file_name=ipp_fn, mime='text/csv', key='index_download_'+ipp_fn)
 
     if not taqwater_picklist_paths:
         error_msgs.append('No taq/water picklist available')
-
     else:
         for tpp in taqwater_picklist_paths:
-            tpp_fn = str(Path(tpp).name)
+            tpp_fn = Path(tpp).name
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_fn}</p>',\
                                 unsafe_allow_html=True)
             picklist_btn_col.download_button(label=f"Download",\
                         data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv',\
-                                key='taqwater_download_'+tpp)
+                                key='taqwater_download_'+tpp_fn)
     if error_msgs:
         for msg in error_msgs:
             picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
                     unsafe_allow_html=True)
+
     
-def display_status(exp, height=350):
+def display_status(key, height=300):
     """
     Display the progress in the pipeline for this experiment
     Should use aggrid to display the stages and the changes at each stage
     """
+    exp = st.session_state['experiment']
     steps, header = exp.get_stages()
     status_df = pd.DataFrame(steps, columns=header)
     #status_df.reset_index(inplace=True)
     #status_df = status_df.rename(columns = {'index':'Steps', 'pending':'Pending Steps'})
-    status_df = aggrid_interactive_table(status_df, grid_height=height, key='status_aggrid')
+    status_df = aggrid_interactive_table(status_df, grid_height=height, key=str(key)+'status_aggrid')
 
-def display_primers(exp, assay_usage, height=350):
+
+def display_primers(key, assay_usage, height=350):
     """
     Alternative display_primer_components using aggrid
     Designed as a component for a generic display widget
     """
+    exp = st.session_state['experiment']
+    ul_conv = 1000
     if assay_usage:
-        primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+        assay_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
                 exp.get_volumes_required(assay_usage=assay_usage)
     else:
-        reactions, primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+        reactions, assay_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
             0,{},0,0,0,0
+
+    primer_avail_counts, primer_avail_vols = exp.get_primers_avail()
+
+    # convert assay to primers - allow multiple primers per assay
+    primer_vols = {}
+    assay_primers = util.match_assays_to_primers(exp, assay_vols.keys())
+    for assay in assay_vols:
+        if assay in assay_primers and len(assay_primers[assay]) > 0:
+            for primer in assay_primers[assay]:
+                primer_vols[primer] = assay_vols[assay]
+        else:
+            primer_vols[assay] = assay_vols[assay]
     
-    primer_avail_counts, primer_avail_vols = st.session_state['experiment'].get_primers_avail()
+    primer_avail_counts, primer_avail_vols = exp.get_primers_avail()
     per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
     primer_names = set(primer_vols.keys())
     warning_primers = ''
@@ -650,11 +702,11 @@ def display_primers(exp, assay_usage, height=350):
         need_vol = primer_vols.get(p,0)
         num_wells = ceil(need_vol/per_use_vol)
 
-        if primer_vols.get(p, 0)/100 > primer_avail_vols.get(p,0)/1000:
+        if primer_vols.get(p, 0)/ul_conv > primer_avail_vols.get(p,0)/ul_conv:
             warning_primers += p + ', '
 
-        primer_array.append([p, num_wells, assay_usage.get(p,0), primer_vols.get(p,0)/100,\
-                    primer_avail_vols.get(p,0)/1000])
+        primer_array.append([p, num_wells, assay_usage.get(p,0), primer_vols.get(p,0)/ul_conv,\
+                    primer_avail_vols.get(p,0)/ul_conv])
     
     # if warning_primers != '':
     #     st.warning('The following primers do not have enough volume: ' + warning_primers[:-1])
@@ -663,31 +715,24 @@ def display_primers(exp, assay_usage, height=350):
                             columns=['Primer', 
                                     'Num Wells',
                                     'Uses', 
-                                    'Required Volume(μL)', 
-                                    'Available Volume(μL)']
+                                    'Required Volume (μL)', 
+                                    'Available Volume (μL)']
                             )
-    primer_table = aggrid_interactive_table(primer_df, grid_height=height, key='primer_display')
+    primer_table = aggrid_interactive_table(primer_df, grid_height=height, key=str(key)+'primer_display')
     
-def display_plates(exp, plate_usage, height=350):
-    """
-    Simple plate summary using aggrid.
-    To be used as a generic viewing component
-    """
-    #st.write(exp.get_musterer_pids())
-    plate_df = pd.DataFrame(plate_usage, columns=['Plate', 'Num Wells', 'Purpose'])
-    plate_table = aggrid_interactive_table(plate_df, grid_height=height, key='plate_aggrid')
 
-def view_plates(exp):
+def view_plates(key, height=500):
     """
     Visual view of the plates in the experument
     """
+    exp = st.session_state['experiment']
     plate_ids = []
     for pid in exp.plate_location_sample:
         plate_ids.append(f"{exp.plate_location_sample[pid]['purpose']} plate: {util.unguard(pid)}")
 
     #Let user choose which plate to view
     _, col1, _ = st.columns([2, 1,2])
-    plate_selectbox = col1.selectbox('Plate ID to view', plate_ids, key='plate_viewer')
+    plate_selectbox = col1.selectbox('Plate ID to view', plate_ids, key=str(key)+'plate_viewer')
     if plate_selectbox:
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
@@ -695,27 +740,59 @@ def view_plates(exp):
 
             #with open("debug.html", 'wt') as outf:
             #    print(heatmap_str, file=outf)
-            components.html(heatmap_str, height=500, scrolling=True)
+            components.html(heatmap_str, height=height, scrolling=True)
         else:
             plate_barcode_error_msg = "Plate barcode not found in experiment"
             st.markdown(f'<p style="color:#FF0000">{plate_barcode_error_msg}</p>',
                         unsafe_allow_html=True)
 
 
-def display_files(exp, file_usage, height=350):
+def display_files(key, file_usage, height=250):
     """
     Display info for all files that have so far been uploaded into the experiment
     Give info on name, any plates they contain, whether they are required so far, etc
     """
+    exp = st.session_state['experiment']
     file_df = pd.DataFrame.from_dict(file_usage, orient='index')
+    if file_df is None or not isinstance(file_df, pd.DataFrame):
+        st.write('No plates loaded')
+        return
+    else:
+        if 'view_box_size' in st.session_state:
+            height = st.session_state['view_box_size']
+        else:
+            height = height
+
     file_df.reset_index(inplace=True)
     file_df = file_df.rename(columns = {'index':'File', 'plates':'Plates', 'purpose':'Purpose'})
-    file_table = aggrid_interactive_table(file_df, grid_height=height, key='file_aggrid')
+    selection = aggrid_interactive_table(file_df, grid_height=height, key='file_aggrid')
+    if selection and 'selected_rows' in selection:
+        fns = [row['File'] for row in selection['selected_rows']]
+        fns = [fn for fn in fns if fn in exp.uploaded_files]
+        if fns:
+            print(f'{fns=}')
+            if 'previous_file_delete_selection' not in st.session_state:
+                st.session_state['previous_file_delete_selection'] = None
+            if st.session_state['previous_file_delete_selection'] == fns:
+                st.session_state['previous_file_delete_selection'] = None
+            else:
+                if fns != st.session_state['previous_file_delete_selection']:
+                    st.markdown(f"**You selected {fns}**")
+                delbox = st.container()
+                del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
+                del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
+                del_col2.button("Yes",on_click=manage_delete,
+                        args=(delbox,'file',fns), key="delete " + str(key), help=f"Delete {fns}")
+                del_col3.button("No", on_click=cancel_delete,
+                        args=('file',fns), key="keep " + str(key), help=f"Keep {fns}")
+                selection = None
 
-def display_indexes(exp, assay_usage, height=350):
+        
+def display_indexes(key, assay_usage, height=350):
     """
     Display info for all indexes that have been uploaded into the experiment
     """
+    exp = st.session_state['experiment']
     fwd_idx, rev_idx, warning_idxs = exp.get_index_avail()
     indexes = {**fwd_idx, **rev_idx}
     for index in indexes:
@@ -744,14 +821,29 @@ def display_indexes(exp, assay_usage, height=350):
     index_df = pd.DataFrame.from_dict(indexes,  orient='index')
     index_df.reset_index(inplace=True)
     index_df = index_df.rename(columns = {'index':'Index', 'count':'Wells', 'req_vol':'Required Volume (μL)', 'avail_vol':'Available Volume (μL)'})
-    index_table = aggrid_interactive_table(index_df,grid_height=height,key='index_display')
+    index_table = aggrid_interactive_table(index_df,grid_height=height,key=str(key)+'index_display')
 
-def display_log(exp, height=250):
+
+def display_references(key, height=350):
+    """
+    Show the amplicon targets/reference sequences that are loaded
+    """
+    exp = st.session_state['experiment']
+    refseq = st.session_state['experiment'].reference_sequences
+    for group in refseq:
+        dataset = [(ref,refseq[group][ref]) for ref in exp.reference_sequences[group]]
+        ref_df = pd.DataFrame(dataset, columns=['Name','Sequence'])
+        st.markdown('**'+group+'**')
+        aggrid_interactive_table(ref_df, key=str(key)+'seqs'+group, grid_height=height)
+
+
+def display_log(key, height=250):
     """
     Display the log
     """
-    func = sys._getframe(1).f_code.co_name
-    func_line = inspect.getframeinfo(sys._getframe(1)).lineno
+    exp = st.session_state['experiment']
+    #func = sys._getframe(1).f_code.co_name
+    #func_line = inspect.getframeinfo(sys._getframe(1)).lineno
     #print("Function", func, type(func_line))
     # display the experiment log and let the user filter the view in a number of ways
     log_entries = st.session_state['experiment'].get_log(100)
@@ -759,22 +851,7 @@ def display_log(exp, height=250):
         st.write('No entries currently in the log')
     else:
         df = pd.DataFrame(log_entries, columns=exp.get_log_header())
-        aggrid_interactive_table(df, grid_height=height, key='logs')
-
-def display_log(exp, height=250):
-    """
-    Display the log
-    """
-    func = sys._getframe(1).f_code.co_name
-    func_line = inspect.getframeinfo(sys._getframe(1)).lineno
-    #print("Function", func, type(func_line))
-    # display the experiment log and let the user filter the view in a number of ways
-    log_entries = st.session_state['experiment'].get_log(100)
-    if len(log_entries) == 0:
-        st.write('No entries currently in the log')
-    else:
-        df = pd.DataFrame(log_entries, columns=exp.get_log_header())
-        aggrid_interactive_table(df, grid_height=height, key='logs')
+        aggrid_interactive_table(df, grid_height=height, key=str(key)+'logs')
 
 def info_viewer(key):
     """
@@ -799,47 +876,52 @@ def info_viewer(key):
             stx.TabBarItemData(id=4, title="Plate Viewer", description=""),
             stx.TabBarItemData(id=5, title="Primers", description=""),
             stx.TabBarItemData(id=6, title="Indexes", description=""),
-            stx.TabBarItemData(id=7, title="Log", description="")
+            stx.TabBarItemData(id=7, title="Reference sequences", description=""),
+            stx.TabBarItemData(id=8, title="Log", description="")
         ], return_type=int, default=1)
 
     if view_tab == 1:
         # Status tab should tell us where we are up to in the pipeline and what's happened so far
         with container:
-            #with st.expander('Pipeline status', expanded=False):
-                display_status(exp)
+            display_status(key, height=view_height)
                 
     if view_tab == 2:
         #view_expander = container.expander(label='All uploaded files', expanded=False)
         file_usage = exp.get_file_usage()
         with container:
-                display_files(exp, file_usage, height=view_height)
+            display_files(key, file_usage, height=view_height)
 
 
     if view_tab == 3:
         plate_usage = exp.get_plate_usage()
         with container:
-                display_plates(exp, plate_usage, height=view_height)
+            display_plates(key, plate_usage, height=view_height)
 
     if view_tab == 4:
         with container:
-            view_plates(exp)
+            view_plates(key, height=view_height)
 
 
     if view_tab == 5:
         assay_usage = exp.get_assay_usage()
         with container:
-            display_primers(exp, assay_usage, height=view_height)
+            display_primers(key, assay_usage, height=view_height)
 
 
     if view_tab == 6:
         assay_usage = exp.get_assay_usage()
         with container:
-            display_indexes(exp, assay_usage, height=view_height)
+            display_indexes(key, assay_usage, height=view_height)
 
 
     if view_tab == 7:
         with container:
-            display_log(exp, height=view_height)
+            display_references(key, height=view_height)
+
+
+    if view_tab == 8:
+        with container:
+            display_log(key, height=view_height)
     
 
 

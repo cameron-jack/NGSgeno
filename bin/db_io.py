@@ -17,8 +17,14 @@ from collections import defaultdict
 import sys
 from configparser import ConfigParser as CP
 from pathlib import PurePath
-import bin.file_io as file_io # guarding and unguarding of barcodes
-from bin.util import CONFIG_PATH, output_error
+try:
+    import bin.parse as parse
+except ModuleNotFoundError:
+    import parse
+try:
+    from bin.util import CONFIG_PATH, output_error
+except ModuleNotFoundError:
+    from util import CONFIG_PATH, output_error
 
 def _eppfn_m(bc):
     """ ear-punch Musterer plate filename format """

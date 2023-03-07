@@ -1,3 +1,10 @@
+v0.21.009
+Date: Fri Mar 17 15:26:01 AEDT 2023
+* CHANGED: Massive GUI changes and improvements
+* NEW: simplified pending uploads
+* NEW: runs all the way through
+* NEW: graphically stable under testing
+
 v0.21.008
 Date: Wed Mar  8 07:25:19 AEDT 2023
 * CHANGED: display viewer now controlled by checkbox

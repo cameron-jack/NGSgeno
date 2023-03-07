@@ -19,6 +19,7 @@ import jsonpickle
 from itertools import combinations
 from io import StringIO, BytesIO
 import datetime
+from shutil import copyfileobj
 import json
 from Bio import SeqIO
 from copy import deepcopy
@@ -37,14 +38,21 @@ try:
 except ModuleNotFoundError:
     import db_io
 try:
-    import bin.file_io as file_io
+    import bin.generate as generate
 except ModuleNotFoundError:
-    import file_io
+    import generate
 try:
-    import util
-    
+    import bin.parse as parse
 except ModuleNotFoundError:
+    import parse
+try:
     import bin.util as util
+except ModuleNotFoundError:
+    import util
+try:
+    import bin.transaction as transaction
+except ModuleNotFoundError:
+    import transaction
 
 
 EXP_FN = 'experiment.json'      
@@ -113,7 +121,8 @@ class Experiment():
         ###
         self.uploaded_files = {}
         self.reproducible_steps = []  # a strict subset of the log that only includes working instructions
-        self.pending_steps = None # reproducible steps that are awaiting user approval to replace existing steps
+        self.pending_steps = set() # reproducible steps (files) that are awaiting user approval to replace existing steps
+        self.pending_uploads = set() # not a reproducible step, but needs to be cleared by user
         self.log_entries = []  # use self.log(message, level='') to add to this
         self.log_time = datetime.datetime.now()  # save the log after a certain time has elapsed, to avoid too much IO
         self.transfer_volumes = {'DNA_VOL':util.DNA_VOL, 'PRIMER_VOL':util.PRIMER_VOL, 'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
@@ -133,406 +142,60 @@ class Experiment():
         return str(self.__dict__)
 
     def lock(self):
-        self.log('Info: Locking experiment. No modification allowed to plates while lock remains')
+        self.log('Info: Locking/unlocking of experiment is currently disabled')
+        #self.log('Info: Locking experiment. No modification allowed to plates while lock remains')
         #self.locked = True
         #self.save()
 
     def unlock(self):
-        self.log('Info: Unlocking experiment. Modification is now possible. There should be good reason for this!')
+        self.log('Info: Locking/unlocking of experiment is currently disabled')
+        #self.log('Info: Unlocking experiment. Modification is now possible. There should be good reason for this!')
         #self.locked = False
         #self.save()
 
-    ### transactions/reproducible steps
-
-    def add_pending_transactions(self, transactions):
-        """                 
-        Add to the current pending steps for a "step" of file generation. 
-        It will fail (return False) if it attempts to overwrite an existing stored change.
-        You can call this multiple times and the results will be combined into a single "step"
-        """
-        if not transactions:
-            return True
-        if self.pending_steps is None:
-            self.pending_steps = {}
-        for t in transactions:
-            if t in self.pending_steps:
-                self.log(f'Critical: file generation {t} already performed in this stage of the pipeline')
-                return False
-            self.pending_steps[t] = deepcopy(transactions[t])
-            self.log(f'Info: Adding generated file {t} to pending pipeline stage history')
-            #print('These are the pending transactions', self.pending_steps, file=sys.stderr)
-        return True
-
-    def convert_pending_to_final(self, pending_name):
-        """
-        take a pending path \example\pending_myfile.csv and convert to final name
-        eg \example\myfile.csv
-        """
-        #print(f"{pending_name=}", file=sys.stderr)
-        p = Path(pending_name)
-        parent = p.parent
-        file_name = str(p.name)
-        final_name = file_name[len('pending_'):]  # cut off the leading "pending_"
-        final_path = str(parent / final_name)
-        #print(f"{final_path=}", file=sys.stderr)
-        return final_path
-
-    def convert_final_to_pending(self, final_name):
-        """
-        take a final path \example\myfile.csv and convert to pending name
-        eg \example\pending_myfile.csv
-        """
-        #print("convert final to pending", file=sys.stderr)
-        #print(f"{final_name=}", file=sys.stderr)
-        p = Path(final_name)
-        parent = p.parent
-        file_name = str(p.name)
-        pending_name = "pending_" + file_name
-        pending_path = str(parent / pending_name)
-        #print(f"{pending_path=}", file=sys.stderr)
-        return pending_path
-
-
-    def clashing_pending_transactions(self):
-        """
-        We need the user to know if accepting pending transactions will result in overwriting an existing
-        file. We return the list of all clashing filepaths
-        """
-        clashes = []
-        if self.pending_steps is None:
-            #print('no pending steps')
-            return clashes
-        for transaction in self.pending_steps:
-            final_path = self.convert_pending_to_final(transaction)
-            #print('Pending and final paths: ', str(transaction), str(final_path), file=sys.stderr)
-            if Path(final_path).exists():
-                clashes.append(final_path)
-                self.log(f'Warning: file path {final_path} already' +
-                        'exists and will be overwritten if pending changes are accepted')
-            else:
-                for step in self.reproducible_steps:
-                    if step is None or len(step) == 0:
-                        continue
-                    # each step is dict['filenames'] = {PID: {well:change}}
-                    if final_path in step:
-                        self.log(f'Warning: file path {final_path} already' +
-                                'exists and will be overwritten if pending changes are accepted')
-                        clashes.append(final_path)                  
-        return clashes
-    
-    def clashing_pending_transaction(self, file_upload):
-        clashes = self.clashing_pending_transactions()
-        file_path = self.get_input_dp(file_upload.name, transaction=False)
-        if file_path in clashes:
-            return file_path
-        return False
-
-    def clear_pending_transaction(self, file_upload):
-        if self.pending_steps is None:
-            return True
-        try:
-            pf = self.get_input_dp(file_upload, transaction=True)
-            if pf not in self.pending_steps:
-                return False
-            if Path(pf).exists():
-                print(f'Clearing pending file: {pf}', file=sys.stderr)
-                os.remove(pf)
-            self.pending_steps.pop(pf)
-        except Exception as exc:
-            self.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
-            return False
-        return True
-
-
-    def clear_pending_transactions(self):
-        """
-        Nukes all pending steps and files (presumably the user declined to keep them)
-        """
-        if self.pending_steps is None:
-            return True
-        try:
-            for transaction in self.pending_steps:
-                if Path(transaction).exists():
-                    os.remove(transaction)
-            self.pending_steps = None
-            pending_files_hanging = Path(self.get_exp_dir()).glob('pending_*')
-            for p in pending_files_hanging:
-                os.remove(p)
-                #print(f'removing pending file {p}', file=sys.stderr)
-        except Exception as exc:
-            self.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
-            return False
-        return True
-    
-    def accept_pending_transaction(self, file_name):
-        pending_file = self.get_input_dp(filename=file_name, transaction=True)
-        if not self.pending_steps:
-            self.log("Warning: there are no pending transactions to record")
-            return True  # It didn't actually fail
-        elif pending_file in self.pending_steps:
-            #print(f'Pending steps: {self.pending_steps}, reproducible steps: {self.reproducible_steps}', 
-             #       file=sys.stderr)
-            clashes = self.clashing_pending_transactions()
-            #print(f'Clashes seen: {clashes}', file=sys.stderr)
-            final_path = self.convert_pending_to_final(pending_file)
-            #print(f'File name: {final_path}', file=sys.stderr)
-
-            #if file already exists, remove original from files and reproducible_steps
-            if final_path in clashes:
-                if Path(final_path).exists():
-                    print(f"Removing the old file: {str(final_path)}", file=sys.stderr)
-                    os.remove(final_path)
-
-                #Need to remove entries from reproducible steps that contain the same plate id?
-                for i, step in enumerate(self.reproducible_steps):
-                    if final_path in step:
-                        del self.reproducible_steps[i]
-
-            p = Path(pending_file)
-            if not p.exists():
-                self.log('Warning: file does not exist')
-                return False
-            os.rename(pending_file, final_path)
-            print(f'Accepted file: {final_path}', file=sys.stderr)
-
-            this_step = {}
-            record = self.pending_steps[pending_file]
-            this_step[final_path] = record
-            #print(f'{this_step}', file=sys.stderr)
-            self.reproducible_steps.append(this_step)
-            self.pending_steps.pop(pending_file)
-
-        return True
-
-    def accept_pending_transactions(self):
-        """ 
-        Look up the keys from self.pending_steps in self.reproducible_steps then
-            remove all entries matching and following this then
-            append the pending steps, rename files, and clear pending steps
-
-        Returns True on success
-        """
-        print(f"accept_pending_transactions for {self.pending_steps.keys()=}", file=sys.stderr)
-        if not self.pending_steps:
-            self.log("Warning: there are no pending transactions to record")
-            return True  # It didn't actually fail
-        clashes = self.clashing_pending_transactions()
-        #print(f"Clashes seen {clashes=}", file=sys.stderr)
-        if len(clashes) == 0:
-            for transaction in self.pending_steps:
-                p = Path(transaction)
-                if not p.exists():
-                    self.log(f'Warning: {str(p)} not found')
-                    continue
-                final_path = self.convert_pending_to_final(transaction)
-                os.rename(p, final_path)
-                #print(f"No clash {str(p)=} {str(final_path)=}", file=sys.stderr)
-        else:
-            MAX_STAGES=99999
-            clashing_index = MAX_STAGES
-            #print(f"{self.reproducible_steps=}", file=sys.stderr)
-            for i,step in enumerate(self.reproducible_steps):
-                for dest in step:
-                    dp = self.convert_final_to_pending(dest)
-                    #print(f"{dp=}", file=sys.stderr)
-                    if dp in self.pending_steps:
-                        if i < clashing_index:
-                            clashing_index = i
-                            break
-            #print(f"{clashing_index=}", file=sys.stderr)
-            if clashing_index == MAX_STAGES:  # this should NEVER happen
-                self.log(
-                        'Critical: pipeline detects clashing' +
-                        f'transaction {clashing_index=} for {self.pending_steps=}') 
-                return False
-
-            # keep everything prior to the clash, then add on the pending steps
-            remove_these_steps = self.reproducible_steps[clashing_index:]
-            #print(f"{remove_these_steps=}", file=sys.stderr)
-            for step in remove_these_steps:
-                for fp in step:
-                    if fp in self.uploaded_files:
-                        del self.uploaded_files[fp]
-                    if Path(fp).exists():
-                        #print(f"removing the original file: {str(fp)}", file=sys.stderr)
-                        os.remove(fp)
-            # rename pending filepaths
-            for transaction in self.pending_steps:
-                p = Path(transaction)
-                if not p.exists():
-                    self.log(f'Warning: {str(p)} not found')
-                    continue
-                final_path = self.convert_pending_to_final(transaction)
-                #print(f"Renaming {str(p)=} to {str(final_path)=}", file=sys.stderr)
-                os.rename(p, final_path)
-                op = str(p)
-                if op in self.uploaded_files:
-                    self.uploaded_files[final_path] = self.uploaded_file[op].copy()
-                    del self.uploaded_file[op]
-            self.reproducible_steps = self.reproducible_steps[0:clashing_index]
-        if self.pending_steps is None:
-            self.save()
-            return True
-        this_step = {}
-        for ps in self.pending_steps:
-            if ps is None:
-                continue
-            final_name = self.convert_pending_to_final(ps)
-            record = self.pending_steps[ps]
-            this_step[final_name] = record
-            op = str(final_name).split('/')[-1]
-            if self.pending_steps[ps]:
-                self.uploaded_files[op] = {'plates':self.pending_steps[ps].keys()}
-            else:
-                self.uploaded_files[op] = {}
-        self.reproducible_steps.append(this_step)
-        self.pending_steps = None
-        self.save()
-        return True
-
-    def enforce_file_consistency(self):
-        """ 
-        Iterate over all expected files and ensure that they are present. If they aren't, remove these steps and any that follow.
-        """
-        pids_to_delete = set()
-        files_to_delete = set()
-        for i, step in enumerate(self.reproducible_steps):
-            for f in step:
-                if not Path(f).exists():
-                    files_to_delete.add(f)
-                    if step[f] is None:
-                        continue
-                    for pid in step[f]:
-                        pids_to_delete.add(pid)
-        # clear out files and look for pipeline breakages from missing sections
-        pipe_broken_step = None
-        for i, step in enumerate(self.reproducible_steps):
-            for f in files_to_delete:
-                if f in self.uploaded_files:
-                    del self.uploaded_files[f]
-                if f in step:
-                    del step[f]
-                if len(step) == 0:
-                    pipe_broken_step = i
-                    break
-            if pipe_broken_step is not None:
-                break
-        if pipe_broken_step is not None:
-            self.reproducible_steps = self.reproducible_steps[:pipe_broken_step]
-
-        # now clean out pids 
-        for i, step in enumerate(self.reproducible_steps):
-            for f in step:
-                for pid in pids_to_delete:
-                    if pid in step[f]:
-                        del self.reproducible_steps[i][f][pid]
-
-
-    def get_plate(self, PID, transactions=None):
-        """ 
-        Look up a plate ID in self.plate_location_sample and then in self.reproducible_steps
-        Apply all changes seen in self.reproducible steps
-        Return the modified plate
-        PID should be a guarded plate ID 
-        """
-        if PID not in self.plate_location_sample:
-            self.log(f'Error: {PID} not found in plate records')
-            return None
-        mod_plate = deepcopy(self.plate_location_sample[PID])
-        # self.reproducible_steps is a list, so stage will be a dictionary
-        for stage in self.reproducible_steps:
-            if stage is None:
-                continue
-            # each stage is dict['filenames'] = {PID: {well:change}}
-            for fn in stage:
-                if stage[fn] is None:
-                    continue
-                if PID in stage[fn]:
-                    for well in stage[fn][PID]:
-                        if 'volume' in mod_plate[well]:
-                            mod_plate[well]['volume'] += stage[fn][PID][well]
-                        #except:
-                        #    print(f'{mod_plate[well]=} {stage[fn][PID][well]=} {fn=} {PID=} {well=}', file=sys.stderr)
-                        #    exit()
-        if transactions:
-            for t in transactions:
-                if PID in transactions[t]:
-                    for well in transactions[t][PID]:
-                        if 'volume' in mod_plate[well]:
-                            mod_plate[well] += transactions[t][PID][well]
-        return mod_plate
 
     ### functions for returning locally held file paths
 
-    def get_exp_dir(self):
-        """ return the experiment directory name """
-        return 'run_' + self.name
+    def get_exp_dn(self, subdir=None):
+        """ 
+        Return the experiment directory name
+        If subdir is supplied return the path to this:    
+        'raw' - fastq files should be stored
+        'cleaned' - fastq files should be stored
+        'merged' - fastq files should be stored
+        'uploads' - uploaded file should be stored
+        """
+        dirpath = 'run_' + self.name 
+        if not subdir:
+            return dirpath
+        allowed_subdirs = ['raw','cleaned','merged','uploads']
+        if subdir in allowed_subdirs:
+            dp2 = Path(dirpath)/subdir
+            if not dp2.exists():
+                dp2.mkdir()
+            else:
+                if not dp2.is_dir():
+                    self.log(f'Critical: failed to make directory {str(dp2)}, which already exists as a file')
+            dirname = str(dp2)
+            return str(dirname)
+        else:                                                       
+            self.log(f'Critical: {subdir=} not in {allowed_subdirs=}')
 
-    def get_exp_fp(self, filename, transaction=False):
+    def get_exp_fn(self, filename, subdir=None, trans=False):
         """ 
         Return the expected experiment path to filename as a string
-        if transaction is True, check for an existing match and append "_pending" if required        
+        If trans is True, check for an existing match and append "_pending" if required
+        If subdir is in allowed_subdirs, then include this in the returned filepath
         """
-        dirname = self.get_exp_dir()
+        dirname = self.get_exp_dn(subdir)
         if dirname not in filename:
             fp = Path(os.path.join(dirname, filename))
         else:
             fp = Path(filename)
-        if transaction:
-            parent_path = fp.parent
-            file_name = 'pending_' + str(fp.name)
-            fp = parent_path / file_name                   
-        #print(str(fp), file=sys.stderr)
-        return str(fp)
-
-    def get_input_dp(self, filename, transaction=False):
-        """
-        Return the absolute file path for where all input / uploaded files are copied into
-        """
-        dirname = self.get_exp_fp('input')
-        if not os.path.exists(dirname):
-            os.mkdir(dirname)
-
-        if dirname not in filename:
-            fp = Path(os.path.join(dirname, filename))
-        else:
-            fp = Path(filename)
-        if transaction:
-            parent_path = fp.parent
-            file_name = 'pending_' + str(fp.name)
-            fp = parent_path / file_name     
-        
-        return str(fp)
-
-    def get_raw_dirpath(self):
-        """ 
-        Return the absolute path to the where raw fastq files should be stored
-        Create it if it doesn't exist
-        """
-        dp = self.get_input_dp('raw')
-        if not os.path.exists(dp):
-            os.mkdir(dp)
-        return dp
-
-    def get_clean_dirpath(self):
-        """
-        Return the absolute path to the where cleaned fastq files should be stored
-        Create it if it doesn't exist
-        """
-        dp = self.get_input_dp('cleaned')
-        if not os.path.exists(dp):
-            os.mkdir(dp)
-        return dp
-
-    def get_merged_dirpath(self):
-        """
-        Return the absolute path to the where cleaned, merged fastq files should be stored
-        Create it if it doesn't exist
-        """
-        dp = self.get_input_dp('merged')
-        if not os.path.exists(dp):
-            os.mkdir(dp)
-        return dp
+        if trans:
+            fp = transaction.transact(str(fp)) 
+        return fp
+      
 
     def get_raw_fastq_pairs(self):
         """ return a sorted list of tuple(R1_path, R2_path) to raw FASTQ files """
@@ -550,502 +213,118 @@ class Experiment():
                     self.log(f'Warning: {r2} expected raw FASTQ file does not exist')
         return sorted(valid_pairs)
     
-    ### functions for handling plates
+    ### functions for managing data file records
 
-    def add_uploaded_file(self, file_name, PIDs=[], purpose=None):
+    def add_file_record(self, file_name, PIDs=None, purpose=None):
         """
         Add an uploaded file to the experiment with associated plates and purpose
         """
         if file_name in self.uploaded_files:
             self.log(f'Warning: file name {file_name} has already been uploaded, overwriting')
 
+        if not PIDs:
+            PIDs = []
         self.uploaded_files[file_name] = {'plates': [util.guard_pbc(PID, silent=True) for PID in PIDs], 'purpose': purpose}
-
-   
-    def add_rodentity_plate_set(self, sample_plate_ids, dna_plate_id):
-        """ 
-        Add mouse sample information to the experiment for a set of up to 4 ear punch plates from Rodentity JSON files
-        Return True on success, False on failure
-        """
-        #print(f"{sample_plate_ids=}{dna_plate_id=}")
-        if self.locked:
-            self.log('Error: Cannot add Rodentity plate set while lock is turned on')
-            return False
-        try:
-            self.log('Adding Rodentity plate set', level='b')  # records the function starting
-            dna_plate_id = util.guard_pbc(dna_plate_id, silent=True)
-            sample_plate_ids = sorted([util.guard_pbc(spid, silent=True) for spid in sample_plate_ids if spid])
-        
-            # check required data is present
-            if len(sample_plate_ids) == 0:
-                self.log(f"Error: Sample plate ids not present {sample_plate_ids=}")
-                return False
-            if not dna_plate_id:  # '' or None
-                self.log(f"Error: DNA plate id not present {dna_plate_id=}")
-                return False
- 
-            # get info from JSON files
-            transactions = {}
-            sample_info = {}
-            for spid in sample_plate_ids:
-                fn = os.path.join('run_'+self.name, db_io._eppfn_r(spid))  # rodentity file name format
-                if os.path.isfile(fn): # if cached in local file
-                    self.log('Info: Reading cached data: ' + fn)
-                    with open(fn) as src:
-                        info = json.load(src)
-                    if not info:
-                        self.log(f"Error: No data returned for barcode {spid}")
-                        return False
-                    sample_info[spid] = info
-                    if fn in self.uploaded_files:
-                        self.log(f'Warning: {fn} already present in records, overwriting')
-                    self.uploaded_files[fn] = {'plates':[util.guard_pbc(spid, silent=True)], 'purpose':'rodentity ear punch'}
-                    transactions[fn] = {util.guard_pbc(spid, silent=True)}
-                else:
-                    self.log("Error: JSON file doesn't exist: " + fn)
-                    return False
-
-            # no failures so update the experiment
-            self.dest_sample_plates[dna_plate_id] = sample_plate_ids
-            self.plate_location_sample[dna_plate_id] = {'purpose':'dna', 'source':','.join(sample_plate_ids), 'wells':set()}
-            for spid in sample_plate_ids:
-                if spid not in self.plate_location_sample:
-                    self.plate_location_sample[spid] = {'purpose':'sample','source':'rodentity', 'wells':set()}
-                #print(f"{sample_info=}")
-                for record in sample_info[spid]['wells']:  # "wellLocation", "mouse" 
-                    pos = util.unpadwell(record['wellLocation'])
-                    self.plate_location_sample[spid]['wells'].add(pos)
-                    if pos not in self.plate_location_sample[spid]:
-                        self.plate_location_sample[spid][pos] = {}
-                    self.plate_location_sample[spid][pos]['barcode'] = util.guard_rbc(record['mouse']['barcode'], silent=True)
-                    self.plate_location_sample[spid][pos]['strain'] = record['mouse']['mouselineName']
-                    self.plate_location_sample[spid][pos]['sex'] = record['mouse']['sex']
-                    self.plate_location_sample[spid][pos]['mouse'] = deepcopy(record['mouse'])
-                    # "alleles":[{alleleKey, name, symbol, options:[], assays:[{assayKey, name, method}]}]
-                    self.plate_location_sample[spid][pos]['assay_records'] = {}
-                    assays = []
-                    assayFamilies = set()
-                    unknown_assays = []
-                    unknown_assayFamilies = set()
-                    
-                    if 'alleles' in record['mouse']:
-                        for allele in record['mouse']['alleles']:  # allele is a dict from a list
-                            for assay in allele['assays']:  # assay is a dict from a list
-                                if assay['name'] not in self.plate_location_sample[spid][pos]['assay_records']:
-                                    self.plate_location_sample[spid][pos]['assay_records'][assay['name']] =\
-                                            {'assayFamily':assay['name'].split('_')[0]}
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['alleleKey'] = str(allele['alleleKey'])
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['alleleSymbol'] = str(allele['symbol'])
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayKey'] = str(assay['assay_key'])
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayName'] = str(assay['name'])
-                                self.plate_location_sample[spid][pos]['assay_records'][assay['name']]['assayMethod'] = str(assay['method'])
-                                if assay['method'] == 'NGS' or assay['name'].startswith('NGS'):
-                                    assays.append(assay['name'])
-                                    assayFamilies.add(assay['name'].split('_')[0])
-                                else:
-                                    unknown_assays.append(assay['name'])
-                                    unknown_assayFamilies.add(assay['name'].split('_')[0])
-                            
-                    self.plate_location_sample[spid][pos]['assays'] = assays.copy()
-                    self.plate_location_sample[spid][pos]['assayFamilies'] = list(assayFamilies)
-                    self.plate_location_sample[spid][pos]['unknown_assays'] = unknown_assays.copy()
-                    self.plate_location_sample[spid][pos]['unknown_assayFamilies'] = list(unknown_assayFamilies) 
-                
-                self.log(f"Success: added sample plate {spid} with destination {dna_plate_id} ")
-
-            #print(f"{self.name=} {self.plate_location_sample=} {self.sample_plates=}")
-        except Exception as exc:
-            print(f"Failed to load Rodentity plate set {exc=}")
-            if dna_plate_id in self.dest_sample_plates:
-                self.dest_sample_plates.pop(dna_plate_id)
-            return False
-         
-        finally:
-            self.add_pending_transactions(transactions)
-            self.save()
         return True
 
 
-    def add_musterer_plate_set(self, sample_plate_ids, dna_plate_id):
-        """ Add mouse sample information to the experiment for a set of up to 4 ear punch plates from Musterer JSON files
-            Checks validity of inputs - duplicate epps is a warning, duplicate dnap is disallowed
-            
-            Input can come from either DB or JSON files
-            DEPRECATED - keep as template for reading from DB
-        """ 
-        if self.locked:
-            self.log('Error: Cannot add Musterer plate set while lock is turned on')
+    def mod_file_record(self, existing_name, new_name=None, new_purpose=None, extra_PIDs=None, PID_name_updates=None):
+        """
+        Modify and existing file record (self.uploaded_files)
+        Mostly used to change a pending file to normal file path, or to modify the list of plates
+        new_name (str)
+        new_purpose (str)
+        extra_pids ([str])
+        PID_name_updates ([(str,str)]) - list of (from,to) tuples.
+        """
+        if existing_name not in self.uploaded_files:
+            self.log(f'Error: {existing_name} does not exist in uploaded file records')
             return False
-        try:
-            self.log(f"Begin: Adding Musterer plate set")
 
-            sample_plate_ids = sorted([spid for spid in sample_plate_ids if spid])
+        if new_purpose:
+            self.uploaded_files[existing_name]['purpose'] = new_purpose
+
+        if extra_PIDs:
+            for ep in extra_PIDs:
+                self.uploaded_files[existing_name]['plates'].append(ep)
+
+        if PID_name_updates:
+            for pnu in PID_name_updates:
+                existing_pid, new_pid = pnu
+                if existing_pid not in self.uploaded_files[existing_name]['plates']:
+                    self.log(f'Error: {existing_pid} not present in uploaded_files')
+                    return False
+                self.uploaded_files[existing_name]['plates'].remove(existing_pid)
+                self.uploaded_files[existing_name]['plates'].append(new_pid)
+                                                                                    
+        if new_name:
+            self.uploaded_files[new_name] = self.uploaded_files[existing_name].copy()
+            del self.uploaded_files[existing_name]
         
-            # check required data is present
-            if not dna_plate_id:  # '' or None
-                self.log(f"Error: DNA plate id not present {dna_plate_id=}")
-                return False
-            # check if duplicates exist
-            for subset in combinations(sample_plate_ids, 2):
-                if subset[0] == subset[1] and subset[0] != '':
-                    self.log(f"Error: Ear punch plate barcode {subset[0]} is duplicated in inputs {sample_plate_ids}")
-                    return False
-            # check if DNA plate id already used
-            if dna_plate_id in self.plate_location_sample:
-                self.log(f"Error: DNA plate {dna_plate_id} already used as an output plate id")
-                return False
-            # check that none of the sample plate ids match the DNA plate id, or any other DNA plate ids
-            for epp in sample_plate_ids:
-                if epp == dna_plate_id:
-                    self.log(f"Error: Sample plate barcode matches DNA plate barcode {dna_plate_id}")
-                    return False
-                if epp in self.plate_location_sample:
-                    self.log(f"Error: Sample plate {epp} already used as a DNA plate barocde")
-                    return False
-
-            # get info from JSON files
-            sample_info = {}
-            for spid in sample_plate_ids:
-                fn = os.path.join('run_'+self.name, db_io._eppfn_m(spid))
-                if os.path.isfile(fn): # if cached in local file
-                    self.log('Info: Reading cached data: ' + fn)
-                    with open(fn) as src:
-                        info = json.load(src)
-                    if not info:
-                        self.log(f"Error: No data returned for barcode {spid}")
-                        return False
-                    sample_info[spid] = info['wells']  # list of well contents
-                    if fn in self.uploaded_files:
-                        self.log(f'Warning: {fn} already present in records, overwriting')
-                    self.uploaded_files[fn] = {'plates':[util.guard_pbc(spid, silent=True)], 'purpose':'musterer ear punch'}
-                else:
-                    self.log("Error: JSON file doesn't exist: " + fn)
-                    return False
-
-            # no failures so update the experiment
-            self.dest_sample_plates[dna_plate_id] = sorted(sample_plate_ids)
-            for spid in sample_plate_ids:
-                if spid not in self.plate_location_sample:  # should always be the case
-                    self.plate_location_sample[spid] = {'purpose':'sample','source':'musterer','wells':set()}
-                for i, record in enumerate(sample_info):  # 'wellLocation', 'mouse', 'mouseBarcode', 'mouseId'
-                    pos = util.unpadwell(record['wellLocation'])
-                    self.plate_location_sample[spid]['wells'].add(pos)
-                    self.plate_location_sample[spid][pos] = record['mouse'].copy()  # dict
-                    self.plate_location_sample[spid][pos]['mouseId'] = record['mouseId']
-                    self.plate_location_sample[spid][pos]['barcode'] = util.guard_mbc(record['mouseBarcode'])
-                    self.plate_location_sample[spid][pos]['must_assays'] = record['mouse']['assays'].copy()
-                    self.plate_location_sample[spid][pos]['sampleNumber'] = i+1
-                    assays = [assay['assayName'] for assay in record['mouse']['assays']]
-                    assayFamilies = set([a.split('_')[0] for a in assays])
-                    self.plate_location_sample[spid][pos]['assays'] = assays.copy()
-                    self.plate_location_sample[spid][pos]['assayFamilies'] = list(assayFamilies)
-                
-                self.log(f"Success: added sample plate {spid} with destination {dna_plate_id} ")
-
-            #print(f"{self.name=} {self.plate_location_sample=} {self.sample_plates=}")  
-        finally:
-            self.save()
         return True
-
-    #def add_manifest(self, manifest_stream, default_manifest_type='c'):
-    #    """ Because streamlit's uploader is derived from BytesIO we have a byte stream we have to deal with.
-    #        The manifest is a CSV. Turn this into a list of dicts which can then handle sensibly.
-    #        We also take an optional default_manifest_type ['c','r','m'] for custom, rodentity, or musterer respectively
-    #        Returns True on success, False on failure
-    #       DEPRECATED
-    #    """
-    #    if self.locked:
-    #        self.log('Error: Cannot add manifest while lock is active')
-    #        return False
-    #    try:
-    #        self.log(f"Begin: add custom manifest")
-        
-    #        #self.log(f"Debug: {self.name=} {manifest_strm=} {default_manifest_type=}")
-    #        manifest_name = manifest_stream.name
-    #        if manifest_name in self.uploaded_files:
-    #            self.log(f'Warning: {manifest_name} already present in records, overwriting')
-    #        self.uploaded_files[manifest_name] = {'plates':[], 'purpose':'custom manifest'}
-    #        manifest_io = StringIO(manifest_stream.getvalue().decode("utf-8"))
-        
-    #        header = ''
-    #        manifest_info = []
-    #        in_csv = csv.reader(manifest_io, delimiter=',')
-    #        for i, row in enumerate(in_csv):
-    #            if 'barcode' in ''.join(row).lower():
-    #                header = row
-    #                continue  # header
-    #            elif all([col.strip() for col in row]) == '': # blank
-    #                continue
-    #            elif any(col.strip() == '' and j < 5 for j,col in enumerate(row)):
-    #                self.log(f"Warning: not adding blank manifest entry in row {i+1}: {row}")
-    #                continue
-    #            else:
-    #                manifest_info.append({header[i]:r.strip() for i,r in enumerate(row) if i<len(header)})
-
-    #        # gather up dest plates and sample plates so we can clear these if we already have them in the experiment
-    #        dpids_spids = {}  # {dpid:set([spid,..])}
-    #        # go through entries and guard barcodes as needed
-    #        for i,entry in enumerate(manifest_info):
-    #            for key in entry:
-    #                if key == 'Dest barcode':
-    #                    manifest_info[i][key] = util.guard_pbc(entry[key], silent=True)
-    #                    dpids_spids[manifest_info[i][key]] = set()
-    #                if key == 'Plate barcode':
-    #                    manifest_info[i][key] = util.guard_pbc(entry[key], silent=True)
-    #                if key == 'Sample barcode':
-    #                    if not util.is_guarded(entry[key]):
-    #                        if default_manifest_type == 'c':
-    #                            manifest_info[i][key] = util.guard_cbc(entry[key])
-    #                        elif default_manifest_type == 'r':
-    #                            manifest_info[i][key] = util.guard_rbc(entry[key])
-    #                        elif default_manifest_type == 'm':
-    #                            manifest_info[i][key] = util.guard_mbc(entry[key])
-    #        for i,entry in enumerate(manifest_info):
-    #            dpids_spids[entry['Dest barcode']].add(entry['Plate barcode'])
-
-    #        # now clear any existing plateIds
-    #        for dpid in dpids_spids:
-    #            if dpid in self.plate_location_sample:
-    #                self.log(f"Info: Clearing existing plate details for {dpid=}")
-    #                self.plate_location_sample.pop(dpid)
-    #            for spid in dpids_spids[dpid]:
-    #                if spid in self.plate_location_sample:
-    #                    self.log(f"Info: Clearing existing plate details for {spid=}")
-    #                    self.plate_location_sample.pop(spid)
-
-    #        #print(f"{manifest_info=}")
-    #        dest_pids_sample_pids = {}
-    #        sample_pids = set()
-    #        for entry in manifest_info:
-    #            if entry['Dest barcode'] not in dest_pids_sample_pids:
-    #                dest_pids_sample_pids[entry['Dest barcode']] = set()
-    #            dest_pids_sample_pids[entry['Dest barcode']].add(entry['Plate barcode'])
-    #            sample_pids.add(entry['Plate barcode'])
-        
-    #        #self.dest_sample_plates = {}  # {dest_pid:[4 sample plate ids]}
-    #        #self.plate_location_sample = {}  # pid:{well:sample_id}
-    #        #self.sample_info = {}  # sample_id: {strain:str, assays: [], possible_gts: [], 
-    #        #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] }
-
-    #        # check for overused destination PIDs and clashes with sample plate barcodes. Note: we can't meaningfully check for duplicated destination PIDs
-    #        dp_count = {dp:len(sps) for dp, sps in dest_pids_sample_pids.items()}     
-    #        for dp in dp_count:
-    #            if dp_count[dp] > 4:
-    #                self.log(f"Error: 384-well DNA destination plate {dp} used by too many sample plates: {dp_count[dp]}")
-    #                return False
-    #            if dp in sample_pids:
-    #                self.log(f"Error: 384-well DNA destination plate barcode also used as a sample plate barcode {dp}")
-    #                return False
-            
-
-    #        # Warn for duplicate sample plate barcodes?
-    #        for sp in sample_pids:
-    #            dp_set = set()
-    #            for dp in dest_pids_sample_pids:
-    #                for entry in manifest_info:
-    #                    if entry['Plate barcode'] == sp and entry['Dest barcode'] == dp:
-    #                        dp_set.add(dp)
-    #            if len(dp_set) > 1:
-    #                self.log(f"Warning: Sample plate barcode {sp} used in multiple 384-well DNA destination plates: {dp_set}")
-        
-    #        # we need to collect destination, sample lists
-    #        # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], gts: [],
-    #        #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] } }
-    #        dp_samples = {}
-    #        for i,entry in enumerate(manifest_info):
-    #            if 'Sample No' in entry:
-    #                sample_number = entry['Sample No']
-    #            else:
-    #                sample_number = i+1
-    #            dest_pid = entry['Dest barcode']
-    #            if dest_pid not in self.uploaded_files[manifest_name]['plates']:
-    #                self.uploaded_files[manifest_name]['plates'].append(dest_pid)
-    #            source_pid = entry['Plate barcode']
-    #            if source_pid not in self.uploaded_files[manifest_name]['plates']:
-    #                self.uploaded_files[manifest_name]['plates'].append(source_pid)
-    #            well = util.unpadwell(entry['Well'])
-    #            assays = [entry[key] for key in entry if 'assay' in key.lower() and entry[key].strip()!='']
-    #            assayFamilies = set([a.split('_')[0] for a in assays])
-                
-    #            if dest_pid not in dp_samples:
-    #                dp_samples[dest_pid] = set()
-    #            dp_samples[dest_pid].add(source_pid)
-    #            if source_pid not in self.plate_location_sample:
-    #                self.plate_location_sample[source_pid] = {'purpose':'sample','source':'manifest', 'wells':set()}
-    #            if well in self.plate_location_sample[source_pid] and self.plate_location_sample[source_pid][well] != {}:
-    #                self.log(f"Error: duplicate {well=} in {source_pid=}. Continuing...")
-
-    #            self.plate_location_sample[source_pid]['wells'].add(well)
-    #            self.plate_location_sample[source_pid][well] = {}
-    #            self.plate_location_sample[source_pid][well]['barcode'] = entry['Sample barcode']
-    #            self.plate_location_sample[source_pid][well]['assays'] = assays.copy()
-    #            self.plate_location_sample[source_pid][well]['assayFamilies'] = list(assayFamilies)
-    #            self.plate_location_sample[source_pid][well]['sex'] = ''
-    #            self.plate_location_sample[source_pid][well]['strain'] = ''
-    #            self.plate_location_sample[source_pid][well]['other_id'] = ''
-    #            self.plate_location_sample[source_pid][well]['sampleNumber'] = str(sample_number)
-    #            for key in entry:
-    #                if 'sex' in key.lower():
-    #                    self.plate_location_sample[source_pid][well]['sex'] = entry[key]
-    #                elif 'strain' in key.lower():
-    #                    self.plate_location_sample[source_pid][well]['strain'] = entry[key]
-    #                elif 'other_id' in key.lower():
-    #                    self.plate_location_sample[source_pid][well]['other_id'] = entry[key]
-    #            self.plate_location_sample[source_pid][well]['gts'] = []
-    #            self.plate_location_sample[source_pid][well]['possible_gts'] = []
-    #            self.plate_location_sample[source_pid][well]['parents'] = []      
-
-    #        #print(f"\n{dp_samples=}")
-    #        for dp in dp_samples:
-    #            self.dest_sample_plates[dp] = list(dp_samples[dp])
-    #            for sample_pid in dp_samples[dp]:
-    #                self.log(f"Success: added sample plate {sample_pid} with destination {dp}")
-    #                #print('')
-    #                #print(f"{sample_pid=} {self.plate_location_sample[sample_pid]=}")
-    #    finally:
-    #        self.save()
-    #    return True
-
-    def read_custom_manifests(self, manifests):
+    
+    
+    def del_file_record(self, file_name):
         """
-        Parse any number of custom manifest files and store them in self.unassigned_plates['custom'] =\
-                {plateBarcode={Assay=[],...}}
-        Also add an entry for each file into self.uploaded_files
-        Example headers:
-        sampleNum	plateBarcode	well	sampleBarcode	assay	assay	clientName	sampleName 	alleleSymbol
-        Required columns: [plateBarcode, well, sampleBarcode, assay*, clientName] *Duplicates allowed
-        Optional columns: [sampleNo, sampleName, alleleSymbol] and anything else
+        Remove a file record, and the actual file permanently
         """
-        if self.locked:
-            self.log('Error: Cannot add manifest while lock is active')
-            return False
-        #try:
-        transactions = {}
-        if True:
-            self.log(f"Begin: read custom manifest")
-            file_names, file_tables = file_io.read_csv_or_excel_from_stream(manifests)
-            for file_name, file_table in zip(file_names, file_tables):
-                if file_name in self.uploaded_files:
-                    self.log(f'Warning: {file_name} already present in records')
-                #manifest_name = manifest_stream.name
-                #if manifest_name in self.uploaded_files:
-                #    self.log(f'Warning: {manifest_name} already present in records')
-                ##print(f'{manifest_name=}', file=sys.stderr)
-                #if manifest_name.lower().endswith('xlsx'):
-                #    workbook = openpyxl.load_workbook(BytesIO(manifest_stream.getvalue()))
-                #    sheet = workbook.active
-                #    rows = [','.join(map(str,cells)) for cells in sheet.iter_rows(values_only=True)]
-                #    #print(rows, file=sys.stderr)
-                #else:
-                #    rows = StringIO(manifest_stream.getvalue().decode("utf-8"))
-
-                plate_entries = {}  # looks like self.plate_location_sample, but temporary
-                plate_barcode_col = None
-                assay_cols = []
-                for i, line in enumerate(file_table):
-                    cols = [c.strip() if c is not None else '' for c in line.split(',')]  # lower case column names
-                    #print(i, cols, file=sys.stderr)
-                    if i==0:  # process header
-                        cols_lower = [c.lower() for c in cols]
-                        header_dict = {k:c for k,c in enumerate(cols_lower)}
-                        #print(header_dict, file=sys.stderr)
-                        matching_cols = [col_name in cols_lower for col_name in ['platebarcode', 'well', 'samplebarcode', 'assay', 'clientname']]
-                        #print(matching_cols, file=sys.stderr)
-                        if not all(matching_cols):
-                            self.log(f'Error: manifest {file_name} requires at least columns plateBarcode, well, sampleBarcode, assay, clientName')
-                            return False
-                        else:
-                            self.log(f'Info: parsing manifest {file_name}')
-                        for k in header_dict:
-                            if header_dict[k] == 'platebarcode':
-                                plate_barcode_col = k
-                            elif header_dict[k] == 'assay':
-                                assay_cols.append(k)
-                        continue
-                    if len(cols) < 5:  # skip empty rows
-                        continue
-                    gpid = util.guard_pbc(cols[plate_barcode_col], silent=True)
-                    if gpid not in plate_entries:
-                        plate_entries[gpid] = {'purpose':'sample','source':'manifest', 'wells':set()}  # create plate_location_sample entries here
-                    assays = [] 
-                    # do a first pass to set up recording a sample in a well
-                    for k,c in enumerate(cols):
-                        if c.lower() == 'none':
-                            continue
-                        if k in assay_cols:
-                            if c != '':  # ignore empty assay entries
-                                assays.append(c)
-                        if header_dict[k] == 'well':
-                            well = util.unpadwell(c.upper())
-                            if well in plate_entries[gpid]['wells'] and plate_entries[gpid][well] != {}:
-                                self.log(f"Error: duplicate {c} in {gpid}. Skipping row {i+2} {cols=}")
-                                break
-                            plate_entries[gpid]['wells'].add(well)
-                            plate_entries[gpid][well] = {}
-                    # now do a second pass to collect everything together
-                    for k,c in enumerate(cols):
-                        if c.lower() == 'none':
-                            c = ''
-                        if header_dict[k] == 'well':
-                            continue
-                        if header_dict[k] == 'samplebarcode':
-                            #if c.startswith('C'):
-                            #    sid = util.guard_cbc(c, silent=True)
-                            #elif c.startswith('M'):
-                            #    sid = util.guard_rbc(c, silent=True)
-                            #else:
-                            sid = util.guard_cbc(c, silent=True) # fall back to custom?
-                            plate_entries[gpid][well]['barcode'] = sid
-                        elif header_dict[k] == 'platebarcode':
-                            plate_entries[gpid][well]['platebarcode'] = gpid
-                        elif header_dict[k] == 'sampleno':
-                            plate_entries[gpid][well]['sampleNumber'] = str(c)
-                        elif header_dict[k] == 'assay':
-                            continue
-                        else:
-                            try:
-                                plate_entries[gpid][well][header_dict[k]] = str(c)
-                            except:
-                                print(type(header_dict[k]), header_dict[k], str(c), file=sys.stderr)
-                    plate_entries[gpid][well]['assays'] = assays
-                    plate_entries[gpid][well]['assayFamilies'] = list(set([a.split('_')[0] for a in assays]))
-
-                for gpid in plate_entries:
-                    if gpid in self.unassigned_plates or gpid in self.plate_location_sample:
-                        self.log(f'Warning: plate records exist for {util.unguard_pbc(gpid, silent=True)}, potentially overwriting')
-                    self.unassigned_plates['custom'][gpid] = plate_entries[gpid]
-                self.uploaded_files[file_name] = {'plates':plate_entries.keys(), 'purpose':'custom manifest'}
-                transactions[file_name] = {plate_entries.keys():[]}
-        self.add_pending_transactions(transactions)
-        return True
-                    
-
-    def accept_custom_manifests(self, dest_pid, sample_pids):
-        """
-        Move four custom plate records from self.unassigned_plates to self.plate_location_sample and self.dest_sample_plates
-        """
-        if self.locked:
-            self.log('Error: Cannot add manifest while lock is active')
-            return False
-        #try:
-        if True:
-            self.log(f"Begin: accept custom manifest")
-            # Do checks
-            dest_pid = util.guard_pbc(dest_pid, silent=True)
-            sample_pids = [util.guard_pbc(pid, silent=True) for pid in sample_pids if pid != 'None' and pid is not None]
-            for pid in [dest_pid] + sample_pids:
-                if pid in self.dest_sample_plates or pid in self.plate_location_sample:
-                        self.log(f'Warning: Plate barcode {util.unguard_pbc(pid, silent=True)} already in use, overwriting')
-            for pid in sample_pids:
-                if pid not in self.unassigned_plates['custom']:
-                    self.log(f'Critical: {util.unguard_pbc(pid, silent=True)} not found in {self.unassigned_plates=}')
+        if file_name in self.uploaded_files:
+            if Path(file_name).exists():
+                try:
+                    Path(file_name).unlink()
+                except Exception as exc:
+                    self.log(f'Error: could not delete file {file_name} {exc}')
                     return False
-            # do assignment
-            for pid in sample_pids:
-                self.plate_location_sample[pid] = self.unassigned_plates['custom'][pid]
-            self.dest_sample_plates[dest_pid] = sample_pids
-            self.plate_location_sample[dest_pid] = {'purpose':'dna', 'source':','.join(sample_pids), 'wells':set()}
-            self.unassigned_plates['custom'] = {'None':{}}
+            del self.uploaded_files[file_name]
+            self.log(f'Success: removed file record of {file_name}')
+            return True
+        else:
+            self.log(f'Error: {file_name} not present in file records')
+            return False
+
+    ### Plate related operations
+
+    def build_dna_plate_entry(self, sample_plate_ids, dna_plate_id, source=None):
+        """
+        Replaces the rodentity- and custom-specific code for combining 96-well sample plates into
+        384-well DNA plates.
+        """
+        if self.locked:
+            self.log('Error: Cannot add DNA plate set while lock is turned on')
+            return False
+        
+        dna_plate_id = util.guard_pbc(dna_plate_id, silent=True)
+
+        if dna_plate_id in self.plate_location_sample:
+            self.log('Error: plate {dna_plate_id} already exists! Please delete this plate before trying again')
+            return False
+
+        sample_plate_ids = sorted([util.guard_pbc(spid, silent=True) for spid in sample_plate_ids if spid])
+
+        if source == 'rodentity':
+            self.log('Begin: combining Rodentity plate set into 384-well DNA plate {dna_plate_id}')
+            for spid in sample_plate_ids:
+                purpose = self.plate_location_sample[spid]['purpose']
+                source = self.plate_location_sample[spid]['source']
+                if purpose != 'sample' or source != 'rodentity':
+                    self.log(f'Error: cannot combine {spid} with {purpose=} and {source=}')
+                    return False
+        elif source == 'custom':
+            self.log('Begin: combining custom plate set into 384-well DNA plate {dna_plate_id}')
+            for spid in sample_plate_ids:
+                purpose = self.plate_location_sample[spid]['purpose']
+                source = self.plate_location_sample[spid]['source']
+                if purpose != 'sample' or source != 'custom':
+                    self.log(f'Error: cannot combine {spid} with {purpose=} and {source=}')
+                    return False
+        else:
+            self.log('Error: must choose "rodentity" or "custom" as input source')
+            return False
+
+        self.dest_sample_plates[dna_plate_id] = sample_plate_ids
+        self.plate_location_sample[dna_plate_id] = {'purpose':'dna', 'source':','.join(sample_plate_ids), 'wells':set()}
+        if source == 'rodentity':
+            self.unassigned_plates = {1:'', 2:'', 3:'', 4:''}
         return True
 
 
@@ -1097,26 +376,20 @@ class Experiment():
             plate_set_details = [util.unguard_pbc(dna_pid)]
             custom_wells = 0
             rodentity_wells = 0
-            
             for i,sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
                 plate_set_details.append(util.unguard_pbc(sample_pid))
-                for info in (self.plate_location_sample[sample_pid][well] for well in self.plate_location_sample[sample_pid]['wells']):
-                    samp_barcode = info['barcode']     
-                    if util.is_guarded_cbc(samp_barcode):
+                for well in self.plate_location_sample[sample_pid]['wells']:  
+                    if util.is_guarded_cbc(self.plate_location_sample[sample_pid][well]['barcode']):
                         custom_wells += 1
-                        total_well_counts['c'] += 1
-                    #elif util.is_guarded_mbc(samp_barcode):
-                    #    d[' counts']['m'] += 1
-                    #    total_well_counts['m'] += 1  
-                    elif util.is_guarded_rbc(samp_barcode):
+                        total_well_counts['c'] += 1 
+                    elif util.is_guarded_rbc(self.plate_location_sample[sample_pid][well]['barcode']):
                         rodentity_wells += 1
                         total_well_counts['r'] += 1   
                     #for assay in info['assays']:
                     #    d['Primers required'].add(assay)
                     #    total_unique_assays.add(assay)
-                    
-                    #d['Unique samples'].add(info['barcode'])
-                    total_unique_samples.add(info['barcode'])
+                    total_unique_samples.add(self.plate_location_sample[sample_pid][well]['barcode'])
+                #print(f'{dna_pid=} {sample_pid=} {custom_wells=} {rodentity_wells=}')
             for j in range(3-i):
                 plate_set_details.append('')
 
@@ -1154,7 +427,7 @@ class Experiment():
                 continue
             if self.plate_location_sample[pid]['purpose'] not in consumable_plate_purposes:
                 continue
-            plate = self.get_plate(pid)  # get the plate contents with all usage modifications applied
+            plate = transaction.get_plate(self, pid)  # get the plate contents with all usage modifications applied
             if plate['purpose'] == 'taq_water':
                 d['taqwater_pids'].append(pid)
                 for well in util.TAQ_WELLS:
@@ -1195,7 +468,7 @@ class Experiment():
             print('Starting add_nimbus_outputs', file=sys.stderr)
             for nim_output in nim_outputs:
                 #print(f'{nim_output.name=}', file=sys.stderr) 
-                fp = self.get_exp_fp(nim_output.name, transaction=True)
+                fp = self.get_exp_fn(nim_output.name, trans=True)
                 self.log(f"Info: copying {fp} to experiment folder")
                 plate_set = set()
                 with open(fp, 'wt') as outf:
@@ -1214,37 +487,17 @@ class Experiment():
                         plate_set.add(util.guard_pbc(cols[1], silent=True))
                         plate_set.add(util.guard_pbc(cols[4], silent=True))
                 transactions[fp] = {pid:{} for pid in plate_set}
-                final_fp = self.convert_pending_to_final(fp)
+                final_fp = transaction.convert_pending_to_final(self,fp)
                 if final_fp in self.uploaded_files:
                     self.log(f'Warning: {final_fp} already recorded as uploaded, overwriting')
-                self.uploaded_files[final_fp] = {'plates': list(plate_set), 'purpose':'DNA plate'} 
+                self.uploaded_files[final_fp] = {'plates': list(plate_set), 'purpose':'DNA'} 
         except Exception as exc:
             self.log(f'Error: could not upload Hamilton Nimbus output files, {exc}')
             return False
-        self.add_pending_transactions(transactions)
+        transaction.add_pending_transactions(self, transactions)
+        self.save()
         return True
 
-    def add_file_uploads(self, uploads):
-        """
-        Copy uploaded files into the run folder
-        """
-        try:
-            for file_upload in uploads:
-                fp = self.get_input_dp(file_upload.name, transaction=True)
-                self.log(f"Info: copying {fp} to experiment folder")
-                plate_set = set()
-                with open(fp, 'wt') as outf:
-                    file_outstr = file_upload.getvalue().decode("utf-8").replace('\r\n','\n')
-                    #print(file_upload.getvalue().decode("utf-8"))
-                    outf.write(file_outstr)
-
-                #print(f'Adding file {fp}', file=sys.stderr)
-
-        except Exception as exc:
-            self.log(f'Error: could not upload files, {exc}')
-            return False
-    
-        return True
         
     def add_pcr_plates(self, pcr_plate_list=[]):
         """
@@ -1266,6 +519,28 @@ class Experiment():
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'pcr']
 
 
+    def get_primer_names(self, gpids=None):
+        """
+        Return the set of primer names that are available
+        """
+        primers = set()
+        if gpids:
+            primer_pids = [gpid for gpid in gpids if gpid in self.plate_location_sample \
+                    and self.plate_location_sample[gpid]['purpose'] == 'primer']
+        else:
+            primer_pids = [gpid for gpid in self.plate_location_sample if gpid in self.plate_location_sample \
+                    and self.plate_location_sample[gpid]['purpose'] == 'primer']
+
+        for ppid in primer_pids:
+            for well in self.plate_location_sample[ppid]['wells']:
+                if 'primer' in self.plate_location_sample[ppid][well]:
+                    pmr = self.plate_location_sample[ppid][well]['primer']
+                    print(f'{pmr=} {primers=}')
+                    if pmr:
+                        primers.add(pmr)
+        return primers
+
+
     def get_assay_usage(self, dna_plate_list=[], filtered=True, included_guards=util.GUARD_TYPES):
         """ We will want ways to get assay usage from various subsets, but for now do it for everything that 
             has a Nimbus destination plate.
@@ -1275,7 +550,7 @@ class Experiment():
             if dna_plate_list and dest not in dna_plate_list:
                 continue
             for sample_pid in self.dest_sample_plates[dest]:
-                plate = self.get_plate(sample_pid)
+                plate = transaction.get_plate(self, sample_pid)
                 assay_usage.update(util.calc_plate_assay_usage(plate,filtered=filtered, included_guards=included_guards))
         return assay_usage
 
@@ -1326,7 +601,7 @@ class Experiment():
         rev_idx = {}
 
         for idx_pid in index_pids:
-            idx_plate = self.get_plate(idx_pid)
+            idx_plate = transaction.get_plate(self, idx_pid)
 
             #print(f'get_index_remaining_available_volume() {idx_plate=}', file=sys.stderr)
             
@@ -1391,61 +666,6 @@ class Experiment():
         
         return max_idx_pairs-reactions, max_idx_pairs, reaction_vol_capacity
 
-    
-        
-    # def get_index_remaining_available_volume(self, assay_usage=None):
-    #    """
-    #    Returns the barcode pairs remaining, max available barcode pairs, max barcode pairs allowed by volume
-    #    """
-    #    index_pids = []
-    #    for pid in self.plate_location_sample:
-    #        if self.plate_location_sample[pid]['purpose'] == 'index':
-    #            index_pids.append(pid)
-
-    #    #print(f'get_index_remaining_available_volume() {index_pids=}', file=sys.stderr)
-    #    if not index_pids:
-    #        return 0, 0, False
-
-    #    if not assay_usage:
-    #        assay_usage = self.get_assay_usage()
-    #    reactions = sum([v for v in assay_usage.values()])
-        
-    #    fwd_barcode_vols = {}  # name=[vol, vol, ...]
-    #    rev_barcode_vols = {}
-        
-    #    for idx_pid in index_pids:
-    #        idx_plate = self.get_plate(idx_pid)
-    #        #print(f'get_index_remaining_available_volume() {idx_plate=}', file=sys.stderr)
-            
-    #        for well in idx_plate['wells']:
-    #            if 'idt_name' not in idx_plate[well]:
-    #                continue
-    #            name = idx_plate[well]['idt_name']
-    #            if 'volume' not in idx_plate[well]:
-    #                continue
-    #                #print(f"get_index_remaining_available_volume() {idx_plate[well]['volume']=}")
-    #            if 'i7F' in name:
-    #                if name not in fwd_barcode_vols:
-    #                    fwd_barcode_vols[name] = []
-    #                    fwd_barcode_vols[name].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
-    #            elif 'i5R' in name:
-    #                if name not in rev_barcode_vols:
-    #                    rev_barcode_vols[name] = []
-    #                    rev_barcode_vols[name].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
-    #            else:
-    #                self.log('Unexpected index name:' + name, level='Warning')
-    #    max_i7F = len(fwd_barcode_vols)
-    #    max_i5R = len(rev_barcode_vols)
-    #    reaction_vol_capacity = 0
-    #    for name in fwd_barcode_vols:
-    #        # get the number of possible reactions and keep the lower number from possible reactions or possible reaction partners
-    #        max_reactions = sum([floor((vol-util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])/self.transfer_volumes['INDEX_VOL']) \
-    #                for vol in fwd_barcode_vols[name]])
-    #        reaction_vol_capacity += min(max_reactions, max_i5R)
-    #    max_barcode_pairs = max_i7F * max_i5R
-
-    #    return max_barcode_pairs-reactions, max_barcode_pairs, reaction_vol_capacity
-
 
     def get_primers_avail(self, included_pids=None):
         """ 
@@ -1459,7 +679,7 @@ class Experiment():
                 if included_pids:
                     if pid not in included_pids:
                         continue
-                pmr_plate = self.get_plate(pid)
+                pmr_plate = transaction.get_plate(self, pid)
                 for well in pmr_plate['wells']:
                     if 'primer' in pmr_plate[well]:
                         primer_name = pmr_plate[well]['primer']
@@ -1487,7 +707,7 @@ class Experiment():
             pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
 
         for pid in pids:
-            tw_plate = self.get_plate(pid) # get the plate records with adjusted usage
+            tw_plate = transaction.get_plate(self, pid) # get the plate records with adjusted usage
             for well in ['A1','A2','A3']:
                 water_avail += tw_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo6']]
                 if transactions is not None:
@@ -1509,7 +729,7 @@ class Experiment():
 
 
     def generate_nimbus_inputs(self):
-        success = file_io.nimbus_gen(self)
+        success = generate.nimbus_gen(self)
         return success
 
 
@@ -1517,39 +737,9 @@ class Experiment():
         """ Return the lists of nimbus input files, echo input file (nimbus outputs), 
             and barcodes that are only seen in nimbus """
         #print("In get_nimbus_filepaths")
-        nimbus_input_filepaths, echo_input_paths, xbc = file_io.match_nimbus_to_echo_files(self)
+        nimbus_input_filepaths, echo_input_paths, xbc = generate.match_nimbus_to_echo_files(self)
         return nimbus_input_filepaths, echo_input_paths, xbc
 
-
-    def remove_entries(self, selected_rows):
-        """ remove JSON elements in selection from experiment
-            [{"DNA PID":"p12202p"
-            "Sample PID1":"p71561p"
-            "Sample PID2":""
-            "Sample PID3":""
-            "Sample PID4":""
-            "Source":"Musterer"
-            "Well count":83
-            "Unique samples":83
-            "Unique assays":15
-            }]
-            Returns True on success
-        """                                                                                              
-        #print(f"In remove_entries. {selected_rows=}", file=sys.stderr)
-        if type(selected_rows) is dict:
-            selected_rows = [selected_rows]
-        for row in selected_rows:
-            dest_pid = util.guard_pbc(row['DNA PID'], silent=True)
-            if dest_pid not in self.dest_sample_plates:
-                self.log(f"Error: {row['DNA PID']=} doesn't actually exist in the experiment!")
-                continue
-            sample_pids = self.dest_sample_plates[dest_pid]
-            delete_pids = sample_pids + [dest_pid]
-            self.delete_plates(delete_pids)
-            del self.dest_sample_plates[dest_pid]
-            #print(f'remove_entries() {self.dest_sample_plates=}', file=sys.stderr)
-        self.save()
-        return True
 
     def add_references(self, uploaded_references):
         """
@@ -1589,42 +779,24 @@ class Experiment():
             self.log(f'Success: uploaded {len(self.reference_sequences[ref_name])} reference sequences from {ref_name}')
             if ref_name in self.uploaded_files:
                 self.log(f'Warning: {ref_name} already present in records. Overwriting in file list')
-            self.uploaded_files[ref_name] = {'plates':[], 'purpose': 'reference sequences'}
-            fp = self.get_input_dp(ref_name, transaction=True)
+            self.uploaded_files[ref_name] = {'plates':[], 'purpose': 'reference_sequences'}
+            fp = self.get_upload_fp(ref_name, trans=True)
             transactions[fp] = {}
-        self.add_pending_transactions(transactions)
+        transaction.add_pending_transactions(self,transactions)
         self.save()
         if partial_fail:
             return False
         
         return True
-
-    def generate_targets(self):
-        """ create target file based on loaded references """
-        transactions = {}
-        target_fn = self.get_exp_fp('targets.fa', transaction=True)
-        transactions[target_fn] = {} # add plates and modifications to this
-        counter = 0
-        try:
-            with open(target_fn, 'wt') as targetf:
-                for group in self.reference_sequences:
-                    for id in self.reference_sequences[group]:
-                        print(f'>{id}', file=targetf)
-                        print(f'{self.reference_sequences[group][id]}', file=targetf)
-                        counter += 1    
-        except Exception as exc:
-            self.log(f'Critical: could not write reference sequences to {target_fn} {exc}')
-            self.save()
-            return False
-        self.add_pending_transactions(transactions)
-        self.accept_pending_transactions()
-        self.log(f'Success: created reference sequences file {target_fn} containing {counter} sequences')
-        self.save()
-        return True
         
 
     def add_assaylists(self, uploaded_assaylists):
-        """ mapping of assay family to primer family """
+        """ mapping of assay family to primer family 
+        The assaylist file is just two columns: primer and assay, comma separated
+        We represent this internally as a dictionary, which includes: primer, primer family, assay, 
+                assay family, all in regular case and lower case, as well as the filename it came from
+        NOTE: Clashing entries are noted in the log, but are always overwritten!
+        """
         transactions = {}
         if self.locked:
             self.log('Error: cannot add assay list while lock is active.')
@@ -1644,10 +816,10 @@ class Experiment():
                 self.primer_assay[row[1]] = row[0]
             if file_name in self.uploaded_files:
                 self.log(f'Warning {file_name} already present in recorded files, overwriting')
-            self.uploaded_files[file_name] = {'plates':[], 'purpose':'Assay list'}
-            fp = self.get_input_dp(file_name, transaction=True)
+            self.uploaded_files[file_name] = {'plates':[], 'purpose':'primer_assay_map'}
+            fp = self.get_upload_fp(file_name, trans=True)
             transactions[fp] = {}
-        self.add_pending_transactions(transactions)
+        transaction.add_pending_transactions(self,transactions)
         self.log(f"Success: added primer-assay lists: {', '.join([ual.name for ual in uploaded_assaylists])}")
         self.save()
         return True
@@ -1677,8 +849,8 @@ class Experiment():
             # register file and plates with self.uploaded_files
             if upl_name in self.uploaded_files:
                 self.log(f"Warning: file {upl_name} has already been uploaded, overwriting")
-            self.uploaded_files[upl_name] = {'plates': [gPID], 'purpose': "primer layout"}
-            fp = self.get_input_dp(upl_name, transaction=True)
+            self.uploaded_files[upl_name] = {'plates': [gPID], 'purpose': "primer_layout"}
+            fp = self.get_upload_fp(upl_name, trans=True)
             transactions[fp] = {gPID: []}
               
             # load data into plate
@@ -1695,7 +867,7 @@ class Experiment():
                 #print(row[0], row[1])
                 self.plate_location_sample[gPID][well]['primer'] = row[1]
         
-        self.add_pending_transactions(transactions)
+        transaction.add_pending_transactions(self,transactions)
         self.log(f"Success: added primer layouts from {', '.join([upl.name for upl in uploaded_primer_layouts])}")
         self.save()
         return True
@@ -1724,8 +896,8 @@ class Experiment():
             # register file and plates with self.uploaded_files
             if upv_name in self.uploaded_files:
                 self.log(f"Warning: file {upv_name} has already been uploaded, overwriting")
-            self.uploaded_files[upv_name] = {'plates': [gPID], 'purpose': "primer volumes"}
-            fp = self.get_input_dp(upv_name, transaction=True)
+            self.uploaded_files[upv_name] = {'plates': [gPID], 'purpose': "primer_volume"}
+            fp = self.get_upload_fp(upv_name, trans=True)
             transactions[fp] = {gPID: []}
 
             # load data into plate
@@ -1758,7 +930,7 @@ class Experiment():
                         self.plate_location_sample[gPID][well] = {}
                     self.plate_location_sample[gPID][well]['volume'] = float(row[1])*1000
         
-        self.add_pending_transactions(transactions)
+        transaction.add_pending_transactions(self,transactions)
         self.log(f"Success: added primer volumes from {', '.join([upv.name for upv in uploaded_primer_volumes])}")
         self.save()
         return True
@@ -1788,8 +960,8 @@ class Experiment():
             # register file and plates with self.uploaded_files
             if uil_name not in self.uploaded_files:
                 self.log(f'Warning: File name {uil_name} already exists, overwriting')
-            self.uploaded_files[uil_name] = {'plates': [gPID], 'purpose': "index layout"}
-            fp = self.get_input_dp(uil_name, transaction=True)
+            self.uploaded_files[uil_name] = {'plates': [gPID], 'purpose': "index_layout"}
+            fp = self.get_upload_fp(uil_name, trans=True)
             transactions[fp] = {gPID:[]}
                 
             # load data into plate
@@ -1810,7 +982,7 @@ class Experiment():
                     self.plate_location_sample[gPID][well]['bc_name'] = bc_name
                     self.plate_location_sample[gPID][well]['oligo'] = oligo
 
-        self.add_pending_transactions(transactions)
+        transaction.add_pending_transactions(self, transactions)
         self.log(f"Success: added index plate layouts from {', '.join([uil.name for uil in uploaded_index_layouts])}")        
         self.save()
         return True
@@ -1844,8 +1016,8 @@ class Experiment():
             # register file and plate with self.uploaded_files
             if uiv_name not in self.uploaded_files:
                 self.log(f'Warning: File name {uiv_name} already exists, overwriting')
-            self.uploaded_files[uiv_name] = {'plates': [gPID], 'purpose': "index volumes"}
-            fp = self.get_input_dp(uiv_name, transaction=True)
+            self.uploaded_files[uiv_name] = {'plates': [gPID], 'purpose': "index_volume"}
+            fp = self.get_upload_fp(uiv_name, trans=True)
             transactions[fp] = {gPID: []}
         
             plate_format = False
@@ -1892,7 +1064,7 @@ class Experiment():
                             self.plate_location_sample[gPID][well] = {}
                         self.plate_location_sample[gPID][well]['volume'] = int(float[5])*1000
         
-        self.add_pending_transactions(transactions)
+        transaction.add_pending_transactions(self,transactions)
         self.log(f"Success: added index plate volumes from {', '.join([uiv.name for uiv in uploaded_index_volumes])}")
         self.save()
         return True
@@ -1911,7 +1083,7 @@ class Experiment():
             self.log('Error: cannot add amplicon plate layouts while lock is active.')
             return False
 
-        file_names, file_tables = file_io.read_csv_or_excel_from_stream(uploaded_amplicon_manifests)
+        file_names, file_tables = parse.read_csv_or_excel_from_stream(uploaded_amplicon_manifests)
         for file_name, file_table in zip(file_names, file_tables):
             if file_name in self.uploaded_files:
                 self.log(f'Warning: {file_name} already present in records')
@@ -2010,13 +1182,13 @@ class Experiment():
                 del self.plate_location_sample[cp]
             for kp in kept_pids:
                 self.plate_location_sample[kp] = plate_entries[gpid]
-            self.uploaded_files[file_name] = {'plates':kept_pids, 'purpose':'amplicon manifest'}
-            fp = self.get_exp_fp(file_name, transaction=True)
+            self.uploaded_files[file_name] = {'plates':kept_pids, 'purpose':'amplicon'}
+            fp = self.get_exp_fn(file_name, trans=True)
             transactions [fp] = {kept_pids: []}
             self.log(f"Success: added amplicon plate info from {file_name} for plates '+\
                     f'{', '.join([util.unguard_pbc(kp, silent=True) for kp in kept_pids])}")
 
-        self.add_pending_transactions(transactions)
+        transaction.add_pending_transactions(self,transactions)
         self.save()
         return True
 
@@ -2038,7 +1210,7 @@ class Experiment():
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
                 'primer names pooled', 'volume']
         transactions = {}                                       
-        primer_survey_fn = self.get_exp_fp(primer_survey_filename, transaction=True)
+        primer_survey_fn = self.get_exp_fn(primer_survey_filename, trans=True)
         transactions[primer_survey_fn] = {} # add plates and modifications to this
         try:
             with open(primer_survey_fn, 'wt') as fout:
@@ -2060,7 +1232,7 @@ class Experiment():
             self.log(f'Failure: could not write primer survey {exc}')
             self.save()
             return False
-        self.add_pending_transactions(transactions)
+        transaction.add_pending_transactions(self,transactions)
         self.log(f"Success: written Echo primer survey to {primer_survey_fn}")
         return True
 
@@ -2159,7 +1331,7 @@ class Experiment():
         #    self.log('Failure: failed to generate primer survey file')
         #    return False
         # do transaction handling in generate_echo_PCR1_picklist()
-        success = file_io.generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates)
+        success = generate.generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates)
         if not success:
             self.log('Failure: could not generate PCR1 picklists correctly')
             return False
@@ -2170,17 +1342,17 @@ class Experiment():
         """
         Return file paths for PCR1_dna-picklist_XXX.csv, PCR1_primer-picklist_XXX.csv, PCR1_taqwater-picklist_XXX.csv
         """
-        all_files = os.listdir(self.get_exp_dir())
+        all_files = os.listdir(self.get_exp_dn())
         dna_picklist_paths = []
         primer_picklist_paths = []
         taqwater_picklist_paths = []
         for f in all_files:
             if f.startswith('PCR1_dna-picklist_') and f.endswith('.csv'):
-                dna_picklist_paths.append(self.get_exp_fp(f))
+                dna_picklist_paths.append(self.get_exp_fn(f))
             elif f.startswith('PCR1_primer-picklist_') and f.endswith('.csv'):
-                primer_picklist_paths.append(self.get_exp_fp(f))
+                primer_picklist_paths.append(self.get_exp_fn(f))
             elif f.startswith('PCR1_taqwater-picklist_') and f.endswith('.csv'):
-                taqwater_picklist_paths.append(self.get_exp_fp(f))
+                taqwater_picklist_paths.append(self.get_exp_fn(f))
         return dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths
 
 
@@ -2216,7 +1388,7 @@ class Experiment():
             self.log('Failure: failed to generate index survey file')
             return False
         self.log('Success: generated index survey file')
-        success = file_io.generate_echo_PCR2_picklist(self, pcr_plates, index_plates, taq_water_plates, amplicon_plates)
+        success = generate.generate_echo_PCR2_picklist(self, pcr_plates, index_plates, taq_water_plates, amplicon_plates)
         if not success:
             self.log('Failure: could not generate PCR2 (index) picklists correctly')
             return False
@@ -2225,26 +1397,24 @@ class Experiment():
 
     def get_echo_PCR2_picklist_filepaths(self):
         """
-        Return file paths for PCR2_index-picklist_XXX.csv, PCR2_taqwater-picklist_XXX.csv, 
-                (optionally) PCR1_amplicon-picklist_XXX.csv (per amplicon plate?)
+        Return file paths for PCR2_index-picklist_XXX.csv, PCR2_taqwater-picklist_XXX.csv
+        These picklists should include amplicon plate destinations if provided
         """
-        all_files = os.listdir(self.get_exp_dir())
-        index_picklist_paths = []
-        amplicon_picklist_paths = []
+        all_files = os.listdir(self.get_exp_dn())
+        index_picklist_paths = [] 
         taqwater_picklist_paths = []
         for f in all_files:
             if f.startswith('PCR2_index-picklist_') and f.endswith('.csv'):
-                index_picklist_paths.append(self.get_exp_fp(f))
-            elif f.startswith('PCR2_amplicon-picklist_') and f.endswith('.csv'):
-                amplicon_picklist_paths.append(self.get_exp_fp(f))
+                index_picklist_paths.append(self.get_exp_fn(f))
             elif f.startswith('PCR2_taqwater-picklist_') and f.endswith('.csv'):
-                taqwater_picklist_paths.append(self.get_exp_fp(f))
-        return index_picklist_paths, taqwater_picklist_paths, amplicon_picklist_paths
+                taqwater_picklist_paths.append(self.get_exp_fn(f))
+        return index_picklist_paths, taqwater_picklist_paths
 
     def delete_plates(self, pids):
         """
         Soft-delete plates with the selected pids
         """
+        success = True
         for pid in pids:
             if pid in self.plate_location_sample:
                 if pid not in self.deleted_plates:
@@ -2253,9 +1423,14 @@ class Experiment():
                 # need to find this in reproducible steps and delete
                 del self.plate_location_sample[pid]
                 self.log(f'Warning: moved {pid} to deleted plate bin')
+                if pid in self.dest_sample_plates:
+                    del self.dest_sample_plates[pid]
+                    self.log(f'Warning: removed 384-well DNA plate entry {pid}')
             else:
                 self.log(f'Warning: {pid} has no definition loaded')
+                success = False
         self.save()
+        return success
 
     def get_stages(self):
         """ get all information on reproducible steps and pending steps for display purposes """
@@ -2278,7 +1453,7 @@ class Experiment():
         Used by Indexing stage to find all the used PCR plate IDs
         """
         stage2_pcr_plates = set()
-        stage2_fn = self.get_exp_fp('Stage2.csv')
+        stage2_fn = self.get_exp_fn('Stage2.csv')
         if not os.path.exists(stage2_fn):
             return stage2_pcr_plates
 
@@ -2336,7 +1511,7 @@ class Experiment():
         index_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'index' and p in user_index_pids]
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'Source well', 
                 'Name for IDT ordering', 'index', 'Name', 'Oligo * -phosphothioate modif. against exonuclease', 'volume']
-        fn = self.get_exp_fp(index_survey_filename)
+        fn = self.get_exp_fn(index_survey_filename)
         if os.path.exists(fn):
             self.log(f'Warning: overwriting index survey file {fn}')
         with open(fn, 'wt') as fout:
@@ -2406,7 +1581,7 @@ class Experiment():
 
     def get_miseq_samplesheets(self):
         """ return the MiSeq-XXX.csv samplesheet, if it exists """
-        miseq_fps = list(Path(self.get_exp_dir()).glob('MiSeq_*.csv'))
+        miseq_fps = list(Path(self.get_exp_dn()).glob('MiSeq_*.csv'))
         return miseq_fps  
 
 
@@ -2417,8 +1592,8 @@ class Experiment():
         """
         success = True
         # check for MiSeq.csv and Stage3 files
-        fn1 = self.get_exp_fp(f'MiSeq_{self.name}.csv')
-        fn2 = self.get_exp_fp(f'Stage3.csv')
+        fn1 = self.get_exp_fn(f'MiSeq_{self.name}.csv')
+        fn2 = self.get_exp_fn(f'Stage3.csv')
         fns = [fn1, fn2]
         for fn in fns:
             if not Path(fn).exists():
@@ -2451,7 +1626,7 @@ class Experiment():
         success = self.check_sequence_upload_ready(messages)
 
         # check whether the raw directory for FASTQs exists yet - implies at least one FASTQ has been uploaded        
-        dn = self.get_exp_fp(f'raw')
+        dn = self.get_exp_fn(f'raw')
         if not Path(dn).exists() or not Path(dn).is_dir():
             success = False
             msg = f"Error: {dn} does not exist"
@@ -2585,13 +1760,6 @@ class Experiment():
                     clean_log.append(entry)
         self.log_entries = clean_log
         self.save()
-
-#def save_experiment(experiment, exp_path):
-#    """ save experiment details to experiment.json """
-#    exp_file_path = os.path.join(exp_path, EXP_FN)
-#    exp = jsonpickle.encode(experiment, indent=4)
-#    with open(exp_file_path, 'wt') as f:
-#        print(exp, f)
 
 
 def load_experiment(exp_path):

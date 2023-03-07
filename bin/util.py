@@ -75,7 +75,7 @@ DEAD_VOLS = {'384PP_AQ_BP': 2.5*1000, '6RES_AQ_BP2': 250*1000, 'Hard Shell 384 w
 CAP_VOLS = {'384PP_AQ_BP': 12*1000, '6RES_AQ_BP2': 2800*1000, 'Hard Shell 384 well PCR Biorad': 12*1000}
 # convenient name to exact plate model mapping
 PLATE_TYPES = {'Echo6': '6RES_AQ_BP2', 'Echo384': '384PP_AQ_BP',
-               'PCR384': 'Hard Shell 384 well PCR Biorad'}
+               'PCR384': 'Hard Shell 384 well PCR Biorad','96':'96'}
 WATER_WELLS = ['A'+c for c in '123']
 TAQ_WELLS = ['B'+c for c in '123']
 # global - set of all possible guard types
@@ -406,6 +406,7 @@ def unguard_pbc(pbc, silent=False):
         msg = f"Plate barcode is not a string! {pbc} is type {type(pbc)}"
         raise AttributeError(msg)
     if not pbc.startswith('p') and not pbc.endswith('p') and silent:  # just return unguarded barcodes as themselves
+        #print(f'{pbc=}', file=sys.stderr)
         return pbc
     if not pbc.startswith('p') or not pbc.endswith('p'):
         msg = f"Plate barcode guards degraded or missing in: {pbc}"
@@ -502,11 +503,45 @@ def unpadwell(w):
     "Echo software doesn't like well IDs like A01, it wants A1"
     if len(w) == 2:
         return w
+    #print(f'{w=}')
     try:
         well = w[0]+w[2] if w[1]=='0' else w
     except:
         print(f"unpadwell failed with {w=}")
     return well 
+
+# Assays/Primers
+
+def match_assays_to_primers(exp, assays):
+    """
+    Multiple primers may be needed per assay, and we need to check for manual overrides
+    from exp.primer_assay too.
+    """
+    assay_primers = {}  # each assay will result in a set of primers
+    loaded_primers = exp.get_primer_names()
+    mapped_primers = exp.primer_assay
+    for assay in assays:
+        assay_primers[assay] = set()
+        for p in mapped_primers:  # first try the manual overrides
+            if exp.primer_assay[p] == assay:
+                assay_primers[assay].add(p)
+                break
+            elif '_' in p:  # multiple primers per assay
+                pfam = p.split('_')[0]
+                if pfam == assay:  # we found the family
+                    assay_primers[assay].add(p)
+        for p in loaded_primers:  # compare to all the primers in plates
+            if p == assay:
+                if len(assay_primers[assay]) > 0:
+                    break # already found
+                assay_primers[assay].add(p)
+                break  # got it in one!
+            elif '_' in p:  # multiple primers per assay
+                pfam = p.split('_')[0]
+                if pfam == assay:  # we found the family
+                    assay_primers[assay].add(p)
+    return assay_primers
+
 
 ### Table classes to act like a relational DB
 
@@ -591,7 +626,7 @@ class Table:
                     data.append([str(d) if 'plate barcode' not in h.lower() else guard_pbc(str(d), silent=True) for (h,d) in zip(self.header, row)])
                 else:  # unguard plate barcodes
                     data.append([str(d) if 'plate barcode' not in h.lower() else unguard_pbc(str(d), silent=True) for (h,d) in zip(self.header, row)])
-            wx.writerow(self.header)
+            wx.writerow(self.header)  
             wx.writerows(data)
         return
     

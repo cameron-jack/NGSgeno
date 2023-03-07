@@ -23,7 +23,19 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from bin.experiment import Experiment, EXP_FN, load_experiment
-import bin.util as util
+try:
+    import bin.util as util
+except ModuleNotFoundError:
+    import util
+try:
+    import bin.transaction as trans
+except ModuleNotFoundError:
+    import transaction as trans
+
+try:
+    import bin.generate as generate
+except ModuleNotFoundError:
+    import generate
 #import bin.file_io as file_io
 #import bin.db_io as db_io
 
@@ -33,7 +45,8 @@ import load_data as ld
 import asyncio
 from time import sleep
 
-def getstatusoutput(cmd):
+def get_status_output(cmd):
+    """ calls a process and returns the run status and any output """
     try:
         data = check_output(cmd, shell=True, universal_newlines=True, stderr=STDOUT)
         status = 0
@@ -69,6 +82,9 @@ def create_run_folder(newpath):
 
 
 def plate_checklist_expander(available_nimbus, pcr_stage=1):
+    """
+    Allows the selection/deselection all plates involved in a reaction stage
+    """
     exp = st.session_state['experiment']
     included_PCR_plates = set()
     included_taqwater_plates = set()
@@ -143,6 +159,9 @@ def plate_checklist_expander(available_nimbus, pcr_stage=1):
  
     
 async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog):
+    """
+    Allows the interface to keep running while a background process (ngsmatch.py) progress is tracked
+    """
     while True:
         progress_files = list(Path(rundir).glob('match_progress_*'))
         if len(progress_files) == 0:
@@ -172,16 +191,16 @@ def run_generate(exp, target_func, *args, **kwargs):
     """
     Run target_func() and ask user to respond to any file/pipeline clashes in the given context, if provided
     """
-    exp.clear_pending_transactions()
-    exp.enforce_file_consistency()
+    trans.clear_pending_transactions(exp)
+    trans.enforce_file_consistency(exp)
     #print(f"launching {target_func=}", file=sys.stderr)
     success = target_func(*args, **kwargs)
     #print(f"completed {target_func=} {success=}", file=sys.stderr)
     if not success:
-        exp.clear_pending_transactions()
+        trans.clear_pending_transactions(exp)
     else:
         if exp.pending_steps is not None and len(exp.pending_steps) > 0:
-            clashes = exp.clashing_pending_transactions()
+            clashes = trans.clashing_pending_transactions(exp)
             if len(clashes) > 0:
                 #if context:
                 #    context.warning(f'The following output files already exist {clashes}')
@@ -193,13 +212,17 @@ def run_generate(exp, target_func, *args, **kwargs):
                 #else:
                     st.warning(f'The following output files already exist {clashes}')
                     st.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages')
-                    st.button('Accept', on_click=exp.accept_pending_transactions, key='accept_overwrite_button')
-                    st.button('Cancel', on_click=exp.clear_pending_transactions, key='cancel_overwrite_button')
+                    st.button('Accept', on_click=trans.accept_pending_transactions, args=[exp], key='accept_overwrite_button')
+                    st.button('Cancel', on_click=trans.clear_pending_transactions, args=[exp], key='cancel_overwrite_button')
             else:
-                exp.accept_pending_transactions()
+                trans.accept_pending_transactions(exp)
     return success
 
+
 def show_info_viewer_checkbox():
+    """
+    Allows the user to turn the info viewer panel on and off
+    """
     if 'show_info_viewer' not in st.session_state:
         st.session_state['show_info_viewer'] = False
     
@@ -208,7 +231,12 @@ def show_info_viewer_checkbox():
     else:
         st.session_state['show_info_viewer'] = False
 
+
 def main():
+    """
+    The NGSgeno "Xplorer" application. Allows full control of all sections of the pipeline,
+    and displays all aspects of the experiment state at any time.
+    """
     st.set_page_config(
         page_title="NGS Genotyping",
         page_icon="ngsg_icon.png",
@@ -240,7 +268,7 @@ def main():
     else:
              experiment_title += ('None')
 
-    current_status, current_ver = getstatusoutput("git describe")
+    current_status, current_ver = get_status_output("git describe")
     ver_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', unsafe_allow_html=True)
 
     logo_col.image('ngsg_explorer.png', caption=f'{experiment_title}')
@@ -275,51 +303,6 @@ def main():
                 error_msg = "Folder name already exists"
             else:
                 error_msg = "Fatal path error: " + msg
-        
-
-
-
-    #_, title_column,logo_col, current_folder_col, new_folder_col, ex_folder_col, _ = st.columns([2,4,3,4,4,4,2])
-    #with title_column:
-    #    st.markdown('<h2 align="center">NGS Genotyping</h2>', unsafe_allow_html=True)
-    #logo_col.image('ngsg_explorer.png')
-    #new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
-        #        unsafe_allow_html=True)
-    #with current_folder_col:
-    #    st.markdown('Current experiment folder')
-    #    if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
-    #        st.markdown('###### '+st.session_state['experiment'].name)
-    #    else:
-    #        st.markdown('###### None')
-
-    #add_run_folder = new_folder_col.text_input('Create new run folder')
-    ##create_run_folder_button = ftab1.button(label='Create', key='create_run_folder_button')
-
-    #try:
-    #    existing_run_folders = get_run_folders()
-    #except Exception as exc:
-    #    print(f'Cannot locate NGSgeno folder {exc}', file=sys.stderr)
-    #    return
-
-    #run_folder = ex_folder_col.selectbox("Select a run folder to open", existing_run_folders)
-    #error_msg=''
-
-    ##error message comes up now after entering a new folder name - need to fix
-    #if add_run_folder:
-    #    add_run_folder_str = 'run_' + add_run_folder
-    #    exp, msg = create_run_folder(add_run_folder_str)
-    #    if exp:
-    #        exp.save()                                                                      
-    #        st.session_state['experiment'] = exp
-    #        st.experimental_rerun()
-    #    else:
-    #        if 'already exists' in msg:
-    #            error_msg = "Folder name already exists"
-    #        else:
-    #            error_msg = "Fatal path error: " + msg
-        
-    #    new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
-    #            unsafe_allow_html=True)
 
     if 'stage' not in st.session_state:
         st.session_state['stage'] = None
@@ -367,9 +350,13 @@ def main():
         if 'info_expand' not in st.session_state:
             st.session_state['info_expand'] = False
         
+        subsection = st.container()
+        message_area = st.container()
+        st.session_state['message_area'] = message_area
+
         #Load data
         if pipeline_stage == 0:
-            tab_col1, tab_col2 = st.columns([9,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
             with tab_col1:
                 load_data_tab = stx.tab_bar(data=[
                     stx.TabBarItemData(id=1, title="Load Samples", description=""),
@@ -384,27 +371,23 @@ def main():
 
             info_holder = st.container()
             
+            
             # load sample data
             if load_data_tab == 1:
-                summary = exp.summarise_inputs()
-                expanded=False
-                if len(summary) > 1:
-                    expanded = True
-                with st.expander(label='Summary of loaded data', expanded=expanded):
-                    summary_holder = st.empty()
+                summary_holder = st.container()
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     if 'run queue' not in st.session_state:
                         st.session_state['run queue'] = []
                     ld.load_rodentity_data('rodentity_load1')
-                    #ld.load_database_data()
-                    #ld.load_custom_csv()
-                    #ld.upload_rodentity_demo()
                     ld.load_custom_manifests('custom_load1')
                 st.session_state['load_tab'] = 1
                 with summary_holder:
-                    dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples', height=180)
+                    summary = exp.summarise_inputs()
+                    if len(summary) > 1:
+                        dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples', 
+                                height=180, widget=summary_holder)
 
             #load consumables, references and assays/primer mappings
             if load_data_tab == 2:
@@ -445,6 +428,7 @@ def main():
                     #stx.TabBarItemData(id=3, title="View Data", description="")
                 ], return_type=int)
             info_holder = st.container()
+            
             
             if not nimbus_tab:
                 if 'nimbus_tab' not in st.session_state:
@@ -600,6 +584,7 @@ def main():
                 ], return_type=int)
             info_holder = st.container()
             
+            
             if not primer_tab:
                 if 'primer_tab' not in st.session_state:
                     st.session_state['primer_tab'] = 1
@@ -612,9 +597,11 @@ def main():
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
-                    primer_checklist_exp = st.expander('Plate Checklist', expanded=True)
+                    st.write('Plate checklist')
+                    primer_checklist = st.container()
+                    st.write('***')
                     if efs:
-                        with primer_checklist_exp:
+                        with primer_checklist:
                             included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
                                         plate_checklist_expander(efs, pcr_stage=1)
                     
@@ -628,28 +615,19 @@ def main():
                                 unsafe_allow_html=True)
 
                     ld.provide_barcodes('barcodes_tab1')
-                    if 'upload option' not in st.session_state:
-                        st.session_state['upload option'] = None
                     ld.upload_pcr1_files('pcr1_primer1')
 
                 st.session_state['primer_tab'] = 1
                 
-            #provide plates
-            #if primer_tab == 2:
-            #    primer_checklist_exp = st.expander('Plate Checklist', expanded=False)
-            #    if efs:
-            #        ld.upload_pcr1_files('tab2')
-            #        with primer_checklist_exp:
-            #            included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-            #                    plate_checklist_expander(efs, pcr_stage=1)
-            #    st.session_state['primer_tab'] = 2
 
             #generate picklists
             if primer_tab == 2:
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
-                    primer_checklist_exp = st.expander('Plate Checklist', expanded=True)
+                    st.write('Plate checklist')
+                    primer_checklist_exp = st.container()
+                    st.write('***')
                     if not efs:
                         st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
                     else:
@@ -664,18 +642,7 @@ def main():
                                 for msg in pcr1_messages:
                                     st.warning(msg)
                             else:
-                                #print(f'{included_DNA_plates=} {included_PCR_plates=} {included_taqwater_plates=}', file=sys.stderr)
-                           
                                 _,picklist_button_col,_ = st.columns([2, 2, 1])
-
-                                #primer_survey_go = picklist_button_col.button('Generate Primer Survey File',
-                                #        key='primer_survey_go_button')
-                                #success = False
-                                #if primer_survey_go:
-                                #    success = run_generate(exp, exp.generate_echo_primer_survey)
-                                #    if not success:
-                                #        st.write('Primer survey file generation failed. Please see the log')
-                                #if success:
                                 picklist_button_col.write('')
                                 echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',
                                         key='echo_pcr1_go_button')
@@ -685,8 +652,7 @@ def main():
                                     if not success:
                                         st.write('Picklist generation failed. Please see the log')
                         
-                dc.show_echo1_outputs()
-                
+                dc.show_echo1_outputs() 
                 st.session_state['primer_tab'] = 2
             
             with tab_col2:
@@ -709,6 +675,7 @@ def main():
                 ], return_type=int)
             info_holder = st.container()
             
+            
             if not index_tab:
                 if 'index_tab' not in st.session_state:
                     st.session_state['index_tab'] = 1
@@ -722,16 +689,16 @@ def main():
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
-                    index_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                    st.write('Plate checklist')
+                    index_checklist = st.container()
+                    st.write('***')
                     title_holder = st.empty()
                     pcr_comp_holder = st.empty()
                     ld.provide_barcodes('index_barcodes')
-                    if 'upload option' not in st.session_state:
-                        st.session_state['upload option'] = None
                     ld.upload_pcr2_files('pcr2_index1')
                     st.session_state['index_tab'] = 1
                     if available_nimbus:
-                        with index_checklist_exp:
+                        with index_checklist:
                             included_PCR_plates, included_taqwater_plates, included_index_plates,\
                                         included_amplicon_plates =\
                                         plate_checklist_expander(available_nimbus, pcr_stage=2)
@@ -750,11 +717,13 @@ def main():
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
-                    index_checklist_exp = st.expander('Plate Checklist', expanded=False)
+                    st.write('Plate checklist')
+                    index_checklist = st.container()
+                    st.write('***')
                     if not available_nimbus:
                         st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
                     else:
-                        with index_checklist_exp:
+                        with index_checklist:
                             included_PCR_plates, included_taqwater_plates, included_index_plates,\
                                         included_amplicon_plates =\
                                         plate_checklist_expander(available_nimbus, pcr_stage=2)
@@ -800,6 +769,7 @@ def main():
                     stx.TabBarItemData(id=2, title="Upload", description="Miseq Sequence Files"),
                 ], default=1, return_type=int)
             info_holder = st.container()
+            
    
             if not miseq_tab:
                 if 'miseq_tab' not in st.session_state:
@@ -855,19 +825,15 @@ def main():
                 ], key='allele_tab_bar' , return_type=int)
             info_holder = st.container()
             
+            
             if not allele_tab:
                 if 'allele_tab' not in st.session_state:
                     st.session_state['allele_tab'] = 1
                 allele_tab = st.session_state['allele_tab']
 
-            #if allele_tab == 1:
-            #    st.write('')
-            #    ld.upload_miseq_fastqs(exp)
-            #    st.session_state['allele_tab'] = 1
-
             # Only offer upload in the Miseq pipeline section
             if allele_tab == 1:
-                rundir = exp.get_exp_dir()
+                rundir = exp.get_exp_dn()
                 seq_ready_messages = []
                 call_ready_messages = []
                 ld.upload_reference_sequences('reference_allele1')
@@ -884,9 +850,9 @@ def main():
                 else:
                     ld.upload_miseq_fastqs()
                     # check whether output files already exist and are opened elsewhere
-                    target_fn = exp.get_exp_fp('target.fa')
-                    results_fn = exp.get_exp_fp('results.csv')
-                    matchlog_fn = exp.get_exp_fp('match.log')
+                    target_fn = exp.get_exp_fn('target.fa')
+                    results_fn = exp.get_exp_fn('results.csv')
+                    matchlog_fn = exp.get_exp_fn('match.log')
                     for fn in [target_fn, results_fn, matchlog_fn]:
                         if Path(fn).exists():
                             try:
@@ -910,10 +876,10 @@ def main():
                 
                         do_matching = st.form_submit_button("Run allele calling")
 
-                    if Path(exp.get_exp_fp('ngsgeno_lock')).exists():
+                    if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
                         st.info('Analysis in progress')
                     if do_matching:
-                        success = exp.generate_targets()
+                        success = generate.generate_targets(exp)
                         if not success:
                             msg = 'Critical: failed to save reference sequences to target file'
                             exp.log(msg)
@@ -930,7 +896,7 @@ def main():
                             st.write(f'Calling {cmd_str}')
                             sleep(1.0)
 
-                if Path(exp.get_exp_fp('ngsgeno_lock')).exists():
+                if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
                     launch_msg = st.empty()
                     launch_prog = st.progress(0)
                     completion_msg = st.empty()
@@ -952,9 +918,10 @@ def main():
         # Reports
         if pipeline_stage == 6:
             exp = st.session_state['experiment']
-            results_fp = exp.get_exp_fp('results.csv')
+            results_fp = exp.get_exp_fn('results.csv')
             tab_col1, tab_col2 = st.columns([9, 1])
             info_holder = st.container()
+            
             
             if not Path(results_fp).exists():
                 st.markdown('**No allele calling results available**')
@@ -1006,7 +973,6 @@ def main():
                     dc.info_viewer(1)
 
         st.session_state['pipeline_stage'] = pipeline_stage
-        #st.session_state['folder'] = None
 
 if __name__ == '__main__':
     main()
