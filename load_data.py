@@ -152,11 +152,20 @@ def pending_file_widget(key):
     # clear missing files, and make checkboxes for all pending files
     st.session_state['clashing_filenames'] = {}
     st.session_state['clashing_pids'] = {}
+    for pending_upload in pending_uploads:
+        if not Path(pending_upload).exists():
+            exp.pending_uploads.remove(pending_upload)
+            continue
+    for pending_step in pending_steps:
+        if not Path(pending_step).exists():
+            del exp.pending_steps[pending_step]
+            continue
+    pending_uploads = exp.pending_uploads.copy()
+    pending_steps = exp.pending_steps.copy()
+    if not pending_uploads and not pending_steps:
+        return
     with warning_area.form('warning_area_'+key, clear_on_submit=True):
         for pending_upload in pending_uploads:
-            if not Path(pending_upload).exists():
-                exp.pending_uploads.remove(pending_upload)
-                continue
             combined_pending.append(pending_upload)
             #affected_pids = trans.get_affected_pid_chain(pending_upload)
             #affected_fns = trans.get_affect_fn_chain(pending_upload)
@@ -165,11 +174,8 @@ def pending_file_widget(key):
                     ' - ' + ','.join([util.unguard_pbc(pid, silent=True) for pid in clashing_pids]),
                           key=f'pending_file_checkbox_{pending_upload}')    
         for pending_step in pending_steps:
-            if not Path(pending_step).exists():
-                del exp.pending_steps[pending_step]
-                continue
             combined_pending.append(pending_step)
-            st.checkbox(pending_upload, key=f'pending_file_checkbox_{pending_step}')
+            st.checkbox(pending_step, key=f'pending_file_checkbox_{pending_step}')
         st.form_submit_button('Submit', on_click=do_pending, args=[combined_pending])
     
 

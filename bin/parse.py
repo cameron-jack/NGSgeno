@@ -259,7 +259,7 @@ def parse_rodentity_json(exp, fp, overwrite=False):
     """
     exp.log(f'Begin: parsing {fp}')
     well_records = {}  # [gpid][pos]
-    with open(fp, 'rt') as src:
+    with open(fp, 'rt', errors='ignore') as src:
         info = json.load(src)  
 
     for record in info['wells']:
@@ -342,7 +342,7 @@ def parse_custom_manifest(exp, fp, overwrite=False):
             sheet = workbook.active
             file_table = [','.join(map(str,cells)) for cells in sheet.iter_rows(values_only=True)]
     else:
-        with open(fp, 'rt') as src:
+        with open(fp, 'rt', errors='ignore') as src:
             file_table = [line.strip() for line in src]
 
     well_records = {}  # [plate] = {well:{record}}
@@ -451,7 +451,7 @@ def parse_amplicon_manifest(exp, fp, overwrite=False):
             sheet = workbook.active
             file_table = [','.join(map(str,cells)) for cells in sheet.iter_rows(values_only=True)]
     else:
-        with open(fp, 'rt') as src:
+        with open(fp, 'rt', errors='ignore') as src:
             file_table = [line.strip() for line in src]
 
     well_records = {}     
@@ -548,7 +548,7 @@ def parse_primer_layout(exp, fp, user_gpid=None):
 
     # parse the file first to make sure it works
     well_records = {gPID:{}}
-    with open(fp, 'rt') as data:
+    with open(fp, 'rt', errors='ignore') as data:
         for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
             if i == 0:
                 continue  # header
@@ -599,7 +599,7 @@ def parse_primer_volume(exp, fp, user_gpid=None):
 
     # parse the file first to make sure it works
     well_records = {gPID:{}}
-    with open(fp, 'rt') as data:
+    with open(fp, 'rt', errors='ignore') as data:
         for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
             if i == 0:
                 if row[0].lower().startswith('date'):
@@ -667,7 +667,7 @@ def parse_index_layout(exp, fp, user_gpid=None):
     
     # parse the file first to make sure it works
     well_records = {gPID:{}}
-    with open(fp, 'rt') as data:
+    with open(fp, 'rt', errors='ignore') as data:
         for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
             if i == 0 or row == '':
                 continue  # header or blank
@@ -734,7 +734,7 @@ def parse_index_volume(exp, fp, user_gpid=None):
 
     plate_format = False
     hdr_seen = False
-    with open(fp, 'rt') as data:
+    with open(fp, 'rt', errors='ignore') as data:
         for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
             if i == 0:
                 if row[0].lower().startswith('date'):
@@ -804,7 +804,7 @@ def parse_primer_assay_map(exp, fp):
     NOTE: Clashing entries are noted in the log, but are always overwritten!
     """
     entries = {}  # read the whole file before adding entries
-    with open(fp, 'rt') as data:
+    with open(fp, 'rt', errors='ignore') as data:
         for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
             if i == 0:
                 continue  # header
@@ -832,7 +832,7 @@ def parse_reference_sequences(exp, fp):
     """
     exp.log(f'Begin: parsing reference sequences {fp}')
     ref_seq = {}
-    with open(fp, 'rt') as data:
+    with open(fp, 'rt', errors='ignore') as data:
         for ref_seq_pair in SimpleFastaParser(data):
             ref_seq[ref_seq_pair[0]] = ref_seq_pair[1]
 
@@ -851,7 +851,7 @@ def parse_reference_sequences(exp, fp):
 def myopen(fn):
     """ Bob's function to handle gzip transparently """
     if fn.endswith('.gz') :
-        return gzip.open(fn, "rt")
+        return gzip.open(fn, "rt", errors='ignore')
     return open(fn, errors="ignore")
 
 
@@ -863,7 +863,7 @@ def read_html_template(html_fn):
     Files should use the .tpl (template) extension as they are not strictly html
     """
     tfn = os.path.join('..', 'library', html_fn)
-    with open(tfn) as src:
+    with open(tfn, errors='ignore') as src:
         htmlcode = src.read()
     # template uses {!field!} instead of python format fields - easier to edit.
     htmlfmt = htmlcode.replace('{', '{{').replace('}', '}}').replace('{{!', '{').replace('!}}', '}')

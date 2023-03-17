@@ -767,7 +767,7 @@ def main():
                 miseq_tab = stx.tab_bar(data=[
                     stx.TabBarItemData(id=1, title="Download", description="Miseq Samplesheet"),
                     stx.TabBarItemData(id=2, title="Upload", description="Miseq Sequence Files"),
-                ], default=1, return_type=int)
+                ], return_type=int)
             info_holder = st.container()
             
    
@@ -911,6 +911,7 @@ def main():
             with tab_col2:
                 st.write('')
                 show_info_viewer_checkbox()
+                
             with info_holder:
                 if st.session_state['show_info_viewer']:
                     dc.info_viewer(1)

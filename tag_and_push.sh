@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 
-VER="v0.21.009"
+VER="v0.21.010"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* CHANGED: Massive GUI changes and improvements
-* NEW: simplified pending uploads
-* NEW: runs all the way through
-* NEW: graphically stable under testing
+* FIXED: Not deleting obsolete pending_steps
+* FIXED: Displaying obsolete pending files
+* CHANGED: All parsing of text files ignores non-ASCII characters
 EOM
 
 mv changelog.txt changelog_old.txt

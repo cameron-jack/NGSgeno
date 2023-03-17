@@ -1,3 +1,9 @@
+v0.21.010
+Date: Thu Mar 23 02:43:12 AEDT 2023
+* FIXED: Not deleting obsolete pending_steps
+* FIXED: Displaying obsolete pending files
+* CHANGED: All parsing of text files ignores non-ASCII characters
+
 v0.21.009
 Date: Fri Mar 17 15:26:01 AEDT 2023
 * CHANGED: Massive GUI changes and improvements
