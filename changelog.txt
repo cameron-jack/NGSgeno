@@ -1,3 +1,7 @@
+v0.21.011
+Date: Fri Apr 14 06:32:51 AEST 2023
+* FIXED: added missing clientName and sampleName columns to Stage and result files
+
 v0.21.010
 Date: Thu Mar 23 02:43:12 AEDT 2023
 * FIXED: Not deleting obsolete pending_steps

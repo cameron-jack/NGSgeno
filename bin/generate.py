@@ -102,10 +102,8 @@ def nimbus_gen(exp):
                 nimbus_hdr = ['Sample no', 'Plate barcode', 'Well', 'Sample barcode']
                 nimbus_f.writerow(nimbus_hdr)
                 stage1_f = csv.writer(stage1_fd, dialect='unix')
-                #stage1_hdr = tuple(['sampleNumber', 'samplePlate','sampleWell', 'sampleBarcode', 'assays', 'assayFamilies', 
-                #        'strain', 'sex'])
                 stage1_hdr = tuple(['samplePlate','sampleWell','sampleBarcode','strain','sex','alleleSymbol','alleleKey',
-                        'assayKey','assays','assayFamilies'])
+                        'assayKey','assays','assayFamilies','clientName','sampleName'])
                 stage1_f.writerow(stage1_hdr)
                 for pbc in sorted(exp.dest_sample_plates[dna_BC]):
                     shx = exp.plate_location_sample.get(pbc,None)
@@ -169,6 +167,16 @@ def nimbus_gen(exp):
                             stage1_row_data['assayFamilies'] = ';'.join(shx[pos]['assayFamilies'])
                             if len(stage1_row_data['assays']) == 0:
                                 continue
+                            # clientName
+                            cn = shx[pos].get('clientname','')
+                            if cn != '':
+                                cn = cn.replace(' ','_').replace('"','').replace("'",'').replace(';','').replace('`','')
+                            stage1_row_data['clientName'] = cn
+                            # sampleName
+                            sn = shx[pos].get('samplename','')
+                            if sn != '':
+                                sn = sn.replace(' ','_').replace('"','').replace("'",'').replace(';','').replace('`','')
+                            stage1_row_data['sampleName'] = sn
                             
                             stage1_f.writerow([stage1_row_data[field] for field in stage1_hdr])  # assays are written here
                             wells_used += 1
@@ -501,9 +509,13 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         # Add record for PCR wells into Stage2 files
         wgenflds =  dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)
         # Is this the plating of DNA samples for each assay? Yes. It is.
-        wgen = [xs+dnadict[(xs.samplePlate, xs.sampleWell)]+(x,) for xss in dnas for xs in xss.data \
-                for f in xs.assayFamilies.split(';') if f in pfdict for x in pfdict[f]]
-        
+        try:
+            wgen = [xs+dnadict[(xs.samplePlate, xs.sampleWell)]+(x,) for xss in dnas for xs in xss.data \
+                    for f in xs.assayFamilies.split(';') if f in pfdict for x in pfdict[f]]
+        except KeyError:
+            msg = 'Failure: Did the Echo input file match the expected sample plate layout?'
+            exp.log(msg)
+            return False
         # allocate PCR plate wells
         wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"]
         pcrwellgen = ((p, w) for p in pcr_bcs for w in wells)
@@ -526,10 +538,27 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                     assay_num = j
                     break
             if assay_num is None:
-                matching_assay = exp.get_assay_from_primer(rd[primer_col])
-                exp.log(f'Critical: Could not identify assay from primer. Primer-Assay mapping file required for {primer_fam=} {assay_fams=}')
-                reduced_record_data.append(rd)
-                continue
+                assay_primers = util.match_assays_to_primers(exp, rd[assay_families_col])
+                chosen_assay = None
+                for a in assay_primers:
+                    for p in assay_primers[a]:
+                        if primer_fam.lower() in p.lower():
+                            chosen_assay = a
+                            break
+                    if chosen_assay:
+                        break
+                if not chosen_assay:
+                    exp.log(f'Critical: Could not identify assay from primer. Primer-Assay mapping file required for {primer_fam=} {assay_fams=}')
+                    reduced_record_data.append(rd)
+                    continue
+
+                for j, af in enumerate(assay_fams):
+                    if af.lower() == chosen_assay.lower():
+                        assay_num = j
+                if assay_num is None:
+                    exp.log(f'Critical: Could not identify assay from primer. Primer-Assay mapping file required for {primer_fam=} {assay_fams=}')
+                    reduced_record_data.append(rd)
+                    continue
             for j, field in enumerate(rd):
                 if ';' not in field:
                     new_rd.append(field)
@@ -782,20 +811,22 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         for amp_pid in amplicon_bcs:
             for well_str in exp.plate_location_sample[amp_pid]['wells']:
                 amp_well = exp.plate_location_sample[amp_pid][well_str]
-                amp_row = [# amp_well['sampleNumber'],    # sampleNumber - no longer used
+                amp_row = [# amp_well['sampleNumber'],      # sampleNumber - no longer used
                         amp_pid,                        # samplePlate
                         well_str,                       # sampleWell
                         amp_well['barcode'],            # sampleBarcode
                         '',                             # strain
                         '',                             # sex
-                        amp_well['amplicons'][0],       # assays
-                        '',                             # ?
-                        '',                             # ?
-                        amp_well['amplicons'][0].split('_')[0], # assayFamilies
-                        amp_well['amplicons'][0].split('_')[0], # assay family again?
+                        amp_well['amplicons'][0],       # alleleSymbol
+                        '',                             # alleleKey
+                        '',                             # assayKey
+                        amp_well['amplicons'][0].split('_')[0], # assay
+                        amp_well['amplicons'][0].split('_')[0], # assayFamily
+                        amp_well.get('clientname', ''),     # clientName
+                        amp_well.get('samplename', ''),     # sampleName
                         amp_pid,                        # dnaplate
                         well_str,                       # dnawell
-                        amp_well['amplicons'][0],           # primer
+                        amp_well['amplicons'][0],       # primer
                         amp_pid,                        # pcrplate
                         well_str]                       # pcrwell
                 s2_data_rows.append(amp_row)

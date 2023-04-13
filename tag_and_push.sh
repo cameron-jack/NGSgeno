@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.010"
+VER="v0.21.011"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* FIXED: Not deleting obsolete pending_steps
-* FIXED: Displaying obsolete pending files
-* CHANGED: All parsing of text files ignores non-ASCII characters
+* FIXED: added missing clientName and sampleName columns to Stage and result files
 EOM
 
 mv changelog.txt changelog_old.txt
