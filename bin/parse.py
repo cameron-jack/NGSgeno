@@ -812,10 +812,9 @@ def parse_primer_assay_map(exp, fp):
                 continue
             primer_fam = row[1]
             assay_fam = row[0]
-            if primer_fam in exp.primer_assay and exp.primer_assay[primer_fam] != assay_fam:
-                exp.log(f'Warning: Existing primer:assay pair {primer_fam}:{exp.primer_assay[primer_fam]}'+\
-                        f'being overwritten by {primer_fam}:{assay_fam}')
-            entries[primer_fam] = assay_fam
+            if primer_fam not in entries:
+                entries[primer_fam] = []
+            entries[primer_fam].append(assay_fam)
 
     for primer_fam in entries:
         exp.primer_assay[primer_fam] = entries[primer_fam]

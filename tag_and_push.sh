@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
-VER="v0.21.011"
+VER="v0.21.012"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* FIXED: added missing clientName and sampleName columns to Stage and result files
+* FIXED: Nimbus requires complete columns definied
+* CHANGED: primer-assay map is now 1-many
+* BREAKING: assay-primer map added to Experiment
 EOM
 
 mv changelog.txt changelog_old.txt

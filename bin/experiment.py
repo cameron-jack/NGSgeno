@@ -109,6 +109,7 @@ class Experiment():
         self.denied_primers = []
         self.assay_synonyms = {}  # {source:{reference:alternative}}
         self.primer_assay = {}  # {source:{mapping of primer to assay}}
+        self.assay_primer = {}  # {source:{mapping of assays to primers}}
         self.reference_sequences = {}  # {source:{name:seq}} mapping of sequence name to sequence
         ###
         # All generate_XXX() functions produce one or more files

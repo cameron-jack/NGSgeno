@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from multiprocessing import popen_spawn_win32
 import sys
 import os
 import gzip
@@ -77,6 +78,9 @@ def nimbus_gen(exp):
     
     It needs the name of an output file and sample data for each plate.
     dna_plate_id = barcode or name of target output files, which should be guarded already
+
+    A minimum of 8 well entries must exist in the same column or the Nimbus complains
+
     As a file generator() it needs to create a transaction (exp.reproducible_steps) entry
     """
     transactions = {}
@@ -112,12 +116,17 @@ def nimbus_gen(exp):
                         continue
                     transactions[dna_fn][pbc] = {}
                     transactions[fnstg][pbc] = {}
-                    # Get four wells in the same column at a time
-                    for pos1,pos2,pos3,pos4 in zip(util.nimbus_ordered_96[0::4], util.nimbus_ordered_96[1::4], 
-                            util.nimbus_ordered_96[2::4], util.nimbus_ordered_96[3::4]):
-                        if pos1 not in shx and pos2 not in shx and pos3 not in shx and pos4 not in shx:
-                            continue  # skip missing blocks of 4 contiguous rows in the same column
-                        for pos in (pos1, pos2, pos3, pos4):
+                    # Get eight wells in the same column at a time
+                    #for pos1,pos2,pos3,pos4 in zip(util.nimbus_ordered_96[0::4], util.nimbus_ordered_96[1::4], 
+                    #        util.nimbus_ordered_96[2::4], util.nimbus_ordered_96[3::4]): 
+                    for p in range(len(util.nimbus_ordered_96)//8):
+                        pos_col = [util.nimbus_ordered_96[p*8+offset] for offset in range(8)]
+                        # skip empty column
+                        if all([posN not in shx for posN in pos_col]):
+                            continue
+                        #if pos1 not in shx and pos2 not in shx and pos3 not in shx and pos4 not in shx:
+                        #    continue  # skip missing blocks of 4 contiguous rows in the same column
+                        for pos in pos_col:
                             row_number += 1
                             nim_row_data = {field:'' for field in stage1_hdr}
                             nim_row_data['Sample no'] = row_number

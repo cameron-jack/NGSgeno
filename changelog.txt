@@ -1,3 +1,9 @@
+v0.21.012
+Date: Mon Apr 17 08:54:43 AEST 2023
+* FIXED: Nimbus requires complete columns definied
+* CHANGED: primer-assay map is now 1-many
+* BREAKING: assay-primer map added to Experiment
+
 v0.21.011
 Date: Fri Apr 14 06:32:51 AEST 2023
 * FIXED: added missing clientName and sampleName columns to Stage and result files
