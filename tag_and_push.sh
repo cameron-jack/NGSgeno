@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.014"
+VER="v0.21.015"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* New: customised liquid volumes (Gabi)
+* CHANGED: enforced quoting to protect weird alleleSymbol names
 EOM
 
 mv changelog.txt changelog_old.txt

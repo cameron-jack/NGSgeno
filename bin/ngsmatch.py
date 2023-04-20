@@ -804,7 +804,7 @@ def main(args):
 
         with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd:
             print(f"Opening {args.outfn} for results", file=sys.stderr)
-            dst = csv.writer(dstfd, dialect="unix")
+            dst = csv.writer(dstfd, dialect="unix", quoting=csv.QUOTE_ALL)
             hdrres1 = ("readCount", "cleanCount", "mergeCount")
             hdrres2 = ("seqCount", "seqName", "otherCount", "otherName")
             complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))

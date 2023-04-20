@@ -296,7 +296,7 @@ def parse_rodentity_json(exp, fp, overwrite=False):
                         well_records[gpid][pos]['assay_records'][assay['name']] =\
                                 {'assayFamily':assay['name'].split('_')[0]}
                     well_records[gpid][pos]['assay_records'][assay['name']]['alleleKey'] = str(allele['alleleKey'])
-                    well_records[gpid][pos]['assay_records'][assay['name']]['alleleSymbol'] = str(allele['symbol'])
+                    well_records[gpid][pos]['assay_records'][assay['name']]['alleleSymbol'] = '"'+str(allele['symbol'])+'"'
                     well_records[gpid][pos]['assay_records'][assay['name']]['assayKey'] = str(assay['assay_key'])
                     well_records[gpid][pos]['assay_records'][assay['name']]['assayName'] = str(assay['name'])
                     well_records[gpid][pos]['assay_records'][assay['name']]['assayMethod'] = str(assay['method'])
@@ -513,7 +513,7 @@ def parse_amplicon_manifest(exp, fp, overwrite=False):
                 well_records[gpid][pos]['sampleNumber'] = str(c)
             elif header_dict[k] == 'amplicon':
                 if c != '':  # ignore empty amplicon entries
-                    amplicons.append(c)
+                    amplicons.append('"'+c+'"')
             elif header_dict[k] == 'volume':
                 well_records[gpid][pos]['volume'] = float(c)*1000  # save as nL
             else:

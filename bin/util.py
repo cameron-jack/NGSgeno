@@ -602,7 +602,7 @@ class Table:
         with open(fn, "wt", newline='') as dstfd:
             for r in self.prefix:
                 dstfd.write(r)
-            wx = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
+            wx = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_ALL)
             data = []
             for row in self.data:
                 if output_plate_guards:  # guard plate barcodes

@@ -1,3 +1,7 @@
+v0.21.015
+Date: Thu Apr 20 15:55:40 AEST 2023
+* CHANGED: enforced quoting to protect weird alleleSymbol names
+
 v0.21.014
 Date: Thu Apr 20 15:34:46 AEST 2023
 * New: customised liquid volumes (Gabi)
