@@ -388,6 +388,60 @@ def upload_extra_consumables(key):
         st.session_state['upload_option'] = ''
 
 
+def custom_volumes(exp):
+    #Gabi's code for custom volumes
+    with st.form("custom_volumes", clear_on_submit=True):
+        dna_vol = exp.transfer_volumes['DNA_VOL']
+        primer_vol = exp.transfer_volumes['PRIMER_VOL']
+        index_vol = exp.transfer_volumes['INDEX_VOL']
+
+        st.write('**Volumes for DNA and Primers**')
+        st.write(f'Current volumes (nL):')
+        transfer_vol_df = pd.DataFrame.from_dict(data=exp.transfer_volumes, 
+                                                    orient='index', 
+                                                    columns=['Volume'])
+        df_col, custom_val_col = st.columns(2)
+        df_col.dataframe(transfer_vol_df.T, width=1000)
+
+        st.write('Enter custom values if required:')
+
+        dna_col, _, primer_col, _,index_col, _ = st.columns([4,1,4,1,4,12])
+        custom_dna_vol = dna_col.text_input('DNA volume (DNA_VOL)',
+                                            placeholder='(nL)', 
+                                            help='Integer values only. '+
+                                                    'The default value for DNA is 200')
+                        
+        custom_primer_vol = primer_col.text_input('Primer volume (PRIMER_VOL)', 
+                                                    placeholder='(nL)', 
+                                                    help='Integer values only. '+
+                                                        'The default value for primers is 500')
+                        
+        custom_index_vol = index_col.text_input('Index volume (INDEX_VOL)', 
+                                                    placeholder='(nL)', 
+                                                    help='Integer values only. '+
+                                                        'The default value for indexes is 175')
+
+        st.write('')
+        submit_vol_btn = st.form_submit_button('Submit')
+        if submit_vol_btn:
+            if custom_dna_vol != '':
+                dna_vol = custom_dna_vol
+            if custom_primer_vol != '':
+                primer_vol = custom_primer_vol
+            if custom_index_vol != '':
+                index_vol = custom_index_vol
+                        
+            success = exp.add_custom_volumes(dna_vol, primer_vol, index_vol)
+
+            if success:
+                st.success(f'Values added: {exp.transfer_volumes}')
+                st.experimental_rerun()
+                                
+            else:
+                st.error('Values could not be added, please check the log. '+
+                            '(Make sure you\'re only entering in integers).')
+
+
 def upload_reference_sequences(key):
     """
     Upload custom references

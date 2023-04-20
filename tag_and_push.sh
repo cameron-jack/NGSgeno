@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.013"
+VER="v0.21.014"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: missing assays that did not match primer names
-* Changed: assay-primer rather than primer-assay mapping
+* New: customised liquid volumes (Gabi)
 EOM
 
 mv changelog.txt changelog_old.txt

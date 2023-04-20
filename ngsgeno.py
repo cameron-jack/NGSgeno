@@ -397,6 +397,8 @@ def main():
                 else:
                     if 'upload stage' not in st.session_state:
                         st.session_state['upload stage'] = None
+                    #Gabi's code for custom volumes
+                    ld.custom_volumes(exp)
                     ld.upload_pcr1_files('pcr1_load2')
                     ld.upload_pcr2_files('pcr2_load2')
                     ld.upload_extra_consumables('consumables_load2')
@@ -616,6 +618,7 @@ def main():
 
                     ld.provide_barcodes('barcodes_tab1')
                     ld.upload_pcr1_files('pcr1_primer1')
+                    ld.custom_volumes(exp)
 
                 st.session_state['primer_tab'] = 1
                 
@@ -696,6 +699,7 @@ def main():
                     pcr_comp_holder = st.empty()
                     ld.provide_barcodes('index_barcodes')
                     ld.upload_pcr2_files('pcr2_index1')
+                    ld.custom_volumes(exp)
                     st.session_state['index_tab'] = 1
                     if available_nimbus:
                         with index_checklist:

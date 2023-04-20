@@ -1,3 +1,7 @@
+v0.21.014
+Date: Thu Apr 20 15:34:46 AEST 2023
+* New: customised liquid volumes (Gabi)
+
 v0.21.013
 Date: Thu Apr 20 15:18:42 AEST 2023
 * Fixed: missing assays that did not match primer names

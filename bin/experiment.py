@@ -1186,6 +1186,22 @@ class Experiment():
         return success
 
 
+    #Gabi's code for custom volumes
+    def add_custom_volumes(self, dna_vol=200, primer_vol=500, index_vol=175):
+        try:
+            self.transfer_volumes['DNA_VOL'] = int(dna_vol)
+            self.transfer_volumes['PRIMER_VOL'] = int(primer_vol)
+            self.transfer_volumes['INDEX_VOL'] = int(index_vol)
+            print(self.transfer_volumes)
+            self.log(f'Success: Custom volumes added')
+            self.save()
+            return True
+        except (TypeError, ValueError) as e:
+            self.log(f'Error: {e}')
+            return False
+    #End of Gabi's code for custom volumes
+
+
     def read_allele_results(self):
         """
         Read in allele_results
