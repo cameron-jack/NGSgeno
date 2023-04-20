@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 
-VER="v0.21.012"
+VER="v0.21.013"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* FIXED: Nimbus requires complete columns definied
-* CHANGED: primer-assay map is now 1-many
-* BREAKING: assay-primer map added to Experiment
+* Fixed: missing assays that did not match primer names
+* Changed: assay-primer rather than primer-assay mapping
 EOM
 
 mv changelog.txt changelog_old.txt

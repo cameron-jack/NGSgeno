@@ -484,12 +484,19 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                 exp.plate_location_sample[d] = {'purpose':'dna','wells':set(),'source':'Nimbus','plate_type':'384PP_AQ_BP'}
                 for i, line in enumerate(f):
                     if i == 0:  # header
+                        # get named columns
+                        cols = [c.strip().strip('\"') for c in line.split(',')]
+                        source_plate_bc_col = [i for i,c in enumerate(cols) if c=='SRackBC'][0]
+                        source_well_col = [i for i,c in enumerate(cols) if c=='SPositionId'][0]
+                        source_bc_col = [i for i,c in enumerate(cols) if c=='SPositionBC'][0]
+                        dest_plate_bc_col = [i for i,c in enumerate(cols) if c=='TRackBC'][0]
+                        dest_well_col = [i for i,c in enumerate(cols) if c=='TPositionId'][0]
                         continue
                     cols = [c.strip().strip('\"') for c in line.split(',')]
-                    source_pos = util.unpadwell(cols[-1])
-                    source_plate = util.unguard_pbc(cols[-3], silent=True)
-                    dest_plate = util.unguard_pbc(cols[1], silent=True)
-                    dest_pos = util.unpadwell(cols[3])
+                    source_pos = util.unpadwell(cols[source_well_col])
+                    source_plate = util.unguard_pbc(cols[source_plate_bc_col], silent=True)
+                    dest_plate = util.unguard_pbc(cols[dest_plate_bc_col], silent=True)
+                    dest_pos = util.unpadwell(cols[dest_well_col])
                     if dest_plate != ug_dnaBC:
                         exp.log(f"{ug_dnaBC} doesn't match {dest_plate} "+\
                             f"as declared in Echo_384_COC file: {fp}", level="error")
@@ -501,83 +508,59 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
 
         outfmt = f"PCR-picklist_{exp.name}.csv"
 
-        nimcolmap = (("TRackBC", "dstplate"), ("TPositionId", 'dstwell'), ('SRackBC', 'srcplate'), ('SPositionId', 'srcwell'))
+        nimcolmap = (("TRackBC", "dstplate"), ("TPositionId", 'dstwell'), \
+                ('SRackBC', 'srcplate'), ('SPositionId', 'srcwell'))
         typenim = util.Table.csvtype(nimbus_outfiles[0], 'NimRec', hdrmap=nimcolmap)
         nimbusTables = [util.CSVTable(typenim, fn) for fn in nimbus_outfiles]
         
         # read Stage1 files
-        dnadict = dict(((util.guard_pbc(x.srcplate, silent=True), x.srcwell), (util.guard_pbc(x.dstplate, silent=True), x.dstwell))\
+        dnadict = dict(((util.guard_pbc(x.srcplate, silent=True), x.srcwell), \
+                (util.guard_pbc(x.dstplate, silent=True), x.dstwell))\
                 for nt in nimbusTables for x in nt.data)    
-        dnas = [util.CSVTable('S1Rec', exp.get_exp_fn('Stage1-P{}.csv'.format(util.unguard_pbc(dnabc, silent=True)))) for dnabc in dna_bcs]
+        dnas = [util.CSVTable('S1Rec', exp.get_exp_fn('Stage1-P{}.csv'.format(util.unguard_pbc(dnabc, silent=True))))\
+                for dnabc in dna_bcs]
+        # read primer survey
         primer_survey = StringIO('\n'.join(primer_survey_lines))
-        primerTable = util.CSVMemoryTable("PPRec", primer_survey, fields="spn spbc spt well primer volume".split(' '))
+        primerTable = util.CSVMemoryTable("PPRec", primer_survey, 
+                fields="spn spbc spt well primer volume".split(' '))
         primset = sorted(frozenset(x.primer for x in primerTable.data if x.primer != ''))
-        # this line requires that the assays share the same family name
-        pfdict = dict((k.strip(), list([p.strip() for p in g])) for k, g in itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
-
-        # Add record for PCR wells into Stage2 files
-        wgenflds =  dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)
-        # Is this the plating of DNA samples for each assay? Yes. It is.
-        try:
-            wgen = [xs+dnadict[(xs.samplePlate, xs.sampleWell)]+(x,) for xss in dnas for xs in xss.data \
-                    for f in xs.assayFamilies.split(';') if f in pfdict for x in pfdict[f]]
-        except KeyError:
-            msg = 'Failure: Did the Echo input file match the expected sample plate layout?'
-            exp.log(msg)
-            return False
+        # collect primers by family name
+        pfdict = dict((k.strip(), list([p.strip() for p in g])) for k, g in \
+                itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
+        pfdict_lower = dict((k.strip().lower(), list([p.strip() for p in g])) for k, g in \
+                itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
+        # assign primers to samples
+        wgenflds = dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)
+        wgen = []
+        primer_assay_matching = []  # lockstep with wgen, saves figuring it out later
+        for dna_table in dnas:
+            for sample_data in dna_table.data:
+                for k,af in enumerate(sample_data.assayFamilies.split(';')):
+                    sd = tuple([scol.split(';')[k] if ';' in scol else scol for scol in sample_data])
+                    required_primerfams = util.choose_primerfam(exp, af)
+                    # potentially there can be multiple primer families for a given assay
+                    for rpf in required_primerfams:
+                        if rpf in pfdict:
+                            for specific_primer in pfdict[rpf]:
+                                wgen.append(sd + dnadict[(sample_data.samplePlate, \
+                                        sample_data.sampleWell)] + (specific_primer,))
+                                primer_assay_matching.append((specific_primer, rpf, af))
+                        elif rpf.lower() in pfdict_lower:
+                            for specific_primer in pfdict_lower[rpf.lower()]:
+                                wgen.append(sd + dnadict[(sample_data.samplePlate, \
+                                        sample_data.sampleWell)] + (specific_primer,))
+                                primer_assay_matching.append((specific_primer, rpf, af))
+                        else:
+                            exp.log(f'Warning: No available primer for {rpf=} {af=} {sd=}')
+       
         # allocate PCR plate wells
         wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"]
         pcrwellgen = ((p, w) for p in pcr_bcs for w in wells)
         
-        # allocate PCR well for each sample and reduce the recorded assays/alleles to 1 for a given well
-        # Are we using a primer/assay list file? Assuming no
-        primer_col = len(wgenflds)-1
-        assay_families_col = len(wgenflds)-4
         s2flds = wgenflds+('pcrplate', 'pcrwell')
-        S2Rec = util.Table.newtype('S2Rec', s2flds)
-        record_data = [[x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)]
-        reduced_record_data = []  # single entry per field
-        for i, rd in enumerate(record_data):
-            new_rd = []
-            assay_num = None
-            primer_fam = rd[primer_col].lower().split('_')[0]
-            assay_fams = rd[assay_families_col].lower().split(';')
-            for j,af in enumerate(assay_fams):
-                if primer_fam == af.lower():
-                    assay_num = j
-                    break
-            if assay_num is None:
-                assay_primers = util.match_assays_to_primers(exp, rd[assay_families_col])
-                chosen_assay = None
-                for a in assay_primers:
-                    for p in assay_primers[a]:
-                        if primer_fam.lower() in p.lower():
-                            chosen_assay = a
-                            break
-                    if chosen_assay:
-                        break
-                if not chosen_assay:
-                    exp.log(f'Critical: Could not identify assay from primer. Primer-Assay mapping file required for {primer_fam=} {assay_fams=}')
-                    reduced_record_data.append(rd)
-                    continue
-
-                for j, af in enumerate(assay_fams):
-                    if af.lower() == chosen_assay.lower():
-                        assay_num = j
-                if assay_num is None:
-                    exp.log(f'Critical: Could not identify assay from primer. Primer-Assay mapping file required for {primer_fam=} {assay_fams=}')
-                    reduced_record_data.append(rd)
-                    continue
-            for j, field in enumerate(rd):
-                if ';' not in field:
-                    new_rd.append(field)
-                else:
-                    new_field = field.split(';')[assay_num]
-                    new_rd.append(new_field)
-            reduced_record_data.append(new_rd)
-
-        s2tab = util.Table(S2Rec, reduced_record_data, headers=s2flds)
-        #s2tab = util.Table(S2Rec, ([x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)), headers=s2flds) 
+        S2Rec = util.Table.newtype('S2Rec', s2flds) 
+        s2tab = util.Table(S2Rec, ([x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)), headers=s2flds) 
+        
         # output Stage 2 CSV file - used in Stage 3 below - keeping the plate guards for the next stage (to be safe)
         stage2_fn = exp.get_exp_fn("Stage2.csv", trans=True)
         transactions[stage2_fn] = {}
@@ -608,7 +591,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
             transactions[dna_fn] = None 
 
         primer_survey = StringIO('\n'.join(primer_survey_lines))
-        primsrc = PicklistMemorySrc(primer_survey, idx=4) # same name as in cgi-nimbus2.py
+        primsrc = PicklistMemorySrc(primer_survey, idx=4)
         volume = exp.transfer_volumes['PRIMER_VOL']        
         primer_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_primer'), trans=True)
         transactions[primer_fn] = {}

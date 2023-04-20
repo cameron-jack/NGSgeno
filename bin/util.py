@@ -512,36 +512,19 @@ def unpadwell(w):
 
 # Assays/Primers
 
-def match_assays_to_primers(exp, assays):
+def choose_primerfam(exp, assayfam):
     """
-    Multiple primers may be needed per assay, and we need to check for manual overrides
-    from exp.primer_assay too.
+    Return the primer family entry that best matches the provided assay family
     """
-    assay_primers = {}  # each assay will result in a set of primers
-    loaded_primers = exp.get_primer_names()
-    mapped_primers = exp.primer_assay
-    for assay in assays:
-        assay_primers[assay] = set()
-        for p in mapped_primers:  # first try the manual overrides
-            if exp.primer_assay[p] == assay:
-                assay_primers[assay].add(p)
-                break
-            elif '_' in p:  # multiple primers per assay
-                pfam = p.split('_')[0]
-                if pfam == assay:  # we found the family
-                    assay_primers[assay].add(p)
-        for p in loaded_primers:  # compare to all the primers in plates
-            if p == assay:
-                if len(assay_primers[assay]) > 0:
-                    break # already found
-                assay_primers[assay].add(p)
-                break  # got it in one!
-            elif '_' in p:  # multiple primers per assay
-                pfam = p.split('_')[0]
-                if pfam == assay:  # we found the family
-                    assay_primers[assay].add(p)
-    return assay_primers
+    if assayfam in exp.assay_primer:
+        return exp.assay_primer[assayfam]
+    if assayfam.lower() in exp.assay_primer:
+        return exp.assay_primer[assayfam.lower()]
+    
+    exp.log(f'Warning: Primer family not found to match assay {assayfam}')
 
+    return [assayfam]
+    
 
 ### Table classes to act like a relational DB
 

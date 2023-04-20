@@ -369,7 +369,9 @@ def upload_extra_consumables(key):
             else:
                 st.write(f'Failed to upload at least one reference sequence file, please see the log')
         if uploaded_assaylists:
-            success = parse.upload(exp, uploaded_assaylists, 'primer_assay_map')
+            #success = parse.upload(exp, uploaded_assaylists, 'primer_assay_map')
+            # Genotyping team use the assay->primer direction
+            success = parse.upload(exp, uploaded_assaylists, 'assay_primer_map')
             assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
             if success:
                 st.write(f'Successfully added assay/primer lists from files {assaylist_names}')

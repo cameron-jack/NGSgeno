@@ -1,3 +1,8 @@
+v0.21.013
+Date: Thu Apr 20 15:18:42 AEST 2023
+* Fixed: missing assays that did not match primer names
+* Changed: assay-primer rather than primer-assay mapping
+
 v0.21.012
 Date: Mon Apr 17 08:54:43 AEST 2023
 * FIXED: Nimbus requires complete columns definied

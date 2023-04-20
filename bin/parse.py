@@ -219,6 +219,8 @@ def process_upload(exp, filepath, purpose, overwrite=False):
         success, pids = parse_index_volume(exp, filepath)
     elif purpose == 'primer_assay_map':
         success = parse_primer_assay_map(exp, filepath)
+    elif purpose == 'assay_primer_map':
+        success = parse_assay_primer_map(exp, filepath)
     elif purpose == 'reference_sequences':
         success = parse_reference_sequences(exp, filepath)
     elif purpose == 'taq_water':
@@ -799,9 +801,8 @@ def parse_index_volume(exp, fp, user_gpid=None):
 def parse_primer_assay_map(exp, fp):
     """ mapping of primer family name to assay family name
     The assaylist file is just two columns: primer and assay, comma separated
-    We represent this internally as a dictionary, which includes: primer, primer family, assay, 
-            assay family, all in regular case and lower case, as well as the filename it came from
-    NOTE: Clashing entries are noted in the log, but are always overwritten!
+    We represent this as a dictionary of primer_fam to set of assay_fam {primer_fam: {assay_fam}}
+    We maintain case, but also include forced lower case entries of both sides for safety
     """
     entries = {}  # read the whole file before adding entries
     with open(fp, 'rt', errors='ignore') as data:
@@ -810,16 +811,69 @@ def parse_primer_assay_map(exp, fp):
                 continue  # header
             if row == '' or row[0] == '' or row[1] == '':
                 continue
-            primer_fam = row[1]
-            assay_fam = row[0]
-            if primer_fam not in entries:
-                entries[primer_fam] = []
-            entries[primer_fam].append(assay_fam)
+            primer_fam = row[0]
+            assay_fam = row[1]
+            # check for 'forbidden' chars
+            if '_' in assay_fam:
+                exp.log(f'Warning: underscore detected in assay family name {assay_fam}, truncating name')
+                assay_fam = assay_fam.split('_')[0]
+            if '_' in primer_fam:
+                exp.log(f'Warning: underscore detected in primer family name {primer_fam}, truncating name')
+                primer_fam = primer_fam.split('_')[0]
 
-    for primer_fam in entries:
-        exp.primer_assay[primer_fam] = entries[primer_fam]
+            if primer_fam not in entries:
+                entries[primer_fam] = {}
+            entries[primer_fam].add(assay_fam)
+
+            if primer_fam.lower() not in entries:
+                entries[primer_fam.lower()] = {}
+            entries[primer_fam.lower()].add(assay_fam.lower())
+
+    for pf in entries:
+        exp.primer_assay[pf] = entries[primer_fam]
     
     exp.log(f'Success: added primer-assay list from {fp}')
+    exp.save()
+    return True
+
+
+def parse_assay_primer_map(exp, fp):
+    """ mapping of assay family name to any number of primer family names
+    This is the preferred direction for the genotyping team.
+    The assaylist file is just two columns:  assay, primer (comma separated)
+    We represent this as a dictionary of assay_fam to set of primer_fam {assay_fam: {primer_fam}}
+    We maintain case, but also include forced lower case entries of both sides for safety
+    """
+    entries = {}  # read the whole file before adding entries
+    with open(fp, 'rt', errors='ignore') as data:
+        for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
+            if i == 0:
+                continue  # header
+            if row == '' or row[0] == '' or row[1] == '':
+                continue
+            assay_fam = row[0]
+            primer_fam = row[1]
+            
+            # check for 'forbidden' chars
+            if '_' in assay_fam:
+                exp.log(f'Warning: underscore detected in assay family name {assay_fam}, truncating name')
+                assay_fam = assay_fam.split('_')[0]
+            if '_' in primer_fam:
+                exp.log(f'Warning: underscore detected in primer family name {primer_fam}, truncating name')
+                primer_fam = primer_fam.split('_')[0]
+
+            if assay_fam not in entries:
+                entries[assay_fam] = set()
+            entries[assay_fam].add(primer_fam)
+
+            if assay_fam.lower() not in entries:
+                entries[assay_fam.lower()] = set()
+            entries[assay_fam.lower()].add(primer_fam.lower())
+
+    for af in entries:
+        exp.assay_primer[af] = entries[af]
+    
+    exp.log(f'Success: added assay-primer list from {fp}')
     exp.save()
     return True
 
