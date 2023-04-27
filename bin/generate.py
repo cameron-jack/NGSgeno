@@ -157,23 +157,21 @@ def nimbus_gen(exp):
                             assayKeys = []
                             assayNames = []
                             assayFamilies = []
-                            if 'assay_records' in shx[pos]:
-                                for assay in shx[pos]['assay_records']:
-                                    if not shx[pos]['assay_records'][assay]['assayMethod'].startswith('NGS'):
-                                        continue
-                                    alleleSymbols.append(shx[pos]['assay_records'][assay].get('alleleSymbol',''))
-                                    alleleKeys.append(shx[pos]['assay_records'][assay].get('alleleKey',''))
-                                    assayKeys.append(shx[pos]['assay_records'][assay].get('assayKey',''))
-                                    assayNames.append(assay)
-                                    assayFamilies.append(assay.split('_')[0])
+                            for assay in shx[pos]['ngs_assays']:
+                                assayNames.append(assay)
+                                assayFamilies.append(util.get_assay_family(assay))
+                                if 'ngs_assay_records' in shx[pos]:
+                                    if assay in shx[pos]['ngs_assay_records']:
+                                        alleleSymbols.append(shx[pos]['ngs_assay_records'][assay].get('alleleSymbol',''))
+                                        alleleKeys.append(shx[pos]['ngs_assay_records'][assay].get('alleleKey',''))
+                                        assayKeys.append(shx[pos]['ngs_assay_records'][assay].get('assayKey',''))
+                                    
                             stage1_row_data['alleleSymbol'] = ';'.join(alleleSymbols)
                             stage1_row_data['alleleKey'] = ';'.join(alleleKeys)
                             stage1_row_data['assayKey'] = ';'.join(assayKeys)
                             stage1_row_data['assays'] = ';'.join(assayNames)
                             stage1_row_data['assayFamilies'] = ';'.join(assayFamilies)
-                            # Only NGS and Custom assays should be used
-                            stage1_row_data['assays'] = ';'.join(shx[pos]['assays'])
-                            stage1_row_data['assayFamilies'] = ';'.join(shx[pos]['assayFamilies'])
+                            
                             if len(stage1_row_data['assays']) == 0:
                                 continue
                             # clientName
@@ -197,7 +195,7 @@ def nimbus_gen(exp):
     #    exp.log(f'Error: Nimbus input file creation {exc}')
     #    exp.save()
     #    return False
-    print("Transactions in nimbus_gen()", transactions, file=sys.stderr)
+    #print("Transactions in nimbus_gen()", transactions, file=sys.stderr)
     transaction.add_pending_transactions(exp, transactions)
     exp.log(f'Success: Hamilton Nimbus plate definition files have been generated')
     exp.save()
@@ -431,6 +429,9 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
     Entry point. Takes an experiment instance plus plate barcodes for dna plates, PCR plates, primer plates, taq/water plates.
     """
     #try:
+    if not exp.assay_primer:
+        exp.log('Error: assay list must be loaded before generating primer picklist')
+        return False
     if True:
         pcr_bcs = []
         dna_bcs = []
@@ -532,7 +533,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         # assign primers to samples
         wgenflds = dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)
         wgen = []
-        primer_assay_matching = []  # lockstep with wgen, saves figuring it out later
+        sample_primer_assay_set = set()
         for dna_table in dnas:
             for sample_data in dna_table.data:
                 for k,af in enumerate(sample_data.assayFamilies.split(';')):
@@ -542,14 +543,22 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                     for rpf in required_primerfams:
                         if rpf in pfdict:
                             for specific_primer in pfdict[rpf]:
+                                sample_primer_assay = tuple([sample_data.sampleBarcode, specific_primer, sample_data.assays[k]])
+                                if sample_primer_assay in sample_primer_assay_set:
+                                    print(f'Found a duplicate {sample_primer_assay}')
+                                    continue
+                                sample_primer_assay_set.add(sample_primer_assay)
                                 wgen.append(sd + dnadict[(sample_data.samplePlate, \
                                         sample_data.sampleWell)] + (specific_primer,))
-                                primer_assay_matching.append((specific_primer, rpf, af))
                         elif rpf.lower() in pfdict_lower:
                             for specific_primer in pfdict_lower[rpf.lower()]:
+                                sample_primer_assay = tuple([sample_data.sampleBarcode, specific_primer, sample_data.assays[k]])
+                                if sample_primer_assay in sample_primer_assay_set:
+                                    print(f'Found a duplicate {sample_primer_assay}')
+                                    continue
+                                sample_primer_assay_set.add(sample_primer_assay)
                                 wgen.append(sd + dnadict[(sample_data.samplePlate, \
                                         sample_data.sampleWell)] + (specific_primer,))
-                                primer_assay_matching.append((specific_primer, rpf, af))
                         else:
                             exp.log(f'Warning: No available primer for {rpf=} {af=} {sd=}')
        

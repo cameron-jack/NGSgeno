@@ -22,9 +22,9 @@ try:
 except ModuleNotFoundError:
     import parse
 try:
-    from bin.util import CONFIG_PATH, output_error
+    import bin.util as util
 except ModuleNotFoundError:
-    from util import CONFIG_PATH, output_error
+    import util
 
 def _eppfn_m(bc):
     """ ear-punch Musterer plate filename format """
@@ -36,7 +36,7 @@ def _eppfn_r(bc):
 
 def _eppfn_old(bc):
     """ older files which are unguarded """
-    return "Plate{0}-EP.json".format(file_io.unguard_pbc(bc)) # ear-punch plate (filename) format
+    return "Plate{0}-EP.json".format(util.unguard_pbc(bc)) # ear-punch plate (filename) format
 
 mustfix = re.compile(r'(,\s*"(mouseBarcode|plateId)":\s*)(\d+)')
 
@@ -49,8 +49,8 @@ def get_plate_rodentity(exp_name, plateID, cache=True):
     Called by the interface code
     """
 
-    if not file_io.is_guarded_pbc(plateID):
-        plateID = file_io.guard_pbc(plateID)
+    if not util.is_guarded_pbc(plateID):
+        plateID = util.guard_pbc(plateID)
     fn = os.path.join('run_'+exp_name, _eppfn_r(plateID))
     messages = []
     if cache and os.path.isfile(fn): # if cached in local file
@@ -58,7 +58,7 @@ def get_plate_rodentity(exp_name, plateID, cache=True):
             with open(fn) as src:
                 res = json.load(src)
         
-    print(f"Returning {len(res['wells'])} plate-well entries from Rodentity plate {file_io.unguard_pbc(plateID)}\n", file=sys.stdout)
+    print(f"Returning {len(res['wells'])} plate-well entries from Rodentity plate {util.unguard_pbc(plateID)}\n", file=sys.stdout)
     return res["wells"], messages  # return a list of dictionaries
 
 
@@ -75,13 +75,13 @@ def get_plate_musterer(exp_name, plateID, cache=True):
     messages.append(f"Begin: (add_mouse_plate_set) {now:%Y-%m-%d %H:%M}")
     service = 'exportPlate'
     config = CP()
-    config.read(CONFIG_PATH)
+    config.read(util.CONFIG_PATH)
     print(os.getcwd(), dir(config), config.sections())
     url = config['earpunch']['url']
     username = config['earpunch']['username']
     passwd = config['earpunch']['passwd']
-    if not file_io.is_guarded_pbc(plateID):
-        plateID = file_io.guard_pbc(plateID)
+    if not util.is_guarded_pbc(plateID):
+        plateID = util.guard_pbc(plateID)
 
     fn = os.path.join('run_'+exp_name, _eppfn_m(plateID))
     
@@ -89,7 +89,7 @@ def get_plate_musterer(exp_name, plateID, cache=True):
         messages.append(f"Info: Reading cached data: {fn}")
         return True, messages
     else: # DB download 
-        param = 'plateId='+file_io.unguard_pbc(plateID)
+        param = 'plateId='+util.unguard_pbc(plateID)
         url += "/{0}?".format(service)+param
         r = requests.get(url, auth=(username, passwd), verify=False)
 
@@ -171,8 +171,8 @@ def simplify_mouse_JSON(json_data):
         for bunch in json_data:
             for mouse in bunch:
                 barcode = str(mouse.get('barcode'))
-                if file_io.is_guarded_mbc(barcode):
-                    barcode = file_io.unguard_mbc(barcode)  # we need to look up unguarded barcodes
+                if util.is_guarded_mbc(barcode):
+                    barcode = util.unguard_mbc(barcode)  # we need to look up unguarded barcodes
                 sire = mouse.get('sire')
                 dams = mouse.get('dams')
                 assays = mouse.get('assays')
@@ -181,9 +181,9 @@ def simplify_mouse_JSON(json_data):
                 m['strain'] = mouse.get('strainName')
                 m['mouseId'] = mouse.get('mouseId')
                 if sire:
-                    m['sire_barcode'] = file_io.guard_mbc(str(sire.get('barcode')))
+                    m['sire_barcode'] = util.guard_mbc(str(sire.get('barcode')))
                 if dams:
-                    m['dams_barcodes'] = [file_io.guard_mbc(str(d.get('barcode'))) for d in dams]
+                    m['dams_barcodes'] = [util.guard_mbc(str(d.get('barcode'))) for d in dams]
                 if assays:
                     m['assay_names_values'] = defaultdict(str)
                     m['assay_value_options'] = defaultdict(list)
@@ -191,7 +191,7 @@ def simplify_mouse_JSON(json_data):
                         if 'assayMethod' in a and 'assayName' in a:
                             m['assay_names_values'][a.get('assayMethod')+'::'+a.get('assayName')] = a.get('assayValue')
                             m['assay_value_options'][a.get('assayMethod')+'::'+a.get('assayName')] = a.get('assayValueOptions')
-                mice[file_io.guard_mbc(barcode)] = m
+                mice[util.guard_mbc(barcode)] = m
         return mice
     except Exception as exc:
         output_error(exc, msg='Error in musterer.simplify_mouse_JSON')
@@ -209,7 +209,7 @@ def get_musterer_mouse_info(mouse_barcodes, debug=False):
     """
     try:
         # take off the guards for DB lookups
-        mouse_barcodes = [file_io.unguard(mbc) if file_io.is_guarded(mbc) else mbc for mbc in mouse_barcodes]
+        mouse_barcodes = [util.unguard(mbc) if util.is_guarded(mbc) else mbc for mbc in mouse_barcodes]
         barcode_limit = 50 # max chars in GET request is 2048
         barcode_groups = [mouse_barcodes[i:i+barcode_limit] for i in range(0, len(mouse_barcodes), barcode_limit)]
         #print(barcode_groups)

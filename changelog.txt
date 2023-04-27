@@ -1,3 +1,10 @@
+v0.21.016
+Date: Fri Apr 28 08:18:59 AEST 2023
+* Fixed: assay and assayFamily order swap
+* Changed: removed assayFamilies as a recorded part of an experiment entry
+* Not fixed: commas in alleleKey still breaking
+* Bug: used well counter no longer working
+
 v0.21.015
 Date: Thu Apr 20 15:55:40 AEST 2023
 * CHANGED: enforced quoting to protect weird alleleSymbol names

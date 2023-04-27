@@ -200,8 +200,7 @@ def process_upload(exp, filepath, purpose, overwrite=False):
     if purpose == 'amplicon':
         success, pids = parse_amplicon_manifest(exp, filepath, overwrite=overwrite)
     elif purpose == 'DNA' or purpose == 'dna':
-        # parse_DNA_record()
-        exp.log('Critical: no parser implemented for DNA plate records')
+        success, pids = load_dna_plate(exp, filepath, overwrite=True)
     elif purpose == 'rodentity_sample':  # becomes purpose=sample source=rodentity
         success, pids = parse_rodentity_json(exp, filepath, overwrite=overwrite)
     elif purpose == 'custom_sample':  # becomes purpose=sample source=custom
@@ -283,34 +282,35 @@ def parse_rodentity_json(exp, fp, overwrite=False):
         well_records[gpid][pos]['mouse'] = deepcopy(record['mouse'])
             
         # build all the various assay/allele structures required
-        well_records[gpid][pos]['assay_records'] = {}
-        assays = []
-        assayFamilies = set()
-        unknown_assays = []
-        unknown_assayFamilies = set()
+        well_records[gpid][pos]['ngs_assay_records'] = {}
+        well_records[gpid][pos]['other_assay_records'] = {} 
+        ngs_assays = []
+        other_assays = []
                     
         if 'alleles' in record['mouse']:
             for allele in record['mouse']['alleles']:  # allele is a dict from a list
                 for assay in allele['assays']:  # assay is a dict from a list
-                    if assay['name'] not in well_records[gpid][pos]['assay_records']:
-                        well_records[gpid][pos]['assay_records'][assay['name']] =\
-                                {'assayFamily':assay['name'].split('_')[0]}
-                    well_records[gpid][pos]['assay_records'][assay['name']]['alleleKey'] = str(allele['alleleKey'])
-                    well_records[gpid][pos]['assay_records'][assay['name']]['alleleSymbol'] = '"'+str(allele['symbol'])+'"'
-                    well_records[gpid][pos]['assay_records'][assay['name']]['assayKey'] = str(assay['assay_key'])
-                    well_records[gpid][pos]['assay_records'][assay['name']]['assayName'] = str(assay['name'])
-                    well_records[gpid][pos]['assay_records'][assay['name']]['assayMethod'] = str(assay['method'])
-                    if assay['method'] == 'NGS' or assay['name'].startswith('NGS'):
-                        assays.append(assay['name'])
-                        assayFamilies.add(assay['name'].split('_')[0])
+                    assay_name = str(assay['name'])
+                    assay_method = str(assay['method'])
+                    assay_key = str(assay['assay_key'])
+                    allele_key = str(allele['alleleKey'])
+                    allele_symbol = '"'+str(allele['symbol'])+'"'
+                    if assay_method == 'NGS' or assay_name.startswith('NGS'):
+                        ngs_assays.append(assay_name)
+                        ngs_or_other = 'ngs_assay_records'
                     else:
-                        unknown_assays.append(assay['name'])
-                        unknown_assayFamilies.add(assay['name'].split('_')[0])
+                        other_assays.append(assay_name)
+                        ngs_or_other = 'other_assay_records'
+                    if assay_name not in well_records[gpid][pos][ngs_or_other]:
+                        well_records[gpid][pos][ngs_or_other][assay_name] = {}
+                    well_records[gpid][pos][ngs_or_other][assay_name]['alleleKey'] = allele_key
+                    well_records[gpid][pos][ngs_or_other][assay_name]['alleleSymbol'] = allele_symbol
+                    well_records[gpid][pos][ngs_or_other][assay_name]['assayKey'] = assay_key
+                    well_records[gpid][pos][ngs_or_other][assay_name]['assayName'] = assay_name # redundant
+                    well_records[gpid][pos][ngs_or_other][assay_name]['assayMethod'] = assay_method # not entirely redundant
                             
-        well_records[gpid][pos]['assays'] = assays.copy()
-        well_records[gpid][pos]['assayFamilies'] = list(assayFamilies)
-        well_records[gpid][pos]['unknown_assays'] = unknown_assays.copy()
-        well_records[gpid][pos]['unknown_assayFamilies'] = list(unknown_assayFamilies)
+        well_records[gpid][pos]['ngs_assays'] = ngs_assays.copy()
+        well_records[gpid][pos]['other_assays'] = other_assays.copy()
     
     for gpid in well_records:
         if gpid in exp.plate_location_sample:
@@ -418,8 +418,7 @@ def parse_custom_manifest(exp, fp, overwrite=False):
                     well_records[gpid][well][header_dict[k]] = str(c)
                 except:
                     print(f'Failed to record well_record {gpid=} {well=} {header_dict[k]=} {c=}', file=sys.stderr)
-        well_records[gpid][well]['assays'] = assays
-        well_records[gpid][well]['assayFamilies'] = list(set([a.split('_')[0] for a in assays]))
+        well_records[gpid][well]['ngs_assays'] = assays
 
     for gpid in well_records:
         if gpid in exp.plate_location_sample:
@@ -900,6 +899,40 @@ def parse_reference_sequences(exp, fp):
     exp.log(f'Success: {len(ref_seq)} reference sequences imported from {fp}')
     return True
   
+
+def load_dna(exp, filepath, overwrite=True):
+    """
+    Filepath should point to an Echo_384_COC file/Nimbus output/Echo input
+    """
+    # "Echo_384_COC_0001_" + ug_dnaBC + "_0.csv"
+    with open(filepath, 'rt') as f:
+        #RecordId	TRackBC	TLabwareId	TPositionId	SRackBC	SLabwareId	SPositionId
+        #1	p2021120604p	Echo_384_COC_0001	A1	p2111267p	ABg_96_PCR_NoSkirt_0001	A1
+        dbc = util.guard_pbc(filepath.split('_')[-2], silent=True)
+        exp.plate_location_sample[dbc] = {'purpose':'dna','wells':set(),'source':'Nimbus','plate_type':'384PP_AQ_BP'}
+        for i, line in enumerate(f):
+            if i == 0:  # header
+                # get named columns
+                cols = [c.strip().strip('\"') for c in line.split(',')]
+                source_plate_bc_col = [i for i,c in enumerate(cols) if c=='SRackBC'][0]
+                source_well_col = [i for i,c in enumerate(cols) if c=='SPositionId'][0]
+                source_bc_col = [i for i,c in enumerate(cols) if c=='SPositionBC'][0]
+                dest_plate_bc_col = [i for i,c in enumerate(cols) if c=='TRackBC'][0]
+                dest_well_col = [i for i,c in enumerate(cols) if c=='TPositionId'][0]
+                continue
+            cols = [c.strip().strip('\"') for c in line.split(',')]
+            source_pos = util.unpadwell(cols[source_well_col])
+            source_plate = util.unguard_pbc(cols[source_plate_bc_col], silent=True)
+            dest_plate = util.unguard_pbc(cols[dest_plate_bc_col], silent=True)
+            dest_pos = util.unpadwell(cols[dest_well_col])
+            if dest_plate != dbc:
+                exp.log(f"Error: {dbc} doesn't match {dest_plate} as declared in Echo_384_COC file: {filepath}")
+            exp.plate_location_sample[dbc]['wells'].add(dest_pos)
+            try:
+                exp.plate_location_sample[dbc][dest_pos] =\
+                        deepcopy(exp.plate_location_sample[util.guard_pbc(source_plate, silent=True)][source_pos])
+            except:
+                exp.log(f"Critical: cannot locate {dbc=} {dest_pos=} {source_plate=} {source_pos=}")
 
 def myopen(fn):
     """ Bob's function to handle gzip transparently """

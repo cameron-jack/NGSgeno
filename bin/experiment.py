@@ -101,9 +101,8 @@ class Experiment():
         # Rodentiy: "alleles":[{alleleKey, name, symbol, options:[], assays:[{assayKey, name, method}]}]
         # Musterer: "strain", "assays":[{name, method, value(g/t), options:[]}] <- rename to must_assays
         # Custom: "assays": [str]
-        # Standardised: "assays": [str], "assayFamilies": [str] <- musterer assay[name], rodentity allele[assay[name]]
-        # The specific import function should be responsisble for creating the "assays" and "assayFamilies" fields.
-        # Note the ugly camel case for assayFamilies - to match headers with this case type
+        # Standardised: "assays": [str], rodentity allele[assay[name]]
+        # The specific import function should be responsisble for creating the "assays" field
         ###
         self.denied_assays = []
         self.denied_primers = []
@@ -225,7 +224,10 @@ class Experiment():
 
         if not PIDs:
             PIDs = []
-        self.uploaded_files[file_name] = {'plates': [util.guard_pbc(PID, silent=True) for PID in PIDs], 'purpose': purpose}
+
+        file_md5 = util.get_md5(file_name)
+        self.uploaded_files[file_name] = {'plates': [util.guard_pbc(PID, silent=True) for PID in PIDs], 
+                'purpose': purpose, 'md5':file_md5}
         return True
 
 
@@ -297,13 +299,13 @@ class Experiment():
         dna_plate_id = util.guard_pbc(dna_plate_id, silent=True)
 
         if dna_plate_id in self.plate_location_sample:
-            self.log('Error: plate {dna_plate_id} already exists! Please delete this plate before trying again')
+            self.log(f'Error: plate {dna_plate_id} already exists! Please delete this plate before trying again')
             return False
 
         sample_plate_ids = sorted([util.guard_pbc(spid, silent=True) for spid in sample_plate_ids if spid])
 
         if source == 'rodentity':
-            self.log('Begin: combining Rodentity plate set into 384-well DNA plate {dna_plate_id}')
+            self.log(f'Begin: combining Rodentity plate set into 384-well DNA plate {dna_plate_id}')
             for spid in sample_plate_ids:
                 purpose = self.plate_location_sample[spid]['purpose']
                 source = self.plate_location_sample[spid]['source']
@@ -311,7 +313,7 @@ class Experiment():
                     self.log(f'Error: cannot combine {spid} with {purpose=} and {source=}')
                     return False
         elif source == 'custom':
-            self.log('Begin: combining custom plate set into 384-well DNA plate {dna_plate_id}')
+            self.log(f'Begin: combining custom plate set into 384-well DNA plate {dna_plate_id}')
             for spid in sample_plate_ids:
                 purpose = self.plate_location_sample[spid]['purpose']
                 source = self.plate_location_sample[spid]['source']

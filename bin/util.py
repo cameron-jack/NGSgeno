@@ -7,14 +7,12 @@
 A collection of code functions and definitions that are used throughout the pipeline
 """
 
-import os
 import sys
-import glob
 import collections
-import traceback
 from pathlib import PurePath
 from collections import defaultdict
 import csv
+import hashlib
 
 import itertools
 
@@ -80,13 +78,13 @@ WATER_WELLS = ['A'+c for c in '123']
 TAQ_WELLS = ['B'+c for c in '123']
 # global - set of all possible guard types
 GUARD_TYPES = set(['m','r','c','p', 'a'])
-    
-def output_error(exc, msg=''):
-    """ DEPRECATED """
-    with open(ERROR_FN, 'wt') as f:
-        if msg:
-            f.write(f"{exc} {msg}")
-        f.write(traceback.format_exc())
+ 
+def get_md5(fn):
+    """ return the md5sum of a file to ensure data safety """
+    with open(fn, "rb") as f:
+        file_bytes = f.read()  # read file as bytes
+        readable_hash = hashlib.md5(file_bytes).hexdigest()
+    return readable_hash
 
 row_ordered_96 = []
 for r in [chr(65+i) for i in range(8)]:
@@ -145,7 +143,7 @@ def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied
             if guard in included_guards:
                 if 'assays' not in location_sample[well]:
                     continue
-                for assay in location_sample[well]['assays']:
+                for assay in location_sample[well]['ngs_assays']:
                     if assay not in denied_assays:
                         assay_counts[assay] += 1
                 if not filtered:
@@ -524,7 +522,42 @@ def choose_primerfam(exp, assayfam):
     exp.log(f'Warning: Primer family not found to match assay {assayfam}')
 
     return [assayfam]
-    
+   
+
+def match_assays_to_primers(exp, assays):
+    """
+    Multiple primers may be needed per assay, and we need to check for manual overrides
+    from exp.primer_assay too.
+    """
+    assay_primers = {}  # each assay will result in a set of primers
+    loaded_primers = exp.get_primer_names()
+    mapped_primers = exp.primer_assay
+    for assay in assays:
+        assay_primers[assay] = set()
+        for p in mapped_primers:  # first try the manual overrides
+            if exp.primer_assay[p] == assay:
+                assay_primers[assay].add(p)
+                break
+            elif '_' in p:  # multiple primers per assay
+                pfam = p.split('_')[0]
+                if pfam == assay:  # we found the family
+                    assay_primers[assay].add(p)
+        for p in loaded_primers:  # compare to all the primers in plates
+            if p == assay:
+                if len(assay_primers[assay]) > 0:
+                    break # already found
+                assay_primers[assay].add(p)
+                break  # got it in one!
+            elif '_' in p:  # multiple primers per assay
+                pfam = p.split('_')[0]
+                if pfam == assay:  # we found the family
+                    assay_primers[assay].add(p)
+    return assay_primers
+
+
+def get_assay_family(assay):
+    """ Assay family is the first part of the assay name ahead of any underscore """
+    return assay.split('_')[0]
 
 ### Table classes to act like a relational DB
 

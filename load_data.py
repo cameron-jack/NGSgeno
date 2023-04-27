@@ -147,8 +147,14 @@ def pending_file_widget(key):
     combined_pending = []  # both pending_uploads and pending_steps
     warning_area.warning('The following files have been uploaded previously. '+
                         'Select the ones you want to overwrite and submit')
-    pending_uploads = exp.pending_uploads.copy()
-    pending_steps = exp.pending_steps.copy()
+    pending_uploads = {}
+    if exp.pending_uploads:
+        pending_uploads = exp.pending_uploads.copy()
+    pending_steps = {}
+    if exp.pending_steps:
+        pending_steps = exp.pending_steps.copy()
+    if not pending_uploads and not pending_steps:
+        return
     # clear missing files, and make checkboxes for all pending files
     st.session_state['clashing_filenames'] = {}
     st.session_state['clashing_pids'] = {}
@@ -160,8 +166,12 @@ def pending_file_widget(key):
         if not Path(pending_step).exists():
             del exp.pending_steps[pending_step]
             continue
-    pending_uploads = exp.pending_uploads.copy()
-    pending_steps = exp.pending_steps.copy()
+    pending_uploads = {}
+    if exp.pending_uploads:
+        pending_uploads = exp.pending_uploads.copy()
+    pending_steps = {}
+    if exp.pending_steps:
+        pending_steps = exp.pending_steps.copy()
     if not pending_uploads and not pending_steps:
         return
     with warning_area.form('warning_area_'+key, clear_on_submit=True):

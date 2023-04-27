@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 
-VER="v0.21.015"
+VER="v0.21.016"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* CHANGED: enforced quoting to protect weird alleleSymbol names
+* Fixed: assay and assayFamily order swap
+* Changed: removed assayFamilies as a recorded part of an experiment entry
+* Not fixed: commas in alleleKey still breaking
+* Bug: used well counter no longer working
 EOM
 
 mv changelog.txt changelog_old.txt
