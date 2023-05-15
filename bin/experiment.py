@@ -26,6 +26,7 @@ from copy import deepcopy
 from math import ceil, floor
 from pathlib import Path
 import inspect  
+from collections import defaultdict
 
 import pandas as pd
 
@@ -107,8 +108,10 @@ class Experiment():
         self.denied_assays = []
         self.denied_primers = []
         self.assay_synonyms = {}  # {source:{reference:alternative}}
-        self.primer_assay = {}  # {source:{mapping of primer to assay}}
-        self.assay_primer = {}  # {source:{mapping of assays to primers}}
+        self.primer_assayfam = {}  # {source:{mapping of primer to assayfam}} for reverse lookups
+        self.assayfam_primers = {}  # {source:{mapping of assay families to list of primers}}
+        self.assay_assayfam = {}  # mapping of assay to assay family
+        self.assayfam_assays = {}  # mapping of assay family to list of assays for reverse lookups
         self.reference_sequences = {}  # {source:{name:seq}} mapping of sequence name to sequence
         ###
         # All generate_XXX() functions produce one or more files
@@ -501,6 +504,64 @@ class Experiment():
         self.save()
         return True
 
+                                                             
+    def get_dna_pids(self, dna_pids=None):
+        """ return a list of available DNA plate ids """
+        dpids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'dna']
+        if dna_pids:
+            dna_pids = [util.guard_pbc(d, silent=True) for d in dna_pids]
+            dpids = [d for d in dpids if d in dna_pids]
+        return dpids
+                    
+
+    def get_dna_records(self, dna_pids=None):
+        """
+        dna_fields=['samplePlate','sampleWell','sampleBarcode','strain','sex','alleleSymbol',
+                 'alleleKey','assayKey','assays','assayFamilies','clientName','sampleName',
+                 'dnaPlate','dnaWell','primer']
+        """
+        #print(f'{dna_pids=}')
+        dna_pids = self.get_dna_pids(dna_pids=dna_pids)
+        #print(f'{dna_pids=}')
+        records = []
+        for dna_bc in sorted(dna_pids):
+            for well in self.plate_location_sample[dna_bc]['wells']:
+                #print(f'{dna_bc=} {well=} {self.plate_location_sample[dna_bc][well]=}')
+                if 'barcode' not in self.plate_location_sample[dna_bc][well]:
+                    continue
+                if 'ngs_assays' not in self.plate_location_sample[dna_bc][well]:
+                    continue
+                for assay in self.plate_location_sample[dna_bc][well]['ngs_assays']:
+                    if assay not in self.assay_assayfam:
+                        continue
+                    assayfam = self.assay_assayfam[assay]
+                    if assayfam not in self.assayfam_primers:
+                        continue
+                    for primer in self.assayfam_primers[assayfam]:
+                        record = {'samplePlate':self.plate_location_sample[dna_bc][well]['samplePlate'], 
+                                'sampleWell':self.plate_location_sample[dna_bc][well]['sampleWell'], 
+                                'sampleBarcode':self.plate_location_sample[dna_bc][well]['sampleBarcode'],
+                                'assays':assay, 'assayFamilies':assayfam, 'primer':primer,
+                                'dnaPlate':dna_bc, 'dnaWell':well}
+                        record['strain'] = self.plate_location_sample[dna_bc][well].get('strain','')
+                        record['sex'] = self.plate_location_sample[dna_bc][well].get('sex','')
+                        if 'ngs_assay_records' in self.plate_location_sample[dna_bc][well]:
+                            if assay in self.plate_location_sample[dna_bc][well]['ngs_assay_records']:
+                                record['alleleSymbol'] = self.plate_location_sample[dna_bc][well]\
+                                        ['ngs_assay_records'][assay].get('alleleSymbol','')
+                                record['alleleKey'] = self.plate_location_sample[dna_bc][well]\
+                                        ['ngs_assay_records'][assay].get('alleleKey','')
+                                record['assayKey'] = self.plate_location_sample[dna_bc][well]\
+                                        ['ngs_assay_records'][assay].get('assayKey','')
+                        else:
+                            record['alleleSymbol'] = ''
+                            record['alleleKey'] = ''
+                            record['assayKey'] = ''
+                        record['clientName'] = self.plate_location_sample[dna_bc][well].get('clientName','')
+                        record['sampleName'] = self.plate_location_sample[dna_bc][well].get('sampleName','')
+                        records.append(record)
+        return records    
+
         
     def add_pcr_plates(self, pcr_plate_list=[]):
         """
@@ -518,182 +579,184 @@ class Experiment():
 
                                                                                             
     def get_pcr_pids(self):
-        """ return a list of user supplied PCR plate ids """
+        """ return a list of available PCR plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'pcr']
 
 
-    def get_primer_names(self, gpids=None):
-        """
-        Return the set of primer names that are available
-        """
-        primers = set()
-        if gpids:
-            primer_pids = [gpid for gpid in gpids if gpid in self.plate_location_sample \
-                    and self.plate_location_sample[gpid]['purpose'] == 'primer']
+    def get_primer_pids(self, pmr_pids=None):
+        """ return all primer pids, unless restricted by pmr_pids """
+        if pmr_pids:
+            primer_pids = [util.guard_pbc(ppid, silent=True) for ppid in pmr_pids \
+                    if ppid in self.plate_location_sample and self.plate_location_sample[ppid]['purpose'] == 'primer']
         else:
-            primer_pids = [gpid for gpid in self.plate_location_sample if gpid in self.plate_location_sample \
-                    and self.plate_location_sample[gpid]['purpose'] == 'primer']
+            primer_pids = [util.guard_pbc(ppid, silent=True) for ppid in self.plate_location_sample \
+                    if ppid in self.plate_location_sample and self.plate_location_sample[ppid]['purpose'] == 'primer']
+        return primer_pids
 
+
+    def get_available_primer_wells(self, pmr_pids=None):
+        """
+        returns dictionary {pmr:[[pid,well,vol,doses],...]
+        doses are the number of times a well can be aspirated from
+        Used by get_available_primer_vols_doses() and for plating
+        """
+        primer_pids = self.get_primer_pids(pmr_pids)
+        primer_wells_vols_doses = {}
         for ppid in primer_pids:
             for well in self.plate_location_sample[ppid]['wells']:
                 if 'primer' in self.plate_location_sample[ppid][well]:
                     pmr = self.plate_location_sample[ppid][well]['primer']
-                    print(f'{pmr=} {primers=}')
-                    if pmr:
-                        primers.add(pmr)
-        return primers
+                    if 'volume' in self.plate_location_sample[ppid][well]:
+                        raw_vol = self.plate_location_sample[ppid][well]['volume']  # nanolitres
+                        usable_vol = util.usable_volume(raw_vol, 'Echo384')
+                        doses = util.num_doses(raw_vol, self.transfer_volumes['PRIMER_VOL'], 'Echo384')
+                        if pmr not in primer_wells_vols_doses:
+                            primer_wells_vols_doses[pmr] = []
+                        primer_wells_vols_doses[pmr].append([ppid, well, usable_vol, doses])
+        return primer_wells_vols_doses
 
 
-    def get_assay_usage(self, dna_plate_list=[], filtered=True, included_guards=util.GUARD_TYPES):
-        """ We will want ways to get assay usage from various subsets, but for now do it for everything that 
-            has a Nimbus destination plate.
+    def get_available_primer_vols_doses(self, pmr_pids=None):
         """
-        assay_usage = {}
-        for dest in self.dest_sample_plates:
-            if dna_plate_list and dest not in dna_plate_list:
+        return a dictionary of primer names and total volumes and uses across all wells
+        """
+        primer_wells_vols_doses = self.get_available_primer_wells(pmr_pids)
+        primer_vols = defaultdict(int)
+        primer_doses = defaultdict(int)
+        for pmr in primer_wells_vols_doses:
+            for record in primer_wells_vols_doses[pmr]:
+                pid, well, vol, doses = record
+                primer_vols[pmr] += vol  # volume is last
+                primer_doses[pmr] += doses
+        primer_vols_doses = {}
+        for pmr in primer_vols:
+            primer_vols_doses[pmr] = tuple([primer_vols[pmr], primer_doses[pmr]])
+        return primer_vols_doses
+
+
+    def get_primers_for_assays(self, assays):
+        """
+        For each assay in assays, find the matching assay family and the corresponding primers
+        Return a dictionary[assay] = [primers]
+        """
+        assay_primers = {}
+        for assay in assays:           
+            if assay in assay_primers:
+                continue  # we've already seen this assay
+            if assay not in self.assay_assayfam:
                 continue
-            for sample_pid in self.dest_sample_plates[dest]:
-                plate = transaction.get_plate(self, sample_pid)
-                assay_usage.update(util.calc_plate_assay_usage(plate,filtered=filtered, included_guards=included_guards))
-        return assay_usage
+            assayfam = self.assay_assayfam[assay]
+            if assayfam not in self.assayfam_primers:
+                continue
+            primers = self.assayfam_primers[assayfam]
+            assay_primers[assay] = primers
+        return assay_primers
 
-
-    def get_volumes_required(self, assay_usage=None, dna_plate_list=[], filtered=True):
-        """
-            Standard usage is to call get_assay_usage() first and pass it to this.
-            if filtered, only apply those assays allowed by the assay/primer list.
-        """
-        if not assay_usage:
-            assay_usage = self.get_assay_usage(dna_plate_list=dna_plate_list, filtered=filtered)  # all assays present
-            #assay_list = set([self.primer_assay[prmr] for prmr in self.primer_assay])
-            #assay_usage = {a:assay_usage[a] for a in assay_usage if a in assay_list}
-        #print (f'{assay_usage=}', assay_usage.values(), file=sys.stderr)
-        reactions = sum([v for v in assay_usage.values()])
-
-        # convert assay name to primer name
-        #for a in assay_usage:
-        #    assay_primer_conversion_list = set([self.primer_assay[prmr] for prmr in self.primer_assay])
-        #    if a in assay_primer_conversion_list:
-        #        assay_usage(self.assay
-
-        primer_taq_vol = reactions * self.transfer_volumes['PRIMER_TAQ_VOL']
-        primer_water_vol = reactions * self.transfer_volumes['PRIMER_WATER_VOL']
-        index_water_vol = reactions * self.transfer_volumes['INDEX_WATER_VOL']
-        index_taq_vol = reactions * self.transfer_volumes['INDEX_TAQ_VOL']
-        primer_vols = {a:assay_usage[a]*self.transfer_volumes['PRIMER_VOL'] for a in assay_usage}
-        return primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol
     
-
-    def get_index_avail(self, included_pids=None):
+    def get_assay_primer_usage(self, dna_pids=None):
         """
-        Returns {primer:count}, {primer:vol} from what's been loaded 
-        If included_pids is an iterable, only include plates with these ids
-        TODO: check the validity of line 1768ish fwd_idx and rev_idx. Assignment/comparison...
+        For a given set of DNA plates, return the number of times each assay and primer is needed
+        If an dna_pids is None, use all available dna plates
+        """
+        assay_usage = defaultdict(int)
+        primer_usage = defaultdict(int)
+        if dna_pids:
+            dpids = [pid for pid in dna_pids if pid in self.plate_location_sample \
+                    and self.plate_location_sample[pid]['purpose'] == 'dna']
+        else:
+            dpids = [pid for pid in self.plate_location_sample if pid in self.plate_location_sample \
+                    and self.plate_location_sample[pid]['purpose'] == 'dna']
+        if not dpids:
+            self.log(f'Error: no DNA plates found matching DNA plate IDs: {dna_pids}')
+            return assay_usage, primer_usage
+
+        for dpid in dpids:        
+            for well in self.plate_location_sample[dpid]['wells']:       
+                assays = self.plate_location_sample[dpid][well]['ngs_assays']
+                for assay in assays:  
+                    assay_usage[assay] += 1
+                assays_primers = self.get_primers_for_assays(assays)
+                for a in assays_primers:
+                    for primer in assays_primers[a]:
+                        primer_usage[primer] += 1
+        return assay_usage, primer_usage
+
+
+    def get_index_avail(self):
+        """
+        Use all index plates available and return dictionaries of fwd and rev indexes
+        Returns:
+            [fwd_index]={'well_count':int, 'avail_transfers':int, 'avail_vol':nl}
+            [rev_index]={'well_count':int, 'avail_transfers':int, 'avail_vol':nl}
         """
         index_pids = []
-        warning_idxs = ''
         for pid in self.plate_location_sample:
             if self.plate_location_sample[pid]['purpose'] == 'index':
                 index_pids.append(pid)
-
-        if included_pids:
-            guarded_included_pids = [util.guard_pbc(pid, silent=True) for pid in included_pids]
-            index_pids = [pid for pid in index_pids if pid in guarded_included_pids]
                 
         fwd_idx = {}
         rev_idx = {}
 
         for idx_pid in index_pids:
             idx_plate = transaction.get_plate(self, idx_pid)
-
-            #print(f'get_index_remaining_available_volume() {idx_plate=}', file=sys.stderr)
-            
+          
             for well in idx_plate['wells']:
                 if 'idt_name' not in idx_plate[well]:
                     continue
                 name = idx_plate[well]['idt_name']
-                # if 'volume' in idx_plate[well]:
-                #     #print(f"get_index_remaining_available_volume() {idx_plate[well]['volume']=}")
                 if 'i7F' in name:
                     if name not in fwd_idx:
-                        fwd_idx[name] = {'count':0, 'req_vol':[], 'avail_vol':[]}
-                    fwd_idx[name]['count'] += 1
+                        fwd_idx[name] = {'well_count':0, 'avail_transfers':0, 'avail_vol':0}
+                    fwd_idx[name]['well_count'] += 1
                     if 'volume' in idx_plate[well]:
-                        fwd_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
+                        vol = util.usable_volume(idx_plate[well]['volume'], 'Echo384')
+                        doses = util.num_doses(idx_plate[well]['volume'], self.transfer_volumes['INDEX_VOL'], 'Echo384')
+                        fwd_idx[name]['avail_vol'] += vol
+                        fwd_idx[name]['avail_transfers'] += doses
                 elif 'i5R' in name:
                     if name not in rev_idx:
-                        rev_idx[name] = {'count':0, 'req_vol':[],'avail_vol':[]}
-                    rev_idx[name]['count'] += 1
+                        rev_idx[name] = {'well_count':0, 'avail_transfers':0,'avail_vol':0,}
+                    rev_idx[name]['well_count'] += 1
                     if 'volume' in idx_plate[well]:
-                        rev_idx[name]['avail_vol'].append(max(idx_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0))
+                        vol = util.usable_volume(idx_plate[well]['volume'], 'Echo384')
+                        doses = util.num_doses(idx_plate[well]['volume'], self.transfer_volumes['INDEX_VOL'], 'Echo384')
+                        rev_idx[name]['avail_vol'] += vol
+                        rev_idx[name]['avail_transfers'] += doses
                 else:
-                    self.log('Unexpected index name:' + name, level='Warning')
+                    self.log(f'Warning: unexpected index name: {name}')
 
-        max_i7F = len(fwd_idx)
-        max_i5R = len(rev_idx)
-        for idx in fwd_idx.keys():
-            fwd_idx[idx]['req_vol'].append(max_i5R*self.transfer_volumes['INDEX_VOL']/1000)
-            if 'avail_vol' not in fwd_idx[idx] or max_i5R*self.transfer_volumes['INDEX_VOL']/1000 > sum(fwd_idx[idx]['avail_vol']):
-                warning_idxs += idx + ', '
-        for idx in rev_idx.keys():
-            rev_idx[idx]['req_vol'].append(max_i7F*self.transfer_volumes['INDEX_VOL']/1000)
-            if 'avail_vol' not in rev_idx[idx] or max_i7F*self.transfer_volumes['INDEX_VOL']/1000 > sum(rev_idx[idx]['avail_vol']):
-                warning_idxs += idx + ', '
-
-        return fwd_idx, rev_idx, warning_idxs
+        return fwd_idx, rev_idx
      
     
-    def get_index_remaining_available_volume(self, assay_usage=None, fwd_idx=None, rev_idx=None):
+    def get_index_reactions(self, primer_usage, fwd_idx=None, rev_idx=None):
         """
-        Returns the barcode pairs remaining, max available barcode pairs, max barcode pairs allowed by volume
+        Returns the barcode pairs remaining, max available barcode pairs
+        Can take the output of get_index_avail to save recalculating them
         """
-        if not assay_usage:
-            assay_usage = self.get_assay_usage()
-        reactions = sum([v for v in assay_usage.values()])
+        reactions_required = sum([v for v in primer_usage.values()])
 
         if not fwd_idx or not rev_idx:
-            return 0, 0, False
+            fwd_idx, rev_idx = self.get_index_avail()
 
+        if not fwd_idx or not rev_idx:
+            return 0, 0
+
+        reactions_possible = 0
         max_i7F = len(fwd_idx)
         max_i5R = len(rev_idx)
+        for fwd in fwd_idx:
+            if fwd_idx[fwd]['avail_transfers'] < 1:
+                continue
+            for rev in rev_idx:
+                if fwd_idx[fwd]['avail_transfers'] < 1:
+                    break
+                if rev_idx[rev]['avail_transfers'] < 1:
+                    continue
+                reactions_possible += 1
+                fwd_idx[fwd]['avail_transfers'] -= 1
+                rev_idx[rev]['avail_transfers'] -= 1
 
-        fwd_idx_reactions = {}
-        reaction_vol_capacity = 0
-        for name in fwd_idx.keys():
-            # get the number of possible reactions and keep the lower number from possible reactions or possible reaction partners
-            max_reactions = sum([floor((vol-util.DEAD_VOLS[util.PLATE_TYPES['Echo384']])/self.transfer_volumes['INDEX_VOL']) \
-                    for vol in fwd_idx[name]['avail_vol']])
-            reaction_vol_capacity += min(max_reactions, max_i5R)
-
-        max_idx_pairs = max_i7F * max_i5R
-        
-        return max_idx_pairs-reactions, max_idx_pairs, reaction_vol_capacity
-
-
-    def get_primers_avail(self, included_pids=None):
-        """ 
-        Returns {primer:count}, {primer:vol} from what's been loaded 
-        If included_pids is an iterable, only include plates with these ids
-        """
-        primer_counts = {}
-        primer_vols = {}
-        for pid in self.plate_location_sample:
-            if self.plate_location_sample[pid]['purpose'] == 'primer':
-                if included_pids:
-                    if pid not in included_pids:
-                        continue
-                pmr_plate = transaction.get_plate(self, pid)
-                for well in pmr_plate['wells']:
-                    if 'primer' in pmr_plate[well]:
-                        primer_name = pmr_plate[well]['primer']
-                        if primer_name not in primer_counts:
-                            primer_counts[primer_name] = 0
-                        if primer_name not in primer_vols:
-                            primer_vols[primer_name] = 0
-                        primer_counts[primer_name] += 1
-                        if 'volume' in pmr_plate[well]:
-                            primer_vols[primer_name] += max(pmr_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo384']],0)
-        return primer_counts, primer_vols
+        return reactions_possible - reactions_required, reactions_possible
 
 
     def get_taqwater_avail(self, taqwater_bcs=None, transactions=None):
@@ -725,6 +788,18 @@ class Experiment():
                         if well in transactions[pid]:
                             taq_avail += transactions[pid][well]
         return taq_avail, water_avail, pids
+
+
+    def get_taq_water_volumes_required(self, num_reactions):
+        """
+        Returns the taq and water volumes required for the primer and index stages in nl
+        """
+        primer_taq_vol = num_reactions * self.transfer_volumes['PRIMER_TAQ_VOL']
+        primer_water_vol = num_reactions * self.transfer_volumes['PRIMER_WATER_VOL']
+        index_water_vol = num_reactions * self.transfer_volumes['INDEX_WATER_VOL']
+        index_taq_vol = num_reactions * self.transfer_volumes['INDEX_TAQ_VOL'] 
+        return primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol
+
 
     def get_taqwater_pids(self):
         pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
@@ -995,7 +1070,15 @@ class Experiment():
             counter += 1
         if self.pending_steps:
             for file_name in self.pending_steps:
-                pids = [util.unguard_pbc(pid, silent=True) for pid in self.pending_steps[file_name]]
+                if type(self.pending_steps[file_name]) == 'dict':
+                    pids = [util.unguard_pbc(pid, silent=True) for pid in self.pending_steps[file_name].keys()]
+                if type(self.pending_steps[file_name]) == 'list':
+                    pids = []
+                    for thing in self.pending_steps[file_name]:
+                        for pid in thing:
+                            pids.append(util.unguard_pbc(pid, silent=True))
+                else:
+                    pids = [util.unguard_pbc(pid, silent=True) for pid in self.pending_steps[file_name]]
                 stages.append([str(counter), file_name, ', '.join(pids), 'pending'])
         return stages, header
 
@@ -1207,7 +1290,7 @@ class Experiment():
     def read_allele_results(self):
         """
         Read in allele_results
-        [SampleNo, EPplate, EPwell, sampleBarcode, assays, assayFamilies, dnaplate, dnawell, 
+        [SampleNo, EPplate, EPwell, sampleBarcode, assays, assayFamilies, dnaPlate, dnaWell, 
         primer, pcrplate, pcrwell, i7bc, i7name, i7well, i5bc, i5name, i5well, allele_prop, 
         efficiency, readCount, cleanCount, mergeCount, seqCount*, seqName*]
 
@@ -1239,6 +1322,7 @@ class Experiment():
             print(f"Error saving {self.name=} {exc}", file=sys.stderr)
             return False
         return True
+
 
     def log(self, message, level=''):
         """ Always add the date/time, function where the log was run and the caller function to the log """
@@ -1301,13 +1385,13 @@ class Experiment():
         #if level == '':
         #    level = 'Debug'
         self.log_entries.append([t, func, func_line, caller, caller_line, level, message])
-        if (now - self.log_time).seconds > 10 or level in ['Error', 'Critical', 'End', 'Success', 'Failure']:
+        if (now - self.log_time).seconds > 10 or level in ['Error','Critical','Failure','End']:
             self.save()
 
     def get_log_header(self):
         return ['Time', 'Function name', 'Func line', 'Calling function', 'Call line', 'Level', 'Message']
 
-    def get_log(self, num_entries=10):
+    def get_log(self, num_entries=100):
         """ return a chunk of the log. -1 gives everything """
         if num_entries == -1:
             return self.log[::-1]

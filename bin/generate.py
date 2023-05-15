@@ -72,6 +72,59 @@ Behaves like a C++ "friend" of the Experiment class - very tightly coupled.
 # generate_miseq_samplesheet
 # generate_targets
 
+def get_single_pos(resource_dict, name_offset, res_name, rotate=True):
+    """
+    Generic plate and well chooser for a single resource that manages well capacity 
+            with either rotating or serial behaviour
+    resource_dict is provided by exp.get_available_primer_wells
+    resource_dict[res_name] = [[pid, well, vol, capacity], ...]
+    name_offset[res_name] = int is for indexing into the resource_dict[res_name] list
+    if rotate, we increment the offset regardless of whether the well we just looked
+            in is empty
+    """
+    if name_offset[res_name] == -1:
+        # res_name has run dry
+        return None, None
+    starting_offset = name_offset[res_name]
+    capacity = 0
+    offset = name_offset[res_name]
+    while capacity == 0:
+        pid = resource_dict[res_name][offset][0]
+        well = resource_dict[res_name][offset][1]
+        capacity = resource_dict[res_name][offset][2]       
+        if capacity == 0:  # empty well
+            offset += 1
+            if offset >= len(resource_dict[res_name]):  # wrap around
+                offset = 0
+            if offset == starting_offset:  # all wells are dry
+                name_offset[res_name] = -1
+                return None, None
+        else:
+            capacity -= 1
+            resource_dict[res_name][offset] = [pid, well, capacity]
+            break
+    if rotate:  # use each well once before coming back
+        offset += 1
+        if offset >= len(resource_dict[res_name]):
+            offset = 0
+    name_offset[res_name] = offset
+    return pid, well
+    
+
+def primer_plating(exp, table, pmr_pids, rotate=True):
+    """ 
+    table is a Table object
+    If rotate is True: use each well of a primer once before moving to the next well
+    If rotate is False: use the same well of a primer until it is empty before moving on
+    """
+    pmr_pos_list = []
+    primer_resources = exp.get_available_primer_wells(pmr_pids)
+    primer_offsets = {pmr:0 for pmr in primer_resources}
+    for row in table:
+        pid, well = get_single_pos(primer_resources, primer_offsets, row.primer, rotate=rotate)
+        pmr_pos_list.append(tuple([pid, well]))
+    return pmr_pos_list
+
 def nimbus_gen(exp):
     """
     Standardised Nimbus input generator, produces a workfile for the BRF's Nimbus robot.
@@ -83,6 +136,9 @@ def nimbus_gen(exp):
 
     As a file generator() it needs to create a transaction (exp.reproducible_steps) entry
     """
+    if len(exp.assay_assayfam) == 0:
+        exp.log('Error: assay/primer "assay list" must be loaded first')
+        return False
     transactions = {}
     #try:
     if True:
@@ -158,8 +214,13 @@ def nimbus_gen(exp):
                             assayNames = []
                             assayFamilies = []
                             for assay in shx[pos]['ngs_assays']:
+                                if assay not in exp.assay_assayfam:
+                                    msg = f'Warning: skipping assay {assay} in sample plate {util.unguard_pbc(dna_BC, silent=True)}'
+                                    exp.log(msg)
+                                    print(msg)
+                                    continue
                                 assayNames.append(assay)
-                                assayFamilies.append(util.get_assay_family(assay))
+                                assayFamilies.append(exp.assay_assayfam[assay])
                                 if 'ngs_assay_records' in shx[pos]:
                                     if assay in shx[pos]['ngs_assay_records']:
                                         alleleSymbols.append(shx[pos]['ngs_assay_records'][assay].get('alleleSymbol',''))
@@ -261,24 +322,6 @@ def grouper(xs, kf=lambda x:x[0]):
     "group pairs: (x,a), (x,b), ... => (x,[a,b, ...]), ..."
     return itertools.groupby(sorted(xs, key=kf), key=kf)
 
-#def file_get_check(exp, fids, fmt):
-#    """ collect Echo DNA plate file names, match plate ids, remove duplicates """
-#    try:
-#        dups = [fids[i] for i in range(1, len(fids)) if fids[i] in fids[:i]]
-#        fx = [fids[i] for i in range(len(fids)) if fids[i] not in fids[:i]]
-#        if dups:
-#            exp.log(f"Warning: Duplicate DNA plate IDs ignored: {dups}")    
-    
-#        globs = dict((pid, sorted(glob.glob(fmt.format(pid)))) for pid in fx)
-#        nofile = [fid for fid, fns in globs.items() if not fns]
-#        if nofile:
-#            exp.log(f"Error: files not found {', '.join([fmt.format(fid) for fid in fids])}")
-#            return {}
-#        return collections.OrderedDict((fid, sorted(ps)[-1]) for fid, ps in globs.items())
-#    except Exception as exc:
-#        exp.log(f"Error: {exc}")
-#        return {}
-
 
 def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
     """ 
@@ -319,9 +362,11 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
                 transactions[fn][src_plate_barcode][src_plate_well] -= vol
 
                 if output_plate_guards:  # guard plate barcodes
-                    data.append([str(d) if 'plate barcode' not in h.lower() else util.guard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
+                    data.append([str(d) if 'plate barcode' not in h.lower() \
+                            else util.guard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
                 else:  # unguard plate barcodes
-                    data.append([str(d) if 'plate barcode' not in h.lower() else util.unguard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
+                    data.append([str(d) if 'plate barcode' not in h.lower() \
+                            else util.unguard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
             dst.writerows(data)
     #except Exception as exc:
     #    exp.log(f"Failure: Picklist generation failed for {fn} {exc}")
@@ -396,7 +441,7 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
     # now allocate to used wells
     #try:
     if True:
-        pcr_pids = sorted(set([w.pcrplate for w in task_wells]))
+        pcr_pids = sorted(set([w[-2] for w in task_wells]))  # w['pcrPlate']
         tw_pids = sorted(set([pid for pid,ww,tw in pid_ww_tw_list]))
         dst_dict = dict((pid, "Destination[{}]".format(i)) for i, pid in enumerate(pcr_pids, start=1))
         src_dict = dict((pid, "Source[{}]".format(i))for i, pid in enumerate(tw_pids, start=1))
@@ -409,12 +454,12 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
             #        "Destination Well,Volume"
             tw_pid, ww, tw = pid_ww_tw
             water_row = [src_dict[tw_pid], util.unguard(tw_pid, silent=True), util.PLATE_TYPES['Echo6'], ww,
-                    dst_dict[task_well.pcrplate], util.unguard(task_well.pcrplate, silent=True), 
-                    util.PLATE_TYPES['PCR384'], task_well.pcrwell, water_vol]
+                    dst_dict[task_well[-2]], util.unguard(task_well[-2], silent=True), 
+                    util.PLATE_TYPES['PCR384'], task_well[-1], water_vol]
             output_rows.append(water_row)
             taq_row = [src_dict[tw_pid], util.unguard(tw_pid, silent=True), util.PLATE_TYPES['Echo6'], tw,
-                    dst_dict[task_well.pcrplate], util.unguard(task_well.pcrplate, silent=True), 
-                    util.PLATE_TYPES['PCR384'], task_well.pcrwell, taq_vol]
+                    dst_dict[task_well[-2]], util.unguard(task_well[-2], silent=True), 
+                    util.PLATE_TYPES['PCR384'], task_well[-1], taq_vol]
             output_rows.append(taq_row)
         mk_picklist(exp, fn, output_rows, transactions)         
     #except Exception as exc:
@@ -424,12 +469,106 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
     return True
 
 
+def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True):
+    """
+    dna_records is a list of dictionaries
+    dna_fields=['samplePlate','sampleWell','sampleBarcode','strain','sex','alleleSymbol',
+                 'alleleKey','assayKey','assays','assayFamilies','clientName','sampleName',
+                 'dnaPlate','dnaWell','primer']
+    We want to add 'primerPlate' and 'primerWell' to the this dictionary
+    if rotate is True, move to next available primer well after each dose
+    """
+    success = True
+    primer_plate_well_vol_doses = exp.get_available_primer_wells(pmr_pids=pmr_pids)
+    primer_uses = {pmr:0 for pmr in primer_plate_well_vol_doses}
+
+    for i,rec in enumerate(dna_records):
+        pmr = rec['primer']
+        if pmr not in primer_plate_well_vol_doses:
+            print(f'{i=} {pmr=}')
+            exp.log(f'Warning: primer {pmr} not available on primer plate(s)')
+            dna_records[i]['primerPlate'] = None
+            dna_records[i]['primerWell'] = None
+            continue
+        if rotate:
+            offset = primer_uses[pmr] % len(primer_plate_well_vol_doses[pmr]) 
+            while True:
+                if sum([doses for pid, well, vol, doses in primer_plate_well_vol_doses[pmr]]) == 0:
+                    # all wells for this primer are empty
+                    exp.log(f'Warning: primer {pmr} has run out of available doses')
+                    success = False
+                    break
+                pid, well, vol, doses = primer_plate_well_vol_doses[pmr][offset]
+                if doses > 0:
+                    primer_uses[pmr] += 1
+                    primer_plate_well_vol_doses[pmr][offset][-1] -= 1
+                    primer_plate_well_vol_doses[pmr][offset][-2] -= exp.transfer_volumes['PRIMER_VOL']
+                    dna_records[i]['primerPlate'] = pid
+                    dna_records[i]['primerWell'] = well
+                    break
+                else:
+                    offset += 1
+                    if offset == len(primer_plate_well_vol_doses[pmr]):
+                        offset == 0
+        else:  # use up each well before moving on
+            offset = 0
+            while True:
+                if sum([doses for pid, well, vol, doses in primer_plate_well_vol_doses[pmr]]) == 0:
+                    # all wells for this primer are empty
+                    exp.log(f'Warning: primer {pmr} has run out of available doses')
+                    success = False
+                    break
+                pid, well, vol, doses = primer_plate_well_vol_doses[pmr][offset]
+                if doses > 0:
+                    primer_uses[pmr] += 1  # not actually used in this mode 
+                    primer_plate_well_vol_doses[pmr][offset][-1] -= 1
+                    primer_plate_well_vol_doses[pmr][offset][-2] -= exp.transfer_volumes['PRIMER_VOL']
+                    dna_records[i]['primerPlate'] = pid
+                    dna_records[i]['primerWell'] = well
+                    break
+                else:
+                    offset += 1
+    return success
+
+def stage_write(exp, fn, header, data, output_plate_guards=False, ignore_missing_plate_info=False):
+    """ 
+    Output stage files
+    Check which columns contain plate barcodes, and enforce plate guards or their removal based on output_plate_guards
+    """
+    try:
+        with open(fn, "wt", newline='') as dstfd:
+            wx = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_ALL)
+            out_lines = []
+            for row in data:
+                if not ignore_missing_plate_info:
+                    failed_row = False
+                    for i, (h,d) in enumerate(zip(header, row)):
+                        if h in ['primerPlate','dnaPlate','sourcePlate','pcrPlate'] and not d:
+                            print(f'Failed row: col {i=} for {row=}')
+                            failed_row = True
+                    if failed_row:
+                        continue
+                if output_plate_guards:  # guard plate barcodes
+                    out_lines.append([util.guard_pbc(str(d), silent=True) \
+                        if h in ['primerPlate','dnaPlate','sourcePlate','pcrPlate'] \
+                        and d != '' else str(d) for (h,d) in zip(header, row)])
+                else:  # unguard plate barcodes
+                    out_lines.append([str(d) if h not in ['primerPlate','dnaPlate','sourcePlate','pcrPlate'] 
+                            else util.unguard_pbc(str(d), silent=True) for (h,d) in zip(header, row)])
+            wx.writerow(header)  
+            wx.writerows(out_lines)
+    except Exception as exc:
+        exp.log(f'Error: could not write to {fn}. {exc}')
+        return False
+    return True
+
+
 def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs):
     """
     Entry point. Takes an experiment instance plus plate barcodes for dna plates, PCR plates, primer plates, taq/water plates.
     """
     #try:
-    if not exp.assay_primer:
+    if not exp.primer_assayfam:
         exp.log('Error: assay list must be loaded before generating primer picklist')
         return False
     if True:
@@ -440,16 +579,19 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
             pcr_bcs = [util.guard_pbc(p,silent=True) for p in pcr_plate_bcs]
         except Exception as e:
             exp.log(f"{e}")
+            return False
         try:
             dna_bcs = [util.guard_pbc(d,silent=True) for d in dna_plate_bcs] 
         except Exception as e:
             exp.log(f"{e}")
+            return False
         try:                          
             taq_bcs = [util.guard_pbc(t, silent=True) for t in taq_water_bcs]
         except Exception as e:
             exp.log(f"{e}")
+            return False
 
-        primer_pids = [p for p in exp.plate_location_sample if exp.plate_location_sample[p]['purpose'] == 'primer']
+        primer_pids = exp.get_primer_pids()
         primer_survey_lines = []
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
                 'primer names pooled', 'volume']
@@ -466,166 +608,99 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                 outline = ','.join([f"Source[{i+1}]",util.unguard_pbc(pid,silent=True),plate['plate_type'],
                         well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
                 primer_survey_lines.append(outline)
-        
 
-        # read Nimbus created DNA plates into experiment and copy source well information
+        with open('primer-svy.csv', 'wt') as fout:
+            for psl in primer_survey_lines:
+                fout.write(psl)
+        
         transactions = {}
-        nimbus_outfiles = []
-        for d in sorted(dna_bcs):
-            ug_dnaBC = util.unguard_pbc(d, silent=True)
-            fp = exp.get_exp_fn("Echo_384_COC_0001_" + ug_dnaBC + "_0.csv")
-            if not Path(fp).is_file():
-                exp.log(f"{d} has no matching Echo_384_COC file from the Nimbus", level='error')
-                continue
-            
-            nimbus_outfiles.append(fp)
-            with open(fp, 'rt') as f:
-                #RecordId	TRackBC	TLabwareId	TPositionId	SRackBC	SLabwareId	SPositionId
-                #1	p2021120604p	Echo_384_COC_0001	A1	p2111267p	ABg_96_PCR_NoSkirt_0001	A1
-                exp.plate_location_sample[d] = {'purpose':'dna','wells':set(),'source':'Nimbus','plate_type':'384PP_AQ_BP'}
-                for i, line in enumerate(f):
-                    if i == 0:  # header
-                        # get named columns
-                        cols = [c.strip().strip('\"') for c in line.split(',')]
-                        source_plate_bc_col = [i for i,c in enumerate(cols) if c=='SRackBC'][0]
-                        source_well_col = [i for i,c in enumerate(cols) if c=='SPositionId'][0]
-                        source_bc_col = [i for i,c in enumerate(cols) if c=='SPositionBC'][0]
-                        dest_plate_bc_col = [i for i,c in enumerate(cols) if c=='TRackBC'][0]
-                        dest_well_col = [i for i,c in enumerate(cols) if c=='TPositionId'][0]
-                        continue
-                    cols = [c.strip().strip('\"') for c in line.split(',')]
-                    source_pos = util.unpadwell(cols[source_well_col])
-                    source_plate = util.unguard_pbc(cols[source_plate_bc_col], silent=True)
-                    dest_plate = util.unguard_pbc(cols[dest_plate_bc_col], silent=True)
-                    dest_pos = util.unpadwell(cols[dest_well_col])
-                    if dest_plate != ug_dnaBC:
-                        exp.log(f"{ug_dnaBC} doesn't match {dest_plate} "+\
-                            f"as declared in Echo_384_COC file: {fp}", level="error")
-                    exp.plate_location_sample[d]['wells'].add(dest_pos)
-                    try:
-                        exp.plate_location_sample[d][dest_pos] = deepcopy(exp.plate_location_sample[util.guard_pbc(source_plate, silent=True)][source_pos])
-                    except:
-                        exp.log(f"Critical: cannot locate {d=} {dest_pos=} {source_plate=} {source_pos=}")
-
         outfmt = f"PCR-picklist_{exp.name}.csv"
+        # do we also add taq/water plate, taq well, water well?
+        pcr1_fields=['samplePlate','sampleWell','sampleBarcode','strain','sex','alleleSymbol',
+                 'alleleKey','assayKey','assays','assayFamilies','clientName','sampleName',
+                 'dnaPlate','dnaWell','primer','primerPlate','primerWell','pcrPlate','pcrWell']
 
-        nimcolmap = (("TRackBC", "dstplate"), ("TPositionId", 'dstwell'), \
-                ('SRackBC', 'srcplate'), ('SPositionId', 'srcwell'))
-        typenim = util.Table.csvtype(nimbus_outfiles[0], 'NimRec', hdrmap=nimcolmap)
-        nimbusTables = [util.CSVTable(typenim, fn) for fn in nimbus_outfiles]
+        dna_records = exp.get_dna_records(dna_bcs)
+        success = allocate_primers_to_dna(exp, dna_records)
+        if not success:
+            return False
+
+        dna_records = sorted([d for d in dna_records if d['dnaPlate'] and d['primerPlate']], 
+                key=lambda x: (x['samplePlate'],util.padwell(x['sampleWell'])))
         
-        # read Stage1 files
-        dnadict = dict(((util.guard_pbc(x.srcplate, silent=True), x.srcwell), \
-                (util.guard_pbc(x.dstplate, silent=True), x.dstwell))\
-                for nt in nimbusTables for x in nt.data)    
-        dnas = [util.CSVTable('S1Rec', exp.get_exp_fn('Stage1-P{}.csv'.format(util.unguard_pbc(dnabc, silent=True))))\
-                for dnabc in dna_bcs]
-        # read primer survey
-        primer_survey = StringIO('\n'.join(primer_survey_lines))
-        primerTable = util.CSVMemoryTable("PPRec", primer_survey, 
-                fields="spn spbc spt well primer volume".split(' '))
-        primset = sorted(frozenset(x.primer for x in primerTable.data if x.primer != ''))
-        # collect primers by family name
-        pfdict = dict((k.strip(), list([p.strip() for p in g])) for k, g in \
-                itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
-        pfdict_lower = dict((k.strip().lower(), list([p.strip() for p in g])) for k, g in \
-                itertools.groupby(primset, key=lambda x:x.split('_',1)[0]))
-        # assign primers to samples
-        wgenflds = dnas[0].tt._fields + ('dnaplate', 'dnawell') + ('primer',)
-        wgen = []
-        sample_primer_assay_set = set()
-        for dna_table in dnas:
-            for sample_data in dna_table.data:
-                for k,af in enumerate(sample_data.assayFamilies.split(';')):
-                    sd = tuple([scol.split(';')[k] if ';' in scol else scol for scol in sample_data])
-                    required_primerfams = util.choose_primerfam(exp, af)
-                    # potentially there can be multiple primer families for a given assay
-                    for rpf in required_primerfams:
-                        if rpf in pfdict:
-                            for specific_primer in pfdict[rpf]:
-                                sample_primer_assay = tuple([sample_data.sampleBarcode, specific_primer, sample_data.assays[k]])
-                                if sample_primer_assay in sample_primer_assay_set:
-                                    print(f'Found a duplicate {sample_primer_assay}')
-                                    continue
-                                sample_primer_assay_set.add(sample_primer_assay)
-                                wgen.append(sd + dnadict[(sample_data.samplePlate, \
-                                        sample_data.sampleWell)] + (specific_primer,))
-                        elif rpf.lower() in pfdict_lower:
-                            for specific_primer in pfdict_lower[rpf.lower()]:
-                                sample_primer_assay = tuple([sample_data.sampleBarcode, specific_primer, sample_data.assays[k]])
-                                if sample_primer_assay in sample_primer_assay_set:
-                                    print(f'Found a duplicate {sample_primer_assay}')
-                                    continue
-                                sample_primer_assay_set.add(sample_primer_assay)
-                                wgen.append(sd + dnadict[(sample_data.samplePlate, \
-                                        sample_data.sampleWell)] + (specific_primer,))
-                        else:
-                            exp.log(f'Warning: No available primer for {rpf=} {af=} {sd=}')
-       
         # allocate PCR plate wells
         wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"]
-        pcrwellgen = ((p, w) for p in pcr_bcs for w in wells)
-        
-        s2flds = wgenflds+('pcrplate', 'pcrwell')
-        S2Rec = util.Table.newtype('S2Rec', s2flds) 
-        s2tab = util.Table(S2Rec, ([x for xs in rx for x in xs] for rx in zip(wgen, pcrwellgen)), headers=s2flds) 
-        
+        pcrwells = [(p, w) for p in sorted(pcr_bcs) for w in wells]
+        pcr_records = []
+        for i, (dr, pcrw) in enumerate(zip(dna_records, pcrwells)):
+            record = [dr.get(pf, '') for pf in pcr1_fields[:-2]]  # don't add columns yet for PCR plate and well
+            record.append(pcrw[0])
+            record.append(pcrw[1])
+            pcr_records.append(record)
+
         # output Stage 2 CSV file - used in Stage 3 below - keeping the plate guards for the next stage (to be safe)
         stage2_fn = exp.get_exp_fn("Stage2.csv", trans=True)
         transactions[stage2_fn] = {}
-        try:
-            s2tab.csvwrite(stage2_fn, output_plate_guards=True)
-        except Exception as exc:
-            exp.log(f'Critical: failed to write {stage2_fn} {exc}')
-            if Path(stage2_fn).exists():
-                os.remove(stage2_fn)
+        success = stage_write(exp, stage2_fn, pcr1_fields, pcr_records, output_plate_guards=True)
+        if not success:
             transactions[stage2_fn] = None
+            exp.log(f'Critical: failed to write {stage2_fn}')
             return False
+        
+        pcr_plate_field_index = [i for i,f in enumerate(pcr1_fields) if f=='pcrPlate'][0]
+        pcr_well_field_index = [i for i,f in enumerate(pcr1_fields) if f=='pcrWell'][0]
+        dna_plate_field_index = [i for i,f in enumerate(pcr1_fields) if f=='dnaPlate'][0]
+        dna_well_field_index = [i for i,f in enumerate(pcr1_fields) if f=='dnaWell'][0]
+        primer_plate_field_index = [i for i,f in enumerate(pcr1_fields) if f=='primerPlate'][0]
+        primer_well_field_index = [i for i,f in enumerate(pcr1_fields) if f=='primerWell'][0]
 
-        # PCR1 picklists: DNA/sample, Primer and Taq/H20
-    
+        # output DNA picklist
+        dna_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_dna'), trans=True)
+        #plhdr_str = "Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,"+\
+        #        "Destination Plate Name,Destination Plate Barcode,Destination Plate Type,"+\
+        #        "Destination Well,Volume"
         dst_plate_type = util.PLATE_TYPES['PCR384']
         src_plate_type = util.PLATE_TYPES['Echo384']
-        # sample DNA picklist
-        ddict = dict((pbc, f"Destination[{i}]") for i, pbc in enumerate(pcr_bcs, start=1))
+
+        pcr_pid_list = list((set([r[pcr_plate_field_index] for r in pcr_records if r[pcr_plate_field_index]])))
+        dna_bcs = list((set([r[dna_plate_field_index] for r in pcr_records if r[dna_plate_field_index]])))
+        primer_pid_list = list((set([r[primer_plate_field_index] for r in pcr_records if r[primer_plate_field_index]])))
+
+        ddict = dict((pbc, f"Destination[{i}]") for i, pbc in enumerate(pcr_pid_list, start=1))
         sdict = dict((pbc, f"Source[{i}]")for i, pbc in enumerate(dna_bcs, start=1))
         volume = exp.transfer_volumes['DNA_VOL']
-        dna_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_dna'), trans=True)
-        transactions[dna_fn] = {}
-        gen = ((sdict[util.guard_pbc(r.dnaplate, silent=True)], util.guard_pbc(r.dnaplate, silent=True), src_plate_type, r.dnawell,
-                ddict[util.guard_pbc(r.pcrplate, silent=True)], util.guard_pbc(r.pcrplate, silent=True), dst_plate_type, r.pcrwell, volume)
-                for r in s2tab.data)
-        success = mk_picklist(exp, dna_fn, gen, transactions)
+        dna_gen = ((sdict[util.guard_pbc(r[dna_plate_field_index], silent=True)],
+                util.guard_pbc(r[dna_plate_field_index], silent=True), 
+                src_plate_type, r[dna_well_field_index], 
+                ddict[util.guard_pbc(r[pcr_plate_field_index], silent=True)], 
+                util.guard_pbc(r[pcr_plate_field_index], silent=True), dst_plate_type, 
+                r[pcr_well_field_index], volume) for r in pcr_records if r[dna_plate_field_index] and r[pcr_plate_field_index])
+        success = mk_picklist(exp, dna_fn, dna_gen, transactions)
         if not success:
             transactions[dna_fn] = None 
 
-        primer_survey = StringIO('\n'.join(primer_survey_lines))
-        primsrc = PicklistMemorySrc(primer_survey, idx=4)
-        volume = exp.transfer_volumes['PRIMER_VOL']        
+        # primer picklist
         primer_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_primer'), trans=True)
         transactions[primer_fn] = {}
-        primer_uses = Counter()
-        primer_output_rows = []
-        for r in s2tab.data:
-            if r.primer not in primsrc.data:
-                exp.log(f'Warning: Cannot find {r.primer} in known primers')
-                continue
-            # cycle through available primer wells
-            primer_index = primer_uses[r.primer] % len(primsrc.data[r.primer])
-            primer_output_rows.append(primsrc.data[r.primer][primer_index][:4] +
-                    [ddict[r.pcrplate], r.pcrplate, util.PLATE_TYPES['PCR384'], r.pcrwell, volume])
-            primer_uses[r.primer] += 1
-            
-        success = mk_picklist(exp, primer_fn, primer_output_rows, transactions)
+        
+        ddict = dict((pbc, f"Destination[{i}]") for i, pbc in enumerate(pcr_pid_list, start=1))
+        sdict = dict((pbc, f"Source[{i}]")for i, pbc in enumerate(primer_pid_list, start=1))
+        volume = exp.transfer_volumes['PRIMER_VOL']
+        primer_gen = ((sdict[util.guard_pbc(r[primer_plate_field_index], silent=True)],
+                util.guard_pbc(r[primer_plate_field_index], silent=True),
+                src_plate_type, r[primer_well_field_index], 
+                ddict[util.guard_pbc(r[pcr_plate_field_index], silent=True)],
+                util.guard_pbc(r[pcr_plate_field_index], silent=True), dst_plate_type, 
+                r[pcr_well_field_index], volume) for r in pcr_records if r[primer_plate_field_index] and r[pcr_plate_field_index])
+        success = mk_picklist(exp, primer_fn, primer_gen, transactions)
         if not success:
-            transactions[primer_fn] = None
+            transactions[primer_fn] = None      
 
         # also PCR1 water and Taq
         taq_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_taqwater'), trans=True)
         transactions[taq_fn] = {}
-        print(f"end of generate_pcr1 {taq_bcs=}")
         # exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, transactions=None
-        success = mk_mytaq_picklist(exp, taq_fn, s2tab.data, taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], 
+        success = mk_mytaq_picklist(exp, taq_fn, pcr_records, taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], 
                 exp.transfer_volumes['PRIMER_WATER_VOL'], transactions)
         if not success:
             transactions[taq_fn] = None
@@ -787,7 +862,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
     
         ### i7i5 barcodes
         # read Stage2 csv file
-        #sampleNumber	samplePlate	sampleWell	sampleBarcode	assays	assayFamilies	strain	sex	dnaplate	dnawell	primer	pcrplate	pcrwell
+        #sampleNumber	samplePlate	sampleWell	sampleBarcode	assays	assayFamilies	strain	sex	dnaPlate	dnaWell	primer	pcrplate	pcrwell
         #typebc = Table.newtype('S2Record',
         # Because this reads from a file and is immutible, we can't filter by user PID choices
         s2tab = util.CSVTable('S2Rec', exp.get_exp_fn(fnstage2))           
@@ -795,12 +870,12 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         index_vol = exp.transfer_volumes['INDEX_VOL']  # 175 nanolitres
         # count up all amplicon sample wells
         total_wells = len(s2tab.data)
-        #print(f'{total_wells=}')
+        print(f'{total_wells=}')
         for amp_pid in amplicon_bcs:
             total_wells += len(exp.plate_location_sample[amp_pid]['wells'])
         #print(f'{total_wells=}')
         index_alloc = i7i5alloc_rot(exp, index_vol, total_wells)
-        #print(f'{len(index_alloc)=}')
+        print(f'{len(index_alloc)=}')
         # we need to decompose S2tab so that we can add the amplicon rows to it
         s2_header = s2tab.header
         s2_data = s2tab.data # list of S3 records, each is a namedtuple
@@ -825,11 +900,13 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                         amp_well['amplicons'][0].split('_')[0], # assayFamily
                         amp_well.get('clientname', ''),     # clientName
                         amp_well.get('samplename', ''),     # sampleName
-                        amp_pid,                        # dnaplate
-                        well_str,                       # dnawell
+                        amp_pid,                        # dnaPlate
+                        well_str,                       # dnaWell
                         amp_well['amplicons'][0],       # primer
-                        amp_pid,                        # pcrplate
-                        well_str]                       # pcrwell
+                        '',                             # primerPlate
+                        '',                             # primerWell
+                        amp_pid,                        # pcrPlate
+                        well_str]                       # pcrWell
                 s2_data_rows.append(amp_row)
         
         # convert to stream of characters from row*column lists
@@ -944,10 +1021,14 @@ def match_nimbus_to_echo_files(exp):
    """
     try:
         nimbus_files = list(Path(exp.get_exp_dn()).glob('Nimbus-*.csv'))
-        echo_files = list(Path(exp.get_exp_dn()).glob('Echo_384_COC_00??_*_0.csv'))
+        echo_files = list(Path(exp.get_exp_dn('uploads')).glob('Echo_384_COC_00??_*_0.csv'))
+        print(f'{nimbus_files=}')
+        print(f'{echo_files=}')
         # cleave off the path and file name junk to just get the barcodes
         nbc = frozenset(fp.name.replace('Nimbus-','').replace('.csv','') for fp in nimbus_files)
         ebc = frozenset(fp.name.replace('.csv','').split('_',5)[4] for fp in echo_files)
+        print('{nbc=}')
+        print('{ebc=}')
         xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
         return [str(fp) for fp in nimbus_files], [str(fp) for fp in echo_files], xbc
     except Exception as exc:

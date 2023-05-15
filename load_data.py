@@ -189,6 +189,54 @@ def pending_file_widget(key):
         st.form_submit_button('Submit', on_click=do_pending, args=[combined_pending])
     
 
+def upload_echo_inputs(key):
+    """
+    Echo inputs are Nimbus outputs
+    """
+    exp = st.session_state['experiment']
+    if exp.locked:
+        st.warning(f'Experiment {exp.name} locked from further modification')
+    else:
+        title_area = st.container()
+        col1, col2 = st.columns([3,5])
+        with col1:                
+            with st.form("Echo input upload", clear_on_submit=True):  
+                nim_outputs = st.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
+                        accept_multiple_files=True, help='You can upload more than one file at once')
+                submitted = st.form_submit_button("Upload files")
+
+            if submitted and nim_outputs is not None:
+                success = parse.upload(exp, nim_outputs, purpose='dna', overwrite=True)   
+
+        nfs, efs, xbcs = exp.get_nimbus_filepaths()
+        if not efs and not xbcs:
+            title = "Load data inputs to enable Nimbus input file generation."
+            title_area.markdown('<h5 style="text-align:center;color:#f63366">'+
+                    f'{title}</h5>', unsafe_allow_html=True)
+        if efs and not xbcs:
+            title = 'All expected Echo inputs/Nimbus outputs now uploaded'
+            title_area.markdown('<h5 style="text-align:center;color:#f63366">'+
+                    f'{title}</h5>', unsafe_allow_html=True)
+            uploaded_nims = [Path(ef).name for ef in efs]
+            msg = '</br>'.join(uploaded_nims)
+            col2.markdown(f'<p>{msg}</p>', unsafe_allow_html=True)
+            
+        if xbcs:
+            title = 'Further Echo inputs/Nimbus outputs are expected'
+            title_area.markdown('<h5 style="text-align:center;color:#f63366">'+
+                    f'{title}</h5>', unsafe_allow_html=True)
+            uploaded_nims = [Path(ef).name for ef in efs]
+            msg = '</br>'.join(uploaded_nims)
+            col2.markdown(f'<p>{msg}</p>', unsafe_allow_html=True)
+            missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
+            files_str = '</br>'.join(missing_nims)
+            col2.write('The following Echo input files are expected (from the Nimbus):')
+            col2.markdown('<p style="text-align:left;color:#17754d">'+
+                        f'{files_str}</p>', 
+                        unsafe_allow_html=True)
+
+                        
+
 def upload_pcr1_files(key):
     """
     Upload form for primer layout and volumes. Copies input files into the directory 

@@ -216,8 +216,6 @@ def process_upload(exp, filepath, purpose, overwrite=False):
         success, pids = parse_index_layout(exp, filepath)
     elif purpose == 'index_volume':
         success, pids = parse_index_volume(exp, filepath)
-    elif purpose == 'primer_assay_map':
-        success = parse_primer_assay_map(exp, filepath)
     elif purpose == 'assay_primer_map':
         success = parse_assay_primer_map(exp, filepath)
     elif purpose == 'reference_sequences':
@@ -277,6 +275,9 @@ def parse_rodentity_json(exp, fp, overwrite=False):
         well_records[gpid]['wells'].add(pos)
         well_records[gpid][pos] = {}
         well_records[gpid][pos]['barcode'] = util.guard_rbc(record['mouse']['barcode'], silent=True)
+        well_records[gpid][pos]['sampleBarcode'] = well_records[gpid][pos]['barcode']  # as the line above
+        well_records[gpid][pos]['samplePlate'] = gpid
+        well_records[gpid][pos]['sampleWell'] = pos
         well_records[gpid][pos]['strain'] = record['mouse']['mouselineName']
         well_records[gpid][pos]['sex'] = record['mouse']['sex']
         well_records[gpid][pos]['mouse'] = deepcopy(record['mouse'])
@@ -392,7 +393,7 @@ def parse_custom_manifest(exp, fp, overwrite=False):
                     exp.log(f"Warning: duplicate {c} in {pid}. Skipping row {i+2} {cols=}")
                     break
                 well_records[gpid]['wells'].add(well)
-                well_records[gpid][well] = {}
+                well_records[gpid][well] = {'sampleWell':well}
         # now do a second pass to collect everything together
         for k,c in enumerate(cols):
             if c.lower() == 'none':
@@ -407,8 +408,10 @@ def parse_custom_manifest(exp, fp, overwrite=False):
                 #else:
                 sid = util.guard_cbc(c, silent=True) # fall back to custom?
                 well_records[gpid][well]['barcode'] = sid
+                well_records[gpid][well]['sampleBarcode'] = sid
             elif header_dict[k] == 'platebarcode':
                 well_records[gpid][well]['platebarcode'] = gpid
+                well_records[gpid][well]['samplePlate'] = gpid
             elif header_dict[k] == 'sampleno':
                 well_records[gpid][well]['sampleNumber'] = str(c)
             elif header_dict[k] == 'assay':
@@ -493,7 +496,7 @@ def parse_amplicon_manifest(exp, fp, overwrite=False):
             exp.log(f"Warning: duplicate {c} in {pid}. Skipping row {i+2} {cols=}")
             continue
         well_records[gpid]['wells'].add(pos)
-        well_records[gpid][pos] = {}
+        well_records[gpid][pos] = {'sampleWell':pos}
         amplicons = []
         # now collect everything together
         for k,c in enumerate(cols):
@@ -505,9 +508,11 @@ def parse_amplicon_manifest(exp, fp, overwrite=False):
                 # amplicon guards
                 sid = well_records[gpid][pos][header_dict[k]] = util.guard_abc(c, silent=True)
                 well_records[gpid][pos]['barcode'] = sid
+                well_records[gpid][pos]['sampleBarcode'] = sid
             elif header_dict[k] == 'platebarcode':
                 # don't really need it but whatever - record the guarded PID
                 well_records[gpid][pos]['platebarcode'] = gpid
+                well_records[gpid][pos]['samplePlate'] = gpid
             elif header_dict[k] == 'sampleno':
                 well_records[gpid][pos]['sampleNumber'] = str(c)
             elif header_dict[k] == 'amplicon':
@@ -797,82 +802,81 @@ def parse_index_volume(exp, fp, user_gpid=None):
     return True, [gPID]
 
 
-def parse_primer_assay_map(exp, fp):
-    """ mapping of primer family name to assay family name
-    The assaylist file is just two columns: primer and assay, comma separated
-    We represent this as a dictionary of primer_fam to set of assay_fam {primer_fam: {assay_fam}}
-    We maintain case, but also include forced lower case entries of both sides for safety
-    """
-    entries = {}  # read the whole file before adding entries
-    with open(fp, 'rt', errors='ignore') as data:
-        for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
-            if i == 0:
-                continue  # header
-            if row == '' or row[0] == '' or row[1] == '':
-                continue
-            primer_fam = row[0]
-            assay_fam = row[1]
-            # check for 'forbidden' chars
-            if '_' in assay_fam:
-                exp.log(f'Warning: underscore detected in assay family name {assay_fam}, truncating name')
-                assay_fam = assay_fam.split('_')[0]
-            if '_' in primer_fam:
-                exp.log(f'Warning: underscore detected in primer family name {primer_fam}, truncating name')
-                primer_fam = primer_fam.split('_')[0]
-
-            if primer_fam not in entries:
-                entries[primer_fam] = {}
-            entries[primer_fam].add(assay_fam)
-
-            if primer_fam.lower() not in entries:
-                entries[primer_fam.lower()] = {}
-            entries[primer_fam.lower()].add(assay_fam.lower())
-
-    for pf in entries:
-        exp.primer_assay[pf] = entries[primer_fam]
-    
-    exp.log(f'Success: added primer-assay list from {fp}')
-    exp.save()
-    return True
-
-
 def parse_assay_primer_map(exp, fp):
-    """ mapping of assay family name to any number of primer family names
-    This is the preferred direction for the genotyping team.
-    The assaylist file is just two columns:  assay, primer (comma separated)
-    We represent this as a dictionary of assay_fam to set of primer_fam {assay_fam: {primer_fam}}
-    We maintain case, but also include forced lower case entries of both sides for safety
+    """ mapping of assay name, assay family name, and primers
+    The assaylist file has two fixed columns: primer and assay
+        - every subsequent column is for an extra primer in that assay family
+    In Experiment we maintain:
+        self.assayfam_primer = {}  # {source:{mapping of assay families to list of primers}}
+        self.assay_assayfam = {}  # mapping of assay to assay family
+        self.assayfam_assay = {}  # mapping of assay family to list of assays, possibly redundant
+        self.primer_assayfam = {}  # reverse mapping
+        
+    Case is strictly enforced - we don't bother even checking case mistake, just reporting them
     """
-    entries = {}  # read the whole file before adding entries
+    # read the whole file before adding entries
+    local_assayfam_primers = {}
+    local_assay_assayfam = {}
+    local_assayfam_assays = {}
+    local_primer_assayfam = {} 
     with open(fp, 'rt', errors='ignore') as data:
-        for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
+        for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_ALL)):
             if i == 0:
                 continue  # header
             if row == '' or row[0] == '' or row[1] == '':
+                continue  # empty row
+
+            assay = row[0].strip()
+            if not assay:
+                continue  # just skip it
+            assay_fam = row[1].strip()
+            if not assay_fam:
+                exp.log(f'Warning: no assay family associated with {assay} in row {i+1}')
                 continue
-            assay_fam = row[0]
-            primer_fam = row[1]
-            
-            # check for 'forbidden' chars
-            if '_' in assay_fam:
-                exp.log(f'Warning: underscore detected in assay family name {assay_fam}, truncating name')
-                assay_fam = assay_fam.split('_')[0]
-            if '_' in primer_fam:
-                exp.log(f'Warning: underscore detected in primer family name {primer_fam}, truncating name')
-                primer_fam = primer_fam.split('_')[0]
+            primers = [p.strip() for p in row[2:] if p.strip() != '']
+            if not primers:
+                exp.log(f'Warning: no primers associated with assay {assay} in row {i+1}')
+                continue
 
-            if assay_fam not in entries:
-                entries[assay_fam] = set()
-            entries[assay_fam].add(primer_fam)
+            # assay to assay family
+            if assay in local_assay_assayfam:
+                exp.log(f'Warning: {assay} has duplicate entry {local_assay_assayfam[assay]} seen in row {i+1}')
+            local_assay_assayfam[assay] = assay_fam
 
-            if assay_fam.lower() not in entries:
-                entries[assay_fam.lower()] = set()
-            entries[assay_fam.lower()].add(primer_fam.lower())
+            # assay family to assay
+            if assay_fam not in local_assayfam_assays:
+                local_assayfam_assays[assay_fam] = []
+            local_assayfam_assays[assay_fam].append(assay)
 
-    for af in entries:
-        exp.assay_primer[af] = entries[af]
+            # assay family to primers
+            if assay_fam not in local_assayfam_primers:
+                local_assayfam_primers[assay_fam] = primers
+            else:
+                for primer in primers:
+                    if primer not in local_assayfam_primers[assay_fam]:
+                        local_assayfam_primers[assay_fam].append(primer)
+
+            # reverse mapping, primers to assayfams
+            for primer in primers:
+                if primer in local_primer_assayfam:
+                    if local_primer_assayfam[primer] != assay_fam:
+                        msg = f'Warning: primer {primer} has multiple assayfams: '+\
+                                f'{local_primer_assayfam[primer]} and {assay_fam}'
+                        exp.log(msg)
+                        print(msg)
+                        continue
+                local_primer_assayfam[primer] = assay_fam
+
+    for a in local_assay_assayfam:
+        exp.assay_assayfam[a] = local_assay_assayfam[a]
+    for af in local_assayfam_assays:
+        exp.assayfam_assays[af] = local_assayfam_assays[af]
+    for af in local_assayfam_primers:
+        exp.assayfam_primers[af] = local_assayfam_primers[af]
+    for primer in local_primer_assayfam:
+        exp.primer_assayfam[primer] = local_primer_assayfam[primer]
     
-    exp.log(f'Success: added assay-primer list from {fp}')
+    exp.log(f'Success: added assay/assayfam/primer mapping from {fp}')
     exp.save()
     return True
 
@@ -900,7 +904,7 @@ def parse_reference_sequences(exp, fp):
     return True
   
 
-def load_dna(exp, filepath, overwrite=True):
+def load_dna_plate(exp, filepath, overwrite=True):
     """
     Filepath should point to an Echo_384_COC file/Nimbus output/Echo input
     """
@@ -909,30 +913,43 @@ def load_dna(exp, filepath, overwrite=True):
         #RecordId	TRackBC	TLabwareId	TPositionId	SRackBC	SLabwareId	SPositionId
         #1	p2021120604p	Echo_384_COC_0001	A1	p2111267p	ABg_96_PCR_NoSkirt_0001	A1
         dbc = util.guard_pbc(filepath.split('_')[-2], silent=True)
-        exp.plate_location_sample[dbc] = {'purpose':'dna','wells':set(),'source':'Nimbus','plate_type':'384PP_AQ_BP'}
+        exp.plate_location_sample[dbc] = {'purpose':'dna','wells':set(),'source':'','plate_type':'384PP_AQ_BP'}
+        source_plate_set = set()
         for i, line in enumerate(f):
             if i == 0:  # header
                 # get named columns
-                cols = [c.strip().strip('\"') for c in line.split(',')]
-                source_plate_bc_col = [i for i,c in enumerate(cols) if c=='SRackBC'][0]
-                source_well_col = [i for i,c in enumerate(cols) if c=='SPositionId'][0]
-                source_bc_col = [i for i,c in enumerate(cols) if c=='SPositionBC'][0]
-                dest_plate_bc_col = [i for i,c in enumerate(cols) if c=='TRackBC'][0]
-                dest_well_col = [i for i,c in enumerate(cols) if c=='TPositionId'][0]
+                cols = [c.strip() for c in line.split(',')]
+                source_plate_bc_col = [j for j,c in enumerate(cols) if c=='"SRackBC"'][0]
+                source_well_col = [j for j,c in enumerate(cols) if c=='"SPositionId"'][0]
+                source_bc_col = [j for j,c in enumerate(cols) if c=='"SPositionBC"'][0]
+                dest_plate_bc_col = [j for j,c in enumerate(cols) if c=='"TRackBC"'][0]
+                dest_well_col = [j for j,c in enumerate(cols) if c=='"TPositionId"'][0]
                 continue
+            if line.strip() == '':
+                continue  # skip empty lines
             cols = [c.strip().strip('\"') for c in line.split(',')]
+            source_bc = cols[source_bc_col]
+            if source_bc == '0M':
+                continue  # empty well
             source_pos = util.unpadwell(cols[source_well_col])
-            source_plate = util.unguard_pbc(cols[source_plate_bc_col], silent=True)
-            dest_plate = util.unguard_pbc(cols[dest_plate_bc_col], silent=True)
+            source_plate = util.guard_pbc(cols[source_plate_bc_col], silent=True)
+            source_plate_set.add(source_plate)
+            dest_plate = util.guard_pbc(cols[dest_plate_bc_col], silent=True)
             dest_pos = util.unpadwell(cols[dest_well_col])
             if dest_plate != dbc:
                 exp.log(f"Error: {dbc} doesn't match {dest_plate} as declared in Echo_384_COC file: {filepath}")
-            exp.plate_location_sample[dbc]['wells'].add(dest_pos)
+                return False, [dbc]         
             try:
-                exp.plate_location_sample[dbc][dest_pos] =\
-                        deepcopy(exp.plate_location_sample[util.guard_pbc(source_plate, silent=True)][source_pos])
+                exp.plate_location_sample[dbc][dest_pos] = exp.plate_location_sample[source_plate][source_pos]
             except:
                 exp.log(f"Critical: cannot locate {dbc=} {dest_pos=} {source_plate=} {source_pos=}")
+                return False, [dbc]
+            exp.plate_location_sample[dbc]['wells'].add(dest_pos)
+            exp.plate_location_sample[dbc]['samplePlate'] = source_plate
+            exp.plate_location_sample[dbc]['sampleWell'] = source_pos
+        exp.plate_location_sample[dbc]['source'] = ','.join(source_plate_set)
+    return True, [dbc]
+
 
 def myopen(fn):
     """ Bob's function to handle gzip transparently """

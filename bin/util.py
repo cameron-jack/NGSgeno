@@ -13,6 +13,7 @@ from pathlib import PurePath
 from collections import defaultdict
 import csv
 import hashlib
+from math import ceil
 
 import itertools
 
@@ -69,8 +70,9 @@ PRIMER_WATER_VOL = 300
 INDEX_VOL = 175
 INDEX_TAQ_VOL = 2000
 INDEX_WATER_VOL = 650
-DEAD_VOLS = {'384PP_AQ_BP': 2.5*1000, '6RES_AQ_BP2': 250*1000, 'Hard Shell 384 well PCR Biorad': 2.5*1000}
-CAP_VOLS = {'384PP_AQ_BP': 12*1000, '6RES_AQ_BP2': 2800*1000, 'Hard Shell 384 well PCR Biorad': 12*1000}
+DEAD_VOLS = {'384PP_AQ_BP': 30*1000, '6RES_AQ_BP2': 250*1000, 'Hard Shell 384 well PCR Biorad': 0.001*1000}
+CAP_VOLS = {'384PP_AQ_BP': 60*1000, '6RES_AQ_BP2': 2800*1000, 'Hard Shell 384 well PCR Biorad': 6*1000}
+
 # convenient name to exact plate model mapping
 PLATE_TYPES = {'Echo6': '6RES_AQ_BP2', 'Echo384': '384PP_AQ_BP',
                'PCR384': 'Hard Shell 384 well PCR Biorad','96':'96'}
@@ -78,6 +80,31 @@ WATER_WELLS = ['A'+c for c in '123']
 TAQ_WELLS = ['B'+c for c in '123']
 # global - set of all possible guard types
 GUARD_TYPES = set(['m','r','c','p', 'a'])
+
+        
+def usable_volume(vol, plate_type):
+    return max(vol - DEAD_VOLS[PLATE_TYPES[plate_type]],0)
+
+
+def num_doses(raw_vol, per_use_vol, plate_type):
+    """ The number of available doses (dispenses) in a well """
+    number_of_doses = usable_volume(raw_vol, plate_type) // per_use_vol
+    return number_of_doses
+
+                                 
+def num_req_wells(req_vol, plate_type='Echo384'):
+    """ Save a bunch of boilerplate by doing the calculation for us """
+    req_wells = ceil(req_vol / (CAP_VOLS[PLATE_TYPES[plate_type]] - DEAD_VOLS[PLATE_TYPES[plate_type]]))
+    return req_wells
+
+
+def num_req_taq_water_plates(req_taq_vol, req_water_vol):
+    """ Save some boilerplate """
+    per_plate_avail = 3*(CAP_VOLS[PLATE_TYPES['Echo6']] - DEAD_VOLS[PLATE_TYPES['Echo6']])
+    taq_plates = ceil(req_taq_vol / per_plate_avail)
+    water_plates = ceil(req_water_vol / per_plate_avail)
+    return max([taq_plates, water_plates])
+
  
 def get_md5(fn):
     """ return the md5sum of a file to ensure data safety """
@@ -123,35 +150,40 @@ for c in [str(j+1) for j in range(2)]:
 
 
 
-def calc_plate_assay_usage(location_sample: dict, denied_assays: list=[], denied_wells: list=[], filtered=True, included_guards=GUARD_TYPES) -> defaultdict:
-    """ 
-    Required input: Experiment.plate_location_sample[plateid] dictionary of locations and samples for a single plate
-            "wells" is a required field.
-    Optional inputs: 
-        - lists of denied assays and denied wells, which will be ignored in the calculation
-        - included_guards is an interable of guard types (r,c,m,etc) which will be included. It defaults to all guard types.
-    Output: a dictionary of assays and their usage counts
-    """
-    assay_counts = defaultdict(lambda: 0)
-    if 'wells' not in location_sample:
-        return assay_counts
-    for well in location_sample['wells']:
-        if well not in denied_wells:
-            if 'barcode' not in location_sample[well]:
-                continue
-            guard = get_guard_type(location_sample[well]['barcode'])
-            if guard in included_guards:
-                if 'assays' not in location_sample[well]:
-                    continue
-                for assay in location_sample[well]['ngs_assays']:
-                    if assay not in denied_assays:
-                        assay_counts[assay] += 1
-                if not filtered:
-                    for assay in location_sample[well]['unknown_assays']:
-                        if assay not in denied_assays:
-                            assay_counts[assay] += 1
-                    
-    return assay_counts
+#def calc_plate_assay_primer_usage(exp, dna_pids=None, denied_assays: list=None, denied_wells: list=None, filtered=True, included_guards=GUARD_TYPES) -> defaultdict:
+#    """  
+#    Optional inputs: 
+#        - dna plate pids, if not provided then all will be used
+#        - lists of denied assays and denied wells, which will be ignored in the calculation
+#        - included_guards is an interable of guard types (r,c,m,etc) which will be included. It defaults to all guard types.
+#    Output: a dictionary of assays and their usage counts
+#    """                          
+#    assay_counts = defaultdict(lambda: 0)
+#    primer_counts = defaultdict(lambda: 0)
+#    if not dna_pids:
+#        dna_pids = exp.get_dna_pids()
+   
+#    for pid in dna_pids:
+#        for well in exp.sample_plate_location[pid]['wells']:
+#            if well in denied_wells:
+#                continue
+#            guard = get_guard_type(exp.plate_location_sample[pid][well]['barcode'])
+#            if guard in included_guards:
+#                if 'assays' not in exp.plate_location_sample[pid][well]:
+#                    continue
+#                for assay in exp.platelocation_sample[well]['ngs_assays']:
+#                    if assay not in denied_assays:
+#                        assay_counts[assay] += 1
+#                if not filtered:
+#                    for assay in exp.plate_location_sample[pid][well]['unknown_assays']:
+#                        if assay not in denied_assays:
+#                            assay_counts[assay] += 1
+#    for assay in assay_counts:
+#        primerfam = choose_primerfam(exp, get_assay_family(assay))
+#        if primerfam:
+#            primer_counts[primerfam] += assay_counts[assay]
+
+#    return assay_counts, primer_counts
  
 ### Helper functions for IO
 
@@ -554,10 +586,6 @@ def match_assays_to_primers(exp, assays):
                     assay_primers[assay].add(p)
     return assay_primers
 
-
-def get_assay_family(assay):
-    """ Assay family is the first part of the assay name ahead of any underscore """
-    return assay.split('_')[0]
 
 ### Table classes to act like a relational DB
 

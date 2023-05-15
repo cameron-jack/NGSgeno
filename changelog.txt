@@ -1,3 +1,9 @@
+v0.21.017
+Date: Mon May 15 10:02:36 AEST 2023
+* Changed: Partial rebuild of PCR1 picklist generation
+* Fixed: correct display of primer information
+* various UI changes
+
 v0.21.016
 Date: Fri Apr 28 08:18:59 AEST 2023
 * Fixed: assay and assayFamily order swap

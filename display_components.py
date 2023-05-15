@@ -302,7 +302,7 @@ def display_plates(key, plate_usage, height=300):
                             args=('plate',pids), key="keep " + str(key), help=f"Keep {pids}")
     
 
-def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered=True):
+def display_pcr_components(PCR_stage=1, dna_pids=None, show_general=True):
     """
     Expander widget that shows the required componenents for each PCR reaction, 
     including wells, PCR plates, taq+water plates, index pairs 
@@ -322,66 +322,65 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
     col_size = [6, 4, 6, 4]
     comp_warning = ''
 
-    fwd_idx, rev_idx, warning_idxs = exp.get_index_avail()
-
-    primer_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-            exp.get_volumes_required(assay_usage=assay_usage, filtered=True)
-    reactions = sum([v for v in assay_usage.values()])
+    fwd_idx, rev_idx = exp.get_index_avail()
+    print(f'{dna_pids=}')
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+    num_reactions = sum([primer_usage[p] for p in primer_usage])
+    print(f'{num_reactions=}')
+    print(f'{primer_usage=}')
+    primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
+            exp.get_taq_water_volumes_required(num_reactions)
+    num_req_pcr_taq_water_plates = util.num_req_taq_water_plates(primer_taq_vol, primer_water_vol)
+    num_req_index_taq_water_plates = util.num_req_taq_water_plates(index_taq_vol, index_water_vol)
+    num_req_total_taq_water_plates = util.num_req_taq_water_plates(primer_taq_vol+index_taq_vol, 
+            primer_water_vol+index_water_vol)
         
-    index_remain, index_avail, index_capacity =\
-            exp.get_index_remaining_available_volume(assay_usage=assay_usage, fwd_idx=fwd_idx, rev_idx=rev_idx)
-
+    index_remain, index_max = exp.get_index_reactions(primer_usage, fwd_idx, rev_idx)
         
     taq_avail, water_avail, pids = exp.get_taqwater_avail()
     
     if show_general:
-        #if 'assay_filter' not in st.session_state:
-        #    st.session_state['assay_filter'] = 1
-
-        #    filter_assays = filter_col1.button('Filter assays', key='assay_filter_button', disabled=True)
-        #    unfilter_assays = filter_col2.button('Unfilter assays', key='assay_unfilter_button')
-
-        #    if unfilter_assays:
-        #        st.session_state['assay_filter'] = 0
-
-        #    if filter_assays:
-        #        st.session_state['assay_filter'] = 1
-
-        required_plates = ceil(reactions/DNA_PLATE_WELLS)
+        required_PCR_plates = ceil(num_reactions/DNA_PLATE_WELLS)
         user_supplied_PCR = ', '.join([util.unguard_pbc(p, silent=True)\
                     for p in exp.get_pcr_pids()])
         user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
                     for p in exp.get_taqwater_avail()[2]])
 
-        comp_warning_area = pcr_comps_area.empty()
+        comp_warning_area = pcr_comps_area.container()
 
         num_supplied_PCR = len(exp.get_pcr_pids())
-        if num_supplied_PCR < required_plates:
-            comp_warning += f'{required_plates-num_supplied_PCR} PCR plate(s) '
+        num_supplied_taqwater = len(user_supplied_taqwater)
+        if num_supplied_PCR < required_PCR_plates:
+            comp_warning_area.warning(f'Please add PCR plates. {required_PCR_plates-num_supplied_PCR} PCR plates are required')
+        if num_supplied_taqwater < num_req_total_taq_water_plates:
+            comp_warning_area.warning(f'Please add taq/water plates. {num_req_total_taq_water_plates} taq/water plates required')
 
         req_cols = pcr_comps_area.columns(col_size)
         #Wells and plates
-        req_cols[0].markdown('**Number of required PCR plates**', unsafe_allow_html=True)
-        req_cols[1].write(str(required_plates))
-        req_cols[0].markdown('**Worst case required reaction wells**', unsafe_allow_html=True)
-        req_cols[1].write(str(reactions))
-        req_cols[2].markdown('**User supplied PCR plates**', unsafe_allow_html=True)
+        if num_supplied_PCR < required_PCR_plates:
+            req_cols[0].markdown('<p style="color:#FF0000"><b>Number of required PCR plates</b></p>', unsafe_allow_html=True)
+            req_cols[1].markdown(f'<p style="color:#FF0000">{str(required_PCR_plates)}</p>', unsafe_allow_html=True)
+        else:
+            req_cols[0].markdown('**Number of required PCR plates**')
+            req_cols[1].write(str(required_PCR_plates))
+        req_cols[0].markdown('**Worst case required reaction wells**')
+        req_cols[1].write(str(num_reactions))
+        req_cols[2].markdown('**User supplied PCR plates**')
         if user_supplied_PCR:
             req_cols[3].write(user_supplied_PCR)
         else:
             req_cols[3].write('None')
-        req_cols[2].markdown('**User supplied taq/water plates**', unsafe_allow_html=True)
-        if user_supplied_PCR:
+        req_cols[2].markdown('**User supplied taq/water plates**')
+        if user_supplied_taqwater:
             req_cols[3].write(user_supplied_taqwater)
         else:
             req_cols[3].markdown('<p style="color:#FF0000">None</p>', unsafe_allow_html=True)
-        pcr_comps_area.write('')
+        for i in range(4):
+            req_cols[i].write('')
 
     #PCR1 and PCR2 taq and water 
     taq_avail_vol = taq_avail/ul_conv
-    water_avail_vol = water_avail/ul_conv
-
-    #num_taqwater_plates = ceil(primer_taq_vol / taq_avail_vol)
+    water_avail_vol = water_avail/ul_conv                  
 
     pcr_cols = pcr_comps_area.columns(col_size)
 
@@ -412,19 +411,24 @@ def display_pcr_components(assay_usage, PCR_stage=1, show_general=True, filtered
         avail_taq_vol_str = str(taq_avail_vol)+ ' μl'
 
         index_cols = pcr_comps_area.columns(col_size)
-        #TODO: This doesn't seem right! What are we actually trying to compare?
-        if index_capacity > (index_avail - index_remain):
-            index_pairs_allowed = '<p style="color:green">'+str(index_capacity)+'</p>'
+        if index_remain >= 0:
+            index_pairs_allowed = '<p style="color:green">'+str(index_remain)+'</p>'
         else:
-            index_pairs_allowed = '<p style="color:red">'+str(index_capacity)+'</p>'
+            index_pairs_allowed = '<p style="color:red">'+str(index_remain)+'</p>'
 
         index_cols[0].markdown('**Index Pairs Remaining**')
         index_cols[1].write(str(index_remain))
         index_cols[2].markdown('**Max Possible Index Pairs**')
-        index_cols[3].write(str(index_avail))
+        index_cols[3].write(str(index_max))
         index_cols[0].markdown('**Index Pairs Allowed by Volume**')
         index_cols[1].markdown(index_pairs_allowed, unsafe_allow_html=True)
 
+    if num_supplied_taqwater < num_req_total_taq_water_plates:
+        req_cols[0].markdown('<p style="color:#FF0000"><b>Number of required taq/water plates</b></p>', unsafe_allow_html=True)
+        req_cols[1].markdown(f'<p style="color:#FF0000">{str(num_req_total_taq_water_plates)}</p>', unsafe_allow_html=True)
+    else:
+        req_cols[0].markdown('**Number of required taq/water plates**')
+        req_cols[1].write(str(num_req_total_taq_water_plates))
     pcr_cols[0].markdown('**Required water volume**')
     pcr_cols[1].write(required_water_vol_str)
     pcr_cols[2].markdown('**Available water volume**')
@@ -667,60 +671,6 @@ def display_status(key, height=300):
     status_df = aggrid_interactive_table(status_df, grid_height=height, key=str(key)+'status_aggrid')
 
 
-def display_primers(key, assay_usage, height=350):
-    """
-    Alternative display_primer_components using aggrid
-    Designed as a component for a generic display widget
-    """
-    exp = st.session_state['experiment']
-    ul_conv = 1000
-    if assay_usage:
-        assay_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-                exp.get_volumes_required(assay_usage=assay_usage)
-    else:
-        reactions, assay_vols, primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-            0,{},0,0,0,0
-
-    primer_avail_counts, primer_avail_vols = exp.get_primers_avail()
-
-    # convert assay to primers - allow multiple primers per assay
-    primer_vols = {}
-    assay_primers = util.match_assays_to_primers(exp, assay_vols.keys())
-    for assay in assay_vols:
-        if assay in assay_primers and len(assay_primers[assay]) > 0:
-            for primer in assay_primers[assay]:
-                primer_vols[primer] = assay_vols[assay]
-        else:
-            primer_vols[assay] = assay_vols[assay]
-    
-    primer_avail_counts, primer_avail_vols = exp.get_primers_avail()
-    per_use_vol = util.CAP_VOLS['384PP_AQ_BP'] - util.DEAD_VOLS['384PP_AQ_BP']
-    primer_names = set(primer_vols.keys())
-    warning_primers = ''
-    primer_array = []
-    for p in primer_names:
-        need_vol = primer_vols.get(p,0)
-        num_wells = ceil(need_vol/per_use_vol)
-
-        if primer_vols.get(p, 0)/ul_conv > primer_avail_vols.get(p,0)/ul_conv:
-            warning_primers += p + ', '
-
-        primer_array.append([p, num_wells, assay_usage.get(p,0), primer_vols.get(p,0)/ul_conv,\
-                    primer_avail_vols.get(p,0)/ul_conv])
-    
-    # if warning_primers != '':
-    #     st.warning('The following primers do not have enough volume: ' + warning_primers[:-1])
-    primer_df = pd.DataFrame(
-                            primer_array, 
-                            columns=['Primer', 
-                                    'Num Wells',
-                                    'Uses', 
-                                    'Required Volume (μL)', 
-                                    'Available Volume (μL)']
-                            )
-    primer_table = aggrid_interactive_table(primer_df, grid_height=height, key=str(key)+'primer_display')
-    
-
 def view_plates(key, height=500):
     """
     Visual view of the plates in the experument
@@ -787,16 +737,41 @@ def display_files(key, file_usage, height=250):
                         args=('file',fns), key="keep " + str(key), help=f"Keep {fns}")
                 selection = None
 
+
+def display_primers(key, dna_pids=None, primer_pids=None, height=350):
+    """
+    Alternative display_primer_components using aggrid
+    Designed as a component for a generic display widget
+    """
+    exp = st.session_state['experiment']
+    ul_conv = 1000
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+    primer_avail_vols_doses = exp.get_available_primer_vols_doses(pmr_pids=primer_pids)
+    primer_info_array = []
+    for primer in exp.primer_assayfam:
+        req_vol = exp.transfer_volumes['PRIMER_VOL']*primer_usage.get(primer,0)  # nl
+        req_doses = primer_usage.get(primer,0)
+        req_wells = util.num_req_wells(req_vol)
+        avail_vol = primer_avail_vols_doses.get(primer,[0,0])[0]  # nl
+        avail_doses = primer_avail_vols_doses.get(primer,[0,0])[1]
+        avail_wells = util.num_req_wells(avail_vol)
+        info = [primer, req_doses, req_vol/ul_conv, req_wells, avail_doses, avail_vol/ul_conv, avail_wells]
+        primer_info_array.append(info)
+
+    primer_df = pd.DataFrame(primer_info_array, columns=['Primer', 'Required Doses', 
+            'Required Volume (μL)', 'Required Wells', 'Available Doses', 'Available Volume (μL)', 'Available Wells'])
+    primer_table = aggrid_interactive_table(primer_df, grid_height=height, key=str(key)+'primer_display')
+
         
-def display_indexes(key, assay_usage, height=350):
+def display_indexes(key, dna_pids=None, height=350):
     """
     Display info for all indexes that have been uploaded into the experiment
     """
     exp = st.session_state['experiment']
-    fwd_idx, rev_idx, warning_idxs = exp.get_index_avail()
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+    fwd_idx, rev_idx = exp.get_index_avail()
     indexes = {**fwd_idx, **rev_idx}
-    for index in indexes:
-        indexes[index]['avail_vol'] = sum(indexes[index]['avail_vol'])/1000
+    
     # if fwd_idx_vols:
     #     idx_remaining, max_idx_pairs, reaction_vol_capacity, fwd_idx_reactions =\
     #                 exp.get_index_remaining_available_volume(assay_usage, fwd_idx_vols, rev_idx_vols)
@@ -820,7 +795,7 @@ def display_indexes(key, assay_usage, height=350):
 
     index_df = pd.DataFrame.from_dict(indexes,  orient='index')
     index_df.reset_index(inplace=True)
-    index_df = index_df.rename(columns = {'index':'Index', 'count':'Wells', 'req_vol':'Required Volume (μL)', 'avail_vol':'Available Volume (μL)'})
+    index_df = index_df.rename(columns = {'index':'Index', 'well_count':'Wells', 'avail_transfers':'Available transfers', 'avail_vol':'Available Volume (μL)'})
     index_table = aggrid_interactive_table(index_df,grid_height=height,key=str(key)+'index_display')
 
 
@@ -853,7 +828,8 @@ def display_log(key, height=250):
         df = pd.DataFrame(log_entries, columns=exp.get_log_header())
         aggrid_interactive_table(df, grid_height=height, key=str(key)+'logs')
 
-def info_viewer(key):
+
+def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=None, amp_pids=None, taq_pids=None):
     """
     Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
     Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
@@ -867,7 +843,8 @@ def info_viewer(key):
         
     col1,col2 = st.columns([7,1])
     with col2:
-        view_height = st.number_input('Set display height', min_value=50, max_value=700, value=350, step=25, help="Size of display grid", key=key)
+        view_height = st.number_input('Set display height', min_value=50, max_value=700, 
+                value=350, step=25, help="Size of display grid", key=key)
     with col1:
         view_tab = stx.tab_bar(data=[
             stx.TabBarItemData(id=1, title="Status", description=""),
@@ -903,15 +880,12 @@ def info_viewer(key):
 
 
     if view_tab == 5:
-        assay_usage = exp.get_assay_usage()
         with container:
-            display_primers(key, assay_usage, height=view_height)
-
-
+            display_primers(key, dna_pids=dna_pids, height=view_height)
+        
     if view_tab == 6:
-        assay_usage = exp.get_assay_usage()
         with container:
-            display_indexes(key, assay_usage, height=view_height)
+            display_indexes(key, dna_pids=dna_pids, height=view_height)
 
 
     if view_tab == 7:

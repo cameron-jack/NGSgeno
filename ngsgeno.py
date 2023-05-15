@@ -36,6 +36,12 @@ try:
     import bin.generate as generate
 except ModuleNotFoundError:
     import generate
+
+try:
+    import bin.parse as parse
+except ModuleNotFoundError:
+    import parse
+
 #import bin.file_io as file_io
 #import bin.db_io as db_io
 
@@ -77,6 +83,8 @@ def create_run_folder(newpath):
         if os.path.exists(os.path.join(newpath, EXP_FN)):
             return None, 'Experiment already exists with this name: ' + newpath
     print('Generating experiment: ', newpath)
+    if 'experiment' in st.session_state and st.session_state['experiment']:
+        st.session_state['experiment'].save()
     exp = Experiment(name=newpath.lstrip('run_'))
     return exp, ''
 
@@ -396,20 +404,13 @@ def main():
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
                     if 'upload stage' not in st.session_state:
-                        st.session_state['upload stage'] = None
-                    #Gabi's code for custom volumes
+                        st.session_state['upload stage'] = None 
                     ld.custom_volumes(exp)
                     ld.upload_pcr1_files('pcr1_load2')
                     ld.upload_pcr2_files('pcr2_load2')
                     ld.upload_extra_consumables('consumables_load2')
                 st.session_state['load_tab'] = 2
 
-            #load data
-            #if load_data_tab == 3:
-            #    assay_usage = exp.get_assay_usage()
-            #    dc.data_table(key=load_data_tab, options=True)
-            #    dc.display_primer_components(assay_usage, expander=True)
-            #    st.session_state['load_tab'] = 2
             with tab_col2:
                 st.write('')
                 show_info_viewer_checkbox()
@@ -505,66 +506,9 @@ def main():
 
             #Upload nimbus
             if nimbus_tab == 2:
-                if exp.locked:
-                    st.warning(f'Experiment {exp.name} locked from further modification')
-                else:
-                    nim_tab2_title_area = st.empty()
-                    nim_tab2_title = ''
-
-                    if not efs and not xbcs:
-                        nim_tab2_title = "Load data inputs to enable Nimbus input file generation."
-                    elif efs and not xbcs:
-                        nim_tab2_title = 'All Echo inputs/Nimbus outputs now uploaded'
-                        uploaded_nims = [Path(ef).name for ef in efs]
-                        files_str = '</br>'.join(uploaded_nims)
-                        st.markdown('<p style="text-align:center;color:#17754d">'+
-                                    f'{files_str}</p>', 
-                                    unsafe_allow_html=True)
-                    elif xbcs:
-                        nfs, efs, xbcs = exp.get_nimbus_filepaths()
-                        uploaded_nims = [Path(ef).name for ef in efs]
-                        files_str = ', '.join(uploaded_nims)
-                        st.write('Uploaded Echo input files:')
-                        st.write(files_str)
-                        missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
-                        files_str = '</br>'.join(missing_nims)
-                        st.write('The following Echo input files are expected (from the Nimbus):')
-                        st.markdown('<p style="text-align:left;color:#17754d">'+
-                                    f'{files_str}</p>', 
-                                    unsafe_allow_html=True)
-                        
-                        with st.form("Echo input upload", 
-                                    clear_on_submit=True):
-                            col1, col2 = st.columns([2, 1])
-                            nim_outputs = col1.file_uploader(
-                                        'Upload files: Echo_384_COC_0001_....csv', 
-                                        type='csv', 
-                                        accept_multiple_files=True, 
-                                        help='You can upload more than one file at once'
-                                        )
-                            submitted = st.form_submit_button("Upload files")
-
-                        if submitted and nim_outputs is not None:
-                            success = run_generate(exp, exp.add_nimbus_outputs, nim_outputs)
-                            if not success:
-                               st.write('Upload of Echo inputs failed. Please see the log')
-                            else:
-                                st.experimental_rerun()
-                        
-                    nim_tab2_title_area.markdown(
-                                    '<h5 style="text-align:center;color:#f63366">'+
-                                    f'{nim_tab2_title}</h5>',
-                                    unsafe_allow_html=True
-                                    )
-                
+                ld.upload_echo_inputs('1')                
                 st.session_state['nimbus_tab'] = 2
 
-            
-
-            #view data
-            #if nimbus_tab == 3:
-            #    dc.data_table(key=nimbus_tab, options=True)
-            #    st.session_state['nimbus_tab'] = 3
             with tab_col2:
                 st.write('')
                 st.write('')
@@ -608,9 +552,7 @@ def main():
                                         plate_checklist_expander(efs, pcr_stage=1)
                     
                         if included_DNA_plates:
-                            assay_usage = exp.get_assay_usage(dna_plate_list=included_DNA_plates)
-                            #assay_usage = st.session_state['experiment'].get_assay_usage()
-                            dc.display_pcr_components(assay_usage, 1)
+                            dc.display_pcr_components(dna_pids=included_DNA_plates, PCR_stage=1)
                     else:
                         no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                         st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
@@ -637,6 +579,7 @@ def main():
                         with primer_checklist_exp:
                             included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
                                     plate_checklist_expander(efs,pcr_stage=1)
+                            st.session_state['included_DNA_pids'] = included_DNA_plates
                         
                         if included_DNA_plates:
                             pcr1_messages = []
@@ -704,12 +647,10 @@ def main():
                     if available_nimbus:
                         with index_checklist:
                             included_PCR_plates, included_taqwater_plates, included_index_plates,\
-                                        included_amplicon_plates =\
-                                        plate_checklist_expander(available_nimbus, pcr_stage=2)
-                
-                        assay_usage = exp.get_assay_usage(dna_plate_list=efs)
+                                    included_amplicon_plates =\
+                                    plate_checklist_expander(available_nimbus, pcr_stage=2)
                         with pcr_comp_holder:
-                            dc.display_pcr_components(assay_usage, 2)
+                            dc.display_pcr_components(PCR_stage=2, dna_pids=efs)
                     else:
                         no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                         title_holder.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
@@ -729,15 +670,14 @@ def main():
                     else:
                         with index_checklist:
                             included_PCR_plates, included_taqwater_plates, included_index_plates,\
-                                        included_amplicon_plates =\
-                                        plate_checklist_expander(available_nimbus, pcr_stage=2)
+                                    included_amplicon_plates =\
+                                    plate_checklist_expander(available_nimbus, pcr_stage=2)
                         pcr2_messages = []  # pass by reference
                         if not exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
                                 included_index_plates, included_amplicon_plates, pcr2_messages):
                             for msg in pcr2_messages:
                                 st.warning(msg)
                         else:
-
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
 
                             echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
