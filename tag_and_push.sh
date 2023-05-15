@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.017"
+VER="v0.21.019"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Changed: Partial rebuild of PCR1 picklist generation
-* Fixed: correct display of primer information
-* various UI changes
+* Requires Streamlit v1.22
 EOM
 
 mv changelog.txt changelog_old.txt
