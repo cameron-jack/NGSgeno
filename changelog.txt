@@ -1,3 +1,7 @@
+v0.21.018
+Date: Mon May 15 10:21:16 AEST 2023
+* Changed: can now edit all liquid transfer volumes
+
 v0.21.017
 Date: Mon May 15 10:02:36 AEST 2023
 * Changed: Partial rebuild of PCR1 picklist generation

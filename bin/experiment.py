@@ -1272,12 +1272,11 @@ class Experiment():
 
 
     #Gabi's code for custom volumes
-    def add_custom_volumes(self, dna_vol=200, primer_vol=500, index_vol=175):
+    def add_custom_volumes(self, custom_volumes:dict) -> bool:
         try:
-            self.transfer_volumes['DNA_VOL'] = int(dna_vol)
-            self.transfer_volumes['PRIMER_VOL'] = int(primer_vol)
-            self.transfer_volumes['INDEX_VOL'] = int(index_vol)
-            print(self.transfer_volumes)
+            for value in list(custom_volumes.values()):
+                value = int(value)
+            self.transfer_volumes = custom_volumes.copy()
             self.log(f'Success: Custom volumes added')
             self.save()
             return True

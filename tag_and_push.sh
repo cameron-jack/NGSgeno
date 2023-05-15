@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.017"
+VER="v0.21.018"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Changed: Partial rebuild of PCR1 picklist generation
-* Fixed: correct display of primer information
-* various UI changes
+* Changed: can now edit all liquid transfer volumes
 EOM
 
 mv changelog.txt changelog_old.txt

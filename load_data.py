@@ -447,57 +447,51 @@ def upload_extra_consumables(key):
 
 
 def custom_volumes(exp):
-    #Gabi's code for custom volumes
-    with st.form("custom_volumes", clear_on_submit=True):
-        dna_vol = exp.transfer_volumes['DNA_VOL']
-        primer_vol = exp.transfer_volumes['PRIMER_VOL']
-        index_vol = exp.transfer_volumes['INDEX_VOL']
+    volumes_dict = exp.transfer_volumes.copy()
 
-        st.write('**Volumes for DNA and Primers**')
-        st.write(f'Current volumes (nL):')
-        transfer_vol_df = pd.DataFrame.from_dict(data=exp.transfer_volumes, 
-                                                    orient='index', 
-                                                    columns=['Volume'])
-        df_col, custom_val_col = st.columns(2)
-        df_col.dataframe(transfer_vol_df.T, width=1000)
+    st.write('**Volumes for DNA and Primers**')
+    col1, col2, col3,_ = st.columns([1,1,1,4])
+    col1.write(f'Current volumes (nL):')
+    allow_edit = col2.checkbox('Edit current volumes')
+    reset_vols = col3.button("Reset to default")
+    transfer_vol_df = pd.DataFrame.from_dict(data=exp.transfer_volumes, 
+                                                orient='index', 
+                                                columns=['Volume'])
+    
+    custom_vol_editor = st.experimental_data_editor(transfer_vol_df.T,
+                                                    height=80,
+                                                    use_container_width=True, 
+                                                    key="volume_df", 
+                                                    disabled=not allow_edit)
+    if allow_edit:
+        st.info('To change the volume, click or double click on the cell, type in the new value and hit Enter')
+    
+    if reset_vols:
+        success = exp.add_custom_volumes({'DNA_VOL':util.DNA_VOL, 
+                                          'PRIMER_VOL':util.PRIMER_VOL, 
+                                          'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
+                                          'PRIMER_WATER_VOL':util.PRIMER_WATER_VOL, 
+                                          'INDEX_VOL':util.INDEX_VOL, 
+                                          'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
+                                          'INDEX_WATER_VOL':util.INDEX_WATER_VOL})
+        if success:
+            st.experimental_rerun()
+        else:
+            st.error('Volumes were not reset. Check the log for more information')
 
-        st.write('Enter custom values if required:')
+    #if edit is made to dataframe
+    if st.session_state['volume_df']['edited_cells']:
+        for vol in list(volumes_dict.keys()):
+            volumes_dict[vol] = custom_vol_editor[vol]['Volume']
 
-        dna_col, _, primer_col, _,index_col, _ = st.columns([4,1,4,1,4,12])
-        custom_dna_vol = dna_col.text_input('DNA volume (DNA_VOL)',
-                                            placeholder='(nL)', 
-                                            help='Integer values only. '+
-                                                    'The default value for DNA is 200')
-                        
-        custom_primer_vol = primer_col.text_input('Primer volume (PRIMER_VOL)', 
-                                                    placeholder='(nL)', 
-                                                    help='Integer values only. '+
-                                                        'The default value for primers is 500')
-                        
-        custom_index_vol = index_col.text_input('Index volume (INDEX_VOL)', 
-                                                    placeholder='(nL)', 
-                                                    help='Integer values only. '+
-                                                        'The default value for indexes is 175')
+        success = exp.add_custom_volumes(volumes_dict)
+        if success:
+            st.success("Added new volume")
+            st.experimental_rerun()
+        else:
+            st.warning("Volume could not be added. Please enter in integers only.")
 
-        st.write('')
-        submit_vol_btn = st.form_submit_button('Submit')
-        if submit_vol_btn:
-            if custom_dna_vol != '':
-                dna_vol = custom_dna_vol
-            if custom_primer_vol != '':
-                primer_vol = custom_primer_vol
-            if custom_index_vol != '':
-                index_vol = custom_index_vol
-                        
-            success = exp.add_custom_volumes(dna_vol, primer_vol, index_vol)
-
-            if success:
-                st.success(f'Values added: {exp.transfer_volumes}')
-                st.experimental_rerun()
-                                
-            else:
-                st.error('Values could not be added, please check the log. '+
-                            '(Make sure you\'re only entering in integers).')
+    st.write('')
 
 
 def upload_reference_sequences(key):
