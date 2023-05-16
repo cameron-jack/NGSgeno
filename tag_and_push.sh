@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.020"
+VER="v0.21.021"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: pcrplate and pcrwell should be pcrPlate and pcrWell respectively
+* Fixed: transfer volumes saving as numpy format
 EOM
 
 mv changelog.txt changelog_old.txt
