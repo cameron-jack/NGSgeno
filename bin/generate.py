@@ -609,7 +609,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                         well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
                 primer_survey_lines.append(outline)
 
-        with open('primer-svy.csv', 'wt') as fout:
+        with open(exp.get_exp_fn('primer-svy.csv'), 'wt') as fout:
             for psl in primer_survey_lines:
                 print(psl, file=fout)
         

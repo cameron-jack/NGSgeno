@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.022"
+VER="v0.21.023"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: path for primer-svy.csv
+* Fixed: last change did not save
 EOM
 
 mv changelog.txt changelog_old.txt
