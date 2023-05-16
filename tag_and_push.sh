@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.019"
+VER="v0.21.020"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Requires Streamlit v1.22
+* Fixed: pcrplate and pcrwell should be pcrPlate and pcrWell respectively
 EOM
 
 mv changelog.txt changelog_old.txt

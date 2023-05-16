@@ -1,3 +1,7 @@
+v0.21.020
+Date: Tue May 16 11:04:49 AEST 2023
+* Fixed: pcrplate and pcrwell should be pcrPlate and pcrWell respectively
+
 v0.21.019
 Date: Mon May 15 10:21:56 AEST 2023
 * Requires Streamlit v1.22

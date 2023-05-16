@@ -630,9 +630,9 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         
         # allocate PCR plate wells
         wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"]
-        pcrwells = [(p, w) for p in sorted(pcr_bcs) for w in wells]
+        pcrWells = [(p, w) for p in sorted(pcr_bcs) for w in wells]
         pcr_records = []
-        for i, (dr, pcrw) in enumerate(zip(dna_records, pcrwells)):
+        for i, (dr, pcrw) in enumerate(zip(dna_records, pcrWells)):
             record = [dr.get(pf, '') for pf in pcr1_fields[:-2]]  # don't add columns yet for PCR plate and well
             record.append(pcrw[0])
             record.append(pcrw[1])
@@ -807,7 +807,7 @@ Adapter,,,,,,,,,,
             hdr = "Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,I5_Index_ID,index2,Sample_Project,Description".split(',')
             dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
             dst.writerow(hdr)
-            gen = [(util.unguard_pbc(r.pcrplate, silent=True)+'_'+util.padwell(r.pcrwell), util.unguard(r.sampleBarcode, silent=True), '', '',
+            gen = [(util.unguard_pbc(r.pcrPlate, silent=True)+'_'+util.padwell(r.pcrWell), util.unguard(r.sampleBarcode, silent=True), '', '',
                     r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data]
             
             dst.writerows(gen)
@@ -862,7 +862,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
     
         ### i7i5 barcodes
         # read Stage2 csv file
-        #sampleNumber	samplePlate	sampleWell	sampleBarcode	assays	assayFamilies	strain	sex	dnaPlate	dnaWell	primer	pcrplate	pcrwell
+        #sampleNumber	samplePlate	sampleWell	sampleBarcode	assays	assayFamilies	strain	sex	dnaPlate	dnaWell	primer	pcrPlate	pcrWell
         #typebc = Table.newtype('S2Record',
         # Because this reads from a file and is immutible, we can't filter by user PID choices
         s2tab = util.CSVTable('S2Rec', exp.get_exp_fn(fnstage2))           
@@ -955,16 +955,16 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         for r in s3tab.data:
             if r.index_plate not in src_dict:
                 src_dict[r.index_plate] = f"Source[{len(src_dict)+1}]"
-        # make the destination dictionary for pcrplates
+        # make the destination dictionary for pcrPlates
         dest_dict = {}
         for r in s3tab.data:
-            if r.pcrplate not in dest_dict:
-                dest_dict[r.pcrplate] = f"Destination[{len(dest_dict)+1}]"
+            if r.pcrPlate not in dest_dict:
+                dest_dict[r.pcrPlate] = f"Destination[{len(dest_dict)+1}]"
 
         pt_src = util.PLATE_TYPES['Echo384']
         pt_dst = util.PLATE_TYPES['PCR384']
-        rowi7 = ((src_dict[r.index_plate], r.index_plate, pt_src, r.i7well, dest_dict[r.pcrplate], r.pcrplate, pt_dst, r.pcrwell, index_vol) for r in s3tab.data)
-        rowi5 = ((src_dict[r.index_plate], r.index_plate, pt_src, r.i5well, dest_dict[r.pcrplate], r.pcrplate, pt_dst, r.pcrwell, index_vol) for r in s3tab.data)
+        rowi7 = ((src_dict[r.index_plate], r.index_plate, pt_src, r.i7well, dest_dict[r.pcrPlate], r.pcrPlate, pt_dst, r.pcrWell, index_vol) for r in s3tab.data)
+        rowi5 = ((src_dict[r.index_plate], r.index_plate, pt_src, r.i5well, dest_dict[r.pcrPlate], r.pcrPlate, pt_dst, r.pcrWell, index_vol) for r in s3tab.data)
         outfmt_index = outfmt
         fn_index = exp.get_exp_fn(outfmt_index.replace('PCR','PCR2_index'), trans=True)
         mk_picklist(exp, fn_index, (r for rs in (rowi7, rowi5) for r in rs), transactions)    
