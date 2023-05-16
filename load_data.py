@@ -483,7 +483,6 @@ def custom_volumes(exp):
     if st.session_state['volume_df']['edited_cells']:
         for vol in list(volumes_dict.keys()):
             volumes_dict[vol] = float(custom_vol_editor[vol]['Volume'])
-
         success = exp.add_custom_volumes(volumes_dict)
         if success:
             st.success("Added new volume")
