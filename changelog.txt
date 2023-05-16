@@ -1,3 +1,7 @@
+v0.21.022
+Date: Tue May 16 13:33:21 AEST 2023
+* Fixed: path for primer-svy.csv
+
 v0.21.021
 Date: Tue May 16 13:11:53 AEST 2023
 * Fixed: transfer volumes saving as numpy format

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.021"
+VER="v0.21.022"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: transfer volumes saving as numpy format
+* Fixed: path for primer-svy.csv
 EOM
 
 mv changelog.txt changelog_old.txt

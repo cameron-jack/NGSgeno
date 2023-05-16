@@ -611,7 +611,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
 
         with open('primer-svy.csv', 'wt') as fout:
             for psl in primer_survey_lines:
-                fout.write(psl)
+                print(psl, file=fout)
         
         transactions = {}
         outfmt = f"PCR-picklist_{exp.name}.csv"
