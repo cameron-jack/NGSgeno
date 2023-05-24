@@ -876,6 +876,7 @@ def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=
 
     if view_tab == 4:
         with container:
+            view_height=500
             view_plates(key, height=view_height)
 
 

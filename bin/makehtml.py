@@ -56,6 +56,7 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
     
     if purpose == 'pcr':
         #384-well plates
+        purpose = 'PCR'
         pass
 
     if purpose == 'taq_water':
@@ -115,9 +116,9 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
     #chartdiv {
       width: WWWWWW;
       height: HHHHHH;
-      position: absolute;
-      top: 11%;
-      left: LLLLLL%;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
       background-color: white;
       background-size: 95%;
       border: 5px;
@@ -126,6 +127,9 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
       border-color: #bfdbf2;
       border-radius: 25px;
       font-family: helvetica;
+    }
+    #plate_container {
+        height: auto !important
     }
     h1 {
       font-family: helvetica;
@@ -214,12 +218,12 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
     column.propertyFields.fill = "color";
 
     // Set up bullet appearance
-    //var bullet1 = series.bullets.push(new am4charts.CircleBullet());
-    //bullet1.circle.propertyFields.radius = "value";
-    //bullet1.circle.fill = am4core.color("#FFF");
-    //bullet1.circle.strokeWidth = 0;
-    //bullet1.circle.fillOpacity = 0.4;
-    //bullet1.interactionsEnabled = false;
+    var bullet1 = series.bullets.push(new am4charts.CircleBullet());
+    bullet1.circle.propertyFields.radius = "value";
+    bullet1.circle.fill = am4core.color("#FFF");
+    bullet1.circle.strokeWidth = 0;
+    bullet1.circle.fillOpacity = 0.4;
+    bullet1.interactionsEnabled = false;
 
     var bullet2 = series.bullets.push(new am4charts.LabelBullet());
     bullet2.label.text = "{y}{x}";
@@ -240,6 +244,27 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
         "good": "#5dbe24",
         "verygood": "#0b7d03"
     };
+
+    // Set the container height dynamically
+    function setContainerHeight() {
+      var container = document.getElementById("plate_container");
+      var chartdiv = document.getElementById("chartdiv");
+      var containerHeight = chartdiv.scrollHeight; // Get the height of chartdiv element
+      var windowHeight = window.innerHeight;
+
+      // Adjust the container height as needed
+      var desiredContainerHeight = containerHeight + 100; // Add an offset if necessary
+      var newContainerHeight = Math.min(desiredContainerHeight, windowHeight * 0.8); // Limit the container height to a maximum of 80% of window height
+      container.style.height = newContainerHeight + "px";
+    }
+
+    setContainerHeight(); // Initial height calculation
+
+    // Recalculate container height on window resize
+    window.addEventListener("resize", function() {
+      setContainerHeight();
+    });
+
     """.replace('WWWWWW',width).replace('HHHHHH',height).replace('FAFAFA',font_axis).\
                 replace('FLFLFL', font_label).replace('FPFPFP',font_popup).replace('LLLLLL', left_padding).\
                     replace('TTTTTT', tool_text)
@@ -262,7 +287,9 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
     <!-- HTML -->
     <body>
         <h1 style="text-align:center;color:#458cde">PUPUPU Plate PPPPPP</h1>
-        <div id="chartdiv"></div>
+        <div id="plate_container">
+            <div id="chartdiv"></div>
+        </div>
     </body>
     """.replace('PUPUPU', purpose.capitalize()).replace('PPPPPP', str(util.unguard(plate_id, silent=True)))
 

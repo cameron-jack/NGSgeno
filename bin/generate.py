@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from multiprocessing import popen_spawn_win32
+#from multiprocessing import popen_spawn_win32
 import sys
 import os
 import gzip
