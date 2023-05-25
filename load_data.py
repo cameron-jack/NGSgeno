@@ -260,6 +260,15 @@ def upload_pcr1_files(key):
                     key='primer_vol_uploader'+key, 
                     type='csv', 
                     accept_multiple_files=True)
+        
+        hide_label = """
+        <style>
+            .css-9ycgxx {
+                display: none;
+            }
+        </style>
+        """
+        st.markdown(hide_label, unsafe_allow_html=True)
 
         upload_button = st.form_submit_button("Upload Files")
 
