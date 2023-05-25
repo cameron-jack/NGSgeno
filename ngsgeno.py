@@ -258,6 +258,16 @@ def main():
     if 'folder' not in st.session_state:
         st.session_state['folder'] = None
     #Folder inputs
+
+    #remove drag and drop labels from upload buttons. Class name 'css-9ycgxx' could change in future streamlit versions
+    hide_label = """
+    <style>
+        .css-9ycgxx {
+            display: none;
+        }
+    </style>
+    """
+    st.markdown(hide_label, unsafe_allow_html=True)
     
     logo_col, ver_col,_, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,2,2,2,1,2,1])
     # current_experiment_col, _ = st.columns(2)
