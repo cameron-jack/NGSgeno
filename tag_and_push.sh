@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
-VER="v0.21.023"
+VER="v0.21.024"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: last change did not save
+* Fixed: incorrect columns in PCR2 taqwater picklist
+* Improved: reduced fragile code in picklist generation
 EOM
 
 mv changelog.txt changelog_old.txt

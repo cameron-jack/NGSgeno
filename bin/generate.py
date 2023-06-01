@@ -381,11 +381,14 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
     return True
 
 
-def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, transactions):
+def mk_mytaq_picklist(exp, fn, task_wells, pcrPlate_col, pcrWell_col, taqwater_bcs, taq_vol, water_vol, transactions):
     """ 
     Create a picklist for Mytaq & H2O transfers
     transactions are passed through to mk_picklist and modified there
-    """        
+    Because it is called in both PCR1 and PCR2, we should pass through the column indices we need
+    """     
+    ppcol = pcrPlate_col
+    pwcol = pcrWell_col
     # build a list of all possible taq/water pids and well pair transfers
     pid_ww_tw_list = []
     #print(f"{task_wells=} {taqwater_bcs=}", file=sys.stderr)
@@ -441,7 +444,7 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
     # now allocate to used wells
     #try:
     if True:
-        pcr_pids = sorted(set([w[-2] for w in task_wells]))  # w['pcrPlate']
+        pcr_pids = sorted(set([w[ppcol] for w in task_wells]))  # w['pcrPlate']
         tw_pids = sorted(set([pid for pid,ww,tw in pid_ww_tw_list]))
         dst_dict = dict((pid, "Destination[{}]".format(i)) for i, pid in enumerate(pcr_pids, start=1))
         src_dict = dict((pid, "Source[{}]".format(i))for i, pid in enumerate(tw_pids, start=1))
@@ -454,12 +457,12 @@ def mk_mytaq_picklist(exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, tra
             #        "Destination Well,Volume"
             tw_pid, ww, tw = pid_ww_tw
             water_row = [src_dict[tw_pid], util.unguard(tw_pid, silent=True), util.PLATE_TYPES['Echo6'], ww,
-                    dst_dict[task_well[-2]], util.unguard(task_well[-2], silent=True), 
-                    util.PLATE_TYPES['PCR384'], task_well[-1], water_vol]
+                    dst_dict[task_well[ppcol]], util.unguard(task_well[ppcol], silent=True), 
+                    util.PLATE_TYPES['PCR384'], task_well[pwcol], water_vol]
             output_rows.append(water_row)
             taq_row = [src_dict[tw_pid], util.unguard(tw_pid, silent=True), util.PLATE_TYPES['Echo6'], tw,
-                    dst_dict[task_well[-2]], util.unguard(task_well[-2], silent=True), 
-                    util.PLATE_TYPES['PCR384'], task_well[-1], taq_vol]
+                    dst_dict[task_well[ppcol]], util.unguard(task_well[ppcol], silent=True), 
+                    util.PLATE_TYPES['PCR384'], task_well[pwcol], taq_vol]
             output_rows.append(taq_row)
         mk_picklist(exp, fn, output_rows, transactions)         
     #except Exception as exc:
@@ -647,12 +650,12 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
             exp.log(f'Critical: failed to write {stage2_fn}')
             return False
         
-        pcr_plate_field_index = [i for i,f in enumerate(pcr1_fields) if f=='pcrPlate'][0]
-        pcr_well_field_index = [i for i,f in enumerate(pcr1_fields) if f=='pcrWell'][0]
-        dna_plate_field_index = [i for i,f in enumerate(pcr1_fields) if f=='dnaPlate'][0]
-        dna_well_field_index = [i for i,f in enumerate(pcr1_fields) if f=='dnaWell'][0]
-        primer_plate_field_index = [i for i,f in enumerate(pcr1_fields) if f=='primerPlate'][0]
-        primer_well_field_index = [i for i,f in enumerate(pcr1_fields) if f=='primerWell'][0]
+        pcr_plate_col = pcr1_fields.index('pcrPlate')
+        pcr_well_col = pcr1_fields.index('pcrWell')
+        dna_plate_col = pcr1_fields('dnaPlate')
+        dna_well_col = pcr1_fields('dnaWell')
+        primer_plate_col = pcr1_fields('primerPlate')
+        primer_well_col = pcr1_fields('primerWell')
 
         # output DNA picklist
         dna_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_dna'), trans=True)
@@ -662,19 +665,19 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         dst_plate_type = util.PLATE_TYPES['PCR384']
         src_plate_type = util.PLATE_TYPES['Echo384']
 
-        pcr_pid_list = list((set([r[pcr_plate_field_index] for r in pcr_records if r[pcr_plate_field_index]])))
-        dna_bcs = list((set([r[dna_plate_field_index] for r in pcr_records if r[dna_plate_field_index]])))
-        primer_pid_list = list((set([r[primer_plate_field_index] for r in pcr_records if r[primer_plate_field_index]])))
+        pcr_pid_list = list((set([r[pcr_plate_col] for r in pcr_records if r[pcr_plate_col]])))
+        dna_bcs = list((set([r[dna_plate_col] for r in pcr_records if r[dna_plate_col]])))
+        primer_pid_list = list((set([r[primer_plate_col] for r in pcr_records if r[primer_plate_col]])))
 
         ddict = dict((pbc, f"Destination[{i}]") for i, pbc in enumerate(pcr_pid_list, start=1))
         sdict = dict((pbc, f"Source[{i}]")for i, pbc in enumerate(dna_bcs, start=1))
         volume = exp.transfer_volumes['DNA_VOL']
-        dna_gen = ((sdict[util.guard_pbc(r[dna_plate_field_index], silent=True)],
-                util.guard_pbc(r[dna_plate_field_index], silent=True), 
-                src_plate_type, r[dna_well_field_index], 
-                ddict[util.guard_pbc(r[pcr_plate_field_index], silent=True)], 
-                util.guard_pbc(r[pcr_plate_field_index], silent=True), dst_plate_type, 
-                r[pcr_well_field_index], volume) for r in pcr_records if r[dna_plate_field_index] and r[pcr_plate_field_index])
+        dna_gen = ((sdict[util.guard_pbc(r[dna_plate_col], silent=True)],
+                util.guard_pbc(r[dna_plate_col], silent=True), 
+                src_plate_type, r[dna_well_col], 
+                ddict[util.guard_pbc(r[pcr_plate_col], silent=True)], 
+                util.guard_pbc(r[pcr_plate_col], silent=True), dst_plate_type, 
+                r[pcr_well_col], volume) for r in pcr_records if r[dna_plate_col] and r[pcr_plate_col])
         success = mk_picklist(exp, dna_fn, dna_gen, transactions)
         if not success:
             transactions[dna_fn] = None 
@@ -686,12 +689,12 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         ddict = dict((pbc, f"Destination[{i}]") for i, pbc in enumerate(pcr_pid_list, start=1))
         sdict = dict((pbc, f"Source[{i}]")for i, pbc in enumerate(primer_pid_list, start=1))
         volume = exp.transfer_volumes['PRIMER_VOL']
-        primer_gen = ((sdict[util.guard_pbc(r[primer_plate_field_index], silent=True)],
-                util.guard_pbc(r[primer_plate_field_index], silent=True),
-                src_plate_type, r[primer_well_field_index], 
-                ddict[util.guard_pbc(r[pcr_plate_field_index], silent=True)],
-                util.guard_pbc(r[pcr_plate_field_index], silent=True), dst_plate_type, 
-                r[pcr_well_field_index], volume) for r in pcr_records if r[primer_plate_field_index] and r[pcr_plate_field_index])
+        primer_gen = ((sdict[util.guard_pbc(r[primer_plate_col], silent=True)],
+                util.guard_pbc(r[primer_plate_col], silent=True),
+                src_plate_type, r[primer_well_col], 
+                ddict[util.guard_pbc(r[pcr_plate_col], silent=True)],
+                util.guard_pbc(r[pcr_plate_col], silent=True), dst_plate_type, 
+                r[pcr_well_col], volume) for r in pcr_records if r[primer_plate_col] and r[pcr_plate_col])
         success = mk_picklist(exp, primer_fn, primer_gen, transactions)
         if not success:
             transactions[primer_fn] = None      
@@ -700,7 +703,8 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         taq_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_taqwater'), trans=True)
         transactions[taq_fn] = {}
         # exp, fn, task_wells, taqwater_bcs, taq_vol, water_vol, transactions=None
-        success = mk_mytaq_picklist(exp, taq_fn, pcr_records, taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], 
+        success = mk_mytaq_picklist(exp, taq_fn, pcr_records, pcr_plate_col, pcr_well_col, 
+                taq_bcs, exp.transfer_volumes['PRIMER_TAQ_VOL'], 
                 exp.transfer_volumes['PRIMER_WATER_VOL'], transactions)
         if not success:
             transactions[taq_fn] = None
@@ -973,7 +977,10 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         outfmt_taq = outfmt
         fn_taqwater = exp.get_exp_fn(outfmt_taq.replace('PCR','PCR2_taqwater'), trans=True)
         transactions[fn_taqwater] = {}
-        mk_mytaq_picklist(exp, fn_taqwater, s3tab.data, taq_bcs, exp.transfer_volumes['INDEX_TAQ_VOL'], 
+        pcr_plate_col = s3tab.header.index('pcrPlate') 
+        pcr_well_col = s3tab.header.index('pcrWell')
+        mk_mytaq_picklist(exp, fn_taqwater, s3tab.data, pcr_plate_col, pcr_well_col,
+                taq_bcs, exp.transfer_volumes['INDEX_TAQ_VOL'], 
                 exp.transfer_volumes['INDEX_WATER_VOL'], transactions)
         
         # MiSeq file - experiment name, name format, ngid(dir), s3 data, verbosity
@@ -982,9 +989,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         transactions[miseq_fn] = {}
         success = generate_miseq_samplesheet(exp, miseq_fn, s3tab, transactions)
     transaction.add_pending_transactions(exp, transactions)
-        #fns3 = "Stage3.html"
-        #s2r.build_report(exp, fns3, s3tab.tt._fields, s3tab.data)    
-        
+    
     #except Exception as exc:
     #    exp.log(f"Error: {exc}")
     #    return False
