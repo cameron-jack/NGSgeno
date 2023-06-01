@@ -234,15 +234,15 @@ def nimbus_gen(exp):
                             stage1_row_data['assayFamilies'] = ';'.join(assayFamilies)
                             
                             if len(stage1_row_data['assays']) == 0:
-                                continue
-                            # clientName
-                            cn = shx[pos].get('clientname','')
-                            if cn != '':
+                                continue 
+
+                            cn = shx[pos].get('clientName','')
+                            if cn:
                                 cn = cn.replace(' ','_').replace('"','').replace("'",'').replace(';','').replace('`','')
                             stage1_row_data['clientName'] = cn
-                            # sampleName
-                            sn = shx[pos].get('samplename','')
-                            if sn != '':
+                            
+                            sn = shx[pos].get('sampleName','')
+                            if sn:
                                 sn = sn.replace(' ','_').replace('"','').replace("'",'').replace(';','').replace('`','')
                             stage1_row_data['sampleName'] = sn
                             
@@ -652,10 +652,10 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         
         pcr_plate_col = pcr1_fields.index('pcrPlate')
         pcr_well_col = pcr1_fields.index('pcrWell')
-        dna_plate_col = pcr1_fields('dnaPlate')
-        dna_well_col = pcr1_fields('dnaWell')
-        primer_plate_col = pcr1_fields('primerPlate')
-        primer_well_col = pcr1_fields('primerWell')
+        dna_plate_col = pcr1_fields.index('dnaPlate')
+        dna_well_col = pcr1_fields.index('dnaWell')
+        primer_plate_col = pcr1_fields.index('primerPlate')
+        primer_well_col = pcr1_fields.index('primerWell')
 
         # output DNA picklist
         dna_fn = exp.get_exp_fn(outfmt.replace('PCR','PCR1_dna'), trans=True)
@@ -902,8 +902,8 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                         '',                             # assayKey
                         amp_well['amplicons'][0].split('_')[0], # assay
                         amp_well['amplicons'][0].split('_')[0], # assayFamily
-                        amp_well.get('clientname', ''),     # clientName
-                        amp_well.get('samplename', ''),     # sampleName
+                        amp_well.get('clientName', ''),     # clientName
+                        amp_well.get('sampleName', ''),     # sampleName
                         amp_pid,                        # dnaPlate
                         well_str,                       # dnaWell
                         amp_well['amplicons'][0],       # primer

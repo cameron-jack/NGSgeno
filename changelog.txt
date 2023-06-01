@@ -1,3 +1,8 @@
+v0.21.025
+Date: Fri Jun  2 07:34:13 AEST 2023
+* Fixed: mistake in previous picklist column fix
+* Fixed: sampleName and clientName columns were empty in Stage files
+
 v0.21.024
 Date: Fri Jun  2 07:00:33 AEST 2023
 * Fixed: incorrect columns in PCR2 taqwater picklist

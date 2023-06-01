@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-VER="v0.21.024"
+VER="v0.21.025"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: incorrect columns in PCR2 taqwater picklist
-* Improved: reduced fragile code in picklist generation
+* Fixed: mistake in previous picklist column fix
+* Fixed: sampleName and clientName columns were empty in Stage files
 EOM
 
 mv changelog.txt changelog_old.txt

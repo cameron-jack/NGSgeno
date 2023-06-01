@@ -357,7 +357,7 @@ def parse_custom_manifest(exp, fp, overwrite=False):
         #print(i, cols, file=sys.stderr)
         if i==0:  # process header
             cols_lower = [c.lower() for c in cols]
-            header_dict = {k:c for k,c in enumerate(cols_lower)}
+            header_dict = {k:c for k,c in enumerate(cols)}
             #print(header_dict, file=sys.stderr)
             matching_cols = [col_name in cols_lower for col_name in required_cols]
             if not all(matching_cols):
@@ -365,9 +365,9 @@ def parse_custom_manifest(exp, fp, overwrite=False):
                 return False
             
             for k in header_dict:
-                if header_dict[k] == 'platebarcode':
+                if header_dict[k].lower() == 'platebarcode':
                     plate_barcode_col = k
-                elif header_dict[k] == 'assay':
+                elif header_dict[k].lower() == 'assay':
                     assay_cols.append(k)
             continue
         if len(cols) < 5:  # skip empty rows
@@ -386,7 +386,7 @@ def parse_custom_manifest(exp, fp, overwrite=False):
             if k in assay_cols:
                 if c != '':  # ignore empty assay entries
                     assays.append(c)
-            if header_dict[k] == 'well':
+            if header_dict[k].lower() == 'well':
                 well = util.unpadwell(c.upper())
                 #print(f'well: {well=} {k=} {c=}')
                 if well in well_records[gpid]['wells'] and well_records[gpid][well] != {}:
@@ -398,9 +398,9 @@ def parse_custom_manifest(exp, fp, overwrite=False):
         for k,c in enumerate(cols):
             if c.lower() == 'none':
                 c = ''
-            if header_dict[k] == 'well':
+            if header_dict[k].lower() == 'well':
                 continue
-            if header_dict[k] == 'samplebarcode':
+            if header_dict[k].lower() == 'samplebarcode':
                 #if c.startswith('C'):
                 #    sid = util.guard_cbc(c, silent=True)
                 #elif c.startswith('M'):
@@ -409,13 +409,17 @@ def parse_custom_manifest(exp, fp, overwrite=False):
                 sid = util.guard_cbc(c, silent=True) # fall back to custom?
                 well_records[gpid][well]['barcode'] = sid
                 well_records[gpid][well]['sampleBarcode'] = sid
-            elif header_dict[k] == 'platebarcode':
+            elif header_dict[k].lower() == 'platebarcode':
                 well_records[gpid][well]['platebarcode'] = gpid
                 well_records[gpid][well]['samplePlate'] = gpid
-            elif header_dict[k] == 'sampleno':
+            elif header_dict[k].lower() == 'sampleno':
                 well_records[gpid][well]['sampleNumber'] = str(c)
-            elif header_dict[k] == 'assay':
+            elif header_dict[k].lower() == 'assay':
                 continue
+            elif header_dict[k].lower() == 'samplename':
+                well_records[gpid][well]['sampleName'] = str(c)
+            elif header_dict[k].lower() == 'clientname':
+                well_records[gpid][well]['clientName'] = str(c)
             else:
                 try:
                     well_records[gpid][well][header_dict[k]] = str(c)
