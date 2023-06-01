@@ -1,3 +1,8 @@
+v0.21.026
+Date: Fri Jun  2 09:14:59 AEST 2023
+* Changed: various warnings improvements
+* Changed: plate view giving inconsistent results across computers
+
 v0.21.025
 Date: Fri Jun  2 07:34:13 AEST 2023
 * Fixed: mistake in previous picklist column fix

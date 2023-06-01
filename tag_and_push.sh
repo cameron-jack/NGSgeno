@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-VER="v0.21.025"
+VER="v0.21.026"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: mistake in previous picklist column fix
-* Fixed: sampleName and clientName columns were empty in Stage files
+* Changed: various warnings improvements
+* Changed: plate view giving inconsistent results across computers
 EOM
 
 mv changelog.txt changelog_old.txt
