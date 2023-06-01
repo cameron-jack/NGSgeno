@@ -320,14 +320,13 @@ def display_pcr_components(PCR_stage=1, dna_pids=None, show_general=True):
     
     _,filter_col1,_,filter_col2, _ = pcr_comps_area.columns([1,5,1,5,1])
     col_size = [6, 4, 6, 4]
-    comp_warning = ''
 
     fwd_idx, rev_idx = exp.get_index_avail()
     print(f'{dna_pids=}')
     assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
     num_reactions = sum([primer_usage[p] for p in primer_usage])
-    print(f'{num_reactions=}')
-    print(f'{primer_usage=}')
+    # print(f'{num_reactions=}')
+    # print(f'{primer_usage=}')
     primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
             exp.get_taq_water_volumes_required(num_reactions)
     num_req_pcr_taq_water_plates = util.num_req_taq_water_plates(primer_taq_vol, primer_water_vol)
@@ -369,7 +368,7 @@ def display_pcr_components(PCR_stage=1, dna_pids=None, show_general=True):
         if user_supplied_PCR:
             req_cols[3].write(user_supplied_PCR)
         else:
-            req_cols[3].write('None')
+            req_cols[3].markdown('<p style="color:#FF0000">None</p>', unsafe_allow_html=True)
         req_cols[2].markdown('**User supplied taq/water plates**')
         if user_supplied_taqwater:
             req_cols[3].write(user_supplied_taqwater)
@@ -385,26 +384,13 @@ def display_pcr_components(PCR_stage=1, dna_pids=None, show_general=True):
     pcr_cols = pcr_comps_area.columns(col_size)
 
     if PCR_stage == 1:
-        if taq_avail < primer_taq_vol or water_avail < primer_water_vol:
-            if comp_warning != '':
-                comp_warning += ' and '
-            
-            comp_warning += f' {ceil((primer_taq_vol/ul_conv)/7650)} taq and water plate(s) '
     #get actual values for volume of taq water plates
-        
-
         required_water_vol_str = str(primer_water_vol/ul_conv) + ' μl'
         water_avail_vol_str = str(water_avail_vol)+' μl'
         required_taq_vol_str = str(primer_taq_vol/ul_conv) + ' μl'
         avail_taq_vol_str = str(taq_avail_vol)+' μl'
 
     if PCR_stage == 2:
-        if taq_avail < (primer_taq_vol + index_taq_vol) or water_avail < (primer_water_vol + index_water_vol):
-            if comp_warning != '':
-                comp_warning +=  ' and'
- 
-            comp_warning += ' taq and water plate(s)'
-        
         required_water_vol_str = str(index_water_vol/ul_conv)+ ' μl'
         water_avail_vol_str = str(water_avail_vol) + ' μl'
         required_taq_vol_str = str(index_taq_vol/ul_conv)+ ' μl'
@@ -438,14 +424,6 @@ def display_pcr_components(PCR_stage=1, dna_pids=None, show_general=True):
     pcr_cols[2].markdown('**Available taq volume**')
     pcr_cols[3].write(avail_taq_vol_str)
 
-    if comp_warning:
-        msg = 'Provide: ' + comp_warning + ' to fulfill PCR requirements'
-    else:
-        msg = None
-        
-    return msg
-
-    # comp_warning_area.markdown(f'<p style="color:#f63366">{comp_warning}</p>', unsafe_allow_html=True)
 
 
 #def display_primer_components(assay_usage, expander=True):

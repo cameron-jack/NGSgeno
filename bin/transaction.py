@@ -68,6 +68,7 @@ def is_pending(exp):
     True if either exp.pending_uploads or exp.pending_steps have entries (both are sets)
     """
     if exp.pending_uploads or exp.pending_steps:
+        print('trans', exp.pending_steps.keys())
         return True
     return False
 
@@ -104,6 +105,7 @@ def add_pending_transactions(exp, transactions):
         """
         if not transactions:
             return True
+        print('Add pending transactions: ', transactions.keys())
         if exp.pending_steps is None:
             exp.pending_steps = {}
         for t in transactions:
@@ -295,9 +297,10 @@ def accept_pending_transaction(exp, file_name):
     """
     Replace the existing file with the one that is pending
     """
-    print(file_name)
+    print('Accept a pending transaction')
+    print('file_name: ', file_name)
     pending_file = exp.get_exp_fn(filename=file_name, transaction=True)
-    print(pending_file)
+    print('pending_file: ',pending_file)
     if not Path(pending_file).exits():
         exp.log(f"Error: pending file {pending_file} does not exist, reverting to original")
         if pending_file in exp.pending_uploads:
@@ -356,10 +359,12 @@ def accept_pending_transactions(exp):
         exp.log("Warning: there are no pending transactions to record")
         return True  # It didn't actually fail
     ps_keys = exp.pending_steps.copy()
+    #If file doesn't exist but is in pending steps, delete from all pending lists:
     for ps in ps_keys:
         if not Path(ps).exists():
             exp.log(f"Error: pending file {ps} does not exist, reverting to original")
             if ps in exp.pending_uploads:
+                print(ps)
                 exp.pending_uploads.remove(ps)
             if ps in exp.pending_steps:
                 del exp.pending_steps[ps]
@@ -369,8 +374,10 @@ def accept_pending_transactions(exp):
     if len(exp.pending_steps.keys()) == 0:
         return True
 
+    #Dealing with clashes
     clashes = clashing_pending_transactions(exp)
-    #print(f"Clashes seen {clashes=}", file=sys.stderr)
+    print(f"Clashes seen {clashes=}", file=sys.stderr)
+    #When there's no clashes, convert the pending file to a final file
     if len(clashes) == 0:
         for transaction in exp.pending_steps:
             p = Path(transaction)
@@ -379,11 +386,12 @@ def accept_pending_transactions(exp):
                 continue
             final_path = convert_pending_to_final(exp,transaction)
             os.rename(p, final_path)
-            #print(f"No clash {str(p)=} {str(final_path)=}", file=sys.stderr)
+            print(f"No clash {str(p)=} {str(final_path)=}", file=sys.stderr)
+    #When there's clashes, get the index of the file in reproducible steps and delete all files after this
     else:
         MAX_STAGES=99999
         clashing_index = MAX_STAGES
-        #print(f"{exp.reproducible_steps=}", file=sys.stderr)
+        print(f"{exp.reproducible_steps=}", file=sys.stderr)
         for i,step in enumerate(exp.reproducible_steps):
             for dest in step:
                 dp = convert_final_to_pending(exp,dest)
@@ -416,16 +424,19 @@ def accept_pending_transactions(exp):
                 exp.log(f'Warning: {str(p)} not found')
                 continue
             final_path = convert_pending_to_final(exp,transaction)
-            #print(f"Renaming {str(p)=} to {str(final_path)=}", file=sys.stderr)
+            print(f"Renaming {str(p)=} to {str(final_path)=}", file=sys.stderr)
             os.rename(p, final_path)
             op = str(p)
             if op in exp.uploaded_files:
                 exp.uploaded_files[final_path] = exp.uploaded_file[op].copy()
                 del exp.uploaded_file[op]
         exp.reproducible_steps = exp.reproducible_steps[0:clashing_index]
+
     if exp.pending_steps is None:
         exp.save()
         return True
+    
+    #After dealing with clashes, remove from pending steps and add to reproducible steps and uploaded files
     this_step = {}
     for ps in exp.pending_steps:
         if ps is None:
@@ -440,8 +451,11 @@ def accept_pending_transactions(exp):
             exp.uploaded_files[op] = {}
     exp.reproducible_steps.append(this_step)
     for fn in this_step:
-        if fn in exp.pending_steps:
-            exp.pending_steps.remove(fn)
+        pfn = convert_final_to_pending(exp, fn)
+        print('filename', fn, pfn)
+        if pfn in exp.pending_steps:
+            del exp.pending_steps[pfn]
+    print('Pending steps: ', exp.pending_steps.keys())
     exp.save()
     return True
 

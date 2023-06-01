@@ -485,7 +485,7 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True):
     for i,rec in enumerate(dna_records):
         pmr = rec['primer']
         if pmr not in primer_plate_well_vol_doses:
-            print(f'{i=} {pmr=}')
+            # print(f'{i=} {pmr=}')
             exp.log(f'Warning: primer {pmr} not available on primer plate(s)')
             dna_records[i]['primerPlate'] = None
             dna_records[i]['primerWell'] = None
@@ -1027,8 +1027,8 @@ def match_nimbus_to_echo_files(exp):
         # cleave off the path and file name junk to just get the barcodes
         nbc = frozenset(fp.name.replace('Nimbus-','').replace('.csv','') for fp in nimbus_files)
         ebc = frozenset(fp.name.replace('.csv','').split('_',5)[4] for fp in echo_files)
-        print('{nbc=}')
-        print('{ebc=}')
+        # print('{nbc=}')
+        # print('{ebc=}')
         xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
         return [str(fp) for fp in nimbus_files], [str(fp) for fp in echo_files], xbc
     except Exception as exc:

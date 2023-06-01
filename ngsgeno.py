@@ -416,9 +416,10 @@ def main():
                     if 'upload stage' not in st.session_state:
                         st.session_state['upload stage'] = None 
                     ld.custom_volumes(exp)
+                    ld.upload_extra_consumables('consumables_load2')
                     ld.upload_pcr1_files('pcr1_load2')
                     ld.upload_pcr2_files('pcr2_load2')
-                    ld.upload_extra_consumables('consumables_load2')
+                    
                 st.session_state['load_tab'] = 2
 
             with tab_col2:
@@ -562,7 +563,7 @@ def main():
                                         plate_checklist_expander(efs, pcr_stage=1)
                     
                         if included_DNA_plates:
-                            dc.display_pcr_components(dna_pids=included_DNA_plates, PCR_stage=1)
+                            dc.display_pcr_components(PCR_stage=1, dna_pids=included_DNA_plates)
                     else:
                         no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                         st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
