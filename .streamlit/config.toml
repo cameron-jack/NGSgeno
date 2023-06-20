@@ -11,3 +11,4 @@ secondaryBackgroundColor = "#d3eaf2"
 
 [runner]
 fastReruns = true
+magicEnabled = false

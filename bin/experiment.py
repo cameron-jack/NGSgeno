@@ -108,8 +108,8 @@ class Experiment():
         self.denied_assays = []
         self.denied_primers = []
         self.assay_synonyms = {}  # {source:{reference:alternative}}
-        self.primer_assayfam = {}  # {source:{mapping of primer to assayfam}} for reverse lookups
-        self.assayfam_primers = {}  # {source:{mapping of assay families to list of primers}}
+        self.primer_assayfam = {}  # {mapping of primer to assayfam} for reverse lookups
+        self.assayfam_primers = {}  # {mapping of assay families to list of primers}
         self.assay_assayfam = {}  # mapping of assay to assay family
         self.assayfam_assays = {}  # mapping of assay family to list of assays for reverse lookups
         self.reference_sequences = {}  # {source:{name:seq}} mapping of sequence name to sequence
@@ -460,7 +460,7 @@ class Experiment():
             d['reference_files'].append(f)
             for refname in self.reference_sequences[f]:
                 d['unique_references'].add(refname)
-        d['assay_primer_mappings'] = len(self.primer_assay)
+        d['assay_primer_mappings'] = len(self.assayfam_primers)
         return d
 
 

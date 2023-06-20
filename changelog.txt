@@ -1,3 +1,9 @@
+v0.21.027
+Date: Tue Jun 20 12:58:05 AEST 2023
+* Fixed: column name change in Stage files now updated in ngsmatch.py
+* Fixed: streamlit config was displaying docstrings
+* New: consumables display
+
 v0.21.026
 Date: Fri Jun  2 09:14:59 AEST 2023
 * Changed: various warnings improvements

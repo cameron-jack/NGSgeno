@@ -5,7 +5,7 @@
 @created: 1 May 2022
 @author: Gabrielle Ryan, Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
 
-Display methods for the main GUI pipeline. Methods in include data_table, display_pcr_componenent,
+Display methods for the main GUI pipeline. Methods in include
 display_pcr_componenent as well as aggrid_interactive_table and delete_entries
 """
 
@@ -404,12 +404,11 @@ def main():
                 with summary_holder:
                     summary = exp.summarise_inputs()
                     if len(summary) > 1:
-                        dc.data_table('load_data_tab1', options=False, table_option='Loaded Samples', 
-                                height=180, widget=summary_holder)
+                        dc.display_samples('load_data_tab1', height=180)
 
             #load consumables, references and assays/primer mappings
             if load_data_tab == 2:
-                dc.data_table('load_data_tab2', options=False, table_option='Loaded Consumables')
+                dc.display_consumables('load_data_tab2')
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
@@ -859,9 +858,6 @@ def main():
                     
                 st.session_state['allele_tab'] = 1
 
-            #if allele_tab == 3:
-            #    dc.data_table(key='allele_calling', options=True)
-            #    st.session_state['allele_tab'] = 3
             with tab_col2:
                 st.write('')
                 show_info_viewer_checkbox()

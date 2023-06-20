@@ -811,7 +811,7 @@ def parse_assay_primer_map(exp, fp):
     The assaylist file has two fixed columns: primer and assay
         - every subsequent column is for an extra primer in that assay family
     In Experiment we maintain:
-        self.assayfam_primer = {}  # {source:{mapping of assay families to list of primers}}
+        self.assayfam_primer = {}  # mapping of assay families to list of primers
         self.assay_assayfam = {}  # mapping of assay to assay family
         self.assayfam_assay = {}  # mapping of assay family to list of assays, possibly redundant
         self.primer_assayfam = {}  # reverse mapping

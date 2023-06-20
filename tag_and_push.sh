@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-VER="v0.21.026"
+VER="v0.21.027"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Changed: various warnings improvements
-* Changed: plate view giving inconsistent results across computers
+* Fixed: column name change in Stage files now updated in ngsmatch.py
+* Fixed: streamlit config was displaying docstrings
+* New: consumables display
 EOM
 
 mv changelog.txt changelog_old.txt

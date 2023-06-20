@@ -254,7 +254,7 @@ def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, debug=False):
     If number of merged reads is less than half the number of unmerged reads then call this a failure
     Return seqcnt (Counter of unique sequences) and passing (T/F)
     """
-    rfn= "*{}-{}_*_R1_*.fastq.gz".format(util.unguard(wr['pcrplate'],silent=True), padwell(wr['pcrwell']))
+    rfn= "*{}-{}_*_R1_*.fastq.gz".format(util.unguard(wr['pcrPlate'],silent=True), padwell(wr['pcrWell']))
     fn1s = glob.glob(os.path.join(rundir, "raw", rfn))
     if not fn1s:
         with lock_l:
@@ -296,7 +296,7 @@ def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, debug=False):
     bbmapd = os.path.join('bbmap','current')
     # unpick the file name a bit
     fnparts = fn1.split('_', 2)
-    fnmfmt = "{}-{}_{}{{}}.{{}}".format(wr['pcrplate'], padwell(wr['pcrwell']), fnparts[1])
+    fnmfmt = "{}-{}_{}{{}}.{{}}".format(wr['pcrPlate'], padwell(wr['pcrWell']), fnparts[1])
     fnms = tuple(os.path.join(rundir,"merged", fnmfmt.format('_'+tx, "fastq.gz")) for tx in ('M', 'U1', 'U2'))
     fnlog = os.path.join(rundir,"merged", fnmfmt.format('', 'log'))
     if not all(os.path.isfile(fn) for fn in (fnms[0], fnlog)):
@@ -380,6 +380,7 @@ def wdb(msg, rundir):
     with open(debugfn, 'at') as df:
         print(msg, file=df)
 
+
 def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cache, results, log, lock_c, lock_mc, 
                  lock_r, lock_l, mincov, minprop, exhaustive, sum_parent=True, debug=False):
     """ 
@@ -409,7 +410,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
     for wr in wrs_od_list: # work record in chunk
         if debug:
             with lock_l:
-                msg = f"Debug:{PID} Working on: {wr['pcrplate']} {wr['pcrwell']}"
+                msg = f"Debug:{PID} Working on: {wr['pcrPlate']} {wr['pcrWell']}"
                 log.append(msg)
                 wdb(msg, rundir)
 
@@ -454,13 +455,13 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
             if num >= low_cov_cutoff or exhaustive:
                 if debug:
                     with lock_l:
-                        msg = f"Processing {wr['pcrplate']} {wr['pcrwell']} on process {PID} with counts {num}"
+                        msg = f"Processing {wr['pcrPlate']} {wr['pcrWell']} on process {PID} with counts {num}"
                         log.append(msg)
                         wdb(msg, rundir)
                 if seq in mc:
                     if debug:
                         with lock_l:
-                            msg = f"{PID}: Cache hit {wr['pcrplate']} {wr['pcrwell']} {num} {seq}"
+                            msg = f"{PID}: Cache hit {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}"
                             log.append(msg)
                             wdb(msg, rundir)
                     if sum_parent:
@@ -472,7 +473,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
                 elif seq in msc:
                     if debug:
                         with lock_l:
-                            msg = f"{PID}: Miss cache hit {wr['pcrplate']} {wr['pcrwell']} {num} {seq}"
+                            msg = f"{PID}: Miss cache hit {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}"
                             log.append(msg)
                             wdb(msg, rundir)
                     match_cnt[msc[seq]] += num
@@ -480,14 +481,14 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
                 elif exact_match(match_cnt, seq, num, prime_targets, mc):
                     if debug:
                         with lock_l:
-                            msg = f"{PID}: Exact match against prime targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}"
+                            msg = f"{PID}: Exact match against prime targets {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}"
                             log.append(msg)
                             wdb(msg, rundir)
                     pass
                 elif exact_match(match_cnt, seq, num, other_targets, mc):
                     if debug:
                         with lock_l:
-                            msg = f"{PID}: Exact match against other targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}"
+                            msg = f"{PID}: Exact match against other targets {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}"
                             log.append(msg)
                             wdb(msg, rundir)
                     #print(f"{PID}: Exact match of {num} counts")
@@ -496,14 +497,14 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
                 elif best_match(match_cnt, seq, num, prime_targets, mc):
                     if debug:
                         with lock_l:
-                            msg = f"{PID}: Inexact match against prime targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}"
+                            msg = f"{PID}: Inexact match against prime targets {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}"
                             log.append(msg)
                             wdb(msg, rundir)
                     pass
                 elif best_match(match_cnt, seq, num, other_targets, mc):
                     if debug:
                         with lock_l:
-                            msg = f"{PID}: Inexact match against other_targets {wr['pcrplate']} {wr['pcrwell']} {num} {seq}" 
+                            msg = f"{PID}: Inexact match against other_targets {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}" 
                             log.append(msg)
                             wdb(msg, rundir)
                     #print(f"Inexact match of {num} counts")
@@ -512,7 +513,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, match_cache, miss_cac
                 else:
                     if debug:
                         with lock_l:
-                            msg = f"{PID}: Missed {wr['pcrplate']} {wr['pcrwell']} {num} {seq}"
+                            msg = f"{PID}: Missed {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}"
                             log.append(msg)
                             wdb(msg, rundir)
                     if miss_cache is not None:
@@ -626,7 +627,7 @@ def main(args):
     log.append('Info: Run with the following command line options:')
     for arg in vars(args):
         log.append(f'Info: {arg} {getattr(args, arg)}')
-                                                                                                                                            
+        
     # read the wells data
     start_time = datetime.datetime.now()
     log.append(f"Begin: {start_time}")
@@ -637,9 +638,9 @@ def main(args):
         src = csv.reader(srcfd, dialect="unix")
         hdr = next(src)
         WRec = collections.namedtuple("WRec", hdr)
-        wdata = sorted((WRec(*r) for r in src), key=lambda x:(x.pcrplate, x.pcrwell[0], int(x.pcrwell[1:]), x.primer))
+        wdata = sorted((WRec(*r) for r in src), key=lambda x:(x.pcrPlate, x.pcrWell[0], int(x.pcrWell[1:]), x.primer))
     #print(wdata, file=sys.stderr)
-    wdata = [rec for rec in wdata if util.unguard(rec.pcrplate, silent=True) +'-'+ util.padwell(rec.pcrwell) in raw_file_identifiers]
+    wdata = [rec for rec in wdata if util.unguard(rec.pcrPlate, silent=True) +'-'+ util.padwell(rec.pcrWell) in raw_file_identifiers]
     #print(f'After filtering by available files {wdata=}', file=sys.stderr)
     log.append(f"Info: {len(wdata)} sample wells to process.")
     #print(log, file=sys.stderr)
@@ -699,7 +700,7 @@ def main(args):
         # wdata is already sorted.
 
         # parallel execute over wdata and collect results
-        grouped_wrs = itertools.groupby(wdata, key=lambda x:(x.pcrplate, x.pcrwell))
+        grouped_wrs = itertools.groupby(wdata, key=lambda x:(x.pcrPlate, x.pcrWell))
         wrs = []
         for key, group in grouped_wrs:
             for g in group:
@@ -720,7 +721,7 @@ def main(args):
             # Single process
             #for i,wr in enumerate(wrs):
             #    res = process_well(wr, targets, match_cache)
-            #    results[(wr['pcrplate'],wr['pcrwell'])] = res[0]
+            #    results[(wr['pcrPlate'],wr['pcrWell'])] = res[0]
             #    for entry in res[1]:
             #        logging.info(f"{i} {entry}")
          
