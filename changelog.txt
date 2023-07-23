@@ -1,3 +1,11 @@
+v0.21.028
+Date: Mon Jul 24 09:17:42 AEST 2023
+* Fixed: matching code, including primer matching, caching and more.
+
+v0.21.028
+Date: Mon Jul 24 09:17:06 AEST 2023
+* Fixed: matching code, including primer matching, caching and more.
+
 v0.21.027
 Date: Tue Jun 20 12:58:05 AEST 2023
 * Fixed: column name change in Stage files now updated in ngsmatch.py

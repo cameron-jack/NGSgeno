@@ -197,7 +197,7 @@ class Experiment():
             fp = Path(filename)
         if trans:
             fp = transaction.transact(str(fp)) 
-        return fp
+        return str(fp)
       
 
     def get_raw_fastq_pairs(self):

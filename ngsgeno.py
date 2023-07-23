@@ -826,7 +826,8 @@ def main():
                                 "proportion of the total number of reads, default 0.2. Must be between 0.0 and 1.0",
                                 format='%f',min_value=0.0, max_value=1.0, value=0.2)
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
-                
+                        nocache = st.checkbox("Disable caching: slower but removes any target ambiguity")
+                        debug_mode = st.checkbox('Turn on debugging for allele calling')
                         do_matching = st.form_submit_button("Run allele calling")
 
                     if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
@@ -838,11 +839,19 @@ def main():
                             exp.log(msg)
                             st.error(msg)
                             sleep(0.5)
+                        success = generate.generate_primer_assayfams(exp)
+                        if not success:
+                            msg = 'Critical: failed to save primers and assay families to file'
+                            exp.log(msg)
+                            st.error(msg)
+                            sleep(0.5)
                         else:
                             matching_prog = os.path.join('bin','ngsmatch.py')
                             cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} --mincov {mincov} --minprop {minprop}'
                             if exhaustive_mode:
-                                cmd_str += ' --exhaustive'                     
+                                cmd_str += ' --exhaustive'
+                            if debug_mode:
+                                cmd_str += ' --debug'
                             exp.log(f'Info: {cmd_str}')
                             #print(f"{cmd_str=}", file=sys.stderr)
                             subprocess.Popen(cmd_str.split(' '))

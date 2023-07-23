@@ -1068,6 +1068,23 @@ def generate_targets(exp):
     return True
 
 
+def generate_primer_assayfams(exp):
+    """ create a two column  csv file of primer and assayfamily """
+    primer_fn = exp.get_exp_fn('primers.csv')
+    try:
+        with open(primer_fn, 'wt') as primerf:
+            for af in exp.assayfam_primers:
+                for pmr in exp.assayfam_primers[af]:
+                    print(f'{pmr},{af}', file=primerf)
+    except Exception as exc:
+        exp.log(f'Critical: count not write primer and assay families to {primer_fn} {exc}')
+        exp.save()
+        return False
+    exp.log(f'Success: created primer assay families file {primer_fn}')
+    exp.save()
+    return True
+
+
 if __name__ == '__main__':
     """ library only """
     pass
