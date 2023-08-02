@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.028"
+VER="v0.21.029"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: matching code, including primer matching, caching and more.
+* Fixed: pinned biopython v1.81 and fixed alignment code
 EOM
 
 mv changelog.txt changelog_old.txt

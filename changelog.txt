@@ -1,3 +1,15 @@
+v0.21.029
+Date: Thu Aug  3 08:54:51 AEST 2023
+* Fixed: pinned biopython v1.81 and fixed alignment code
+
+v0.21.029
+Date: Thu Aug  3 08:39:42 AEST 2023
+* Fixed: pinned biopython v1.81 and fixed alignment code
+
+v0.21.029
+Date: Thu Aug  3 08:34:25 AEST 2023
+* Fixed: pinned biopython v1.81 and fixed alignment code
+
 v0.21.028
 Date: Mon Jul 24 09:17:42 AEST 2023
 * Fixed: matching code, including primer matching, caching and more.
