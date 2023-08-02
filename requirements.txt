@@ -1,5 +1,5 @@
 openpyxl
-biopython
+biopython==1.81
 requests
 jsonpickle
 streamlit

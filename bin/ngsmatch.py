@@ -221,7 +221,7 @@ def best_match(match_cnt, query, n, targets, mtc, sum_parent=True):
 
     def best_new_align(named_aligns):
         best_score, best_target, best_query, best_name = max([(algn.score, \
-                algn.seqA, algn.seqB, name) for algn, name in named_aligns])
+                algn.sequences[0], algn.sequences[1], name) for algn, name in named_aligns])
         #print(best_score, best_target, best_query, best_name, file=sys.stderr)
         return best_name, best_target, best_query, best_score
 
@@ -457,8 +457,8 @@ def archetypes_ref(ref_seqs, seq_counts, rundir, debug, lock_d):
     if len(unique_seqs) == 0:
         return final_seqs
 
-    print(f'Reference seqs {collections.Counter(final_seqs).most_common()=}')
-    print('\n')
+    #print(f'Reference seqs {collections.Counter(final_seqs).most_common()=}')
+    #print('\n')
     # find all non-reference substrings
     unique_seqs = sorted(unique_seqs, key=len)
     skip_indices = set()
@@ -477,7 +477,7 @@ def archetypes_ref(ref_seqs, seq_counts, rundir, debug, lock_d):
     for ks in kept_seqs:
         final_seqs[ks] = seq_counts[ks]
 
-    print(f'Final {collections.Counter(final_seqs).most_common()=}')
+    #print(f'Final {collections.Counter(final_seqs).most_common()=}')
     msg = f'End of archetypes. Number of sequences {len(final_seqs)} total counts {sum([final_seqs[s] for s in final_seqs])}'
     wdb(msg, rundir, debug, lock_d)
    
@@ -625,9 +625,8 @@ def process_well(work_block, wrs_od_list, rundir, targets, primer_assayfam, assa
                     match_cnt[seq] += num
                 #print('Done with matching this seq')
             else:
-                msg = f"{PID}: too few reads {num} for matching {seq}"
-                #print(msg)
-                wdb(msg, rundir, debug, lock_d)
+                #msg = f"{PID}: too few reads {num} for matching {seq}"
+                #wdb(msg, rundir, debug, lock_d)
                 match_cnt['other'] += num
                 other_count += 1
             #print('Now I should loop around')
@@ -645,7 +644,6 @@ def process_well(work_block, wrs_od_list, rundir, targets, primer_assayfam, assa
         msg = f"Completed matching for {PID=}"
         lrecs.append(msg)
         wdb(msg, rundir, debug, lock_d)
-        print(msg)
         # rename 'other' to include number of separate sequence variations
         match_cnt['other ('+str(other_count)+')'] = match_cnt['other']
         match_cnt['other'] = 0
@@ -654,6 +652,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, primer_assayfam, assa
             resx = sorted(((match_cnt[key], key) for key in match_cnt if match_cnt[key] >= low_cov_cutoff), reverse=True)
         else:
             resx = sorted(((match_cnt[key], key) for key in match_cnt), reverse=True)
+        wdb(f'{resx=}', rundir, debug, lock_d)
         seqCounts = []
         seqNames = []                                        
         otherCounts = []
@@ -677,19 +676,20 @@ def process_well(work_block, wrs_od_list, rundir, targets, primer_assayfam, assa
             msg = f'Exception {exc} in joining seqCounts and seqNames {seqCounts=} {seqNames=} {otherCounts=} {otherNames=}'
             print(msg, file=sys.stderr)
             wdb(msg, rundir, debug, lock_d)
-        #print(res2, file=sys.stderr)
+        wdb(f'{res2=}', rundir, debug, lock_d)
+        retval = [str(wr[x]) for x in wr] + res1 + res2
         try:
-            retval = [str(wr[x]) for x in wr] + res1 + res2
-
             with lock_r:
                 results.append(retval)
         except Exception as exc:
             msg = f'Exception {exc} in forming return value from matching {wr=} {res1=} {res2=}'
             print(msg, file=sys.stderr)       
             wdb(msg, rundir, debug, lock_d)
+        wdb(f'{retval=}', rundir, debug, lock_d)
     with lock_l:
         for l in lrecs:
             log.append(l)
+    wdb(f"Exiting process_well() {wr['pcrPlate']} {wr['pcrWell']}", rundir, debug, lock_d)
 
 
 def write_log(log, logfn):
@@ -932,8 +932,7 @@ def main(args):
                                 f"miss cache size {len(missc)}, outstanding reports {len(reports_waiting)}"
                         print(msg, file=sys.stderr)
                         log.append(msg)
-                        if args.debug:
-                            wdb(msg, args.rundir, args.debug, lock_d)                          
+                        wdb(msg, args.rundir, args.debug, lock_d)                          
                 
                         r1 = pool.apply_async(process_well, (i, chunk, args.rundir, targets, primer_assayfam, 
                                 assayfam_primers, matchc, missc, results, logm, lock_mtc, lock_msc, lock_r, 
@@ -983,6 +982,8 @@ def main(args):
             complete_results = {}  # order results by sampleNo
             for k,r in enumerate(results):
                 complete_results[int(r[0])] = r
+
+            print(f'{complete_results=}')
 
         with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd:
             print(f"Opening {args.outfn} for results", file=sys.stderr)
