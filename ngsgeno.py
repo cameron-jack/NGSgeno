@@ -821,10 +821,10 @@ def main():
                                 label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
                                         value=cpus_avail)
                         mincov = st.number_input(label="Do not match unique sequences with less than this "+\
-                                "many reads coverage, default 50", format='%i',min_value=0, step=1,value=50)
+                                "many reads coverage, default 5", format='%i',min_value=0, step=1,value=5)
                         minprop = st.number_input(label="Do not match unique sequences with less than this "+\
-                                "proportion of the total number of reads, default 0.2. Must be between 0.0 and 1.0",
-                                format='%f',min_value=0.0, max_value=1.0, value=0.2)
+                                "proportion of the total number of reads, default 0.01. Must be between 0.0 and 1.0",
+                                format='%f',min_value=0.0, max_value=1.0, value=0.01)
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
                         nocache = st.checkbox("Disable caching: slower but removes any target ambiguity")
                         debug_mode = st.checkbox('Turn on debugging for allele calling')
