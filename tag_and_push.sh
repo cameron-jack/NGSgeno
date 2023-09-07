@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.21.029"
+VER="v0.21.030"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: pinned biopython v1.81 and fixed alignment code
+* Changed: proportion of counts is now relative to exact matches of target alleles
 EOM
 
 mv changelog.txt changelog_old.txt

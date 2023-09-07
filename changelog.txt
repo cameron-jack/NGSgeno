@@ -1,3 +1,7 @@
+v0.21.030
+Date: Fri Sep  8 06:01:18 AEST 2023
+* Changed: proportion of counts is now relative to exact matches of target alleles
+
 v0.21.029
 Date: Thu Aug  3 08:54:51 AEST 2023
 * Fixed: pinned biopython v1.81 and fixed alignment code

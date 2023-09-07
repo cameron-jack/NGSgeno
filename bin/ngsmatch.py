@@ -457,8 +457,8 @@ def archetypes_ref(ref_seqs, seq_counts, rundir, debug, lock_d):
     if len(unique_seqs) == 0:
         return final_seqs
 
-    #print(f'Reference seqs {collections.Counter(final_seqs).most_common()=}')
-    #print('\n')
+    print(f'Reference seqs {collections.Counter(final_seqs).most_common()=}')
+    print('\n')
     # find all non-reference substrings
     unique_seqs = sorted(unique_seqs, key=len)
     skip_indices = set()
@@ -477,7 +477,7 @@ def archetypes_ref(ref_seqs, seq_counts, rundir, debug, lock_d):
     for ks in kept_seqs:
         final_seqs[ks] = seq_counts[ks]
 
-    #print(f'Final {collections.Counter(final_seqs).most_common()=}')
+    print(f'Final {collections.Counter(final_seqs).most_common()=}')
     msg = f'End of archetypes. Number of sequences {len(final_seqs)} total counts {sum([final_seqs[s] for s in final_seqs])}'
     wdb(msg, rundir, debug, lock_d)
    
@@ -563,7 +563,7 @@ def process_well(work_block, wrs_od_list, rundir, targets, primer_assayfam, assa
             minprop = 1.0
         elif minprop < 0.0:
             minprop = 0.0
-        low_cov_cutoff = max(mergeCount*minprop, mincov)
+        
         other_count = 0
         mtc = dict(match_cache)
         original_match_cache_size = len(mtc)
@@ -572,6 +572,13 @@ def process_well(work_block, wrs_od_list, rundir, targets, primer_assayfam, assa
         # unique sequences only, from most to least common
         print(f'Starting matching for process {PID}')
         archetype_seqs = archetypes_ref(ref_seqs, seqcnt, rundir, debug, lock_d)
+        # calculate min count proportion from exact matches to our prime targets
+        family_exact_counts = 0
+        for pt in prime_targets:
+            if pt.seq in archetype_seqs:
+               family_exact_counts += archetype_seqs[pt.seq]
+        #print(f'{family_exact_counts=}')
+        low_cov_cutoff = max(family_exact_counts*minprop, mincov)
         ordered_archetypes = archetype_seqs.most_common()
         for seq, num in ordered_archetypes:
             msg=f"{wr['pcrPlate']} {wr['pcrWell']} with {seq=} and counts {num} from {len(ordered_archetypes)} unique sequences"
@@ -1021,9 +1028,9 @@ if __name__=="__main__":
     parser.add_argument('-n','--ncpus', type=int, default=os.cpu_count()-1, help='Number of processes to run simultaneously, default=number of CPUs in system - 1')
     parser.add_argument('-l','--logfn', default='match.log', help='Name of logging file (default=match.log)')
     parser.add_argument('-r','--rundir', required=True, help='Path to experiment folder')
-    parser.add_argument('-m','--mincov', type=int, default=50, help='Do not match unique sequences with less than this many reads coverage, default 50')
-    parser.add_argument('-p','--minprop', type=float, default=0.2, help='Do not match unique sequences '+\
-            'with less than this proportion of the total number of reads, default 0.2. Must be between 0.0 and 1.0')
+    parser.add_argument('-m','--mincov', type=int, default=5, help='Do not match unique sequences with less than this many reads coverage, default 50')
+    parser.add_argument('-p','--minprop', type=float, default=0.01, help='Do not match unique sequences '+\
+            'with less than this proportion of the total number of exact matched on-target reads, default 0.01. Must be between 0.0 and 1.0')
     parser.add_argument('-x','--exhaustive',action='store_true',help='Try to match every sequence, '+\
             'no matter how few counts. Ignores --minseqs and --minprop')
     parser.add_argument('-C','--nocache', action="store_true", help='Turn off match caching for testing. Slow.')
