@@ -472,7 +472,7 @@ def custom_volumes(exp):
                                                 orient='index', 
                                                 columns=['Volume'])
     
-    custom_vol_editor = st.experimental_data_editor(transfer_vol_df.T,
+    custom_vol_editor = st.data_editor(transfer_vol_df.T,
                                                     height=80,
                                                     use_container_width=True, 
                                                     key="volume_df", 
@@ -494,7 +494,7 @@ def custom_volumes(exp):
             st.error('Volumes were not reset. Check the log for more information')
 
     #if edit is made to dataframe
-    if st.session_state['volume_df']['edited_cells']:
+    if st.session_state['volume_df']['edited_rows']:
         for vol in list(volumes_dict.keys()):
             volumes_dict[vol] = float(custom_vol_editor[vol]['Volume'])
         success = exp.add_custom_volumes(volumes_dict)

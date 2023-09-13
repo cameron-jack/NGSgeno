@@ -3,10 +3,14 @@
 
 """
 @created: 1 May 2022
-@author: Gabrielle Ryan, Cameron Jack, ANU Bioinformatics Consultancy, JCSMR, Australian National University
+@author: Gabrielle Ryan, Cameron Jack, ANU Bioinformatics Consultancy,
+        JCSMR, Australian National University
 
-Display methods for the main GUI pipeline. Methods in include
-display_pcr_componenent as well as aggrid_interactive_table and delete_entries
+Core interface script. Run with: streamlit --run ngsgeno.py
+
+Needs load_data.py for GUI functions that are responsible for incorporating data into an
+experiment, and display_components.py for functions dedicated to the presentation of GUI
+elements
 """
 
 import os
@@ -388,7 +392,6 @@ def main():
                 load_data_tab = st.session_state['load_tab']
 
             info_holder = st.container()
-            
             
             # load sample data
             if load_data_tab == 1:
@@ -823,8 +826,8 @@ def main():
                         mincov = st.number_input(label="Do not match unique sequences with less than this "+\
                                 "many reads coverage, default 5", format='%i',min_value=0, step=1,value=5)
                         minprop = st.number_input(label="Do not match unique sequences with less than this "+\
-                                "proportion of the total number of reads, default 0.01. Must be between 0.0 and 1.0",
-                                format='%f',min_value=0.0, max_value=1.0, value=0.01)
+                                "proportion of the reads seen for the most observed (expected) allele, default 0.2. Must be between 0.0 and 1.0",
+                                format='%f',min_value=0.0, max_value=1.0, value=0.2)
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
                         nocache = st.checkbox("Disable caching: slower but removes any target ambiguity")
                         debug_mode = st.checkbox('Turn on debugging for allele calling')

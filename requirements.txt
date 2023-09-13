@@ -2,7 +2,7 @@ openpyxl
 biopython==1.81
 requests
 jsonpickle
-streamlit
+streamlit==1.26
 streamlit_aggrid
 pandas
 extra_streamlit_components

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
-VER="v0.21.030"
+VER="v0.21.031"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Changed: proportion of counts is now relative to exact matches of target alleles
+* Changed: Reset matching parameters
+* Changed: fixed streamlit version to 1.26
 EOM
 
 mv changelog.txt changelog_old.txt

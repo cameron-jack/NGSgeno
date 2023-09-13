@@ -1028,9 +1028,9 @@ if __name__=="__main__":
     parser.add_argument('-n','--ncpus', type=int, default=os.cpu_count()-1, help='Number of processes to run simultaneously, default=number of CPUs in system - 1')
     parser.add_argument('-l','--logfn', default='match.log', help='Name of logging file (default=match.log)')
     parser.add_argument('-r','--rundir', required=True, help='Path to experiment folder')
-    parser.add_argument('-m','--mincov', type=int, default=5, help='Do not match unique sequences with less than this many reads coverage, default 50')
-    parser.add_argument('-p','--minprop', type=float, default=0.01, help='Do not match unique sequences '+\
-            'with less than this proportion of the total number of exact matched on-target reads, default 0.01. Must be between 0.0 and 1.0')
+    parser.add_argument('-m','--mincov', type=int, default=50, help='Do not match unique sequences with less than this many reads coverage, default 50')
+    parser.add_argument('-p','--minprop', type=float, default=0.2, help='Do not match unique sequences '+\
+            'with less than this proportion of the total number of exact matched on-target reads, default 0.2. Must be between 0.0 and 1.0')
     parser.add_argument('-x','--exhaustive',action='store_true',help='Try to match every sequence, '+\
             'no matter how few counts. Ignores --minseqs and --minprop')
     parser.add_argument('-C','--nocache', action="store_true", help='Turn off match caching for testing. Slow.')

@@ -1,3 +1,8 @@
+v0.21.031
+Date: Wed Sep 13 17:51:11 AEST 2023
+* Changed: Reset matching parameters
+* Changed: fixed streamlit version to 1.26
+
 v0.21.030
 Date: Fri Sep  8 06:07:34 AEST 2023
 * Changed: proportion of counts is now relative to exact matches of target alleles
