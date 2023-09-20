@@ -422,11 +422,14 @@ class Experiment():
         """
         Return a dictionary of all consumables: primers, indexes, taq+water plates
         The descriptions we provide here will likely vary as we find new things to display
+        Separated the taq/water plate IDs and volumes according to PCR stages
         TODO: separate custom and NGS primers
         """
-        d = {'taqwater_pids':[], 'taq_vol':0, 'water_vol':0, 'primer_pids':[], 'primer_count_ngs':0, 
-                'primer_count_custom':0, 'unique_primers':set(), 'primer_well_count':0, 'assay_primer_mappings':0,
-                'reference_files':[], 'unique_references':set(), 'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
+        d = {'taqwater_pids_pcr1':[], 'taqwater_pids_pcr2':[], 'taq_vol_pcr1':0, 'taq_vol_pcr2':0,'water_vol_pcr1':0, 
+                'water_vol_pcr2':0, 'primer_pids':[], 'primer_count_ngs':0, 'primer_count_custom':0, 'unique_primers':set(), 
+                'primer_well_count':0, 'assay_primer_mappings':0, 'reference_files':[], 'unique_references':set(), 
+                'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
+        
         consumable_plate_purposes = set(['primer', 'taq_water', 'index'])
         for pid in self.plate_location_sample:
             if 'purpose' not in self.plate_location_sample[pid]:
@@ -434,20 +437,35 @@ class Experiment():
             if self.plate_location_sample[pid]['purpose'] not in consumable_plate_purposes:
                 continue
             plate = transaction.get_plate(self, pid)  # get the plate contents with all usage modifications applied
+
             if plate['purpose'] == 'taq_water':
-                d['taqwater_pids'].append(pid)
-                for well in util.TAQ_WELLS:
-                    if well in plate and 'volume' in plate[well]:
-                        d['taq_vol'] += plate[well]['volume']
-                for well in util.WATER_WELLS:
-                    if well in plate and 'volume' in plate[well]:
-                        d['water_vol'] += plate[well]['volume']
+                #Separate taq water PCR 1
+                if plate['pcr_stage'] == 1:
+                    d['taqwater_pids_pcr1'].append(pid)
+                    for well in util.TAQ_WELLS:
+                        if well in plate and 'volume' in plate[well]:
+                            d['taq_vol_pcr1'] += plate[well]['volume']
+                    for well in util.WATER_WELLS:
+                        if well in plate and 'volume' in plate[well]:
+                            d['water_vol_pcr1'] += plate[well]['volume']
+
+                #Separate taq water PCR 2
+                elif plate['pcr_stage'] == 2:
+                    d['taqwater_pids_pcr2'].append(pid)
+                    for well in util.TAQ_WELLS:
+                        if well in plate and 'volume' in plate[well]:
+                            d['taq_vol_pcr2'] += plate[well]['volume']
+                    for well in util.WATER_WELLS:
+                        if well in plate and 'volume' in plate[well]:
+                            d['water_vol_pcr2'] += plate[well]['volume']
+
             elif plate['purpose'] == 'primer':
                 d['primer_pids'].append(pid)
                 for well in plate['wells']:
                     if 'primer' in plate[well]:
                         d['unique_primers'].add(plate[well]['primer'])
                         d['primer_well_count'] += 1
+
             elif plate['purpose'] == 'index':
                 d['index_pids'].append(pid)
                 for well in plate['wells']:
@@ -658,6 +676,7 @@ class Experiment():
         For a given set of DNA plates, return the number of times each assay and primer is needed
         If an dna_pids is None, use all available dna plates
         """
+        print(f'{dna_pids=}')
         assay_usage = defaultdict(int)
         primer_usage = defaultdict(int)
         if dna_pids:
@@ -669,6 +688,7 @@ class Experiment():
         if not dpids:
             self.log(f'Error: no DNA plates found matching DNA plate IDs: {dna_pids}')
             return assay_usage, primer_usage
+        print(f'{dpids=}')
 
         for dpid in dpids:        
             for well in self.plate_location_sample[dpid]['wells']:       
@@ -759,18 +779,29 @@ class Experiment():
         return reactions_possible - reactions_required, reactions_possible
 
 
-    def get_taqwater_avail(self, taqwater_bcs=None, transactions=None):
+    def get_taqwater_avail(self, taqwater_bcs=None, transactions=None, pcr_stage=None):
         """ 
         Returns (int) taq and (int) water volumes (in nanolitres) loaded as available 
         Will work from a list of barcodes if provided, or will calculate for all available plates
+        If pcr_stage is provided, returns the volumes specific to that stage.
         transactions (Optional): a dictionary of plates and their unprocessed changes for accurate calculation
+        pcr_stage: 1 (primers) or 2 (index). If None, returns volumes from all taq/water plates
         """
         taq_avail = 0
         water_avail = 0
+        pids = []
         if taqwater_bcs is not None:
-            pids = [p for p in taqwater_bcs if self.plate_location_sample[p]['purpose'] == 'taq_water']
+            bcs = taqwater_bcs
         else:
-            pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
+            bcs = self.plate_location_sample
+        
+        #Separate based on PCR stage, otherwise get plate IDs from all plates.
+        if pcr_stage:
+            pids = [p for p in bcs if self.plate_location_sample[p]['purpose'] == 'taq_water'\
+                     and self.plate_location_sample[p].get('pcr_stage') == pcr_stage]
+        else:
+            pids = [p for p in bcs if self.plate_location_sample[p]['purpose'] == 'taq_water']
+
 
         for pid in pids:
             tw_plate = transaction.get_plate(self, pid) # get the plate records with adjusted usage
@@ -801,8 +832,22 @@ class Experiment():
         return primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol
 
 
-    def get_taqwater_pids(self):
-        pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'taq_water']
+    def get_taqwater_pids(self, pcr_stage=None):
+        """
+        Return plate IDs for taq/water plates.
+        If PCR stage is provided, return the taq/water plate for that stage. 
+        pcr_stage: 1 (primer) or 2 (index). If None, return all plate IDs for taq/water plates
+        """
+        pids = []
+        #Plate ID specific to PCR stage (1 or 2). Otherwise get all taq/water plates. 
+        if pcr_stage:
+            for p in self.plate_location_sample:
+                if self.plate_location_sample[p]['purpose'] == 'taq_water':
+                    if self.plate_location_sample[p]['pcr_stage'] == pcr_stage:
+                        pids.append(p)       
+        else:
+            pids = [p for p in self.plate_location_sample
+                    if self.plate_location_sample[p]['purpose'] == 'taq_water']
         return pids
 
 
@@ -1129,9 +1174,6 @@ class Experiment():
         """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'index']
 
-
-   
-
     def generate_echo_index_survey(self, user_index_pids, index_survey_filename='index-svy.csv'):
         """ 
         Generate an index survey file for use by the Echo. Replaces echovolume.py 
@@ -1174,10 +1216,11 @@ class Experiment():
         self.log(f'Success: index survey file written to {fn}')
         return True
 
-    def add_standard_taqwater_plates(self, plate_barcodes):  # <- they're the same for primer and barcode stages
+    def add_standard_taqwater_plates(self, plate_barcodes, pcr_stage):  # <- they're the same for primer and barcode stages
         """ These plates have a fixed layout with water in row A and taq in row B of a 6-well reservoir plate.
         See echo_primer.py or echo_barcode.py mytaq2()
         We may need to also store volumes at some stage, but for now that isn't necessary
+        pcr_stage(int): which PCR experiment the plate comes from (1 or 2)
         """
         if self.locked:
             self.log('Error: cannot add taq+water plates while lock is active.')
@@ -1190,12 +1233,17 @@ class Experiment():
                         self.log(f"Error: cannot add taq+water plate {util.unguard(pid)}. "+\
                             f"A plate with this barcode already exists with purpose {self.plate_location_sample[pid]['purpose']}")
                         return False
+                    elif self.plate_location_sample['pcr_stage'] == pcr_stage:
+                        self.log(f"Error: cannot add taq+water plate {util.unguard(pid)}."+\
+                            f"A taq/waterplate with this barcode already exists with for PCR {pcr_stage}")
+                        return False
                     else:
                         self.log(f"Warning: overwriting existing taq/water plate entry with barcode {util.unguard(pid)}")
                 else:
                     self.plate_location_sample[pid] = {}
                 self.plate_location_sample[pid]['purpose'] = 'taq_water'
                 self.plate_location_sample[pid]['plate_type'] = util.PLATE_TYPES['Echo6']
+                self.plate_location_sample[pid]['pcr_stage'] = pcr_stage
                 self.plate_location_sample[pid]['capacity'] = util.CAP_VOLS[util.PLATE_TYPES['Echo6']]
                 self.plate_location_sample[pid]['dead_vol'] = util.DEAD_VOLS[util.PLATE_TYPES['Echo6']]
                 self.plate_location_sample[pid]['wells'] = ['A1','A2','A3','B1','B2','B3']

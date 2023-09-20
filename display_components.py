@@ -164,9 +164,10 @@ def display_samples(key, height=250):
 def display_consumables(key, height=300):
     """
     summarise_consumables():
-        d = {'taqwater_pids':[], 'taq_vol':0, 'water_vol':0, 'primer_pids':[], 'primer_count_ngs':0, 
-                'primer_count_custom':0, 'unique_primers':set(), 'primer_well_count':0, 'assay_primer_mappings':0,
-                'reference_files':[], 'unique_references':set(), 'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
+        d = {'taqwater_pids_pcr1':[], 'taqwater_pids_pcr2':[], 'taq_vol_pcr1':0, 'taq_vol_pcr2':0,'water_vol_pcr1':0, 
+                'water_vol_pcr2':0, 'primer_pids':[], 'primer_count_ngs':0, 'primer_count_custom':0, 'unique_primers':set(), 
+                'primer_well_count':0, 'assay_primer_mappings':0, 'reference_files':[], 'unique_references':set(), 
+                'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
     """
     exp = st.session_state['experiment']
     # display all the required files whether they are, or are not present
@@ -175,8 +176,10 @@ def display_consumables(key, height=300):
     consumables = exp.summarise_consumables()
 
     data_rows = []
-    for tp in consumables['taqwater_pids']:
-        data_rows.append(['taq/water', util.unguard_pbc(tp, silent=True), 6, util.PLATE_TYPES['Echo6'], 6])
+    for tp in consumables['taqwater_pids_pcr1']:
+        data_rows.append(['taq/water (PCR 1)', util.unguard_pbc(tp, silent=True), 6, util.PLATE_TYPES['Echo6'], 6])
+    for tp in consumables['taqwater_pids_pcr2']:
+        data_rows.append(['taq/water (PCR 2)', util.unguard_pbc(tp, silent=True), 6, util.PLATE_TYPES['Echo6'], 6])
     for pp in consumables['primer_pids']:
         data_rows.append(['primer', util.unguard_pbc(pp, silent=True), 384, util.PLATE_TYPES['Echo384'], 
                 len(exp.plate_location_sample[pp]['wells'])])
@@ -234,99 +237,96 @@ def display_plates(key, plate_usage, height=300):
                             args=('plate',pids), key="keep " + str(key), help=f"Keep {pids}")
     
 
-def display_pcr_components(PCR_stage=1, dna_pids=None, show_general=True):
+def display_pcr_components(pcr_stage=1, dna_pids=None):
     """
     Expander widget that shows the required componenents for each PCR reaction, 
     including wells, PCR plates, taq+water plates, index pairs 
     Args:
         assay_usage: from Experiment.get_assay_usage
-        PCR_stage (1, 2): 1 = Echo Primer stage, 2 = Echo Indexing
-        show_general (bool): if True show all of the general information for PCR reactions,
-        including user supplied plates.  
-    
+        pcr_stage (1, 2): 1 = Echo Primer stage, 2 = Echo Indexing
     """
     exp = st.session_state['experiment']
     DNA_PLATE_WELLS = 384
     ul_conv = 1000
-    pcr_comps_area = st.container()
-    
-    _,filter_col1,_,filter_col2, _ = pcr_comps_area.columns([1,5,1,5,1])
-    col_size = [6, 4, 6, 4]
 
+    #Index
     fwd_idx, rev_idx = exp.get_index_avail()
-    print(f'{dna_pids=}')
     assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
     num_reactions = sum([primer_usage[p] for p in primer_usage])
-    # print(f'{num_reactions=}')
-    # print(f'{primer_usage=}')
-    primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol =\
-            exp.get_taq_water_volumes_required(num_reactions)
-    num_req_pcr_taq_water_plates = util.num_req_taq_water_plates(primer_taq_vol, primer_water_vol)
-    num_req_index_taq_water_plates = util.num_req_taq_water_plates(index_taq_vol, index_water_vol)
-    num_req_total_taq_water_plates = util.num_req_taq_water_plates(primer_taq_vol+index_taq_vol, 
-            primer_water_vol+index_water_vol)
-        
     index_remain, index_max = exp.get_index_reactions(primer_usage, fwd_idx, rev_idx)
-        
-    taq_avail, water_avail, pids = exp.get_taqwater_avail()
+    # print(f'Foward index: {len(fwd_idx)}, Reverse index: {len(rev_idx)}, Number of reactions: {num_reactions}, '+
+    #         f'Index remaining: {index_remain}, Max index: {index_max}')
+
+    #pcr
+    required_pcr_plates = ceil(num_reactions/DNA_PLATE_WELLS)
+    user_supplied_pcr = ', '.join([util.unguard_pbc(p, silent=True)\
+                for p in exp.get_pcr_pids()])
+    num_supplied_pcr = len(exp.get_pcr_pids())
+    # print(f'Required pcr plates: {required_pcr_plates}, user supplied plates: {user_supplied_pcr}')
     
-    if show_general:
-        required_PCR_plates = ceil(num_reactions/DNA_PLATE_WELLS)
-        user_supplied_PCR = ', '.join([util.unguard_pbc(p, silent=True)\
-                    for p in exp.get_pcr_pids()])
-        user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
-                    for p in exp.get_taqwater_avail()[2]])
+    #Taq/water (based on pcr stage)
+    primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol = exp.get_taq_water_volumes_required(num_reactions)
+    user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
+                for p in exp.get_taqwater_avail(pcr_stage=pcr_stage)[2]])
+    num_supplied_taqwater = len(user_supplied_taqwater)
+    # print(f'Primer taq and water volumes: {primer_taq_vol}, {primer_water_vol}, '+
+    #         f'Index taq and water volumes: {index_taq_vol}, {index_water_vol}, '+
+    #         f'User supplied taq/water: {user_supplied_taqwater}')
+    
+    #Page set up
+    pcr_comps_area = st.container()
+    col_size = [6, 4, 6, 4]
+    req_cols = pcr_comps_area.columns(col_size)
 
-        comp_warning_area = pcr_comps_area.container()
+    if num_supplied_pcr < required_pcr_plates:
+        req_cols[0].markdown('<p style="color:#FF0000"><b>Number of required PCR plates</b></p>', 
+                                    unsafe_allow_html=True)
+        req_cols[1].markdown(f'<p style="color:#FF0000">{str(required_pcr_plates)}</p>', unsafe_allow_html=True)
+    else:
+        req_cols[0].markdown('**Number of required PCR plates**')
+        req_cols[1].write(str(required_pcr_plates))
 
-        num_supplied_PCR = len(exp.get_pcr_pids())
-        num_supplied_taqwater = len(user_supplied_taqwater)
-        if num_supplied_PCR < required_PCR_plates:
-            comp_warning_area.warning(f'Please add PCR plates. {required_PCR_plates-num_supplied_PCR} PCR plates are required')
-        if num_supplied_taqwater < num_req_total_taq_water_plates:
-            comp_warning_area.warning(f'Please add taq/water plates. {num_req_total_taq_water_plates} taq/water plates required')
+    req_cols[0].markdown('**Worst case required reaction wells**')
+    req_cols[1].write(str(num_reactions))
 
-        req_cols = pcr_comps_area.columns(col_size)
-        #Wells and plates
-        if num_supplied_PCR < required_PCR_plates:
-            req_cols[0].markdown('<p style="color:#FF0000"><b>Number of required PCR plates</b></p>', unsafe_allow_html=True)
-            req_cols[1].markdown(f'<p style="color:#FF0000">{str(required_PCR_plates)}</p>', unsafe_allow_html=True)
-        else:
-            req_cols[0].markdown('**Number of required PCR plates**')
-            req_cols[1].write(str(required_PCR_plates))
-        req_cols[0].markdown('**Worst case required reaction wells**')
-        req_cols[1].write(str(num_reactions))
-        req_cols[2].markdown('**User supplied PCR plates**')
-        if user_supplied_PCR:
-            req_cols[3].write(user_supplied_PCR)
-        else:
-            req_cols[3].markdown('<p style="color:#FF0000">None</p>', unsafe_allow_html=True)
-        req_cols[2].markdown('**User supplied taq/water plates**')
-        if user_supplied_taqwater:
-            req_cols[3].write(user_supplied_taqwater)
-        else:
-            req_cols[3].markdown('<p style="color:#FF0000">None</p>', unsafe_allow_html=True)
-        for i in range(4):
-            req_cols[i].write('')
+    req_cols[2].markdown('**User supplied PCR plates**')
+    if user_supplied_pcr:
+        req_cols[3].write(user_supplied_pcr)
+    else:
+        req_cols[3].markdown('<p style="color:#FF0000">None</p>', unsafe_allow_html=True)
 
-    #PCR1 and PCR2 taq and water 
-    taq_avail_vol = taq_avail/ul_conv
-    water_avail_vol = water_avail/ul_conv                  
+    req_cols[2].markdown(f'**User supplied taq/water plates (PCR {pcr_stage})**')
+    if user_supplied_taqwater:
+        req_cols[3].write(user_supplied_taqwater)
+    else:
+        req_cols[3].markdown('<p style="color:#FF0000">None</p>', unsafe_allow_html=True)
+    for i in range(4):
+        req_cols[i].write('')
 
     pcr_cols = pcr_comps_area.columns(col_size)
 
-    if PCR_stage == 1:
+    if pcr_stage == 1:
+        taq_avail, water_avail, pids = exp.get_taqwater_avail(pcr_stage=pcr_stage)
+        taq_avail_vol = taq_avail/ul_conv
+        water_avail_vol = water_avail/ul_conv            
         #get actual values for volume of taq water plates
         required_water_vol_str = str(primer_water_vol/ul_conv) + ' μl'
         water_avail_vol_str = str(water_avail_vol)+' μl'
         required_taq_vol_str = str(primer_taq_vol/ul_conv) + ' μl'
         avail_taq_vol_str = str(taq_avail_vol)+' μl'
 
-    if PCR_stage == 2:
+        num_req_taq_water_plates = util.num_req_taq_water_plates(primer_taq_vol, primer_water_vol)
+
+    if pcr_stage == 2:
+        taq_avail, water_avail, pids = exp.get_taqwater_avail(pcr_stage=pcr_stage)
+        taq_avail_vol = taq_avail/ul_conv
+        water_avail_vol = water_avail/ul_conv  
         required_water_vol_str = str(index_water_vol/ul_conv)+ ' μl'
         water_avail_vol_str = str(water_avail_vol) + ' μl'
         required_taq_vol_str = str(index_taq_vol/ul_conv)+ ' μl'
         avail_taq_vol_str = str(taq_avail_vol)+ ' μl'
+
+        num_req_taq_water_plates = util.num_req_taq_water_plates(index_taq_vol, index_water_vol)
 
         index_cols = pcr_comps_area.columns(col_size)
         if index_remain >= 0:
@@ -340,13 +340,16 @@ def display_pcr_components(PCR_stage=1, dna_pids=None, show_general=True):
         index_cols[3].write(str(index_max))
         index_cols[0].markdown('**Index Pairs Allowed by Volume**')
         index_cols[1].markdown(index_pairs_allowed, unsafe_allow_html=True)
-
-    if num_supplied_taqwater < num_req_total_taq_water_plates:
-        req_cols[0].markdown('<p style="color:#FF0000"><b>Number of required taq/water plates</b></p>', unsafe_allow_html=True)
-        req_cols[1].markdown(f'<p style="color:#FF0000">{str(num_req_total_taq_water_plates)}</p>', unsafe_allow_html=True)
+    
+    if num_supplied_taqwater < num_req_taq_water_plates:
+        req_cols[0].markdown('<p style="color:#FF0000"><b>Number of required taq/water plates</b></p>', 
+                                    unsafe_allow_html=True)
+        req_cols[1].markdown(f'<p style="color:#FF0000">{str(num_req_taq_water_plates)}</p>', 
+                                    unsafe_allow_html=True)
     else:
         req_cols[0].markdown('**Number of required taq/water plates**')
-        req_cols[1].write(str(num_req_total_taq_water_plates))
+        req_cols[1].write(str(num_req_taq_water_plates))
+
     pcr_cols[0].markdown('**Required water volume**')
     pcr_cols[1].write(required_water_vol_str)
     pcr_cols[2].markdown('**Available water volume**')
@@ -511,7 +514,7 @@ def view_plates(key, height=500):
         if plate_id in exp.plate_location_sample:
             heatmap_str = generate_heatmap_html(exp, plate_id, scaling=0.9)
 
-            with open("debug.html", 'wt') as outf:
+            with open("makehtml.html", 'wt') as outf:
                 print(heatmap_str, file=outf)
             components.html(heatmap_str, height=height, scrolling=True)
         else:
@@ -543,7 +546,7 @@ def display_files(key, file_usage, height=250):
         fns = [row['File'] for row in selection['selected_rows']]
         fns = [fn for fn in fns if fn in exp.uploaded_files]
         if fns:
-            print(f'{fns=}')
+            #print(f'{fns=}')
             if 'previous_file_delete_selection' not in st.session_state:
                 st.session_state['previous_file_delete_selection'] = None
             if st.session_state['previous_file_delete_selection'] == fns:
@@ -629,6 +632,105 @@ def display_log(key, height=250):
     else:
         df = pd.DataFrame(log_entries, columns=exp.get_log_header())
         aggrid_interactive_table(df, grid_height=height, key=str(key)+'logs')
+
+def change_screens_open(screen_name):
+    print(f'{screen_name=}')
+    print(f'{st.session_state["screens_open"]=}')
+    if screen_name in st.session_state['screens_open']:
+        st.session_state['screens_open'].remove(screen_name)
+    else:
+        st.session_state['screens_open'].add(screen_name)
+
+def info_bar(key):
+    """
+    Define a bar and populate state if the toggle in screens_open.
+    """
+    if 'screens_open' not in st.session_state:
+        st.session_state['screens_open'] = set()
+    info_on = False
+    if 'info_on' in st.session_state:
+        if st.session_state['info_on']:
+            info_on = True
+
+    info_cols = st.columns([1,7])
+
+    with info_cols[0]:
+        info_on = st.toggle('Info viewer', 
+                value=info_on, 
+                help='Show extra information toggles')
+        
+    with info_cols[1]:
+        st.divider()
+
+    if not info_on:
+        st.session_state['info_on'] = False
+        return
+
+    if info_on:
+        row1 = st.columns([1,1,1,1,1])
+        with row1[0]:  # status
+            already_on = False
+            if 'status' in st.session_state['screens_open']:
+                already_on = True
+            on = st.toggle(label='Status', value=already_on, key='status_toggle'+key, 
+                    on_change=change_screens_open, args=['status'], help='Display status window')
+
+            already_on = False
+
+            if 'primers' in st.session_state['screens_open']:
+                already_on = True
+            on = st.toggle(label='Primers', value=already_on, key='primers_toggle'+key, 
+                    on_change=change_screens_open, args=['primers'], help='Display primers window')
+            
+        with row1[1]:  # files
+            already_on = False
+            if 'files' in st.session_state['screens_open']:
+                already_on = True
+            on = st.toggle(label='files', value=already_on, key='files_toggle'+key, 
+                    on_change=change_screens_open, args=['files'], help='Display files window')
+            already_on = False
+
+            if 'indexes' in st.session_state['screens_open']:
+                already_on = True
+            on = st.toggle(label='Indexes', value=already_on, key='index_toggle'+key, 
+                    on_change=change_screens_open, args=['indexes'], help='Display indexes window')
+
+        with row1[2]:  # plates
+            already_on = False
+
+            if 'plates' in st.session_state['screens_open']:
+                already_on = True
+            on = st.toggle(label='Plates', value=already_on, key='plates_toggle'+key, 
+                    on_change=change_screens_open, args=['plates'], help='Display plates window')
+
+            already_on = False
+
+            if 'references' in st.session_state['screens_open']:
+                already_on = True
+
+            on = st.toggle(label='References', value=already_on, key='references_toggle'+key, 
+                    on_change=change_screens_open, args=['references'], help='Display status window')
+
+        with row1[3]:  # plate viewer
+            already_on = False
+
+            if 'plate_viewer' in st.session_state['screens_open']:
+                already_on = True
+            on = st.toggle(label='Plate viewer', value=already_on, key='plate_view_toggle'+key, 
+                    on_change=change_screens_open, args=['plate_viewer'], help='Display plate viewer window')
+
+            already_on = False
+
+            if 'log' in st.session_state['screens_open']:
+                already_on = True
+            on = st.toggle(label='Log', value=already_on, key='log_toggle'+key, 
+                    on_change=change_screens_open, args=['log'], help='Display log window')
+
+        with row1[4]:
+            view_height = st.number_input('Set display height', min_value=50, max_value=700, 
+                    value=350, step=25, help="Size of display grid", key=key)
+
+        st.divider()
 
 
 def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=None, amp_pids=None, taq_pids=None):

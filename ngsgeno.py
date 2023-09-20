@@ -12,7 +12,7 @@ Needs load_data.py for GUI functions that are responsible for incorporating data
 experiment, and display_components.py for functions dedicated to the presentation of GUI
 elements
 """
-
+import jsonpickle
 import os
 #from ssl import SSLSession  # We may want this for secure logins in future
 import sys
@@ -123,7 +123,7 @@ def plate_checklist_expander(available_nimbus, pcr_stage=1):
                 included_PCR_plates.add(util.guard_pbc(pcr_pid, silent=True))
 
         checklist_col[2].markdown(f'**{taqwater_plate_title}**')
-        for taqwater_pid in exp.get_taqwater_pids():
+        for taqwater_pid in exp.get_taqwater_pids(pcr_stage):
             inc_taqwater = checklist_col[2].checkbox(util.unguard_pbc(taqwater_pid, silent=True), 
                         value=True, key='chk_box_taqwater_'+taqwater_pid)
             if inc_taqwater:
@@ -147,7 +147,7 @@ def plate_checklist_expander(available_nimbus, pcr_stage=1):
                 included_PCR_plates.add(pcr_pid)
 
         checklist_col[1].markdown(f'**{taqwater_plate_title}**')
-        for taqwater_pid in exp.get_taqwater_pids():
+        for taqwater_pid in exp.get_taqwater_pids(pcr_stage):
             inc_taqwater = checklist_col[1].checkbox(util.unguard_pbc(taqwater_pid, silent=True), 
                     value=True, key='chk_box_taqwater_'+taqwater_pid)
             if inc_taqwater:
@@ -352,8 +352,8 @@ def main():
                 else:
                     error_msg = "Invalid experiment file in: " + ch_run_path
         
-        new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
-                unsafe_allow_html=True)
+    new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
+            unsafe_allow_html=True)
 
     if st.session_state['experiment']:
         exp = st.session_state['experiment']
@@ -369,6 +369,9 @@ def main():
                 else:
                     st.session_state['pipeline_stage'] = 0
             pipeline_stage = st.session_state['pipeline_stage']
+        
+        info_bar = dc.info_bar('central')
+
         if 'info_expand' not in st.session_state:
             st.session_state['info_expand'] = False
         
@@ -531,8 +534,12 @@ def main():
 
         #Primer PCR
         if pipeline_stage == 2:
+
             exp = st.session_state['experiment']
             st.session_state['assay_filter'] = True
+            pcr_stage = 1
+
+            #set up tabs
             tab_col1, tab_col2 = st.columns([9,1])
             with tab_col1:
                 primer_tab = stx.tab_bar(data=[
@@ -542,15 +549,16 @@ def main():
                 ], return_type=int)
             info_holder = st.container()
             
-            
             if not primer_tab:
                 if 'primer_tab' not in st.session_state:
                     st.session_state['primer_tab'] = 1
                 primer_tab = st.session_state['primer_tab']
             
+            #nimbus fp, echo fp, barcodesnot in echo
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
             missing_nims = ['Echo_384_COC_0001_'+util.unguard(xbc, silent=True)+'_0.csv' for xbc in xbcs]
 
+            #PCR 1 info & adding in barcodes / files
             if primer_tab == 1:
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
@@ -561,23 +569,24 @@ def main():
                     if efs:
                         with primer_checklist:
                             included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                        plate_checklist_expander(efs, pcr_stage=1)
-                    
+                                        plate_checklist_expander(efs, pcr_stage=pcr_stage)
+                            
                         if included_DNA_plates:
-                            dc.display_pcr_components(PCR_stage=1, dna_pids=included_DNA_plates)
+                            dc.display_pcr_components(pcr_stage=pcr_stage, dna_pids=included_DNA_plates)
                     else:
                         no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                         st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
                                 unsafe_allow_html=True)
 
-                    ld.provide_barcodes('barcodes_tab1')
+                    #barcodes for PCR and taq and water, upload files for primer, adjust volumes
+                    ld.provide_barcodes('barcodes_tab1', pcr_stage=pcr_stage)
                     ld.upload_pcr1_files('pcr1_primer1')
                     ld.custom_volumes(exp)
 
                 st.session_state['primer_tab'] = 1
                 
 
-            #generate picklists
+            #generate PCR 1 picklists
             if primer_tab == 2:
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
@@ -623,8 +632,12 @@ def main():
 
         #Index PCR
         if pipeline_stage == 3:
+
             exp = st.session_state['experiment']
             tab_col1, tab_col2 = st.columns([9,1])
+            pcr_stage = 2
+
+            #tab setup
             with tab_col1:
                 index_tab = stx.tab_bar(data=[
                     stx.TabBarItemData(id=1, title="PCR 2", description="Components"),
@@ -633,16 +646,18 @@ def main():
                 ], return_type=int)
             info_holder = st.container()
             
-            
             if not index_tab:
                 if 'index_tab' not in st.session_state:
                     st.session_state['index_tab'] = 1
                 index_tab = st.session_state['index_tab']
 
+            #nimbus fp, echo fp, barcodes not in echo
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
+            print(f'{efs=}')
             missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
             available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
-            #PCR components
+            
+            #PCR 2 components
             if index_tab == 1:
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
@@ -652,24 +667,39 @@ def main():
                     st.write('***')
                     title_holder = st.empty()
                     pcr_comp_holder = st.empty()
-                    ld.provide_barcodes('index_barcodes')
+
+                    #provide barcodes for pcr & taq/water, upload index files, adjust volumes
+                    ld.provide_barcodes('index_barcodes', 2)
                     ld.upload_pcr2_files('pcr2_index1')
                     ld.custom_volumes(exp)
+
                     st.session_state['index_tab'] = 1
+                    #                     if efs:
+                    #     with primer_checklist:
+                    #         included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
+                    #                     plate_checklist_expander(efs, pcr_stage=pcr_stage)
+                            
+                    #     if included_DNA_plates:
+                    #         dc.display_pcr_components(PCR_stage=pcr_stage, dna_pids=included_DNA_plates)
+                    # else:
+                    #     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
+                    #     st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
+                    #             unsafe_allow_html=True)
+                    
                     if available_nimbus:
                         with index_checklist:
                             included_PCR_plates, included_taqwater_plates, included_index_plates,\
                                     included_amplicon_plates =\
-                                    plate_checklist_expander(available_nimbus, pcr_stage=2)
+                                    plate_checklist_expander(available_nimbus, pcr_stage=pcr_stage)
                         with pcr_comp_holder:
-                            dc.display_pcr_components(PCR_stage=2, dna_pids=efs)
+                            dc.display_pcr_components(pcr_stage=pcr_stage)
                     else:
                         no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                         title_holder.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
                                 unsafe_allow_html=True)
                 st.session_state['index_tab'] = 1
 
-            #generate picklist
+            #generate PCR 2 picklist
             if index_tab == 2:
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')

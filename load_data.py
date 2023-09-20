@@ -714,7 +714,7 @@ def load_custom_manifests(key):
     exp.save()
 
 
-def provide_barcodes(key):
+def provide_barcodes(key, pcr_stage):
     """
     :param key: unique key for the input widgets
     """
@@ -748,7 +748,7 @@ def provide_barcodes(key):
         if taqwater_plate_entered and taqwater_plate_barcode:
             guarded_taqwater_plate_barcode = util.guard_pbc(taqwater_plate_barcode, silent=True)
             if guarded_taqwater_plate_barcode not in exp.plate_location_sample:
-                success = exp.add_standard_taqwater_plates([taqwater_plate_barcode])
+                success = exp.add_standard_taqwater_plates([taqwater_plate_barcode], pcr_stage)
                 if success:
                     st.success(f'Added taq+water plate barcode {taqwater_plate_barcode}')
                     sleep(1.5)

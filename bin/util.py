@@ -102,6 +102,8 @@ def num_req_taq_water_plates(req_taq_vol, req_water_vol):
     """ Save some boilerplate """
     per_plate_avail = 3*(CAP_VOLS[PLATE_TYPES['Echo6']] - DEAD_VOLS[PLATE_TYPES['Echo6']])
     taq_plates = ceil(req_taq_vol / per_plate_avail)
+    print(f'{per_plate_avail=}')
+    print(f'{req_taq_vol=}, {req_water_vol=}')
     water_plates = ceil(req_water_vol / per_plate_avail)
     return max([taq_plates, water_plates])
 
