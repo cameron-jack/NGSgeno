@@ -102,12 +102,10 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
         well_entries.append(entry_str)
     chart_data_str += '\n{' + '},\n{'.join(well_entries) + '}\n' + '];\n'
 
-    
-    
     width = str(int(width_num*scaling)) + 'px'
     height = str(int(height_num*scaling)) + 'px'
     font_axis = str(int(20*scaling))
-    font_label = str(int(16*scaling))
+    font_label = str(int(12*scaling))
     font_popup = str(int(14*scaling))
     header_str = """
     <!-- Styles -->
@@ -257,7 +255,7 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
         container.style.height = newContainerHeight + "px";
     }
 
-    setContainerHeight(); // Initial height calculation
+    //setContainerHeight(); // Initial height calculation
 
     // Recalculate container height on window resize
     window.addEventListener("resize", function() {
