@@ -763,8 +763,8 @@ def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=
             stx.TabBarItemData(id=4, title="Plate Viewer", description=""),
             stx.TabBarItemData(id=5, title="Primers", description=""),
             stx.TabBarItemData(id=6, title="Indexes", description=""),
-            stx.TabBarItemData(id=7, title="Reference sequences", description=""),
-            stx.TabBarItemData(id=8, title="Log", description="")
+            #stx.TabBarItemData(id=7, title="Reference sequences", description=""),
+            stx.TabBarItemData(id=7, title="Log", description="")
         ], return_type=int, default=1)
 
     if view_tab == 1:
@@ -799,12 +799,12 @@ def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=
             display_indexes(key, dna_pids=dna_pids, height=view_height)
 
 
+    #if view_tab == 7:
+    #    with container:
+    #        display_references(key, height=view_height)
+
+
     if view_tab == 7:
-        with container:
-            display_references(key, height=view_height)
-
-
-    if view_tab == 8:
         with container:
             display_log(key, height=view_height)
     
