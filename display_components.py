@@ -16,6 +16,7 @@ import itertools
 from math import fabs, factorial, floor, ceil
 from io import StringIO
 import inspect
+from time import sleep
 
 import pandas as pd
 
@@ -93,17 +94,22 @@ def manage_delete(delbox, category, ids):
                 continue
             success = exp.del_file_record(id)     
             if success:
-                delbox.write(f'{id} removed')
+                #delbox.write(f'{id} removed')
+                st.write(f'{id} removed')
             else:
-                delbox.write(f'{id} could not be removed')
+                #delbox.write(f'{id} could not be removed')
+                st.write(f'{id} could not be removed')
             st.session_state['previous_file_delete_selection'] = ids
     elif category == 'plate':
-        gids = [util.guard_pbc(pid, silent=True) for pid in ids if pid in exp.plate_location_sample]
+        gids = [util.guard_pbc(pid, silent=True) for pid in ids]
+        gids = [gid for gid in gids if gid in exp.plate_location_sample]
         success = exp.delete_plates(gids)
         if success:
-            delbox.write(f'{ids} removed')
+            #delbox.write(f'{ids} removed')
+            st.write(f'{ids} removed')
         else:
-            delbox.write(f'{ids} could not be removed')
+            #delbox.write(f'{ids} could not be removed')
+            st.write(f'{ids} could not be removed')
         st.session_state['previous_plate_delete_selection'] = ids
     elif category == 'group':  # from summary
         for row in ids:
@@ -228,7 +234,7 @@ def display_plates(key, plate_usage, height=300):
                 else:
                     if pids != st.session_state['previous_plate_delete_selection']:
                         st.markdown(f"**You selected {pids}**")
-                    delbox = st.container()
+                    delbox = st.container() # doesn't work reliably in st1.26
                     del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
                     del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
                     del_col2.button("Yes",on_click=manage_delete,

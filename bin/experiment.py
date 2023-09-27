@@ -382,6 +382,7 @@ class Experiment():
             plate_set_details = [util.unguard_pbc(dna_pid)]
             custom_wells = 0
             rodentity_wells = 0
+            pid_count = 0
             for i,sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
                 plate_set_details.append(util.unguard_pbc(sample_pid))
                 for well in self.plate_location_sample[sample_pid]['wells']:  
@@ -396,7 +397,8 @@ class Experiment():
                     #    total_unique_assays.add(assay)
                     total_unique_samples.add(self.plate_location_sample[sample_pid][well]['barcode'])
                 #print(f'{dna_pid=} {sample_pid=} {custom_wells=} {rodentity_wells=}')
-            for j in range(3-i):
+                pid_count += 1
+            for j in range(3-pid_count):
                 plate_set_details.append('')
 
             plate_set_details.append(str(custom_wells))
@@ -1085,6 +1087,7 @@ class Experiment():
         """
         Soft-delete plates with the selected pids
         """
+        print(f'In delete_plates with {pids=}')
         success = True
         for pid in pids:
             if pid in self.plate_location_sample:

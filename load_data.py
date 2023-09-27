@@ -249,7 +249,7 @@ def upload_pcr1_files(key):
     and manages transactions
     """
     st.write('')
-    st.write('**Upload PCR 1 Files**')
+    st.write('**Upload Primer Files (PCR round 1)**')
     exp = st.session_state['experiment']
     warning_area = st.container()
     st.session_state['upload_option'] = ''  # do we display pending files here
@@ -315,7 +315,7 @@ def accept_amplicons(uploaded_amplicon_files, miseq_fn, stage3_fn):
 
 def cancel_amplicons():
     st.write('')
-    st.write('**Upload PCR 2 Files**')
+    st.write('**Upload Amplicon Files (PCR round 2)**')
     exp = st.session_state['experiment']
     warning_area = st.session_state['message_area']
     st.session_state['upload_option'] = ''  # do we display pending files here
@@ -326,6 +326,8 @@ def upload_pcr2_files(key):
     Upload inputs for indexing layout and volume. Extra option for amplicon plate upload.
     Copy uploaded files into the run folder and manage subsequent transactions
     """
+    st.write('')
+    st.write('**Upload Index Files (PCR round 2)**')
     exp = st.session_state['experiment']
     warning_area = st.session_state['message_area']
     st.session_state['upload_option'] = ''  # do we display pending files here

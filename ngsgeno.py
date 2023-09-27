@@ -255,6 +255,17 @@ def main():
         layout="wide"
     )
 
+    st.markdown('''
+    <style>
+        .stApp [data-testid="stToolbar"]{
+            display:none;
+        }
+        #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 1rem;}
+     </style>
+     ''', unsafe_allow_html=True)
+
+   
+
     if 'experiment' not in st.session_state:
         st.session_state['experiment'] = None
         print('Current experiment set to clear')
@@ -370,7 +381,7 @@ def main():
                     st.session_state['pipeline_stage'] = 0
             pipeline_stage = st.session_state['pipeline_stage']
         
-        info_bar = dc.info_bar('central')
+        #info_bar = dc.info_bar('central')
 
         if 'info_expand' not in st.session_state:
             st.session_state['info_expand'] = False
