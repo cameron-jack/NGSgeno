@@ -778,7 +778,7 @@ def upload_miseq_fastqs():
         if len(fastq_files) > 1:
             st.write(f"...")
             st.write(f"{len(fastq_files)}. {str(fastq_files[-1])}")
-    import_fastqs = st.button('Import FASTQs')
+    import_fastqs = st.button('Import FASTQs', type='primary')
     file_field = st.empty()
     copy_progress = st.progress(0)
     if import_fastqs and len(fastq_files) > 0:

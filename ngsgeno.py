@@ -263,6 +263,70 @@ def main():
         #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 1rem;}
      </style>
      ''', unsafe_allow_html=True)
+    
+    #css for all form_submit_buttons
+    form_button_css = """
+    <style>
+    div[data-testid="stFormSubmitButton"] button {
+        background-color: #4287f5;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        margin: 8px 0;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 400;
+        width: fit-content;
+        height: auto
+    }
+    div[data-testid="stFormSubmitButton"] button:hover {
+        opacity: 0.8;
+        background-color: #cf3276;
+        color:white;
+
+    }
+    </style>
+    """
+    st.markdown(form_button_css, unsafe_allow_html=True)
+
+    #css for all buttons with type primary
+    primary_button_css = """
+    <style>
+    button[data-testid="baseButton-primary"] {
+        background-color: #4287f5;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        margin: 8px 0;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 400;
+        width: fit-content;
+        height: auto
+    }
+    button[data-testid="baseButton-primary"]:hover {
+        opacity: 0.8;
+    }
+    </style>
+    """
+    st.markdown(primary_button_css, unsafe_allow_html=True)
+    #css for all buttons with type secondary
+    secondary_button_css = """
+    <style>
+    button[data-testid="baseButton-secondary"] {
+        background-color: #83b3c9;
+        color: black;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 400;
+    }
+    button[data-testid="baseButton-secondary"]:hover {
+        opacity: 0.8;
+    }
+    </style>
+    """
+    st.markdown(secondary_button_css, unsafe_allow_html=True)
 
    
 
@@ -490,7 +554,7 @@ def main():
                              unsafe_allow_html=True)
                     st.write('')
 
-                    run_gen_nimbus = st.button('Generate Nimbus input files')
+                    run_gen_nimbus = st.button('Generate Nimbus input files', type='primary')
                     if run_gen_nimbus:
                         success = run_generate(exp, exp.generate_nimbus_inputs)
                         if not success:
@@ -623,7 +687,7 @@ def main():
                                 _,picklist_button_col,_ = st.columns([2, 2, 1])
                                 picklist_button_col.write('')
                                 echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',
-                                        key='echo_pcr1_go_button')
+                                        key='echo_pcr1_go_button', type='primary')
                                 if echo_picklist_go:
                                     success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
                                             included_DNA_plates, included_PCR_plates, included_taqwater_plates)
@@ -734,7 +798,7 @@ def main():
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
 
                             echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
-                                        key='echo_pcr2_go_button')
+                                        key='echo_pcr2_go_button', type="primary")
 
                             picklist_button_col.write('')
 
@@ -786,7 +850,7 @@ def main():
                         miseq_col1.markdown(f'<strong style="color:#486e7a">{fp_name}</strong>', unsafe_allow_html=True)
                     
                         download_miseq = miseq_col2.download_button(label='Download', data=open(fp, 'rt'), 
-                                file_name=fp_name, mime='text/csv', key='dnld_samplesheet_'+str(fp))
+                                file_name=fp_name, mime='text/csv', key='dnld_samplesheet_'+str(fp), type='primary')
                 else:
                     st.warning(f'No MiSeq Samplesheet available for download')
                 st.session_state['miseq_tab'] = 1
