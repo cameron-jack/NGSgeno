@@ -889,6 +889,7 @@ def parse_reference_sequences(exp, fp):
     """
     read in reference (target) IDs and sequences.
     May be added when pipeline is locked.
+    Client allows only one reference file to be loaded at a time
     """
     exp.log(f'Begin: parsing reference sequences {fp}')
     ref_seq = {}
@@ -899,8 +900,8 @@ def parse_reference_sequences(exp, fp):
     if fp in exp.reference_sequences:
         msg = f'Warning: {fp} already uploaded. Overwriting records'
         exp.log(msg)
-    else:
-        exp.reference_sequences[fp] = {}
+    exp.reference_sequences = {}  # Only one reference file allowed by client
+    exp.reference_sequences[fp] = {}
     for ref in ref_seq:
         exp.reference_sequences[fp][ref] = ref_seq[ref]
 

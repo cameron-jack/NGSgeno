@@ -1,3 +1,19 @@
+v0.23.000
+Date: Mon Oct 16 12:58:21 AEDT 2023
+* Fixed: clear old reference sequence entries on loading new references
+* Fixed: sets html encoding for Windows plate viewer
+* New: rewrite of matching code for correctness and speed
+* TODO: one bug in matching code, likely of inexact matches
+
+v0.22.000
+Date: Thu Sep 28 7:39:12 AEST 2023
+* Changed: Separating taq/water plates based on PCR stage 
+* Fixed: Plate viewer - commented out the setContainerHeight function for now to get it working
+* Fixed: 2 bugs in plate delete widget
+* Fixed Rodentity upload bug due to new Python version
+* Changed: Removed menu bar and white-space from top of page
+* Changed: Removed reference sequences from info tabs
+
 v0.21.031
 Date: Wed Sep 13 17:51:11 AEST 2023
 * Changed: Reset matching parameters

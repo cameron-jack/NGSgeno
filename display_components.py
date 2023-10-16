@@ -519,8 +519,7 @@ def view_plates(key, height=500):
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
             heatmap_str = generate_heatmap_html(exp, plate_id, scaling=0.9)
-
-            with open("makehtml.html", 'wt') as outf:
+            with open("makehtml.html", 'wt', encoding="utf-8") as outf:
                 print(heatmap_str, file=outf)
             components.html(heatmap_str, height=height, scrolling=True)
         else:

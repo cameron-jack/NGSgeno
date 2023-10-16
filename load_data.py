@@ -257,35 +257,35 @@ def upload_pcr1_files(key):
     with primer_form:
         col1, col2 = st.columns(2)
         uploaded_primer_layouts = col1.file_uploader(
-                    'Upload Primer Plate Layouts - the barcode must be the first' +
-                    'part of the filename e.g. 123_primer_layout.csv', \
-                    key='primer_layout_uploader'+key,
-                    type='csv',
-                    accept_multiple_files=True) 
+                'Upload Primer Plate Layouts - the barcode must be the first' +
+                'part of the filename e.g. 123_primer_layout.csv', \
+                key='primer_layout_uploader'+key,
+                type='csv',
+                accept_multiple_files=True) 
         uploaded_primer_volumes = col2.file_uploader(
-                    'Upload Primer Plate Volumes - the barcode must be the first part' +
-                    'of the filename e.g. 123_primer_volume.csv', \
-                    key='primer_vol_uploader'+key, 
-                    type='csv', 
-                    accept_multiple_files=True)
+                'Upload Primer Plate Volumes - the barcode must be the first part' +
+                'of the filename e.g. 123_primer_volume.csv', \
+                key='primer_vol_uploader'+key, 
+                type='csv', 
+                accept_multiple_files=True)
 
         upload_button = st.form_submit_button("Upload Files")
 
         if upload_button:
             st.session_state['upload_option'] = 'pcr1'
             if uploaded_primer_layouts:                          
-                upl_pids = ''.join(upl.name for upl in uploaded_primer_layouts)
+                upl_pids = ''.join(upl.name.split('_')[0] for upl in uploaded_primer_layouts)
                 success = parse.upload(exp, uploaded_primer_layouts, purpose='primer_layout')
                 if success and not trans.is_pending(exp):
-                    st.success(f'Added primer layouts for plates {upl_pids}')
+                    st.success(f'Added primer layouts for plates {",".join(upl_pids)}')
                 elif not success:
                     st.error(f'Failed to write at least one primer layout, please see the log')
                      
             if uploaded_primer_volumes:
-                upv_pids = ''.join(upv.name for upv in uploaded_primer_volumes)
+                upv_pids = ''.join(upv.name.split('_')[0] for upv in uploaded_primer_volumes)
                 success = parse.upload(exp, uploaded_primer_volumes, purpose='primer_volume')
                 if success and not trans.is_pending(exp):
-                    st.success(f'Added primer volumes for plates {upv_pids}')
+                    st.success(f'Added primer volumes for plates {",".join(upv_pids)}')
                 elif not success:
                     st.error(f'Failed to write at least one set of primer volumes, please see the log')
     

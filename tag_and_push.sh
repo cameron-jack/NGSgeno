@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 
-VER="v0.21.031"
+VER="v0.23.000"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Changed: Reset matching parameters
-* Changed: fixed streamlit version to 1.26
+* Fixed: clear old reference sequence entries on loading new references
+* Fixed: sets html encoding for Windows plate viewer
+* New: rewrite of matching code for correctness and speed
+* TODO: one bug in matching code, likely of inexact matches
 EOM
 
 mv changelog.txt changelog_old.txt
