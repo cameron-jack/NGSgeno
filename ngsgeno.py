@@ -25,6 +25,7 @@ import pandas as pd
 
 import streamlit as st
 import streamlit.components.v1 as components
+import stutil as stutil
 
 from bin.experiment import Experiment, EXP_FN, load_experiment
 try:
@@ -502,7 +503,7 @@ def main():
                 st.session_state['load_tab'] = 2
 
             with tab_col2:
-                st.write('')
+                stutil.add_vertical_space(1)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
@@ -552,7 +553,7 @@ def main():
                                 
                     st.markdown(f'<h5 style="text-align:center;color:#f63366">{nimbus_title}</h5>',\
                              unsafe_allow_html=True)
-                    st.write('')
+                    stutil.add_vertical_space(1)
 
                     run_gen_nimbus = st.button('Generate Nimbus input files', type='primary')
                     if run_gen_nimbus:
@@ -600,8 +601,7 @@ def main():
                 st.session_state['nimbus_tab'] = 2
 
             with tab_col2:
-                st.write('')
-                st.write('')
+                stutil.add_vertical_space(2)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
@@ -698,8 +698,7 @@ def main():
                 st.session_state['primer_tab'] = 2
             
             with tab_col2:
-                st.write('')
-                st.write('')
+                stutil.add_vertical_space(2)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
@@ -805,8 +804,7 @@ def main():
                 st.session_state['index_tab'] = 2            
                 
             with tab_col2:
-                st.write('')
-                st.write('')
+                stutil.add_vertical_space(2)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
@@ -828,7 +826,7 @@ def main():
                     st.session_state['miseq_tab'] = 1
                 miseq_tab = st.session_state['miseq_tab']
 
-            st.write('')
+            stutil.add_vertical_space(1)
             exp = st.session_state['experiment']
             if miseq_tab == 1:
                 _, miseq_col1, miseq_col2, _ =  st.columns([2,1,1,2])
@@ -858,8 +856,7 @@ def main():
                 st.session_state['miseq_tab'] = 2
 
             with tab_col2:
-                st.write('')
-                st.write('')
+                stutil.add_vertical_space(2)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
@@ -967,7 +964,7 @@ def main():
                 st.session_state['allele_tab'] = 1
 
             with tab_col2:
-                st.write('')
+                stutil.add_vertical_space(1)
                 show_info_viewer_checkbox()
                 
             with info_holder:
@@ -1025,7 +1022,7 @@ def main():
                     dc.aggrid_interactive_table(dfo, key='other_view_key')
 
             with tab_col2:
-                st.write('')
+                stutil.add_vertical_space(1)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:

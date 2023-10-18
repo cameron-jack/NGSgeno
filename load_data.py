@@ -24,6 +24,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 import extra_streamlit_components as stx
+import stutil as stutil
 
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
@@ -248,7 +249,7 @@ def upload_pcr1_files(key):
     Upload form for primer layout and volumes. Copies input files into the directory 
     and manages transactions
     """
-    st.write('')
+    stutil.add_vertical_space(1)
     st.write('**Upload Primer Files (PCR round 1)**')
     exp = st.session_state['experiment']
     warning_area = st.container()
@@ -314,7 +315,7 @@ def accept_amplicons(uploaded_amplicon_files, miseq_fn, stage3_fn):
 
 
 def cancel_amplicons():
-    st.write('')
+    stutil.add_vertical_space(1)
     st.write('**Upload Amplicon Files (PCR round 2)**')
     exp = st.session_state['experiment']
     warning_area = st.session_state['message_area']
@@ -326,7 +327,7 @@ def upload_pcr2_files(key):
     Upload inputs for indexing layout and volume. Extra option for amplicon plate upload.
     Copy uploaded files into the run folder and manage subsequent transactions
     """
-    st.write('')
+    stutil.add_vertical_space(1)
     st.write('**Upload Index Files (PCR round 2)**')
     exp = st.session_state['experiment']
     warning_area = st.session_state['message_area']
@@ -404,7 +405,7 @@ def upload_pcr2_files(key):
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr2':
         pending_file_widget(key)
         st.session_state['upload_option'] = ''   
-    st.write('')
+    stutil.add_vertical_space(1)
 
 
 def upload_extra_consumables(key):
@@ -412,7 +413,7 @@ def upload_extra_consumables(key):
     Uploads for extra files such as custom references, assay lists, and taq/water plates.
     Copy the uploaded files into the run folder and deal with subsequent transactions.
     """
-    st.write('')
+    stutil.add_vertical_space(1)
     st.write('**Upload Custom Reference / Assay Lists**')
     exp = st.session_state['experiment']
     st.session_state['upload_option'] = ''  # do we display pending files here
@@ -459,7 +460,7 @@ def upload_extra_consumables(key):
         with warning_area:
             pending_file_widget(key)
         st.session_state['upload_option'] = ''
-    st.write('')
+    stutil.add_vertical_space(1)
 
 
 def custom_volumes(exp):
@@ -506,7 +507,7 @@ def custom_volumes(exp):
         else:
             st.warning("Volume could not be added. Please enter in integers only.")
 
-    st.write('')
+    stutil.add_vertical_space(1)
 
 
 def upload_reference_sequences(key):
@@ -720,7 +721,7 @@ def provide_barcodes(key, pcr_stage):
     """
     :param key: unique key for the input widgets
     """
-    st.write('')
+    stutil.add_vertical_space(1)
     st.write('**Add plate barcodes**')
     exp = st.session_state['experiment']
     pcr_col, taqwater_col = st.columns(2)
