@@ -23,6 +23,8 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 import extra_streamlit_components as stx
+
+from stutil import custom_text, add_vertical_space, hline
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 try:
@@ -345,8 +347,6 @@ def display_pcr1_components(dna_pids=None):
         req_taqwater_text = '**Number of required taq/water plates**'
         req_taqwater_num = str(num_req_taq_water_plates)
 
-
-
     for i in range(4):
         req_cols[i].write('')
 
@@ -490,86 +490,53 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
 
     return st.session_state['path']
 
-
-def show_echo1_outputs():
-    exp = st.session_state['experiment']
-    picklist_file_col, picklist_btn_col = st.columns(2)
-    dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR1_picklist_filepaths()
-    error_msgs = []
-    
-    if not dna_picklist_paths:
-        error_msgs.append('No DNA picklist available')
+def handle_picklist_download(picklist_type, picklist_paths, error_msgs, file_col, btn_col):
+    if not picklist_paths:
+        error_msgs.append(f"No {picklist_type} picklist available")
     else:
-        for dpp in dna_picklist_paths:
-            dpp_fn = Path(dpp).name
-            picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{dpp_fn}</p>',\
-                    unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download", 
-                    data=open(dpp, 'rt'), file_name=dpp_fn, mime='text/csv', key='dna_download_'+dpp_fn)
-
-    if not primer_picklist_paths:
-        error_msgs.append('No primer picklist available')
-    else:
-        for ppp in primer_picklist_paths:
+        for ppp in picklist_paths:
             ppp_fn = Path(ppp).name
-            picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{ppp_fn}</p>',\
-                        unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download", 
-                    data=open(ppp, 'rt'), file_name=ppp_fn, mime='text/csv', key='primer_download_'+dpp_fn)
-            
-    if not taqwater_picklist_paths:
-        error_msgs.append('No taq/water picklist available')
-    else:
-        for tpp in taqwater_picklist_paths:
-            tpp_fn = Path(tpp).name
-            picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_fn}</p>',\
-                        unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download", 
-                    data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv', key='taqwater_download_'+tpp_fn)
-
-    if error_msgs:
-        for msg in error_msgs:
-            picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
-                    unsafe_allow_html=True)
+            with file_col:
+                custom_text('p', '#4b778c', ppp_fn, 'right', padding='5px')
+            with btn_col:
+                st.download_button(label="Download", 
+                                   data=open(ppp, 'rt'), 
+                                   file_name=ppp_fn, 
+                                   mime='text/csv', 
+                                   key=f'{picklist_type}_download_'+ppp_fn)
 
 
-def show_echo2_outputs():
+def get_echo1_downloads_btns():
     exp = st.session_state['experiment']
     picklist_file_col, picklist_btn_col = st.columns(2)
-    index_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
-    
     error_msgs = []
 
-    if not index_picklist_paths:
-        error_msgs.append('No index picklist available')
-    else:
-        for ipp in index_picklist_paths:
-            ipp_fn = Path(ipp).name
-            picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{ipp_fn}</p>',\
-                                unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download",\
-                    data=open(ipp, 'rt'), file_name=ipp_fn, mime='text/csv', key='index_download_'+ipp_fn)
+    dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR1_picklist_filepaths()
+    
+    picklist_dict = {'DNA': dna_picklist_paths, 'primer': primer_picklist_paths, 'taq/water': taqwater_picklist_paths}
 
-    if not taqwater_picklist_paths:
-        error_msgs.append('No taq/water picklist available')
-    else:
-        for tpp in taqwater_picklist_paths:
-            tpp_fn = Path(tpp).name
-            picklist_file_col.markdown(\
-                        f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_fn}</p>',\
-                                unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download",\
-                        data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv',\
-                                key='taqwater_download_'+tpp_fn)
+    for pltype, plpath in picklist_dict.items():
+        handle_picklist_download(pltype, plpath, error_msgs, picklist_file_col, picklist_btn_col)
+
     if error_msgs:
         for msg in error_msgs:
-            picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
-                    unsafe_allow_html=True)
+            custom_text('p', '#ff0000', msg, 'center', padding='5px')
 
+def get_echo2_download_btns():
+    exp = st.session_state['experiment']
+    picklist_file_col, picklist_btn_col = st.columns(2)    
+    error_msgs = []
+
+    index_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
+
+    picklist_dict = {'index': index_picklist_paths, 'taq/water': taqwater_picklist_paths}
+
+    for pltype, plpath in picklist_dict.items():
+        handle_picklist_download(pltype, plpath, error_msgs, picklist_file_col, picklist_btn_col)
+    
+    if error_msgs:
+        for msg in error_msgs:
+            custom_text('p', '#ff0000', msg, 'center', padding='5px')
     
 def display_status(key, height=300):
     """
@@ -586,7 +553,10 @@ def display_status(key, height=300):
 
 def view_plates(key, height=500):
     """
-    Visual view of the plates in the experument
+    Visual view of the plates in the experiment
+    Args:
+        key(str): key for streamlit widgets
+        height(int): height of plate viewer
     """
     exp = st.session_state['experiment']
     plate_ids = []
@@ -605,15 +575,16 @@ def view_plates(key, height=500):
                 print(heatmap_str, file=outf)
             components.html(heatmap_str, height=height, scrolling=True)
         else:
-            plate_barcode_error_msg = "Plate barcode not found in experiment"
-            st.markdown(f'<p style="color:#FF0000">{plate_barcode_error_msg}</p>',
-                        unsafe_allow_html=True)
+            custom_text('p', '#FF0000', 'Plate barcode not found in experiment')
 
 
 def display_files(key, file_usage, height=250):
     """
     Display info for all files that have so far been uploaded into the experiment
-    Give info on name, any plates they contain, whether they are required so far, etc
+    Args:
+        key(str): key for streamlit widget
+        file_usage:
+        height(int): height of table
     """
     exp = st.session_state['experiment']
     file_df = pd.DataFrame.from_dict(file_usage, orient='index')
@@ -641,13 +612,22 @@ def display_files(key, file_usage, height=250):
             else:
                 if fns != st.session_state['previous_file_delete_selection']:
                     st.markdown(f"**You selected {fns}**")
+
                 delbox = st.container()
-                del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
-                del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                del_col2.button("Yes",on_click=manage_delete,
-                        args=(delbox,'file',fns), key="delete " + str(key), help=f"Delete {fns}")
-                del_col3.button("No", on_click=cancel_delete,
-                        args=('file',fns), key="keep " + str(key), help=f"Keep {fns}")
+                del_col1, del_col2, del_col3, _ = st.columns([2,1,1,4])
+                with del_col1:
+                    custom_text('p', '#A01751', 'Delete selection?')
+                del_col2.button("Yes", 
+                                on_click=manage_delete,
+                                args=(delbox,'file',fns), 
+                                key="delete " + str(key), 
+                                help=f"Delete {fns}")
+                
+                del_col3.button("No", 
+                                on_click=cancel_delete,
+                                args=('file',fns), 
+                                key="keep " + str(key), 
+                                help=f"Keep {fns}")
                 selection = None
 
 
@@ -687,7 +667,11 @@ def display_indexes(key, dna_pids=None, height=350):
 
     index_df = pd.DataFrame.from_dict(indexes,  orient='index')
     index_df.reset_index(inplace=True)
-    index_df = index_df.rename(columns = {'index':'Index', 'well_count':'Wells', 'avail_transfers':'Available transfers', 'avail_vol':'Available Volume (μL)'})
+    index_df = index_df.rename(columns = {'index':'Index', 
+                                          'well_count':'Wells', 
+                                          'avail_transfers':'Available transfers', 
+                                          'avail_vol':'Available Volume (μL)'})
+    
     index_table = aggrid_interactive_table(index_df,grid_height=height,key=str(key)+'index_display')
 
 

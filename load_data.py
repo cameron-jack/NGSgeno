@@ -63,13 +63,16 @@ import display_components as dc
 
 credits="""
 @created: March 2022
-@author: Gabrielle Ryan, Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
+@author: Gabrielle Ryan, Cameron Jack, ANU Bioinformatics Consultancy, 2019-2023
 
 Web application style interface using Streamlit. Present information as both a dashboard and a workflow in one page.
 
 The GUI interacts with a single Experiment object at one time. Methods are called on this to activate pipeline
 functionality. The Experiment then deals directly with the pipeline logic.
 """
+
+HELP_COLOUR = '#7f8b8f'
+FORM_BUTTON_COLOUR = '#4287f5'
 
 def do_pending(combined_pending):
     """
@@ -207,11 +210,10 @@ def upload_echo_inputs(key):
         title = ''
         title_colour = '#f63366'
         info_area = st.container()
-        #col1, col2 = st.columns([3,5])
-        upload_col,_ = st.columns([2,1])
+        _,upload_col,_ = st.columns([1,3,1])
         with upload_col:                
             with st.form("Echo input upload", clear_on_submit=True):  
-                nim_outputs = st.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
+                nim_outputs = st.file_uploader('Upload files: e.g. Echo_384_COC_0001_....csv', type='csv', 
                         accept_multiple_files=True, help='You can upload more than one file at once')
                 submitted = st.form_submit_button("Upload files")
 
@@ -221,27 +223,24 @@ def upload_echo_inputs(key):
         nfs, efs, xbcs = exp.get_nimbus_filepaths()
         if not efs and not xbcs:
             title = "Load data inputs to enable Nimbus input file generation."
-            
         if efs and not xbcs:
             title = 'All expected Echo inputs/Nimbus outputs now uploaded'
             title_colour = '#83b3c9'
-            uploaded_nims = [Path(ef).name for ef in efs]
-            msg = '</br>'.join(uploaded_nims)          
-            info_area.markdown(f'<p>{msg}</p>', unsafe_allow_html=True)
+            uploaded_nims = '</br>'.join([Path(ef).name for ef in efs])
+            with info_area:
+                stutil.custom_text('p', 'green', uploaded_nims)         
         if xbcs:
             title = 'Further Echo inputs/Nimbus outputs are expected'
-            uploaded_nims = [Path(ef).name for ef in efs]
-            msg = '</br>'.join(uploaded_nims)
-            info_area.markdown(f'<p>{msg}</p>', unsafe_allow_html=True)
-            missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
-            files_str = '</br>'.join(missing_nims)
-            info_area.write('The following Echo input files are expected (from the Nimbus):')
-            info_area.markdown('<p style="text-align:left;color:#17754d">'+
-                         f'{files_str}</p>',
-                         unsafe_allow_html=True)
-        title_area.markdown('<h5 style="text-align:center;color:'f'{title_colour}">'+
-        f'{title}</h5>', unsafe_allow_html=True)
-        title_area.write('')
+            uploaded_nims = '</br>'.join([Path(ef).name for ef in efs])
+            missing_nims = '</br>'.join(['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs])
+            with info_area:
+                stutil.custom_text('p', 'green', uploaded_nims)
+                stutil.custom_text('p', 'black', 'The following Echo input files are expected (from the Nimbus):')
+                stutil.custom_text('p', '#cf3276', missing_nims)
+
+        with title_area:
+            stutil.custom_text('h5', title_colour, title)
+            stutil.add_vertical_space(1)
                         
 
 def upload_pcr1_files(key):
@@ -422,17 +421,16 @@ def upload_extra_consumables(key):
     upload_form = st.form('Consumables upload'+key, clear_on_submit=True)
     
     col1, col2 = upload_form.columns(2)
-    uploaded_references = col1.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
-            type=['txt','fa','fasta'], accept_multiple_files=True)
-                                                                    
-    uploaded_assaylists = col2.file_uploader('Upload Assay Lists', key='assaylist_uploader'+key, 
+    uploaded_assaylists = col1.file_uploader('Upload Assay Lists', key='assaylist_uploader'+key, 
             type=['txt','csv'], accept_multiple_files=True)
-                  
+    
+    uploaded_references = col2.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
+            type=['txt','fa','fasta'], accept_multiple_files=True)
+                                                                            
     # maybe someday?
     #uploaded_taqwater_plates = col1.file_uploader('Upload Taq and Water Plates', key='taq_water_upload'+key, 
     #        type='csv', accept_multiple_files=True)
     upload_button = upload_form.form_submit_button("Upload Files")
-
     if upload_button:
         st.session_state['upload_option'] = 'consumables'
         if uploaded_references:
@@ -466,7 +464,7 @@ def upload_extra_consumables(key):
 def custom_volumes(exp):
     volumes_dict = exp.transfer_volumes.copy()
 
-    st.write('**Volumes for DNA and Primers**')
+    st.markdown('**Volumes for DNA and Primers**', help='To edit the volume, check the box.')
     col1, col2, col3,_ = st.columns([1,1,1,4])
     col1.write(f'Current volumes (nL):')
     allow_edit = col2.checkbox('Edit current volumes')
@@ -480,8 +478,9 @@ def custom_volumes(exp):
                                                     use_container_width=True, 
                                                     key="volume_df", 
                                                     disabled=not allow_edit)
+    tip_col, _ = st.columns(2)
     if allow_edit:
-        st.info('To change the volume, click or double click on the cell, type in the new value and hit Enter')
+        tip_col.info('To change the volume, click or double click on the cell, type in the new value and hit Enter')
     
     if reset_vols:
         success = exp.add_custom_volumes({'DNA_VOL':util.DNA_VOL, 
@@ -512,15 +511,19 @@ def custom_volumes(exp):
 
 def upload_reference_sequences(key):
     """
-    Upload custom references
+    Upload form for custom references
+    Args:
+        key(str): Key for streamlit widget
     """
     exp = st.session_state['experiment']
-    with st.form('References upload'+key, clear_on_submit=True):
-        uploaded_references = st.file_uploader(
-                'Upload Custom Reference Files',
-                key='ref_uploader'+key,
-                type=['txt','fa','fasta'],    
-                accept_multiple_files=True)
+    #TODO: check if they have already uploaded a reference file. 
+    col, _ = st.columns([2,1])
+    with col.form('References upload'+key, clear_on_submit=True):
+        uploaded_references = st.file_uploader('Upload Custom Reference Files',
+                                                key='ref_uploader'+key,
+                                                type=['txt','fa','fasta'],    
+                                                accept_multiple_files=True)
+        
         upload_button = st.form_submit_button("Upload Files")
 
     if upload_button and uploaded_references:      
@@ -528,15 +531,15 @@ def upload_reference_sequences(key):
         ur_names = [ur.name for ur in uploaded_references] 
         if success:
             msg = f'Succcess: added rodentity plate data from files {ur_names}'
-            st.write(msg)
+            st.success(msg)
             exp.log(msg)
         else:
             msg = f'Failure: to upload at least one rodentity plate file, please see the log'
-            st.write(msg)
+            st.error(msg)
             exp.log(msg)
 
 
-def load_rodentity_data(key):
+def upload_rodentity_data(key):
     """
     Manage combining up to four rodentity plates (from JSON) with one destination PID 
     """
@@ -545,6 +548,12 @@ def load_rodentity_data(key):
     st.session_state['upload_option'] = ''  # do we display pending files here
     plates_to_clear = [False, False, False, False]
     with st.expander('Add data from Rodentity JSON files',expanded=True):
+        stutil.custom_text('p', '#7f8b8f', 'Upload up to 4 of your .json files and '+\
+                           f'<span style="color: {FORM_BUTTON_COLOUR}">Submit </span>. Enter a desination plate ID '+\
+                           f'and <span style="color: {FORM_BUTTON_COLOUR}">Accept </span> to assign them to a DNA plate. '+\
+                            '<br> You have the option of clearing a plate ID '+\
+                            'before you enter the desintation plate ID.', 'left')
+        
         with st.form('rodentity_upload_form', clear_on_submit=True):
             epps_col1, _ = st.columns([1,1])
             rodentity_epps = epps_col1.file_uploader(
@@ -653,7 +662,7 @@ def load_rodentity_data(key):
                         st.experimental_rerun()
                         
                    
-def load_custom_manifests(key):
+def upload_custom_manifests(key):
     """ Demonstration upload panel for custom manifests """
     exp = st.session_state['experiment']
     warning_area = st.session_state['message_area']
@@ -661,6 +670,11 @@ def load_custom_manifests(key):
     if 'custom' not in exp.unassigned_plates or not exp.unassigned_plates['custom']:
         exp.unassigned_plates['custom'] = {'None':{}}
     with st.expander('Upload custom manifests', expanded=True):
+        stutil.custom_text('p', '#7f8b8f', 'Upload the custom manifests and '+\
+                          f'<span style="color: {FORM_BUTTON_COLOUR}">Submit </span>. Assign each file to a plate '+\
+                           'using the selectboxes, then enter a destination plate ID and '+\
+                          f'<span style="color: {FORM_BUTTON_COLOUR}">Accept </span>.', 'left')
+        
         with st.form(key='manifest_upload_form', clear_on_submit=True):
             col1, _ = st.columns([1,1])
             with col1:
@@ -717,15 +731,17 @@ def load_custom_manifests(key):
     exp.save()
 
 
-def provide_barcodes(key, pcr_stage):
+def add_barcodes(key, pcr_stage):
     """
     :param key: unique key for the input widgets
     """
     stutil.add_vertical_space(1)
-    st.write('**Add plate barcodes**')
+    #st.write('**Add plate barcodes**')
     exp = st.session_state['experiment']
     pcr_col, taqwater_col = st.columns(2)
+    
     with pcr_col.form('Add PCR plate barcode', clear_on_submit=True):
+
         pcr_plate_barcode = st.text_input('PCR Plate Barcode', \
                 placeholder='Type in the barcode for PCR plate', key='pcr_plate_barcode' + key)
         pcr_plate_entered = st.form_submit_button('Add')
@@ -764,14 +780,18 @@ def provide_barcodes(key, pcr_stage):
 
 
 def upload_miseq_fastqs():
+    """
+    Widget for finding .fastq files in the user's local computer. 
+    """
     exp = st.session_state['experiment']
     if not exp.locked:
-        st.warning(
-                'Uploading sequence files will lock previous stages'+
-                'of the pipeline, preventing changes to plate layouts')
-    st.markdown(
-            '<h4 style="color:#000000">Add Miseq FASTQ files to experiment</h4>', 
-            unsafe_allow_html=True)
+        st.warning('Uploading sequence files will lock previous stages'+
+                   'of the pipeline, preventing changes to plate layouts')
+        
+    st.subheader('Add Miseq FASTQ files to the experiment', 
+                 help='Use the arrows and selectbox to navigate your local directory and '+\
+                      'find the folder containing your FASTQ files.')
+    
     fastq_path = dc.st_directory_picker("Select location of Miseq FASTQ files")
     fastq_files = [f for f in fastq_path.glob('*.fastq*')] + [f for f in fastq_path.glob('*.fq*')]
     if len(fastq_files) > 0:
@@ -779,6 +799,7 @@ def upload_miseq_fastqs():
         if len(fastq_files) > 1:
             st.write(f"...")
             st.write(f"{len(fastq_files)}. {str(fastq_files[-1])}")
+
     import_fastqs = st.button('Import FASTQs', type='primary')
     file_field = st.empty()
     copy_progress = st.progress(0)

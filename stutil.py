@@ -20,10 +20,16 @@ def add_vertical_space(num_lines: int):
   for line in range(num_lines):
     st.write("")
 
+def hline():
+   """
+   Add a line across the page
+   """
+   st.write('***')
 
-def custom_text(size, color, text, align="center", style="normal"):
+
+def custom_text(size, color, text, align="center", style="normal", padding='0px'):
     """
-    Centred text
+    Centred customised streamlit text
     Args:
         size (str): style size, either h1-6 or p
         color (str): can use hex # for a specific colour
@@ -32,6 +38,7 @@ def custom_text(size, color, text, align="center", style="normal"):
         str: Text with the size and colour implemented for html markdown.
     """
     custom_css = f'<{size} style="text-align:{align};'+\
+                 f'padding:{padding};'+\
                  f'font-style:{style};'+\
                  f'color:{color}">'+\
                  f'{text}</{size}>'

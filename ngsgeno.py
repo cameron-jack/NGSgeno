@@ -25,7 +25,6 @@ import pandas as pd
 
 import streamlit as st
 import streamlit.components.v1 as components
-import stutil as stutil
 
 from bin.experiment import Experiment, EXP_FN, load_experiment
 try:
@@ -53,6 +52,7 @@ except ModuleNotFoundError:
 import extra_streamlit_components as stx
 import display_components as dc
 import load_data as ld
+from stutil import add_vertical_space, custom_text, hline
 import asyncio
 from time import sleep
 
@@ -236,26 +236,52 @@ def show_info_viewer_checkbox():
     """
     Allows the user to turn the info viewer panel on and off
     """
-    if 'show_info_viewer' not in st.session_state:
-        st.session_state['show_info_viewer'] = False
+    set_session_state('show_info_viewer', False)
     
-    if st.checkbox('Info Viewer'):
+    if st.toggle('Info Viewer'):
         st.session_state['show_info_viewer'] = True
     else:
         st.session_state['show_info_viewer'] = False
 
-
-def main():
+def unlocked(exp):
     """
-    The NGSgeno "Xplorer" application. Allows full control of all sections of the pipeline,
-    and displays all aspects of the experiment state at any time.
+    Checks whether the experiment is locked. An experiment will be locked if it the user has uploaded sequence files
+    from Miseq. 
+    Args:
+        exp (st.session_state['experiment']):
+    Returns:
+        (boolean) True if the experiment is not locked, False if it is
     """
-    st.set_page_config(
-        page_title="NGS Genotyping",
-        page_icon="ngsg_icon.png",
-        layout="wide"
-    )
+    if exp.locked:
+        st.warning(f'Experiment {exp.name} locked from further modification')
+        return False
+    return True
 
+def set_session_state(key, value):
+    """
+    Initialises a session state with the value if the key is not in session state.
+    Args:
+        key (str): for the st.session_state dictionary
+        value (str or None): value for the key in st.session_state
+    """
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+def create_tabs(tab_data):
+    """
+    Create tabs from streamlit_extra_components. Assigns ID through enumerating given list.
+    Args:
+        tab_data (list): list of tuples containg the name and description of each tab
+    Returns
+        Create tab bar
+    """
+    return stx.tab_bar(data=[
+        stx.TabBarItemData(id=i+1, title=title, description=desc)
+        for i, (title, desc) in enumerate(tab_data)
+    ], return_type=int)
+
+def add_css():
+    #CSS
     st.markdown('''
     <style>
         .stApp [data-testid="stToolbar"]{
@@ -265,6 +291,16 @@ def main():
      </style>
      ''', unsafe_allow_html=True)
     
+    #remove drag and drop labels from upload buttons. Class name 'css-9ycgxx' could change in future streamlit versions
+    hide_label = """
+    <style>
+        .css-9ycgxx {
+            display: none;
+        }
+    </style>
+    """
+    st.markdown(hide_label, unsafe_allow_html=True)
+
     #css for all form_submit_buttons
     form_button_css = """
     <style>
@@ -328,111 +364,279 @@ def main():
     </style>
     """
     st.markdown(secondary_button_css, unsafe_allow_html=True)
+    
 
-   
+def add_new_folder(folder_name):
+    """
+    *Setting Up*
+    Args:
+        folder_name (str): name of new folder from user
+    Return:
+        str or None: An error message if folder exists or there's a fatal path error. None if there's no error.
+    """
+    add_run_folder_str = 'run_' + folder_name
+    exp, msg = create_run_folder(add_run_folder_str)
+    print(f'{exp=}, {msg=}')
+    if exp:
+        exp.save()                                                                      
+        st.session_state['experiment'] = exp
+        st.experimental_rerun()    
+    else:
+        if 'already exists' in msg:
+            return "Folder name already exists"
+        else:
+            return "Fatal path error: " + msg
+    
+def load_run_folder(run_folder):
+    """
+    *Setting Up*
+    Load experiment from existing folder and initilialise pipeline stages.
+    Args:
+        run_folder (str): Name of existing folder selected to load.
+    Return:
+        str or None: Error message if could not load experiment or invalid file. None if there's no error.
+    """
+    if st.session_state['experiment'] == None or st.session_state['experiment'].name != run_folder:
+        ch_run_path = 'run_' + run_folder
+        if os.path.exists(ch_run_path):
+            if not os.path.exists(ch_run_path):
+                return "Folder not found: " + ch_run_path
+            
+            exp = load_experiment(ch_run_path)
+            if not exp:
+                return "Could not load experiment from: " + ch_run_path
+            elif ch_run_path.endswith(exp.name):
+                #experiment loaded
+                st.session_state['experiment'] = exp
+                #Set session state for pipeline stages.
+                st.session_state['pipeline_stage'] = 0
+                st.session_state.update({key: 1 for key in ['load_tab', 'nimbus_tab', 'primer_tab', 
+                                                            'index_tab', 'miseq_tab', 'allele_tab']})
+ 
+                st.experimental_rerun()
+            else:
+                return "Invalid experiment file in: " + ch_run_path
+    
+    return None
 
+def set_nimbus_title(exp, efs, nfs):
+    """
+    *Stage 2: Nimbus*
+    Title for nimbus stage
+    Args:
+        exp (st.session_state['experiment'])
+        efs (str): file path to echo files
+        nfs (str): file path for nimbus files
+    Return
+        str or None: title
+    """
+    #first stage sample files haven't been loaded
+    if not st.session_state['experiment'].dest_sample_plates:
+        return "Load data inputs to enable Nimbus input file generation."
+    else:
+        # do we have any Nimbus inputs to generate + download
+        echo_files_exist = len(efs) == len(nfs) and len(efs) != 0
+        yet_to_run = len(exp.dest_sample_plates) - len(nfs)
+
+        if echo_files_exist:
+            return 'All Echo inputs received.'
+        if yet_to_run > 0:
+            return f'{str(yet_to_run)} 96-well plate sets need Nimbus input file generation' 
+
+def generate_download_buttons(nfs):
+    """
+    *Stage 2: Nimbus*
+    Generates the echo file download buttons
+    Args:
+        nfs (str): nimbus file paths
+    """
+
+    _,dl_col1,dl_col2,dl_col3,dl_col4,_= st.columns([1,9,6,9,6,1])
+    
+    #print(f"{nfs=} {efs=} {xbcs=}")
+    for i,nf in enumerate(nfs):
+        nimbus_fn=Path(nf).name
+
+        if (i+1) % 2 != 0:
+            with dl_col1:
+                custom_text("p", "#4b778c", nimbus_fn, "left")
+
+            dl_col2.download_button("Download ", 
+                                    open(nf), 
+                                    file_name=nimbus_fn, 
+                                    key='nimbus_input'+str(i), 
+                                    help=f"Download Nimbus input file {nf}")
+    
+        else:
+            with dl_col3:
+                custom_text("p", "#4b778c", nimbus_fn, "left")
+        
+            dl_col4.download_button("Download ", 
+                                    open(nf), file_name=nimbus_fn,\
+                                    key='nimbus_input'+str(i), 
+                                    help=f"Download Nimbus input file {nf}")
+
+def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
+    """
+    *Stage 3: PCR1*
+    Display for generate echo pcr 1 picklist
+    Args:
+        exp (st.session_state['experiment])
+        DNA_plates: included DNA plates
+        PCR_plates: included PCR plates
+        taqwater_plates: included Taq/water plates
+    """
+    pcr1_messages = []
+    if not exp.check_ready_pcr1(DNA_plates,\
+                                PCR_plates, \
+                                taqwater_plates, \
+                                pcr1_messages):
+        
+        for msg in pcr1_messages:
+            st.warning(msg)
+    
+    else:
+        _,button_col,_ = st.columns([2, 2, 1])
+        echo_picklist_go = button_col.button('Generate Echo Picklists',
+                                              key='echo_pcr1_go_button',
+                                              type='primary')
+        if echo_picklist_go:
+            success = run_generate(exp, 
+                                   exp.generate_echo_PCR1_picklists, 
+                                   DNA_plates, 
+                                   PCR_plates, 
+                                   taqwater_plates)
+            if not success:
+                st.error('Picklist generation failed. Please see the log')
+            else:
+                st.session_state['pcr1 picklist'] = True
+
+def get_echo_picklist_btn_pcr2(exp, PCR_plates, taqwater_plates, index_plates, amplicon_plates):
+    """
+    *Stage 4: PCR2*
+    TODO: Combine this with the PCR1 function
+    Display for generate echo pcr 1 picklist
+    Args:
+        exp (st.session_state['experiment])
+        PCR_plates:
+        taqwater_plates:
+        amplicon_plates
+    """
+    pcr2_messages = []  # pass by reference
+    if not exp.check_ready_pcr2(PCR_plates, taqwater_plates, 
+                            index_plates, amplicon_plates, pcr2_messages):
+        
+        for msg in pcr2_messages:
+            st.warning(msg)
+
+    _,button_col,_ = st.columns([2, 2, 1])
+
+    echo_picklist_go = button_col.button('Generate Echo Picklists',\
+                                         key='echo_pcr2_go_button', 
+                                         type='primary')
+
+    if echo_picklist_go:
+        success = run_generate(exp, 
+                               exp.generate_echo_PCR2_picklists, 
+                               PCR_plates,
+                               index_plates, 
+                               taqwater_plates, 
+                               amplicon_plates)
+        if not success:
+            st.error('Picklist generation failed. Please see the log')
+        else:
+            st.session_state['pcr2 picklist'] = True
+    
+
+def get_miseq_download_btn(exp):
+    """
+    *Stage 5: Miseq*
+    Args:
+        exp (st.session_state['experiment])
+    """
+    _, miseq_col1, miseq_col2, _ =  st.columns([2,1,1,2])
+    for fp in exp.get_miseq_samplesheets():
+        
+        fp_name = str(Path(fp).name)
+        with miseq_col1:
+            add_vertical_space(1)
+            custom_text('strong', 'black', fp_name, align='right')
+        
+        with miseq_col2:
+            download_miseq = st.download_button(label='Download', 
+                                                data=open(fp, 'rt'), 
+                                                file_name=fp_name, 
+                                                mime='text/csv', 
+                                                key='dnld_samplesheet_'+str(fp), 
+                                                type='primary')
+    
+
+def main():
+    """
+    The NGSgeno "Xplorer" application. Allows full control of all sections of the pipeline,
+    and displays all aspects of the experiment state at any time.
+    """
+    st.set_page_config(
+        page_title="NGS Genotyping",
+        page_icon="ngsg_icon.png",
+        layout="wide"
+    )
+
+    add_css()
+
+    #Initialise experiment
     if 'experiment' not in st.session_state:
         st.session_state['experiment'] = None
         print('Current experiment set to clear')
 
-    if 'folder' not in st.session_state:
-        st.session_state['folder'] = None
-    #Folder inputs
-    
-    #remove drag and drop labels from upload buttons. Class name 'css-9ycgxx' could change in future streamlit versions
-    hide_label = """
-    <style>
-        .css-9ycgxx {
-            display: none;
-        }
-    </style>
-    """
-    st.markdown(hide_label, unsafe_allow_html=True)
+    set_session_state('folder', None)
+    set_session_state('stage', None)
 
-    logo_col, ver_col,_, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,2,2,2,1,2,1])
-    # current_experiment_col, _ = st.columns(2)
-    # with title_column:
-    #     st.markdown('<h3 style="align:center; color:#2040a1">NGS Genotyping</h3>', unsafe_allow_html=True)
-    #     
-    #     if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
-    #         experiment_title += (st.session_state['experiment'].name)
-    #     else:
-    #         experiment_title += ('None')
-
-    #     st.markdown(f'<p style="color:#83b3c9">{experiment_title}</p>', unsafe_allow_html=True)
+    #Title
     experiment_title = 'Current Experiment: '
     if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
              experiment_title += (st.session_state['experiment'].name)
     else:
              experiment_title += ('None')
-
+    
+    #Version (git)
     current_status, current_ver = get_status_output("git describe")
-    ver_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', unsafe_allow_html=True)
 
-    logo_col.image('ngsg_explorer.png', caption=f'{experiment_title}')
-
-
-
-    add_run_folder = new_folder_col.text_input('Create new run folder')
-    create_button_col.write('')
-    create_button_col.write('')
-    add_run_folder_button = create_button_col.button('Create')
-    #create_run_folder_button = ftab1.button(label='Create', key='create_run_folder_button')
-
+    #Experiment folders
     try:
         existing_run_folders = get_run_folders()
     except Exception as exc:
         print(f'Cannot locate NGSgeno folder {exc}', file=sys.stderr)
         return
 
+    #Header set up
+    logo_col, ver_col,_, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,2,2,2,1,2,1])
+    ver_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', unsafe_allow_html=True)
+    logo_col.image('ngsg_explorer.png', caption=f'{experiment_title}')
+
+    #Run folder buttons
+    new_folder = new_folder_col.text_input('Create new run folder')
+    with create_button_col:
+        add_vertical_space(2)
+    add_new_folder_button = create_button_col.button('Create')
     run_folder = ex_folder_col.selectbox("Select a run folder to open", existing_run_folders)
-    error_msg=''
-
-    #error message comes up now after entering a new folder name - need to fix
-    if add_run_folder and add_run_folder_button:
-        add_run_folder_str = 'run_' + add_run_folder
-        exp, msg = create_run_folder(add_run_folder_str)
-        if exp:
-            exp.save()                                                                      
-            st.session_state['experiment'] = exp
-            st.experimental_rerun()
-        else:
-            if 'already exists' in msg:
-                error_msg = "Folder name already exists"
-            else:
-                error_msg = "Fatal path error: " + msg
-
-    if 'stage' not in st.session_state:
-        st.session_state['stage'] = None
-
+    
+    #Load experiment / create new
+    error_msg = None
+    if new_folder and add_new_folder_button:
+        print(f'{new_folder=}')
+        error_msg = add_new_folder(new_folder)
     if run_folder:
-        if st.session_state['experiment'] == None or st.session_state['experiment'].name != run_folder:
-            
-            ch_run_path = 'run_' + run_folder
-            if os.path.exists(ch_run_path):
-                exp = load_experiment(ch_run_path)
-                #st.session_state['folder'] = 'existing'
-                if not exp:
-                    error_msg = "Could not load experiment from: "+ ch_run_path
-                elif ch_run_path.endswith(exp.name):
-                    # success!
-                    st.session_state['experiment'] = exp
-                    st.session_state['pipeline_stage'] = 0
-                    st.session_state['load_tab'] = 1
-                    st.session_state['nimbus_tab'] = 1
-                    st.session_state['primer_tab'] = 1
-                    st.session_state['index_tab'] = 1
-                    st.session_state['miseq_tab'] = 1
-                    st.session_state['allele_tab'] = 1
-                    st.experimental_rerun()
-                else:
-                    error_msg = "Invalid experiment file in: " + ch_run_path
-        
-    new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
-            unsafe_allow_html=True)
+        error_msg = load_run_folder(run_folder)
+    if error_msg:
+        with new_folder_col:
+            custom_text("p", "#FF0000", error_msg)
 
+#================================================== START EXPERIMENT ===================================================
     if st.session_state['experiment']:
         exp = st.session_state['experiment']
+
+        #Pipeline stepper bar set up
         pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Reports"]
         pipeline_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
         if pipeline_stage:
@@ -445,439 +649,468 @@ def main():
                 else:
                     st.session_state['pipeline_stage'] = 0
             pipeline_stage = st.session_state['pipeline_stage']
-        
-        #info_bar = dc.info_bar('central')
 
-        if 'info_expand' not in st.session_state:
-            st.session_state['info_expand'] = False
+        #Initialise info viewer checkbox
+        set_session_state('info_expand', False)
         
-        subsection = st.container()
+        subsection = st.container() 
         message_area = st.container()
         st.session_state['message_area'] = message_area
 
-        #Load data
+        #---------------------------------------------- STAGE 1: Load data ---------------------------------------------
         if pipeline_stage == 0:
+            _,help_col,_ = subsection.columns([1,4,1]) 
             tab_col1, tab_col2 = subsection.columns([9,1])
-            with tab_col1:
-                load_data_tab = stx.tab_bar(data=[
-                    stx.TabBarItemData(id=1, title="Load Samples", description=""),
-                    stx.TabBarItemData(id=2, title="Load Consumables", description="")
-                    #stx.TabBarItemData(id=3, title="View Data", description="")
-                ], return_type=int)                            
-            #dc.info_viewer()  
-            if not load_data_tab:
-                if 'load_tab' not in st.session_state:
-                    st.session_state['load_tab'] = 1
-                load_data_tab = st.session_state['load_tab']
-
+            tip_col, _ = st.columns(2)
             info_holder = st.container()
+            summary_holder = st.container()
+        
+            with help_col:
+                custom_text(size='p', 
+                            color=ld.HELP_COLOUR, 
+                            text='Step 1: Upload sample data and assign to a DNA plate. '+\
+                                 'Then upload the assay lists, and optionally other files.', 
+                            align='left',
+                            style="italic")    
             
-            # load sample data
+            with tab_col1:
+                load_data_tab = create_tabs([("Load Samples", ""),("Load Consumables", "")])                   
+            if not load_data_tab:
+                set_session_state('load_tab', 1)
+                load_data_tab = st.session_state['load_tab']
+            
+            # ******** TAB 1: Load sample data  ***********
             if load_data_tab == 1:
-                summary_holder = st.container()
-                if exp.locked:
-                    st.warning(f'Experiment {exp.name} locked from further modification')
-                else:
-                    if 'run queue' not in st.session_state:
-                        st.session_state['run queue'] = []
-                    ld.load_rodentity_data('rodentity_load1')
-                    ld.load_custom_manifests('custom_load1')
-                st.session_state['load_tab'] = 1
+                if unlocked(exp):
+                    set_session_state('run queue', [])
+                    
+                    st.subheader("Upload Sample Files")
+                    ld.upload_rodentity_data(key='rodentity_load1')
+                    ld.upload_custom_manifests(key='custom_load1')
+
                 with summary_holder:
+                    tip_col.info('Upload your sample files, either from Rodentity files or as custom manifests.')
+                    st.subheader("Sample Summary")
                     summary = exp.summarise_inputs()
                     if len(summary) > 1:
                         dc.display_samples('load_data_tab1', height=180)
+                
+                st.session_state['load_tab'] = 1
 
-            #load consumables, references and assays/primer mappings
+            # ******** TAB 2: Load consumables, references and assays/primer mappings, edit volumes ********
             if load_data_tab == 2:
+                st.info('Upload extra files (consumables). **Ensure that you have at least uploaded '+\
+                        'your assay list in order to generate Echo files in Step 2. (Nimbus)**. '+\
+                        'You can also edit the volumes for DNA, primers, indexes, and taq and water here.')
+                
+                st.subheader("Summary")
                 dc.display_consumables('load_data_tab2')
-                if exp.locked:
-                    st.warning(f'Experiment {exp.name} locked from further modification')
-                else:
-                    if 'upload stage' not in st.session_state:
-                        st.session_state['upload stage'] = None 
+                if unlocked(exp):
+                    set_session_state('upload stage', None)
+                    add_vertical_space(1)
+                    
+                    st.subheader("Custom Volumes")
                     ld.custom_volumes(exp)
+                    add_vertical_space(1)
+
+                    st.subheader("Upload Consumables")
                     ld.upload_extra_consumables('consumables_load2')
                     ld.upload_pcr1_files('pcr1_load2')
                     ld.upload_pcr2_files('pcr2_load2')
+                
                 st.session_state['load_tab'] = 2
 
             with tab_col2:
-                stutil.add_vertical_space(1)
+                add_vertical_space(1)
                 show_info_viewer_checkbox()
+
             with info_holder:
                 if st.session_state['show_info_viewer']:
                     dc.info_viewer(1)
         
-        #Nimbus
+        #------------------------------------------------ STAGE 2: Nimbus ----------------------------------------------
         if pipeline_stage == 1:
-            nim_tab1_err = ''
-            nimbus_title = ''
+            exp = st.session_state['experiment']
 
-            tab_col1, tab_col2 = st.columns([9,1])
-            with tab_col1:
-                nimbus_tab = stx.tab_bar(data=[
-                    stx.TabBarItemData(id=1, title="Download", description="Nimbus input files"),
-                    stx.TabBarItemData(id=2, title="Upload", description="Echo input files")
-                    #stx.TabBarItemData(id=3, title="View Data", description="")
-                ], return_type=int)
+            _,help_col,_ = subsection.columns([1,4,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
             info_holder = st.container()
-            
-            
+
+            with help_col:
+                custom_text(size='p', 
+                            color=ld.HELP_COLOUR, 
+                            text='Step 2: Generate and download files for the Nimbus. After running these, upload '+\
+                                  'the outputs (ie Echo input files.)', 
+                            align='left',
+                            style="italic")
+                
+            with tab_col1:
+                nimbus_tab = create_tabs([("Download", "Nimbus input files"),("Upload", "Echo input files")])
             if not nimbus_tab:
-                if 'nimbus_tab' not in st.session_state:
-                    st.session_state['nimbus_tab'] = 1
+                set_session_state('nimbus_tab', 1)
                 nimbus_tab = st.session_state['nimbus_tab']
 
-            exp = st.session_state['experiment']
+            #nimbus fp, echo pb, not barcodes
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
 
-            #download nimbus
+            # ******** TAB 1: Download nimbus ********
             if nimbus_tab == 1:
-                if exp.locked:
-                    st.warning(f'Experiment {exp.name} locked from further modification')
-                else:
-                    if not st.session_state['experiment'].dest_sample_plates:
-                        nimbus_title = "Load data inputs to enable Nimbus input file generation."
-                    else:
-                        # do we have any Nimbus inputs to generate + download
-                        yet_to_run = len(exp.dest_sample_plates) - len(nfs)
-                        if len(efs) == len(nfs) and len(efs) != 0:  # already exists
-                            nimbus_title = 'All Echo inputs received.'
-                        if yet_to_run > 0: 
-                            nimbus_title += ' ' + str(yet_to_run) + " 96-well plate sets need Nimbus input file generation"
+                if unlocked(exp):
+                    st.info('At this Nimbus stage, generate the files to input into the Nimbus. '+\
+                            '**For generation, make sure you have at least uploaded sample plates and an assay list**')
+                    
+                    _, header_col, _ = st.columns([2,2,1])
+                    header_col.subheader('Generate Echo Files')
 
-                            plates_to_run = [dest_plate for dest_plate in exp.dest_sample_plates\
-                                         if all([dest_plate not in nf for nf in nfs])]
-                            plates_to_run_str = '\n'.join(plates_to_run)
-                                
-                    st.markdown(f'<h5 style="text-align:center;color:#f63366">{nimbus_title}</h5>',\
-                             unsafe_allow_html=True)
-                    stutil.add_vertical_space(1)
-
-                    run_gen_nimbus = st.button('Generate Nimbus input files', type='primary')
+                    #Subtitle
+                    nimbus_title = set_nimbus_title(exp, nfs, efs)
+                    if nimbus_title:
+                        _, title_col,_ = st.columns([1, 4, 1])
+                        with title_col:
+                            custom_text('h5', '#83b3c9', set_nimbus_title(exp, nfs, efs))
+                    add_vertical_space(1)
+                    
+                    #Generate files button
+                    _, btn_col,_ = st.columns([2,2,1])
+                    with btn_col:
+                        run_gen_nimbus = st.button('Generate Nimbus input files', type="primary")
+                    
+                    #Generate files
                     if run_gen_nimbus:
-                        success = run_generate(exp, exp.generate_nimbus_inputs)
+                        success = run_generate(exp, exp.generate_nimbus_inputs)    
                         if not success:
-                            nim_tab1_err = "Failed to generate Nimbus files. Please read the log."
+                            custom_text("p", "#FF0000", 
+                                        "Failed to generate Nimbus files. Please read the log.", 
+                                        align="left")
                         else:
+                            add_vertical_space(2)
                             nfs, efs, xbcs = exp.get_nimbus_filepaths()
+                            generate_download_buttons(nfs)
 
-                    if nim_tab1_err:
-                        st.write(f'<p style="color:#FF0000">{nim_tab1_err}</p>', unsafe_allow_html=True)
-
-                _,dl_col1,dl_col2,dl_col3,dl_col4,_= st.columns([1,9,6,9,6,1])
-                
-                #Generate file names to download + download buttons
-                #print(f"{nfs=} {efs=} {xbcs=}")
-                for i,nf in enumerate(nfs):
-                    nimbus_fn=Path(nf).name
-
-                    if (i+1) % 2 != 0:
-                        dl_col1.markdown('<p style="text-align:left;color:#4b778c;padding:5px">'+
-                                        f'{nimbus_fn}</p>',
-                                        unsafe_allow_html=True)
-
-                        dl_col2.download_button("Download ", 
-                                                open(nf), 
-                                                file_name=nimbus_fn, 
-                                                key='nimbus_input'+str(i), 
-                                                help=f"Download Nimbus input file {nf}")
-                
-                    else:
-                        dl_col3.markdown('<p style="text-align:left;color:#4b778c;padding:5px">'+
-                                        f'{nimbus_fn}</p>',
-                                        unsafe_allow_html=True)
-                 
-                        dl_col4.download_button("Download ", 
-                                                open(nf), file_name=nimbus_fn,\
-                                                key='nimbus_input'+str(i), 
-                                                help=f"Download Nimbus input file {nf}") 
                 st.session_state['nimbus_tab'] = 1
 
-            #Upload nimbus
+            #******** TAB 2: Upload echo input files ********
             if nimbus_tab == 2:
-                ld.upload_echo_inputs('1')                
+                if unlocked(exp):
+                    st.info('After running the Nimbus, upload the csv files that are required to run the Echo. '+\
+                                'These should match the DNA plate barcodes.')
+                    _, header_col, _ = st.columns([2,2,1])
+                    with header_col:
+                        st.subheader('Upload Echo Input Files')
+
+                    ld.upload_echo_inputs('1')
+
                 st.session_state['nimbus_tab'] = 2
 
+            #Info viewer
             with tab_col2:
-                stutil.add_vertical_space(2)
+                add_vertical_space(2)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
                     dc.info_viewer(1)
 
-        #Primer PCR
+        #-------------------------------------------- STAGE 3: PCR 1 Primers ------------------------------------------
         if pipeline_stage == 2:
-
             exp = st.session_state['experiment']
-            st.session_state['assay_filter'] = True
             pcr_stage = 1
-
-            #set up tabs
-            tab_col1, tab_col2 = st.columns([9,1])
-            with tab_col1:
-                primer_tab = stx.tab_bar(data=[
-                    stx.TabBarItemData(id=1, title="PCR 1", description="Components"),
-                    #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
-                    stx.TabBarItemData(id=2, title="Generate", description="Picklists")
-                ], return_type=int)
-            info_holder = st.container()
-            
-            if not primer_tab:
-                if 'primer_tab' not in st.session_state:
-                    st.session_state['primer_tab'] = 1
-                primer_tab = st.session_state['primer_tab']
-            
-            #nimbus fp, echo fp, barcodesnot in echo
+            st.session_state['assay_filter'] = True
+            #nimbus fp, echo fp, barcodes not in echo
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
-            missing_nims = ['Echo_384_COC_0001_'+util.unguard(xbc, silent=True)+'_0.csv' for xbc in xbcs]
+            #missing_nims = ['Echo_384_COC_0001_'+util.unguard(xbc, silent=True)+'_0.csv' for xbc in xbcs]
 
-            #PCR 1 info & adding in barcodes / files
+            _,help_col, _ = subsection.columns([1,4,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
+            info_holder = st.container()
+            tip_col, _ = st.columns([2,1])
+            primer_checklist = st.expander('Plates')
+
+            #Help
+            with help_col:
+                custom_text(size='p', 
+                            color=ld.HELP_COLOUR, 
+                            text='Step 3: Upload the primer files and add barcodes '+\
+                                 'for the first PCR reaction. Then generate and download the picklists.', 
+                            align='left',
+                            style="italic")
+            #Tabs
+            with tab_col1:
+                primer_tab = create_tabs([("PCR 1", "Components"), ("Generate", "Picklists")])
+            if not primer_tab:
+                set_session_state("primer_tab", 1)
+                primer_tab = st.session_state['primer_tab']
+
+            with primer_checklist:
+                st.subheader('Plate checklist',
+                             help='These are the provided plates involved in the reaction. '+\
+                                  'You can choose to include / exclude them from the picklist file')
+            
+            #******** TAB 1: PCR 1 info & adding barcodes and files ********
             if primer_tab == 1:
-                if exp.locked:
-                    st.warning(f'Experiment {exp.name} locked from further modification')
-                else:
-                    st.write('Plate checklist')
-                    primer_checklist = st.container()
-                    st.write('***')
+                if unlocked(exp):
+                    tip_col.info('Provide the barcodes for PCR plates and Taq/water plates and '+\
+                            'upload primer layouts and volumes to meet the requirements.')
+                    
+                    #TODO: Checklist doesn't update the components
                     if efs:
                         with primer_checklist:
                             included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
                                         plate_checklist_expander(efs, pcr_stage=pcr_stage)
                             
                         if included_DNA_plates:
+                            st.subheader('PCR 1 Components', help='Required plates and volumes for the PCR reaction')
                             dc.display_pcr_components(dna_pids=included_DNA_plates)
                             dc.display_pcr1_components(dna_pids=included_DNA_plates)
+                            hline()
                     else:
-                        no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
-                        st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
-                                unsafe_allow_html=True)
+                        custom_text('h5', '#f63366', "Load Nimbus output files to enable PCR stages")
 
-                    #barcodes for PCR and taq and water, upload files for primer, adjust volumes
-                    ld.provide_barcodes('barcodes_tab1', pcr_stage=pcr_stage)
-                    ld.upload_pcr1_files('pcr1_primer1')
+                    #Barcodes for PCR and taq and water, upload files for primer, custom volumes
+                    add_vertical_space(1)
+                    st.subheader('Add Barcodes', help='Add barcodes for plates')
+                    ld.add_barcodes(key='barcodes_tab1', pcr_stage=pcr_stage)
+                    add_vertical_space(1)
+
+                    st.subheader('Upload Files')
+                    ld.upload_pcr1_files(key='pcr1_primer1')
+                    add_vertical_space(1)
+
+                    st.subheader('Custom Volumes')
                     ld.custom_volumes(exp)
 
                 st.session_state['primer_tab'] = 1
-
-            #generate PCR 1 picklists
+                
+            #******** TAB 2: Generate PCR 1 picklists ********
             if primer_tab == 2:
-                if exp.locked:
-                    st.warning(f'Experiment {exp.name} locked from further modification')
-                else:
-                    st.write('Plate checklist')
-                    primer_checklist_exp = st.container()
-                    st.write('***')
+                if unlocked(exp):
+                    set_session_state('pcr1 picklist', False)
+
+                    tip_col.info('Ensure you have upload the primer layouts and volumes and provided plate barcodes '+\
+                                  'before generating the picklist.')
+
                     if not efs:
                         st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
                     else:
-                        with primer_checklist_exp:
-                            included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                    plate_checklist_expander(efs,pcr_stage=1)
+                        with primer_checklist:
+                            included_DNA_plates,included_PCR_plates,\
+                                    included_taqwater_plates = plate_checklist_expander(efs, pcr_stage=pcr_stage)
+
                             st.session_state['included_DNA_pids'] = included_DNA_plates
                         
+                        #show generate button and run generate
                         if included_DNA_plates:
-                            pcr1_messages = []
-                            if not exp.check_ready_pcr1(included_DNA_plates,\
-                                        included_PCR_plates, included_taqwater_plates, pcr1_messages):
-                                for msg in pcr1_messages:
-                                    st.warning(msg)
-                            else:
-                                _,picklist_button_col,_ = st.columns([2, 2, 1])
-                                picklist_button_col.write('')
-                                echo_picklist_go = picklist_button_col.button('Generate Echo Picklist',
-                                        key='echo_pcr1_go_button', type='primary')
-                                if echo_picklist_go:
-                                    success = run_generate(exp, exp.generate_echo_PCR1_picklists, 
-                                            included_DNA_plates, included_PCR_plates, included_taqwater_plates)
-                                    if not success:
-                                        st.write('Picklist generation failed. Please see the log')
-                        
-                dc.show_echo1_outputs() 
+                            get_echo_picklist_btn_pcr1(exp, included_DNA_plates, included_PCR_plates,\
+                                                                included_taqwater_plates)
+                #show download buttons            
+                if st.session_state['pcr1 picklist']:
+                    dc.get_echo1_downloads_btns()
+
                 st.session_state['primer_tab'] = 2
             
+            #info viewer
             with tab_col2:
-                stutil.add_vertical_space(2)
+                add_vertical_space(2)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
                     dc.info_viewer(1)
 
-        #Index PCR
+        #--------------------------------------------- STAGE 4: PCR 2 Index --------------------------------------------
         if pipeline_stage == 3:
-
             exp = st.session_state['experiment']
-            tab_col1, tab_col2 = st.columns([9,1])
             pcr_stage = 2
-
-            #tab setup
-            with tab_col1:
-                index_tab = stx.tab_bar(data=[
-                    stx.TabBarItemData(id=1, title="PCR 2", description="Components"),
-                    #stx.TabBarItemData(id=2, title="Provide", description="Plates"),
-                    stx.TabBarItemData(id=2, title="Generate", description="Picklists")
-                ], return_type=int)
-            info_holder = st.container()
-            
-            if not index_tab:
-                if 'index_tab' not in st.session_state:
-                    st.session_state['index_tab'] = 1
-                index_tab = st.session_state['index_tab']
 
             #nimbus fp, echo fp, barcodes not in echo
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
-            print(f'{efs=}')
-            missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
             available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
-            
-            #PCR 2 components
-            if index_tab == 1:
-                if exp.locked:
-                    st.warning(f'Experiment {exp.name} locked from further modification')
-                else:
-                    st.write('Plate checklist')
-                    index_checklist = st.container()
-                    st.write('***')
-                    title_holder = st.empty()
-                    pcr_comp_holder = st.container()
+            #missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
 
-                    #provide barcodes for pcr & taq/water, upload index files, adjust volumes
-                    ld.provide_barcodes('index_barcodes', 2)
-                    ld.upload_pcr2_files('pcr2_index1')
+            #Container set up
+            _,help_col, _ = subsection.columns([1,4,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
+            info_holder = st.container()
+            tip_col, _ = st.columns([2,1])
+            index_checklist = st.expander('Plates')
+            title_holder = st.empty()
+            pcr_comp_holder = st.container()
+
+            with help_col:
+                custom_text(size='p', 
+                            color=ld.HELP_COLOUR, 
+                            text='Step 4: Upload the index files and add barcodes '+\
+                                 'for the second PCR reaction. Then generate and download the picklists.', 
+                            align='left',
+                            style="italic")
+            
+            with tab_col1:
+                index_tab = create_tabs([("PCR 2", "Components"), ("Generate", "Picklists")])
+            if not index_tab:
+                set_session_state('index_tab', 1)
+                index_tab = st.session_state['index_tab']
+            
+            with index_checklist:
+                st.subheader('Plate checklist',
+                             help='These are the provided plates involved in the reaction. '+\
+                                  'You can choose to include / exclude them from the picklist file')
+
+            #******** TAB 1: PCR 2 Components ********
+            if index_tab == 1:
+                if unlocked(exp):
+                    tip_col.info('Provide the barcodes for Taq/water plates and '+\
+                                  'upload index layouts and volumes to meet the requirements.')
+                    
+                    #Provide barcodes for pcr & taq/water, upload index files, adjust volumes
+                    st.subheader('Add Barcodes', help='Add barcodes for plates')
+                    ld.add_barcodes(key='index_barcodes', pcr_stage=pcr_stage)
+                    add_vertical_space(1)
+
+                    st.subheader('Upload Files')
+                    ld.upload_pcr2_files(key='pcr2_index1')
+                    add_vertical_space(1)
+
+                    st.subheader('Custom Volumes')
                     ld.custom_volumes(exp)
 
                     st.session_state['index_tab'] = 1
                     
                     if available_nimbus:
                         with index_checklist:
-                            included_PCR_plates, included_taqwater_plates, included_index_plates,\
-                                    included_amplicon_plates =\
-                                    plate_checklist_expander(available_nimbus, pcr_stage=pcr_stage)
+                            included_PCR_plates, included_taqwater_plates,included_index_plates, included_amplicon_plates =\
+                                            plate_checklist_expander(available_nimbus, pcr_stage)
+                            hline()
+                            
                         with pcr_comp_holder:
+                            st.subheader('PCR 2 Components')
                             dc.display_pcr_components()
-                            dc.display_pcr2_components(pcr_pids=included_PCR_plates, amplicon_pids=included_amplicon_plates)
-                            st.write('***')
+                            dc.display_pcr2_components(pcr_pids=included_PCR_plates, 
+                                                       amplicon_pids=included_amplicon_plates)
+                            hline()
+                            add_vertical_space(1)
                     else:
-                        no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
-                        title_holder.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
-                                unsafe_allow_html=True)
+                        with title_holder:
+                            custom_text('h5', '#f63366', "Load Nimbus output files to enable PCR stages")
+                        
                 st.session_state['index_tab'] = 1
 
-            #generate PCR 2 picklist
+            #******** TAB 2: Generate PCR 2 picklists ********
             if index_tab == 2:
-                if exp.locked:
-                    st.warning(f'Experiment {exp.name} locked from further modification')
-                else:
-                    st.write('Plate checklist')
-                    index_checklist = st.container()
-                    st.write('***')
+                if unlocked(exp):
+                    set_session_state('pcr2 picklist', False)
+
                     if not available_nimbus:
                         st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
                     else:
                         with index_checklist:
                             included_PCR_plates, included_taqwater_plates, included_index_plates,\
-                                    included_amplicon_plates =\
-                                    plate_checklist_expander(available_nimbus, pcr_stage=2)
-                        pcr2_messages = []  # pass by reference
-                        if not exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
-                                included_index_plates, included_amplicon_plates, pcr2_messages):
-                            for msg in pcr2_messages:
-                                st.warning(msg)
-                        else:
-                            _,picklist_button_col,_ = st.columns([2, 2, 1])
-
-                            echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
-                                        key='echo_pcr2_go_button', type="primary")
-
-                            picklist_button_col.write('')
-
-                            if echo_picklist_go:
-                                st.session_state['idx_picklist'] = True
+                                    included_amplicon_plates = plate_checklist_expander(available_nimbus, pcr_stage)
+                            hline()
                             
-                                success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_plates,
-                                        included_index_plates, included_taqwater_plates, included_amplicon_plates)
-                                if not success:
-                                    st.write('Picklist generation failed. Please see the log')
-
-                dc.show_echo2_outputs()
+                        get_echo_picklist_btn_pcr2(exp, 
+                                                   included_PCR_plates, 
+                                                   included_taqwater_plates, 
+                                                   included_index_plates, 
+                                                   included_amplicon_plates)
+                        
+                if st.session_state['pcr2 picklist']:
+                    dc.get_echo2_download_btns()
+                
                 st.session_state['index_tab'] = 2            
                 
+            #Info viewer
             with tab_col2:
-                stutil.add_vertical_space(2)
+                add_vertical_space(2)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
                     dc.info_viewer(1)
 
-        #Miseq
+        #----------------------------------------------- STAGE 5: Miseq ------------------------------------------------
         if pipeline_stage == 4:
-            tab_col1, tab_col2 = st.columns([9,1])
-            with tab_col1:
-                miseq_tab = stx.tab_bar(data=[
-                    stx.TabBarItemData(id=1, title="Download", description="Miseq Samplesheet"),
-                    stx.TabBarItemData(id=2, title="Upload", description="Miseq Sequence Files"),
-                ], return_type=int)
+            exp = st.session_state['experiment']
+            _,help_col, _ = subsection.columns([1,7,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
             info_holder = st.container()
+            tip_col, _ = st.columns([2,1])
             
-   
+            with help_col:
+                custom_text(size='p', 
+                            color=ld.HELP_COLOUR, 
+                            text='Step 5: Download the Miseq file. Upload reference sequences if you haven\'t already. '+\
+                                 'Once you get the Miseq sequences, you can upload them here as well.',
+                            align='left',
+                            style="italic")
+                add_vertical_space(1)
+
+            with tab_col1:
+                miseq_tab = create_tabs([("Download", "Miseq Samplesheet"), ("Upload", "Miseq Sequence Files")])
             if not miseq_tab:
-                if 'miseq_tab' not in st.session_state:
-                    st.session_state['miseq_tab'] = 1
+                set_session_state('miseq_tab', 1)
                 miseq_tab = st.session_state['miseq_tab']
 
-            stutil.add_vertical_space(1)
-            exp = st.session_state['experiment']
+            add_vertical_space(1)
+
+            #******* TAB 1: Download Miseq Samplesheet. *******
             if miseq_tab == 1:
-                _, miseq_col1, miseq_col2, _ =  st.columns([2,1,1,2])
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
-                ld.upload_reference_sequences('reference_miseq1')
+                
+                st.subheader('Download File')
                 if exp.get_miseq_samplesheets():
-                    for fp in exp.get_miseq_samplesheets():
-                        fp_name = str(Path(fp).name)
-                        miseq_col1.markdown(f'<strong style="color:#486e7a">{fp_name}</strong>', unsafe_allow_html=True)
-                    
-                        download_miseq = miseq_col2.download_button(label='Download', data=open(fp, 'rt'), 
-                                file_name=fp_name, mime='text/csv', key='dnld_samplesheet_'+str(fp), type='primary')
+                    get_miseq_download_btn(exp)
+                    add_vertical_space(4)
+                    hline()
                 else:
                     st.warning(f'No MiSeq Samplesheet available for download')
+
                 st.session_state['miseq_tab'] = 1
 
+            #******* TAB 2: Upload custom reference file and sequence files. *******
             if miseq_tab == 2:
-                ld.upload_reference_sequences('reference_miseq2')
+
+                st.subheader('Upload Custom Reference Files')
+                ld.upload_reference_sequences('reference_miseq')
+                add_vertical_space(2)
+
                 ready_messages = []
                 if not exp.check_sequence_upload_ready(ready_messages):
                     for msg in ready_messages:
                         st.error(msg)
-                    st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
+
+                    st.warning('These resources are required for allele calling'+\
+                               'and must be present before FASTQs can be uploaded')
                 else:
                     ld.upload_miseq_fastqs()
+
                 st.session_state['miseq_tab'] = 2
 
+            #Info viewer
             with tab_col2:
-                stutil.add_vertical_space(2)
+                add_vertical_space(2)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
                     dc.info_viewer(1)
 
-        #Allele Calling
+        #----------------------------------------- STAGE 6: Allele Calling ---------------------------------------------
         if pipeline_stage == 5:
             exp = st.session_state['experiment']
-            tab_col1, tab_col2 = st.columns([9,1])
-            with tab_col1:
-                allele_tab = stx.tab_bar(data=[
-                    #stx.TabBarItemData(id=1, title="Upload", description="Sequence Files"),
-                    stx.TabBarItemData(id=1, title="Allele Calling", description="")
-                    #stx.TabBarItemData(id=3, title="View Data", description=""),
-                ], key='allele_tab_bar' , return_type=int)
+            _,help_col, _ = subsection.columns([1,4,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
             info_holder = st.container()
-            
-            
+
+            with help_col:
+                custom_text(size='p', 
+                            color=ld.HELP_COLOUR, 
+                            text="Step 6: If you haven\'t uploaded reference sequences, or added FASTQ files, "+\
+                                 "load them now. Then you can run the allele calling.",
+                            align='left',
+                            style="italic")
+                add_vertical_space(1)
+
+            with tab_col1:
+                allele_tab = create_tabs([("Allele Calling", "")])
             if not allele_tab:
-                if 'allele_tab' not in st.session_state:
-                    st.session_state['allele_tab'] = 1
+                set_session_state('allele_tab', 1)
                 allele_tab = st.session_state['allele_tab']
 
             # Only offer upload in the Miseq pipeline section
@@ -885,11 +1118,14 @@ def main():
                 rundir = exp.get_exp_dn()
                 seq_ready_messages = []
                 call_ready_messages = []
-                ld.upload_reference_sequences('reference_allele1')
                 if not exp.check_sequence_upload_ready(seq_ready_messages):
                     for msg in seq_ready_messages:
                         st.error(msg)
                     st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
+                    add_vertical_space(1)
+                    st.subheader('Upload Custom Reference File')
+                    ld.upload_reference_sequences('reference_allele1')
+                    add_vertical_space(1)
 
                 elif not exp.check_allele_calling_ready(call_ready_messages):
                     for msg in call_ready_messages:
@@ -964,7 +1200,7 @@ def main():
                 st.session_state['allele_tab'] = 1
 
             with tab_col2:
-                stutil.add_vertical_space(1)
+                add_vertical_space(1)
                 show_info_viewer_checkbox()
                 
             with info_holder:
@@ -977,7 +1213,6 @@ def main():
             results_fp = exp.get_exp_fn('results.csv')
             tab_col1, tab_col2 = st.columns([9, 1])
             info_holder = st.container()
-            
             
             if not Path(results_fp).exists():
                 st.markdown('**No allele calling results available**')
@@ -1022,7 +1257,7 @@ def main():
                     dc.aggrid_interactive_table(dfo, key='other_view_key')
 
             with tab_col2:
-                stutil.add_vertical_space(1)
+                add_vertical_space(1)
                 show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
@@ -1032,5 +1267,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
