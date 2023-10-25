@@ -45,7 +45,7 @@ import glob
 import json
 import time
 from functools import partial
-from math import ceil
+from math import ceil, floor
 try:
     import bin.util as util
 except ModuleNotFoundError:
@@ -757,12 +757,11 @@ def get_raw_fastq_pairs(dirpath):
     return sorted(valid_pairs)
 
 
-def report_progress(rundir, match_progress):
+def report_progress(rundir, launch_progress, match_progress):
     """
     Clear all previous progress files and touch a new file with the launch and match progress values in the name
     Only do the operation is progress is a multiple of 5 to save on disk writes
     """
-    launch_progress = match_progress
     progress_files = list(Path(rundir).glob('match_progress_*'))
     if len(progress_files) == 1:
         lp = int(str(progress_files[0]).split('_')[-2])
@@ -864,7 +863,7 @@ def parse_primer_file(paf):
                 assayfam_primers[assayfam].add(pmr)
     return primer_assayfam, assayfam_primers
 
-
+# def main(rundir, stagefile, logfn, outfn, targets, exhaustive=False, debugfn='debug.log', debug=False):
 def main(args):
     """
     Read background data: target reference sequences file
@@ -909,8 +908,8 @@ def main(args):
 
     # get relationship of primers to assay family
     #print(f'{args.primer_assayfam=}')
-    #primer_assayfam, assayfam_primers = parse_primer_assayfams(args.rundir, args.primer_assayfam)
-    primer_assayfam, assayfam_primers = parse_primer_file(os.path.join(args.rundir, args.primer_assayfam))
+    primer_assayfam, assayfam_primers = parse_primer_assayfams(args.rundir, args.primer_assayfam)
+    #primer_assayfam, assayfam_primers = parse_primer_file(os.path.join(args.rundir, args.primer_assayfam))
     print(f'Parsed primers/assays', flush=True) # {primer_assayfam=} {assayfam_primers=}')
     
     if not os.path.isdir(os.path.join(args.rundir,"raw")):
@@ -959,25 +958,31 @@ def main(args):
         print('launching jobs', flush=True)
         total_jobs = len(wrs)
         # multiprocessing pool counter from https://superfastpython.com/multiprocessing-pool-asyncresult/
-        reports = [pool.apply_async(process_well, args=(i, wr, args.rundir, seq_ids, id_seq, primer_assayfam, 
+        reports = []
+        for i, wr in enumerate(wrs):
+            r = pool.apply_async(process_well, args=(i, wr, args.rundir, seq_ids, id_seq, primer_assayfam, 
                 assayfam_primers, match_cache, anno_cache, miss_cache, results, reps, logm, lock_mtc, 
-                lock_msc, lock_r, lock_l, lock_d, args.mincov, args.minprop, args.exhaustive, args.debug))\
-                for i, wr in enumerate(wrs)]
+                lock_msc, lock_r, lock_l, lock_d, args.mincov, args.minprop, args.exhaustive, args.debug))
+            reports.append(r)
+            if i % 3 == 0:
+                launch_progress = ceil(100*i/total_jobs)
+                completed = sum([r.ready() for r in reports])
+                match_progress = floor(100*completed/total_jobs)
+                report_progress(args.rundir, launch_progress, match_progress)
 
-        count = len(results)
-        while count:
-            # check all tasks and count the number that are not done
-            count = sum([not r.ready() for r in results])
-            completed = sum([r.ready() for r in results])
+        while match_progress < 100:
+            completed = sum([r.ready() for r in reports])
             # report the number of remaining tasks
-            print(f'{count}/{len(results)} tasks remain')
-            match_progress = int(100*completed/total_jobs)
-            report_progress(args.rundir, match_progress)
+            print(f'Match completion: {100*completed/total_jobs}')
+            match_progress = 100*completed/total_jobs
+            report_progress(args.rundir, 100, floor(match_progress))
             # wait a moment
-            time.sleep(0.5)       
+            time.sleep(2.5)       
+        report_progress(args.rundir, 100, 100)
 
         pool.close()
         pool.join()
+        print('All processes completed', flush=True)
         log.append("Info: All processes completed")
         with lock_l:
             for l in logm:
@@ -1002,10 +1007,18 @@ def main(args):
     write_log(log, os.path.join(args.rundir,args.logfn))
    
     
-def run_matches():
+def run_matches(exp, ncpus, mincov, minprop, exhaustive, debug):
     """
     Entry point when used as a library. Calls main()
+    cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} --mincov {mincov} --minprop {minprop}'
+                            if exhaustive_mode:
+                                cmd_str += ' --exhaustive'
+                            if debug_mode:
+                                cmd_str += ' --debug'
     """
+    stagefile="Stage3.csv"
+    logfn = "match.log"
+
     pass
 
    
@@ -1031,7 +1044,7 @@ if __name__=="__main__":
     if not os.path.exists(lock_path):
         try:
             with open(lock_path,"wt"):
-                report_progress(args.rundir, 0)  # set this up asap
+                report_progress(args.rundir, 0, 0)  # set this up asap
                 main(args)
                 os.remove(lock_path)
         except:
