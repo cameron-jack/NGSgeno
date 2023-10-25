@@ -870,7 +870,6 @@ def main():
                                 "proportion of the reads seen for the most observed (expected) allele, default 0.2. Must be between 0.0 and 1.0",
                                 format='%f',min_value=0.0, max_value=1.0, value=0.2)
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
-                        nocache = st.checkbox("Disable caching: slower but removes any target ambiguity")
                         debug_mode = st.checkbox('Turn on debugging for allele calling')
                         do_matching = st.form_submit_button("Run allele calling")
 

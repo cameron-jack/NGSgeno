@@ -1,3 +1,10 @@
+v0.23.001
+Date: Wed Oct 25 12:31:20 AEDT 2023
+* Fixed: bug in parsing of aligner output
+* Fixed: process handling
+* Fixed: launch and match progress display
+* Fixed: integration with browser
+
 v0.23.000
 Date: Mon Oct 16 12:58:21 AEDT 2023
 * Fixed: clear old reference sequence entries on loading new references
