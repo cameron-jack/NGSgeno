@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.23.001"
+VER="v0.23.002"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: bug in parsing of aligner output
-* Fixed: process handling
-* Fixed: launch and match progress display
-* Fixed: integration with browser
+* Fixed: bug in replacing R1 in fastqs
 EOM
 
 mv changelog.txt changelog_old.txt

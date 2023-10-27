@@ -305,7 +305,7 @@ def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, lock_d, debug=Fals
             
     fnr1 = fn1s[0]
     fn1 = os.path.basename(fnr1) # just the one file
-    fn2 = fn1.replace('_R1_', '_R2_')
+    fn2 = fn1.replace('001', '_R2_001')
     fnr2 = os.path.join(rundir, 'raw', fn2) 
             
     # find the data file
@@ -751,7 +751,7 @@ def get_raw_fastq_pairs(dirpath):
     valid_pairs = []
     r1s = [dirpath/Path(f) for f in os.listdir(dirpath) if f.endswith('.fastq.gz') and '_R1_' in f]
     for r1 in r1s:
-        r2 = Path(str(r1).replace('_R1_','_R2_'))
+        r2 = Path(str(r1).replace('_R1_001','_R2_001'))
         if r1.is_file() and r2.is_file():
             valid_pairs.append((r1,r2))
     return sorted(valid_pairs)

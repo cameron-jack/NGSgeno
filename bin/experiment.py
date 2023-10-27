@@ -206,7 +206,7 @@ class Experiment():
         rdp = self.get_raw_dirpath()
         r1s = [rdp/Path(f) for f in os.listdir(rdp) if f.endswith('.fastq.gz') and '_R1_' in f]
         for r1 in r1s:
-            r2 = Path(str(r1).replace('_R1_','_R2_'))
+            r2 = Path(str(r1).replace('_R1_001','_R2_001'))
             if r1.is_file() and r2.is_file():
                 valid_pairs.append((r1,r2))
             else:
