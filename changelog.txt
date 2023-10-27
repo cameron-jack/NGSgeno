@@ -1,3 +1,7 @@
+v0.23.002
+Date: Fri Oct 27 14:28:33 AEDT 2023
+* Fixed: bug in replacing R1 in fastqs
+
 v0.23.001
 Date: Wed Oct 25 12:31:20 AEDT 2023
 * Fixed: bug in parsing of aligner output
