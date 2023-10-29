@@ -1,3 +1,7 @@
+v0.23.003
+Date: Mon Oct 30 10:04:19 AEDT 2023
+* Fixed: bug in replacing R1 in fastqs (again)
+
 v0.23.002
 Date: Fri Oct 27 14:28:33 AEDT 2023
 * Fixed: bug in replacing R1 in fastqs

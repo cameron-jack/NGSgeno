@@ -305,7 +305,7 @@ def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, lock_d, debug=Fals
             
     fnr1 = fn1s[0]
     fn1 = os.path.basename(fnr1) # just the one file
-    fn2 = fn1.replace('001', '_R2_001')
+    fn2 = fn1.replace('_R2_001', '_R2_001')
     fnr2 = os.path.join(rundir, 'raw', fn2) 
             
     # find the data file
