@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.23.002"
+VER="v0.23.003"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: bug in replacing R1 in fastqs
+* Fixed: bug in replacing R1 in fastqs (again)
 EOM
 
 mv changelog.txt changelog_old.txt
@@ -17,7 +17,7 @@ rm changelog_old.txt
 
 git add -u
 MSG="$(echo "$COMMENT")"
-git commit --amend -m "$MSG"
+git commit -m "$MSG"
 git tag -a "$VER" -m "$MSG"
 
 #git push
