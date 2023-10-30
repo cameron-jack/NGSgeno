@@ -1,3 +1,7 @@
+v0.23.004
+Date: Mon Oct 30 13:32:24 AEDT 2023
+* Fixed: removed sample barcodes from file names in Miseq file
+
 v0.23.003
 Date: Mon Oct 30 10:04:19 AEDT 2023
 * Fixed: bug in replacing R1 in fastqs (again)
