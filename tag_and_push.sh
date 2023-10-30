@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.23.003"
+VER="v0.23.004"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: bug in replacing R1 in fastqs (again)
+* Fixed: removed sample barcodes from file names in Miseq file
 EOM
 
 mv changelog.txt changelog_old.txt
