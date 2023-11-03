@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.23.004"
+VER="v0.23.005"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: removed sample barcodes from file names in Miseq file
+* Fixed: many innocuous bugs in inexact matching sequence assignment.
 EOM
 
 mv changelog.txt changelog_old.txt
