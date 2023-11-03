@@ -865,7 +865,7 @@ def main():
                                 label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
                                         value=cpus_avail)
                         mincov = st.number_input(label="Do not match unique sequences with less than this "+\
-                                "many reads coverage, default 5", format='%i',min_value=0, step=1,value=5)
+                                "many reads coverage, default 50", format='%i',min_value=0, step=1,value=50)
                         minprop = st.number_input(label="Do not match unique sequences with less than this "+\
                                 "proportion of the reads seen for the most observed (expected) allele, default 0.2. Must be between 0.0 and 1.0",
                                 format='%f',min_value=0.0, max_value=1.0, value=0.2)

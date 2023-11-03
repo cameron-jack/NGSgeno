@@ -101,6 +101,7 @@ def join_diffs(last_diffs):
     """ 
     Create a new diff string from a contiguous set of same-type differences
     Positions should be zero-based
+    Each diff is of the form (i,ref_c,alt_c)
     """
     pos = last_diffs[0][0] + 1
     ref_diff = ''.join([rc for pos,rc,ac in last_diffs])
@@ -202,27 +203,41 @@ def test_annotation():
     return True
 
 
-def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.75, margin=70):
+def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.75):
     """
     Inexact matching of a merged sequence with a set of reference target sequences
     Declare a match if we have 75% sequence identity over the matched length or better
     Identity must be >= 0 and <= 1.0
     Return True/False, and matching reference sequence/None
-    If the length difference is greater than margin, don't try to match
     rundir, debug, lock_d are used for logging debug messages
     """
+    msg = f"debug: inexact match {seq=}"
+    wdb(msg, rundir, debug, lock_d)
+    #print(msg, flush=True)
+    if len(refseqs) == 0:
+        wdb('Warning: No reference sequences to align to', rundir, debug, lock_d)
+        return False, None, None
+
     if identity < 0 or identity > 1.0:
         return False, None, None
     aligner = Align.PairwiseAligner()
     aligner.mode = 'global'
-    aligner.open_gap_score = -2.5
-    aligner.extend_gap_score = -1.0
-    aligner.end_gap_score = 0
-    #aligner.match_score = 1.0
-    aligner.mismatch_score = -1.5
+    aligner.open_gap_score = -2.0
+    aligner.extend_gap_score = -0.7
+    aligner.end_gap_score = -0.5
+    aligner.match_score = 3.5
+    aligner.mismatch_score = -1.0
+    #aligner.mode = 'local'
+    #aligner.open_gap_score = -1.0
+    #aligner.extend_gap_score = -1.0
+    #aligner.end_gap_score = -1.0
+    #aligner.match_score = 1
+    #aligner.mismatch_score = -1.0
+    #print('beginning alignment', flush=True)
     try:
         # do alignment against a reference sequence if they aren't too different in length
-        all_alignments = [(aligner.align(rs, seq)[0], rs) for rs in refseqs if abs(len(rs)-len(seq))<margin]
+        # order is align(Target, Query)
+        all_alignments = [(aligner.align(rs, seq)[0], rs) for rs in refseqs]
     except Exception as exc:
         msg = f'alignment failed with exception {exc}'
         print(msg, flush=True)
@@ -232,56 +247,58 @@ def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.75, margin=70)
     if len(all_alignments) == 0:
         wdb(f'No alignments found {seq=}', rundir, debug, lock_d)
         return False, None, None
-    best_score = 0  # best scoring reference sequence according to alignment rules, favours substitutions
-    aligned_rs = None  # the aligned reference sequence
-    aligned_seq = None  # the aligned query sequence
-    aligned_bars = 0  # the number of exact matches - used to determine sequence identity
-    refseq = None  # the actual best matching reference sequence
+    #print(f"{len(all_alignments)} alignments completed", flush=True)
+    best_score = 0
+    best_algn = None
+    best_rs = None
     for algn, rs in all_alignments:
         if algn.score > best_score:
             best_score = algn.score
-            target_sections = []
-            query_sections = []
-            bar_sections = []
-            for segment in str(algn).split('\n'):
-                tokens = [s for s in segment.split(' ') if s != '']
-                if len(tokens) < 3:  # skip rows without actual sequence or bars
-                    continue
-                if tokens[-1][-1] in '0123456789':
-                    if tokens[0] == 'target':
-                        target_sections.append(tokens[-2])
-                    elif tokens[0] == 'query':
-                        query_sections.append(tokens[-2])
-                    else:
-                        bar_sections.append(tokens[-2])
-                else:
-                    if tokens[0] == 'target':
-                        target_sections.append(tokens[-1])
-                    elif tokens[0] == 'query':
-                        query_sections.append(tokens[-1])
-                    else:
-                        bar_sections.append(tokens[-1])
-            aligned_rs = ''.join(target_sections)
-            aligned_seq = ''.join(query_sections)
-            aligned_bars = ''.join(bar_sections).count('|')
-            refseq = rs
+            best_algn = algn
+            best_rs = rs
+    if best_score < 1:
+        wdb(f'No alignments found {seq=}', rundir, debug, lock_d)
+        return False, None, None
+    
+    target_sections = []
+    query_sections = []
+    for segment in str(best_algn).split('\n'):
+        if segment.startswith('target'):
+            tokens = [s for s in segment.split(' ') if s != '']
+            if len(tokens) > 2:
+                #print('target', tokens[2], flush=True)
+                target_sections.append(tokens[2])
+        elif segment.startswith('query'):
+            tokens = [s for s in segment.split(' ') if s != '']
+            if len(tokens) > 2:
+                #print('query', tokens[2], flush=True)
+                query_sections.append(tokens[2])
+    aligned_rs = ''.join(target_sections)
+    aligned_seq = ''.join(query_sections)
+    adjusted_query_length = len(aligned_seq.lstrip('-').rstrip('-'))
+    adjusted_target_length = len(aligned_rs.lstrip('-').rstrip('-'))
+    match_length = min(adjusted_query_length, adjusted_target_length)
 
-    # print(f'{best_score=} {aligned_bars=} {aligned_rs=} {aligned_seq=} {refseq=}', flush=True)
-    if aligned_bars >= min(len(seq.strip('-')), len(aligned_rs.strip('-'))) * identity:
+    identities = best_algn.counts().identities
+    cutoff = match_length * identity
+    #print(f'{best_algn.score=} {best_rs=} {identities=} {cutoff=} {aligned_rs=} {aligned_seq=}', flush=True)
+    if identities > cutoff:
         # Annotate match
+        #print(f'Matched! {best_rs=}', flush=True)
         seq_anno = annotate_seq(aligned_rs, aligned_seq)
-        return True, refseq, seq_anno
-    msg = f'Best alignment identity worse than 75% {aligned_rs=} {aligned_seq=} {refseq=} {seq=}'
+        #print(f"{seq_anno=} {best_rs=}", flush=True)
+        return True, best_rs, seq_anno
+    msg = f'Best alignment identity worse than 75% {aligned_rs=} {aligned_seq=} {best_rs=} {seq=}'
     wdb(msg, rundir, debug, lock_d)
     return False, None, None
 
 
-def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, lock_d, debug=False):
+def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
     """
     Call bbduk for cleaning of reads
     Call bbmerge to merge read pairs
     If number of merged reads is less than half the number of unmerged reads then call this a failure
-    Return seqcnt (Counter of unique sequences) and passing (T/F)
+    Return seqcnt (Counter of unique sequences), passing (T/F), readCount, cleanCount, MergeCount, msg
     """
     rfn= "*{}-{}_*_R1_*.fastq.gz".format(util.unguard(wr['pcrPlate'],silent=True), padwell(wr['pcrWell']))
     fn1s = glob.glob(os.path.join(rundir, "raw", rfn))
@@ -290,18 +307,14 @@ def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, lock_d, debug=Fals
         with lock_l:
             log.append(f"no data for {fn1s}")
         wdb(f"no data for {fn1s}", rundir, debug, lock_d)
-        with lock_r:
-            results.append(tuple(wr.values()))
-        return {}, False
+        return {}, False, 0, 0, 0, "No files"
             
     if len(fn1s)>1:
         with lock_l:
             log.append(f"too many reads files for pattern{rfn}")
             log.append(f"   R1 files= {fn1s}")
         wdb(f"too many reads files for pattern{rfn}\n    R1 files= {fn1s}", rundir, debug, lock_d)
-        with lock_r:
-            results.append(tuple(wr.values()))
-        return {}, False
+        return {}, False, 0, 0, 0, "Too many files"
             
     fnr1 = fn1s[0]
     fn1 = os.path.basename(fnr1) # just the one file
@@ -313,9 +326,7 @@ def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, lock_d, debug=Fals
         with lock_l:
             log.append(f"missing file: {fnr2}")
         wdb(f"missing file: {fnr2}", rundir, debug, lock_d)
-        with lock_r:
-            results.append(tuple(wr.values()))
-        return {}, False
+        return {}, False, 0, 0, 0, "R2 file missing"
         
     # use Windows file separators
     fncs = tuple(os.path.join(rundir,"cleaned", fn) for fn in (fn1, fn2))
@@ -328,12 +339,21 @@ def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, lock_d, debug=Fals
     if not all(os.path.isfile(fn) for fn in (fnms[0], fnlog)):
         # java and bbmap need to be properly installed
         cmd = r"java -ea -Xmx1g -cp {} jgi.BBDuk in1={} in2={} out1={} out2={} t=2 qtrim=rl trimq=20 minlen=50 k=23 ktrim=r mink=11 hdist=1 overwrite=true ref=bbmap\resources\adapters.fa".format(bbmapd, fnr1, fnr2, fncs[0], fncs[1])
-        pres1 = subprocess.run(cmd, check=True, text=True, timeout=30, capture_output=True)
-            
+        try:
+            pres1 = subprocess.run(cmd, check=True, text=True, timeout=30, capture_output=True)
+        except Exception as exc:
+            return {}, False, -1, -1, -1, f"Failed to run bbduk {exc}"
+        if pres1.returncode != 0:
+            return {}, False, -1, -1, -1, "bbduk run failed"
         # run BBMerge to join paired-end reads
         # cmd = r"java -ea -Xmx1g -cp {} jgi.BBMerge in1={} in2={} out={} outu1={} outu2={} verystrict=t".format(*((bbmapd,)+fncs+fnms)).split()
         cmd = r"java -ea -Xmx1g -cp {} jgi.BBMerge in1={} in2={} out={} outu1={} outu2={} overwrite=true pfilter=1".format(*((bbmapd,)+fncs+fnms)).split()
-        pres2 = subprocess.run(cmd, check=True, text=True, timeout=30, capture_output=True)
+        try:
+            pres2 = subprocess.run(cmd, check=True, text=True, timeout=30, capture_output=True)
+        except Exception as exc:
+            return {}, False, -1, -1, -1, f"Failed to run bbmerge {exc}"
+        if pres2.returncode != 0:
+            return {}, False, -1, -1, -1, "bbmerge run failed"
         # could delete cleaned data once it's been merged.
                 
         # keep the log output as record counts get used
@@ -375,9 +395,7 @@ def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, lock_d, debug=Fals
         with lock_l:
             log.append(msg)
         wdb(msg, rundir, debug, lock_d)
-        with lock_r:
-            results.append(tuple(wr.values()))
-        return {}, False
+        return {}, False, readCount, cleanCount, joinCount, msg
                 
     fn = fnms[0] # merged reads file
     with myopen(fn) as src:
@@ -390,15 +408,13 @@ def preprocess_seqs(wr, rundir, results, log, lock_r, lock_l, lock_d, debug=Fals
             msg = f"Merged counts mismatch. {mergeCount} != {joinCount}"
             log.append(msg)
             wdb(msg, rundir, debug, lock_d)
-        with lock_r:
-            results.append(tuple(wr.values()))
-        return {}, False
+        return {}, False, readCount, cleanCount, mergeCount, msg
 
     with lock_l:
         for l in lrecs:
             log.append(l)
     
-    return seqcnt, True, readCount, cleanCount, mergeCount
+    return seqcnt, True, readCount, cleanCount, mergeCount, None
 
 
 def wdb(msg, rundir, debug, lock_d=None):
@@ -468,7 +484,7 @@ def archetypes(seq_counts, rundir, debug, lock_d):
 
 
 def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assayfam_primers, 
-        match_cache, anno_cache, miss_cache, results, reps, log, lock_mtc, lock_msc, lock_r, 
+        match_cache, anno_cache, miss_cache, reps, log, lock_mtc, lock_msc, lock_r, 
         lock_l, lock_d, mincov, minprop, exhaustive, debug=False):
     """ 
     Worker process that runs bbduk, bbmerge, and matching
@@ -481,7 +497,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     match_cache: dict of observed sequence to known sequence
     anno_cache: dict of annotations for variant sequences
     miss_cache: dict of unknown sequences, used as a set
-    results: shared list of results + log entries (might separate in future)
+    reps: dict of sampleNo to all output fields as a list {sampleNo:list} 
     lock_mtc: lock object for the match cache
     lock_msc: lock object for the miss cache
     lock_r: lock object for the results    
@@ -506,50 +522,48 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     """
     PID = os.getpid()
     lrecs = [] # log records, lock and write on exit/return
-
-    msg = f"Info:{PID} Working on: {wr['pcrPlate']} {wr['pcrWell']}"
+    sampleNo = wr.get('sampleNo', None)
+    pcrPlate = wr.get('pcrPlate', None)
+    pcrWell = wr.get('pcrWell', None)
+    if sampleNo is None or pcrPlate is None or pcrWell is None:
+        msg = f"Critical: {sampleNo=}, {pcrPlate=} or {pcrWell=} missing from Stage3.csv!"
+        return False
+    pcrPlate = util.unguard(pcrPlate, silent=True)
+    pcrWell = padwell(pcrWell)
+    msg = f"Info: {PID} Working on {sampleNo=} {pcrPlate=} {pcrWell=}"
     lrecs.append(msg)
     wdb(msg, rundir, debug, lock_d)
-    print(msg, flush=True)
+    print(msg)
 
     # clean and merge FASTQs
-    seqcnt, success, readCount, cleanCount, mergeCount = preprocess_seqs(wr, rundir, results, log, 
-            lock_r, lock_l, lock_d, debug=debug)
+    seqcnt, success, readCount, cleanCount, mergeCount, msg = preprocess_seqs(wr, rundir, log, 
+            lock_l, lock_d, debug=debug)
     lrecs.append(f'{log=} {success=} {wr=}')
     if not success:
-        msg = f"Failed: to completed preprocessing for {wr['pcrPlate']} {wr['pcrWell']}"
+        msg = f"Failed: preprocessing for {pcrPlate} {pcrWell} with {msg}"
         lrecs.append(msg)
         wdb(msg, rundir, debug, lock_d)
-        retval = [str(wr[x]) for x in wr]
-        with lock_r:
-            reps[int(wr['sampleNo'])] = retval
+        retval = [str(wr[x]) for x in wr] + [readCount, cleanCount, mergeCount, '', '', '', msg]
         wdb(f'{retval=}', rundir, debug, lock_d)
+        with lock_r:
+            reps[sampleNo] = retval
         with lock_l:
             for l in lrecs:
                 log.append(l)
         return False
 
-    msg = f"Info: Completed preprocessing for {wr['pcrPlate']} {wr['pcrWell']} "+\
-            f"{readCount=} {cleanCount=} {mergeCount}"
+    msg = f"Info: Completed preprocessing for {pcrPlate} {pcrWell} "+\
+            f"{readCount=} {cleanCount=} {mergeCount=}"
     lrecs.append(msg)
     wdb(msg, rundir, debug, lock_d)
                 
-    primer = wr['primer']
+    # if we get an unknown primer then we should run archetypes and call it a day?
+    primer = wr.get('primer', 'No_primer')
     if primer not in primer_assayfam:
-        msg = f'Warning: primer {primer} unknown, skipping. {primer_assayfam=}'
+        msg = f'Warning: primer {primer} unknown'
         lrecs.append(msg)
         wdb(msg, rundir, debug, lock_d)
-        retval = [str(wr[x]) for x in wr]
-        with lock_r:
-            reps[int(wr['sampleNo'])] = retval
-        wdb(f'{retval=}', rundir, debug, lock_d)
-        with lock_l:
-            for l in lrecs:
-                log.append(l)
-        return False
         
-    print(f"Processing {wr['pcrPlate']} {wr['pcrWell']} with {mergeCount} reads and primer {primer}", flush=True)
-
     # decide which assays are on-target vs off-target
     on_target_ids = set()
     off_target_ids = set()
@@ -576,7 +590,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
         
     # unique sequences only (substrings collapsed), from most to least common
     if exhaustive:
-        print('Aggregating archetype sequences', flush=True)
+        wdb('Aggregating archetype sequences', rundir, debug, lock_d)
         seqcnt = archetypes(seqcnt, rundir, debug, lock_d)
     # calculate min count proportion from exact matches to our expected targets
     family_exact_counts = 0
@@ -595,18 +609,16 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     original_miss_cache_size = len(msc)
 
     for seq, num in seqcnt.most_common():
-        msg=f"{wr['pcrPlate']} {wr['pcrWell']} with {seq=} and counts {num}"
-        #wdb(msg, rundir, debug, lock_d)
         if (num >= low_cov_cutoff) or exhaustive:
-            msg = f"Processing {wr['pcrPlate']} {wr['pcrWell']} on process {PID} with counts {num} and {seq}"
+            msg = f"Info: Processing {pcrPlate} {pcrWell} on process {PID} with counts {num} and {seq}"
             wdb(msg, rundir, debug, lock_d)      
-                
             if seq in mtc:
-                msg = f"{PID}: Match cache hit {num} {seq}"
+                msg = f"Info: Match cache hit {num=} {seq=} {mtc[seq]=}"
                 wdb(msg, rundir, debug, lock_d)
                 if seq in anc:
+                    refseq = mtc[seq]
                     anno = anc[seq]
-                    match_cnt[seq+'//'+anno] += num
+                    match_cnt[refseq+'//'+anno] += num
                 else:
                     match_cnt[seq] += num
                 # top up the original reference counts if needed
@@ -614,32 +626,32 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 if ref_seq != seq: 
                     match_cnt[ref_seq] += num
                 continue
-                
             # miss cache - doesn't match any known sequence
             if seq in msc:
-                msg = f"{PID}: Miss cache hit {num} {seq}"
+                msg = f"Info: Miss cache hit {num} {seq}"
                 wdb(msg, rundir, debug, lock_d)
                 match_cnt[seq] += num
                 continue
-
             # substring or superstring
             is_match, ref_seq = exact_match(seq, on_target_seqs)
             if is_match:
-                msg = f"{PID}: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+                msg = f"Info: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
                 wdb(msg, rundir, debug, lock_d)
                 match_cnt[ref_seq] += num
                 continue
-
             is_match, ref_seq = exact_match(seq, off_target_seqs)
             if is_match:
-                msg = f"{PID}: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+                msg = f"Info: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
                 wdb(msg, rundir, debug, lock_d)
                 match_cnt[ref_seq] += num
                 continue
-
+            
             is_match, ref_seq, seq_anno = inexact_match(seq, on_target_seqs, rundir, debug, lock_d)
+            if not is_match:
+                is_match, ref_seq, seq_anno = inexact_match(seq, off_target_seqs, rundir, debug, lock_d)
+
             if is_match:
-                msg = f"{PID}: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}\n"
+                msg = f"Info: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}\n"
                 wdb(msg, rundir, debug, lock_d)
                 mtc[seq] = ref_seq
                 match_cnt[ref_seq] += num
@@ -647,30 +659,17 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                     anc[seq] = seq_anno
                     match_cnt[ref_seq+'//'+seq_anno] += num
                 else:
-                    wdb(f'No annotation. Ref: {ref_seq} Alt: {seq}', rundir, debug, lock_d)
+                    wdb(f'Error: no annotation. Ref: {ref_seq} Alt: {seq}', rundir, debug, lock_d)
                 continue
-
-            is_match, ref_seq, seq_anno = inexact_match(seq, off_target_seqs, rundir, debug, lock_d)
-            if is_match:
-                msg = f"{PID}: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}\n" 
-                wdb(msg, rundir, debug, lock_d)
-                mtc[seq] = ref_seq
-                match_cnt[ref_seq] += num
-                if seq_anno:
-                    anc[seq] = seq_anno
-                    match_cnt[ref_seq+'//'+seq_anno] += num
-                else:
-                    wdb(f'No annotation. Ref: {ref_seq} Alt: {seq}', rundir, debug, lock_d)
-                continue
-
+            
             # add to miss cache
-            msg = f"{PID}: No match for {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}\n"
+            msg = f"Info: No match for {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}\n"
             wdb(msg, rundir, debug, lock_d)
             msc[seq] = None
             match_cnt[seq] += num
                     
         else:
-            #msg = f"{PID}: too few reads {num} for matching {seq}"
+            #msg = f"Debug: too few reads {num} for matching {seq}"
             #wdb(msg, rundir, debug, lock_d)
             match_cnt['other'] += num
             other_count += 1
@@ -685,47 +684,66 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     if len(msc) > original_miss_cache_size:
         with lock_msc:
             miss_cache.update(msc)
-        wdb('Updating miss cache', rundir, debug, lock_d)
+        wdb('Info: Updating miss cache', rundir, debug, lock_d)
 
-    msg = f"Completed matching for {PID=} {wr['pcrPlate']=} {wr['pcrWell']=}"
+    msg = f"Info: Completed matching for {PID=} {wr['pcrPlate']=} {wr['pcrWell']=}"
     lrecs.append(msg)
     wdb(msg, rundir, debug, lock_d)
-    #print(msg, flush=True)
     # rename 'other' to include number of separate sequence variations
     total_others = match_cnt['other']
-    match_cnt['other ('+str(other_count)+')'] = total_others
-    del match_cnt['other']
+    other_name = 'other (' + str(other_count) +')'
+    match_cnt[other_name] = total_others
     res1 = [readCount, cleanCount, mergeCount]
     # name the outputs and counts
     seqCounts = []
     seqNames = []
     otherCounts = []
     otherNames = []
+
     for seq, count in match_cnt.most_common():
-        if seq.startswith('other') or seq in msc:
+        if seq == 'other':
+            continue
+        if (seq.startswith('other') and seq != 'other') or seq in msc:
             otherNames.append(seq)
             otherCounts.append(count)
             continue
 
         if '//' not in seq:
-            if seq in on_target_seqs:
-                seqCounts.append(count)
-                seqNames.append([name for name in seq_ids[seq] if name in on_target_ids][0])
+            if seq in mtc:
+                refseq = mtc[seq]
+                if refseq in on_target_seqs:
+                    seqCounts.append(count)
+                    refname = [name for name in seq_ids[refseq] if name in on_target_ids][0]
+                    seqNames.append(refname)
+                    if seq in anc:
+                        otherCounts.append(count)
+                        otherNames.append(refname+'//'+anc[seq])
+                else:
+                    for name in seq_ids[refseq]:
+                        otherCounts.append(count)
+                        otherNames.append(name)
+                continue
             else:
-                for name in seq_ids[seq]:
+                msg = f'Critical: {seq=} not found in match cache {mtc=}'
+                wdb(msg, rundir, debug, lock_d)
+                print(msg, flush=True)
+        else:
+            ref_seq = seq.split('//')[0]
+            anno = seq.split('//')[1]
+            if ref_seq not in seq_ids:
+                msg = f'Critical: {ref_seq=} not found in sequence to ID mapping {seq_ids=}'
+                print(msg, flush=True)
+                wdb(msg, rundir, debug, lock_d)
+            else:
+                for name in seq_ids[ref_seq]:
                     otherCounts.append(count)
-                    otherNames.append(name)
-            continue
-        ref_seq = seq.split('//')[0]
-        anno = seq.split('//')[1]
-        for name in seq_ids[ref_seq]:
-            otherCounts.append(count)
-            otherNames.append(name+'//'+anno)
-
+                    otherNames.append(name+'//'+anno)
     try:
-        res2 = [';'.join(map(str,seqCounts)), ';'.join(seqNames), ';'.join(map(str,otherCounts)), ';'.join(otherNames)]
+        res2 = [';'.join(map(str,seqCounts)), ';'.join(map(str,seqNames)), 
+                ';'.join(map(str,otherCounts)), ';'.join(map(str,otherNames))]
     except Exception as exc:
-        wdb(f"{exc=}", rundir, debug, lock_d)
+        wdb(f"Error joining names and counts: {exc=}", rundir, debug, lock_d)
+        print(wdb, flush=True)
         res2 = ['','','','']
     retval = [str(wr[x]) for x in wr] + res1 + res2
     with lock_r:
@@ -734,9 +752,9 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     with lock_l:
         for l in lrecs:
             log.append(l)
-    msg = f"Exiting process_well() {PID} {wr['pcrPlate']} {wr['pcrWell']}"
+    msg = f"Info: Exiting process_well() {PID} {wr['pcrPlate']} {wr['pcrWell']}"
     wdb(msg, rundir, debug, lock_d)
-    print(msg, flush=True)
+    print(msg)
 
 
 def write_log(log, logfn):
@@ -793,7 +811,6 @@ def parse_targets(rundir, targets, log, debug):
                     log.append(msg)
                     wdb(msg, args.rundir, debug)
                     seq_id = bytes(str(entry.id).strip(), 'ascii',errors='ignore').decode()
-
                 try:
                     seq = bytes(str(entry.seq).strip(), 'ascii', errors='strict').decode().upper()
                 except Exception as exc:
@@ -934,7 +951,6 @@ def main(args):
         match_cache = manager.dict()  # [seq] = known_seq
         anno_cache = manager.dict()  # [seq] = annotation
         miss_cache = manager.dict()  # just use this as a set
-        results = manager.list()  # at the moment it holds both the main results and the log, but maybe we should split these out?
         reps = manager.dict()  # [sampleNo] = all columns
         logm = manager.list()
         lock_mtc = manager.Lock()  # match_cache locking
@@ -961,7 +977,7 @@ def main(args):
         reports = []
         for i, wr in enumerate(wrs):
             r = pool.apply_async(process_well, args=(i, wr, args.rundir, seq_ids, id_seq, primer_assayfam, 
-                assayfam_primers, match_cache, anno_cache, miss_cache, results, reps, logm, lock_mtc, 
+                assayfam_primers, match_cache, anno_cache, miss_cache, reps, logm, lock_mtc, 
                 lock_msc, lock_r, lock_l, lock_d, args.mincov, args.minprop, args.exhaustive, args.debug))
             reports.append(r)
             if i % 3 == 0:
