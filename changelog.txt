@@ -1,3 +1,7 @@
+v0.23.006
+Date: Fri Nov 10 10:06:20 AEDT 2023
+* Fixed: ngsmatch now robust to corrupt gzip FASTQ files
+
 v0.23.005
 Date: Fri Nov  3 14:12:31 AEDT 2023
 * Fixed: many innocuous bugs in inexact matching sequence assignment.

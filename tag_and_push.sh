@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.23.005"
+VER="v0.23.006"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: many innocuous bugs in inexact matching sequence assignment.
+* Fixed: ngsmatch now robust to corrupt gzip FASTQ files
 EOM
 
 mv changelog.txt changelog_old.txt
