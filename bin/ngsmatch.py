@@ -300,6 +300,7 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
     If number of merged reads is less than half the number of unmerged reads then call this a failure
     Return seqcnt (Counter of unique sequences), passing (T/F), readCount, cleanCount, MergeCount, msg
     """
+    readCount, cleanCount, cleanCount2, joinCount, mergeCount = -1, -1, -1, -1, -1
     rfn= "*{}-{}_*_R1_*.fastq.gz".format(util.unguard(wr['pcrPlate'],silent=True), padwell(wr['pcrWell']))
     fn1s = glob.glob(os.path.join(rundir, "raw", rfn))
     lrecs = []
@@ -307,14 +308,14 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
         with lock_l:
             log.append(f"no data for {fn1s}")
         wdb(f"no data for {fn1s}", rundir, debug, lock_d)
-        return {}, False, 0, 0, 0, "No files"
+        return {}, False, readCount, cleanCount, mergeCount, "No files"
             
     if len(fn1s)>1:
         with lock_l:
             log.append(f"too many reads files for pattern{rfn}")
             log.append(f"   R1 files= {fn1s}")
         wdb(f"too many reads files for pattern{rfn}\n    R1 files= {fn1s}", rundir, debug, lock_d)
-        return {}, False, 0, 0, 0, "Too many files"
+        return {}, False, readCount, cleanCount, mergeCount, "Too many files"
             
     fnr1 = fn1s[0]
     fn1 = os.path.basename(fnr1) # just the one file
@@ -326,7 +327,7 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
         with lock_l:
             log.append(f"missing file: {fnr2}")
         wdb(f"missing file: {fnr2}", rundir, debug, lock_d)
-        return {}, False, 0, 0, 0, "R2 file missing"
+        return dict(), False, readCount, cleanCount, mergeCount, "R2 file missing"
         
     # use Windows file separators
     fncs = tuple(os.path.join(rundir,"cleaned", fn) for fn in (fn1, fn2))
@@ -342,18 +343,20 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
         try:
             pres1 = subprocess.run(cmd, check=True, text=True, timeout=30, capture_output=True)
         except Exception as exc:
-            return {}, False, -1, -1, -1, f"Failed to run bbduk {exc}"
+            msg = f"failed to run bbmerge {exc}".replace("'","").replace('"',"'").replace('\\','/')
+            return None, False, readCount, cleanCount, mergeCount, msg
         if pres1.returncode != 0:
-            return {}, False, -1, -1, -1, "bbduk run failed"
+            return None, False, readCount, cleanCount, mergeCount, "Failed: bbduk run failed"
         # run BBMerge to join paired-end reads
         # cmd = r"java -ea -Xmx1g -cp {} jgi.BBMerge in1={} in2={} out={} outu1={} outu2={} verystrict=t".format(*((bbmapd,)+fncs+fnms)).split()
         cmd = r"java -ea -Xmx1g -cp {} jgi.BBMerge in1={} in2={} out={} outu1={} outu2={} overwrite=true pfilter=1".format(*((bbmapd,)+fncs+fnms)).split()
         try:
             pres2 = subprocess.run(cmd, check=True, text=True, timeout=30, capture_output=True)
         except Exception as exc:
-            return {}, False, -1, -1, -1, f"Failed to run bbmerge {exc}"
+            msg = f"failed to run bbmerge {exc}".replace("'","").replace('"',"'").replace('\\','/')
+            return None, False, readCount, cleanCount, mergeCount, msg
         if pres2.returncode != 0:
-            return {}, False, -1, -1, -1, "bbmerge run failed"
+            return None, False, readCount, cleanCount, mergeCount, "Failed: bbmerge run failed"
         # could delete cleaned data once it's been merged.
                 
         # keep the log output as record counts get used
@@ -376,7 +379,7 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
         log1, log2 = logdata.split("======\n", 1)
             
     # get counts from BBDuk & BBmerge output
-    readCount, cleanCount, cleanCount2, joinCount = -1, -1, -1, -1
+    
     m = re.search(r'Input:\s+(\d+) reads', log1)
     if m:
         readCount = int(m.group(1))//2
@@ -527,30 +530,44 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     pcrWell = wr.get('pcrWell', None)
     if sampleNo is None or pcrPlate is None or pcrWell is None:
         msg = f"Critical: {sampleNo=}, {pcrPlate=} or {pcrWell=} missing from Stage3.csv!"
-        return False
-    pcrPlate = util.unguard(pcrPlate, silent=True)
-    pcrWell = padwell(pcrWell)
-    msg = f"Info: {PID} Working on {sampleNo=} {pcrPlate=} {pcrWell=}"
-    lrecs.append(msg)
-    wdb(msg, rundir, debug, lock_d)
-    print(msg)
-
-    # clean and merge FASTQs
-    seqcnt, success, readCount, cleanCount, mergeCount, msg = preprocess_seqs(wr, rundir, log, 
-            lock_l, lock_d, debug=debug)
-    lrecs.append(f'{log=} {success=} {wr=}')
-    if not success:
-        msg = f"Failed: preprocessing for {pcrPlate} {pcrWell} with {msg}"
-        lrecs.append(msg)
         wdb(msg, rundir, debug, lock_d)
-        retval = [str(wr[x]) for x in wr] + [readCount, cleanCount, mergeCount, '', '', '', msg]
-        wdb(f'{retval=}', rundir, debug, lock_d)
+        retval = [str(wr[x]) for x in wr] + [-1,-1,-1, '', '', -1, msg]
         with lock_r:
             reps[sampleNo] = retval
         with lock_l:
             for l in lrecs:
                 log.append(l)
-        return False
+        return
+    pcrPlate = util.unguard(pcrPlate, silent=True)
+    pcrWell = padwell(pcrWell)
+    msg = f"Info: {PID} Working on {sampleNo=} {pcrPlate=} {pcrWell=}"
+    lrecs.append(msg)
+    wdb(msg, rundir, debug, lock_d)
+    if debug:
+        print(msg, flush=True)
+
+    # clean and merge FASTQs
+    seqcnt, success, readCount, cleanCount, mergeCount, fault_msg = preprocess_seqs(wr, rundir, log, 
+            lock_l, lock_d, debug=debug)
+    if not success:
+        msg = f"Failed: preprocessing for {pcrPlate} {pcrWell} with {fault_msg}"
+        if debug:
+            print(msg, flush=True)
+            print(f'{readCount=} {cleanCount=} {mergeCount=} {fault_msg=}', flush=True)
+        lrecs.append(msg)
+        wdb(msg, rundir, debug, lock_d)
+        
+        retval = [str(wr[x]) for x in wr] + [readCount, cleanCount, mergeCount, '','',-1,'Failed to run bbduk']
+        
+        wdb(f'Failed {retval=}', rundir, debug, lock_d)
+        if debug:
+            print(f'Failed {retval=}', flush=True)
+        with lock_r:
+            reps[int(sampleNo)] = retval
+        with lock_l:
+            for l in lrecs:
+                log.append(l)
+        return
 
     msg = f"Info: Completed preprocessing for {pcrPlate} {pcrWell} "+\
             f"{readCount=} {cleanCount=} {mergeCount=}"
@@ -590,7 +607,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
         
     # unique sequences only (substrings collapsed), from most to least common
     if exhaustive:
-        wdb('Aggregating archetype sequences', rundir, debug, lock_d)
+        wdb('Info: Aggregating archetype sequences', rundir, debug, lock_d)
         seqcnt = archetypes(seqcnt, rundir, debug, lock_d)
     # calculate min count proportion from exact matches to our expected targets
     family_exact_counts = 0
@@ -658,12 +675,14 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 if seq_anno:
                     anc[seq] = seq_anno
                     match_cnt[ref_seq+'//'+seq_anno] += num
-                else:
-                    wdb(f'Error: no annotation. Ref: {ref_seq} Alt: {seq}', rundir, debug, lock_d)
+                else: # XXX happens when sequences are matching but offset from each other
+                    wdb(f'Debug: offset sequence {seq_anno=}', rundir, debug, lock_d)
+                    pass
+                    #wdb(f'Error: no annotation. Ref: {ref_seq} Alt: {seq}', rundir, debug, lock_d)
                 continue
             
             # add to miss cache
-            msg = f"Info: No match for {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}\n"
+            msg = f"Info: No match for {pcrPlate=} {pcrWell=} {num=} {seq=}\n"
             wdb(msg, rundir, debug, lock_d)
             msc[seq] = None
             match_cnt[seq] += num
@@ -686,7 +705,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
             miss_cache.update(msc)
         wdb('Info: Updating miss cache', rundir, debug, lock_d)
 
-    msg = f"Info: Completed matching for {PID=} {wr['pcrPlate']=} {wr['pcrWell']=}"
+    msg = f"Info: Completed matching for {PID=} {pcrPlate=} {pcrWell=}"
     lrecs.append(msg)
     wdb(msg, rundir, debug, lock_d)
     # rename 'other' to include number of separate sequence variations
@@ -725,8 +744,8 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 continue
             else:
                 msg = f'Critical: {seq=} not found in match cache {mtc=}'
-                wdb(msg, rundir, debug, lock_d)
                 print(msg, flush=True)
+                wdb(msg, rundir, debug, lock_d)
         else:
             ref_seq = seq.split('//')[0]
             anno = seq.split('//')[1]
@@ -742,19 +761,29 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
         res2 = [';'.join(map(str,seqCounts)), ';'.join(map(str,seqNames)), 
                 ';'.join(map(str,otherCounts)), ';'.join(map(str,otherNames))]
     except Exception as exc:
-        wdb(f"Error joining names and counts: {exc=}", rundir, debug, lock_d)
+        wdb(f"Error: joining names and counts {exc=}", rundir, debug, lock_d)
         print(wdb, flush=True)
         res2 = ['','','','']
     retval = [str(wr[x]) for x in wr] + res1 + res2
-    with lock_r:
-        reps[int(wr['sampleNo'])] = retval
+    sn = None
+    try:
+        sn = int(sampleNo)
+    except Exception as exc:
+        msg = f"Critical: sampleNo not an integer {exc=}"
+        print(msg, flush=True)
+        wdb(msg, rundir, debug, lock_d)
+    if sn:    
+        with lock_r:
+            #print(f'{retval=}', flush=True)
+            reps[sn] = retval
     wdb(f'{retval=}', rundir, debug, lock_d)
     with lock_l:
         for l in lrecs:
             log.append(l)
-    msg = f"Info: Exiting process_well() {PID} {wr['pcrPlate']} {wr['pcrWell']}"
+    msg = f"Info: Exiting process_well() {PID=} {sampleNo=} {pcrPlate=} {pcrWell=}"
     wdb(msg, rundir, debug, lock_d)
-    print(msg)
+    if debug:
+        print(msg)
 
 
 def write_log(log, logfn):
@@ -985,7 +1014,7 @@ def main(args):
                 completed = sum([r.ready() for r in reports])
                 match_progress = floor(100*completed/total_jobs)
                 report_progress(args.rundir, launch_progress, match_progress)
-
+                
         while match_progress < 100:
             completed = sum([r.ready() for r in reports])
             # report the number of remaining tasks
@@ -995,17 +1024,18 @@ def main(args):
             # wait a moment
             time.sleep(2.5)       
         report_progress(args.rundir, 100, 100)
-
+                        
         pool.close()
         pool.join()
         print('All processes completed', flush=True)
-        log.append("Info: All processes completed")
+
         with lock_l:
             for l in logm:
                 log.append(l)
 
-        log.append(f'Info: Writing results to {args.outfn}')
-        
+        with lock_r:
+            completed_jobs = [reps[key] for key in sorted(reps.keys())]
+
         with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd:
             print(f"Opening {args.outfn} for results", file=sys.stderr)
             dst = csv.writer(dstfd, dialect="unix", quoting=csv.QUOTE_ALL)
@@ -1013,15 +1043,19 @@ def main(args):
             hdrres2 = ("seqCount", "seqName", "otherCount", "otherName")
             complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))
             dst.writerow(complete_row_hdr)
-            with lock_r:
-                for key in sorted(reps.keys()):
-                    dst.writerow(reps[key])
+            for job in completed_jobs:
+                try:
+                    dst.writerow(job)
+                except Exception as exc:
+                    print(f'{exc=}', flush=True)
             dstfd.flush()
 
     end_time = datetime.datetime.now()
-    log.append(f"End: {end_time} took: {end_time - start_time}")
+    msg = f"End: {end_time} took: {end_time - start_time}"
+    print(msg, flush=True)
+    log.append(msg)
     write_log(log, os.path.join(args.rundir,args.logfn))
-   
+     
     
 def run_matches(exp, ncpus, mincov, minprop, exhaustive, debug):
     """
