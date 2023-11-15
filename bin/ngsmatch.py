@@ -632,16 +632,11 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
             if seq in mtc:
                 msg = f"Info: Match cache hit {num=} {seq=} {mtc[seq]=}"
                 wdb(msg, rundir, debug, lock_d)
-                if seq in anc:
-                    refseq = mtc[seq]
-                    anno = anc[seq]
-                    match_cnt[refseq+'//'+anno] += num
-                else:
-                    match_cnt[seq] += num
-                # top up the original reference counts if needed
                 ref_seq = mtc[seq]
-                if ref_seq != seq: 
-                    match_cnt[ref_seq] += num
+                match_cnt[ref_seq] += num
+                if seq in anc:
+                    anno = anc[seq]
+                    match_cnt[ref_seq+'//'+anno] += num
                 continue
             # miss cache - doesn't match any known sequence
             if seq in msc:
@@ -675,10 +670,6 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 if seq_anno:
                     anc[seq] = seq_anno
                     match_cnt[ref_seq+'//'+seq_anno] += num
-                else: # XXX happens when sequences are matching but offset from each other
-                    wdb(f'Debug: offset sequence {seq_anno=}', rundir, debug, lock_d)
-                    pass
-                    #wdb(f'Error: no annotation. Ref: {ref_seq} Alt: {seq}', rundir, debug, lock_d)
                 continue
             
             # add to miss cache
