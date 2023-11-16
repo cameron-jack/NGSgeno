@@ -1,3 +1,15 @@
+v0.23.007
+Date: Thu Nov 16 06:08:09 AEDT 2023
+* Fixed: duplicate match bug
+
+v0.23.006
+Date: Fri Nov 10 10:06:20 AEDT 2023
+* Fixed: ngsmatch now robust to corrupt gzip FASTQ files
+
+v0.23.005
+Date: Fri Nov  3 14:12:31 AEDT 2023
+* Fixed: many innocuous bugs in inexact matching sequence assignment.
+
 v0.23.004
 Date: Mon Oct 30 13:32:24 AEDT 2023
 * Fixed: removed sample barcodes from file names in Miseq file
