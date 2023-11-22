@@ -674,7 +674,7 @@ def main():
                             style="italic")    
             
             with tab_col1:
-                load_data_tab = create_tabs([("Load Samples", ""),("Load Consumables", "")])                   
+                load_data_tab = create_tabs([("Load Samples", ""),("Load Consumables", ""), ("Volumes", "")])                   
             if not load_data_tab:
                 set_session_state('load_tab', 1)
                 load_data_tab = st.session_state['load_tab']
@@ -700,8 +700,7 @@ def main():
             # ******** TAB 2: Load consumables, references and assays/primer mappings, edit volumes ********
             if load_data_tab == 2:
                 st.info('Upload extra files (consumables). **Ensure that you have at least uploaded '+\
-                        'your assay list in order to generate Echo files in Step 2. (Nimbus)**. '+\
-                        'You can also edit the volumes for DNA, primers, indexes, and taq and water here.')
+                        'your assay list in order to generate Echo files in Step 2. (Nimbus)**. ')
                 
                 st.subheader("Summary")
                 dc.display_consumables('load_data_tab2')
@@ -709,9 +708,7 @@ def main():
                     set_session_state('upload stage', None)
                     add_vertical_space(1)
                     
-                    st.subheader("Custom Volumes")
-                    ld.custom_volumes(exp)
-                    add_vertical_space(1)
+
 
                     st.subheader("Upload Consumables")
                     ld.upload_extra_consumables('consumables_load2')
@@ -719,6 +716,17 @@ def main():
                     ld.upload_pcr2_files('pcr2_load2')
                 
                 st.session_state['load_tab'] = 2
+            
+            #******** TAB 3: Editable volumes ********
+            if load_data_tab == 3:
+                st.info("You can edit the volumes for DNA, primers, indexes, and taq and water, "+
+                          "as well as dead volumes, and volume capacity, for each plate type")
+                st.subheader("Custom Volumes")
+                dc.custom_volumes(exp)
+                add_vertical_space(1)
+                dc.custom_plate_volumes(exp)
+
+                st.session_state['load_tab'] = 3
 
             with tab_col2:
                 add_vertical_space(1)
@@ -835,7 +843,7 @@ def main():
                             style="italic")
             #Tabs
             with tab_col1:
-                primer_tab = create_tabs([("PCR 1", "Components"), ("Generate", "Picklists")])
+                primer_tab = create_tabs([("PCR 1", "Components"), ("Generate", "Picklists"), ("Volumes", "")])
             if not primer_tab:
                 set_session_state("primer_tab", 1)
                 primer_tab = st.session_state['primer_tab']
@@ -875,9 +883,6 @@ def main():
                     ld.upload_pcr1_files(key='pcr1_primer1')
                     add_vertical_space(1)
 
-                    st.subheader('Custom Volumes')
-                    ld.custom_volumes(exp)
-
                 st.session_state['primer_tab'] = 1
                 
             #******** TAB 2: Generate PCR 1 picklists ********
@@ -906,6 +911,17 @@ def main():
                     dc.get_echo1_downloads_btns()
 
                 st.session_state['primer_tab'] = 2
+            
+            #******** TAB 3: Editable volumes ********
+            if primer_tab == 3:
+                st.info("You can edit the volumes for DNA, primers, indexes, and taq and water, "+
+                                "as well as dead volumes, and volume capacity, for each plate type")
+                st.subheader("Custom Volumes")
+                dc.custom_volumes(exp)
+                add_vertical_space(1)
+                dc.custom_plate_volumes(exp)
+                
+                st.session_state['primer_tab'] = 3
             
             #info viewer
             with tab_col2:
@@ -943,7 +959,7 @@ def main():
                             style="italic")
             
             with tab_col1:
-                index_tab = create_tabs([("PCR 2", "Components"), ("Generate", "Picklists")])
+                index_tab = create_tabs([("PCR 2", "Components"), ("Generate", "Picklists"), ("Volumes", "")])
             if not index_tab:
                 set_session_state('index_tab', 1)
                 index_tab = st.session_state['index_tab']
@@ -967,9 +983,6 @@ def main():
                     st.subheader('Upload Files')
                     ld.upload_pcr2_files(key='pcr2_index1')
                     add_vertical_space(1)
-
-                    st.subheader('Custom Volumes')
-                    ld.custom_volumes(exp)
 
                     st.session_state['index_tab'] = 1
                     
@@ -1014,7 +1027,18 @@ def main():
                 if st.session_state['pcr2 picklist']:
                     dc.get_echo2_download_btns()
                 
-                st.session_state['index_tab'] = 2            
+                st.session_state['index_tab'] = 2
+
+            #******** TAB 3: Editable volumes ********
+            if index_tab == 3:
+                st.info("You can edit the volumes for DNA, primers, indexes, and taq and water, "+
+                                "as well as dead volumes, and volume capacity, for each plate type")
+                st.subheader("Custom Volumes")
+                dc.custom_volumes(exp)
+                add_vertical_space(1)
+                dc.custom_plate_volumes(exp)
+
+                st.session_state['index_tab'] = 3        
                 
             #Info viewer
             with tab_col2:
@@ -1158,6 +1182,7 @@ def main():
                                 "proportion of the reads seen for the most observed (expected) allele, default 0.2. Must be between 0.0 and 1.0",
                                 format='%f',min_value=0.0, max_value=1.0, value=0.2)
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
+                        nocache = st.checkbox("Disable caching: slower but removes any target ambiguity")
                         debug_mode = st.checkbox('Turn on debugging for allele calling')
                         do_matching = st.form_submit_button("Run allele calling")
 

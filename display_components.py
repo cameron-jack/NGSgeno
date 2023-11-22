@@ -24,6 +24,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 import extra_streamlit_components as stx
 
+import stutil
+
 from stutil import custom_text, add_vertical_space, hline
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
@@ -444,6 +446,119 @@ def display_pcr2_components(dna_pids=None, pcr_pids=None, amplicon_pids=None):
     pcr2_col[3].write(str(index_max))
     pcr2_col[0].markdown('**Index Pairs Allowed by Volume**')
     pcr2_col[1].markdown(index_pairs_allowed, unsafe_allow_html=True)
+
+def custom_volumes(exp):
+    volumes_dict = exp.transfer_volumes.copy()
+    st.markdown('**Volumes for DNA and Primers**', help='To edit the volume, check the box.')
+    col1, col2, col3,_ = st.columns([2,2,1,7])
+    col1.write(f'Current volumes (nL):')
+    allow_edit = col2.toggle('Edit current volumes', key='checkbox_transfer')
+    reset_vols = col3.button("Reset", key='btn_transfer', help="Reset to default values: "+
+                                                                f"DNA: {util.DNA_VOL}, Primer: {util.PRIMER_VOL}, "+
+                                                                f"Primer Taq: {util.PRIMER_TAQ_VOL}, "+
+                                                                f"Primer water: {util.PRIMER_WATER_VOL}, "+
+                                                                f"Index: {util.INDEX_VOL}, "+
+                                                                f"Index Taq: {util.INDEX_TAQ_VOL}, "+
+                                                                f"Index water: {util.INDEX_WATER_VOL}")
+    transfer_vol_df = pd.DataFrame.from_dict(data=exp.transfer_volumes, 
+                                                orient='index', 
+                                                columns=['Volume'])
+    
+    custom_vol_editor = st.data_editor(transfer_vol_df.T,
+                                                    height=80,
+                                                    use_container_width=False, 
+                                                    key="volume_df", 
+                                                    disabled=not allow_edit)
+    tip_col, _ = st.columns(2)
+    if allow_edit:
+        tip_col.info('To change the volume, click or double click on the cell, type in the new value and hit Enter')
+    
+    if reset_vols:
+        success = exp.add_custom_volumes({'DNA_VOL':util.DNA_VOL, 
+                                          'PRIMER_VOL':util.PRIMER_VOL, 
+                                          'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
+                                          'PRIMER_WATER_VOL':util.PRIMER_WATER_VOL, 
+                                          'INDEX_VOL':util.INDEX_VOL, 
+                                          'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
+                                          'INDEX_WATER_VOL':util.INDEX_WATER_VOL})
+        if success:
+            st.experimental_rerun()
+        else:
+            st.error('Volumes were not reset. Check the log for more information')
+
+    #if edit is made to dataframe - key in st.data_editor
+    if st.session_state['volume_df']['edited_rows']:
+        for vol in list(volumes_dict.keys()):
+            volumes_dict[vol] = float(custom_vol_editor[vol]['Volume'])
+        success = exp.add_custom_volumes(volumes_dict)
+        if success:
+            st.success("Added new volume")
+            st.experimental_rerun()
+        else:
+            st.warning("Volume could not be added. Please enter in integers only.")
+
+    stutil.add_vertical_space(1)
+
+def custom_plate_volumes(exp):
+    """
+    Widget for modifying dead volumes for each plate type, '384PP_AQ_BP', '6RES_AQ_BP2',
+    'Hard Shell 384 well PCR Biorad'. It will only show volumes if the plate is in the experiment. 
+    DEAD_VOLS = {'384PP_AQ_BP': 30*1000, '6RES_AQ_BP2': 250*1000, 'Hard Shell 384 well PCR Biorad': 0.001*1000}
+    CAP_VOLS = {'384PP_AQ_BP': 60*1000, '6RES_AQ_BP2': 2800*1000, 'Hard Shell 384 well PCR Biorad': 6*1000}
+    Args:
+        exp (Experiment)
+    """
+    #create volume editor based on existing plates in the experiment
+    dead_volumes_dict = dict()
+    for plate, info in exp.plate_location_sample.items():
+        plate_type = info.get('plate_type')
+        if plate_type in exp.dead_volumes.keys():
+            dead_volumes_dict[plate_type] = [exp.dead_volumes[plate_type], exp.cap_volumes[plate_type]]
+
+    if dead_volumes_dict:
+        st.markdown('**Dead volumes and capacity for each plate type**', help='To edit the volume, check the box.')
+        col1, col2, col3,_ = st.columns([2,2,1,7])
+        col1.write(f'Current volumes (nL):')
+        allow_edit = col2.toggle('Edit current volumes', key='checkbox_dead')
+        reset_vols = col3.button("Reset", key='btn_dead', help=f"Reset to default volumes: {util.DEAD_VOLS}, {util.CAP_VOLS}")
+        dead_vol_df = pd.DataFrame.from_dict(data=dead_volumes_dict, 
+                                                orient='index',
+                                                columns = ['Dead Volume', 'Volume Capacity'])
+
+        custom_dead_vol_editor = st.data_editor(dead_vol_df.T,
+                                                    height=120,
+                                                    use_container_width=False, 
+                                                    key="dead_volume_df", 
+                                                    disabled=not allow_edit)
+        tip_col, _ = st.columns(2)
+        if allow_edit:
+            tip_col.info('To change the volume, click or double click on the cell, type in the new value and hit Enter')
+        
+        if reset_vols:
+            for plate in dead_volumes_dict:
+                dead_volumes_dict[plate] = [util.DEAD_VOLS[plate], util.CAP_VOLS[plate]]
+            success = exp.add_custom_plate_volumes(dead_volumes_dict)
+
+            if success:
+                st.experimental_rerun()
+            else:
+                st.error('Volumes were not reset. Check the log for more information')
+        
+        #if edit is made to dataframe - key in st.data_editor
+        if st.session_state['dead_volume_df']['edited_rows']:
+            for plate in dead_volumes_dict.keys():
+                dead_volumes_dict[plate] = \
+                        [(custom_dead_vol_editor[plate]['Dead Volume']), 
+                         (custom_dead_vol_editor[plate]['Volume Capacity'])]
+                
+            success = exp.add_custom_plate_volumes(dead_volumes_dict)
+            if success:
+                st.success("Added new volume")
+                st.experimental_rerun()
+            else:
+                st.warning("Volume could not be added. Please enter in integers only.")
+
+    stutil.add_vertical_space(1)
 
 
 

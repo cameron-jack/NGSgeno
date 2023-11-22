@@ -131,6 +131,8 @@ class Experiment():
         self.transfer_volumes = {'DNA_VOL':util.DNA_VOL, 'PRIMER_VOL':util.PRIMER_VOL, 'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
                 'PRIMER_WATER_VOL':util.PRIMER_WATER_VOL, 'INDEX_VOL':util.INDEX_VOL, 'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
                 'INDEX_WATER_VOL':util.INDEX_WATER_VOL}  # load the defaults from util.py
+        self.dead_volumes = util.DEAD_VOLS
+        self.cap_volumes = util.CAP_VOLS
         
 
     def __setstate__(self, state):
@@ -808,14 +810,14 @@ class Experiment():
         for pid in pids:
             tw_plate = transaction.get_plate(self, pid) # get the plate records with adjusted usage
             for well in ['A1','A2','A3']:
-                water_avail += tw_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo6']]
+                water_avail += tw_plate[well]['volume'] - self.dead_volumes[util.PLATE_TYPES['Echo6']]
                 if transactions is not None:
                     if pid in transactions:
                         if well in transactions[pid]:
                             water_avail += transactions[pid][well] # the transactions are recorded as change, so will be negative values
 
             for well in ['B1','B2','B3']:
-                taq_avail += tw_plate[well]['volume'] - util.DEAD_VOLS[util.PLATE_TYPES['Echo6']]
+                taq_avail += tw_plate[well]['volume'] - self.dead_volumes[util.PLATE_TYPES['Echo6']]
                 if transactions is not None:
                     if pid in transactions:
                         if well in transactions[pid]:
@@ -1247,8 +1249,8 @@ class Experiment():
                 self.plate_location_sample[pid]['purpose'] = 'taq_water'
                 self.plate_location_sample[pid]['plate_type'] = util.PLATE_TYPES['Echo6']
                 self.plate_location_sample[pid]['pcr_stage'] = pcr_stage
-                self.plate_location_sample[pid]['capacity'] = util.CAP_VOLS[util.PLATE_TYPES['Echo6']]
-                self.plate_location_sample[pid]['dead_vol'] = util.DEAD_VOLS[util.PLATE_TYPES['Echo6']]
+                self.plate_location_sample[pid]['capacity'] = self.cap_volumes[util.PLATE_TYPES['Echo6']]
+                self.plate_location_sample[pid]['dead_vol'] = self.dead_volumes[util.PLATE_TYPES['Echo6']]
                 self.plate_location_sample[pid]['wells'] = ['A1','A2','A3','B1','B2','B3']
                 self.plate_location_sample[pid]['water_wells'] = util.WATER_WELLS
                 self.plate_location_sample[pid]['taq_wells'] = util.TAQ_WELLS
@@ -1324,9 +1326,16 @@ class Experiment():
 
     #Gabi's code for custom volumes
     def add_custom_volumes(self, custom_volumes:dict) -> bool:
+        """
+        Edit volumes for DNA, primers, indexes and taq/water.
+        Args:
+            custom_volumes(dict): Volumes for transfer_volumes
+        Return:
+            True if successfully changed the transfer volumes. False is there is an error with the type (not an int)
+        """
         try:
             for value in list(custom_volumes.values()):
-                value = int(value)
+                value = float(value)
             self.transfer_volumes = custom_volumes.copy()
             self.log(f'Success: Custom volumes added')
             self.save()
@@ -1336,6 +1345,43 @@ class Experiment():
             return False
     #End of Gabi's code for custom volumes
 
+    def add_custom_plate_volumes(self, custom_plate_vols:dict):
+        """
+        Update the experiment's dead and cap volumes with the custom volumes. Also update any plates that have been added
+        with a dead and cap volume. 
+        Args:
+            custom_plate_vols(dict): New volumes from user to replace the current dead and cap volumes. Dictionary in 
+                                    the form: {'plate_type': [dead_volume, cap_volume]}
+
+        Return:
+            True once edits have been added. Returns False if the volumes in the custom_plate_vols aren't numbers.
+        """
+        try:
+            #check the entries are floats
+            custom_plate_vols = {plate: [float(vol) for vol in vols] for plate, vols in custom_plate_vols.items()}
+        except (TypeError, ValueError) as e:
+            self.log(f'Error: {e}')
+            return False
+
+        #update dead and cap volumes with the custom volumes
+        self.dead_volumes.update({plate: vols[0] for plate, vols in custom_plate_vols.items() \
+                                    if plate in self.dead_volumes and vols})
+        
+        self.cap_volumes.update({plate: vols[1] for plate, vols in custom_plate_vols.items() \
+                                    if plate in self.cap_volumes and len(vols) > 1})
+
+        # Update plate_location_sample if any plates have a dead and cap volume
+        for plate, info in self.plate_location_sample.items():
+            if info.get('dead_vol'):
+                info['dead_vol'] = self.dead_volumes[info['plate_type']]
+                
+            if info.get('capacity'):
+                print(plate,info)
+                info['capacity'] = self.cap_volumes[info['plate_type']]
+
+        self.log(f'Success: Custom volumes added')
+        self.save()
+        return True
 
     def read_allele_results(self):
         """

@@ -588,7 +588,6 @@ def match_assays_to_primers(exp, assays):
                     assay_primers[assay].add(p)
     return assay_primers
 
-
 ### Table classes to act like a relational DB
 
 # Never used?

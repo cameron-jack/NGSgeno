@@ -726,7 +726,7 @@ def i7i5alloc_rot(exp, vol, wellcount, index_survey_fn='index-svy.csv'):
         # typebc = Table.newtype('BCRecord', "well name index indexName oligo volume")
         tab = util.CSVTable(typebc, exp.get_exp_fn(index_survey_fn)) # volumes in file are in uL
 
-        dv = util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
+        dv = exp.dead_volumes[util.PLATE_TYPES['Echo384']]
         #def getvol(x): return x[-1]
         i7s = {(r.barcode, r.set, r.well, r.platebc): float(r.volume)*1000-dv for r in tab.data if '_i7F_' in r.set}
         i5s = {(r.barcode, r.set, r.well, r.platebc): float(r.volume)*1000-dv for r in tab.data if '_i5R_' in r.set}

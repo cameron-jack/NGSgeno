@@ -24,7 +24,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 import extra_streamlit_components as stx
-import stutil as stutil
+import stutil
 
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
@@ -230,7 +230,7 @@ def upload_echo_inputs(key):
             with info_area:
                 stutil.custom_text('p', 'green', uploaded_nims)         
         if xbcs:
-            title = 'Further Echo inputs/Nimbus outputs are expected'
+            title = 'Echo inputs/Nimbus outputs are expected'
             uploaded_nims = '</br>'.join([Path(ef).name for ef in efs])
             missing_nims = '</br>'.join(['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs])
             with info_area:
@@ -458,54 +458,6 @@ def upload_extra_consumables(key):
         with warning_area:
             pending_file_widget(key)
         st.session_state['upload_option'] = ''
-    stutil.add_vertical_space(1)
-
-
-def custom_volumes(exp):
-    volumes_dict = exp.transfer_volumes.copy()
-
-    st.markdown('**Volumes for DNA and Primers**', help='To edit the volume, check the box.')
-    col1, col2, col3,_ = st.columns([1,1,1,4])
-    col1.write(f'Current volumes (nL):')
-    allow_edit = col2.checkbox('Edit current volumes')
-    reset_vols = col3.button("Reset to default")
-    transfer_vol_df = pd.DataFrame.from_dict(data=exp.transfer_volumes, 
-                                                orient='index', 
-                                                columns=['Volume'])
-    
-    custom_vol_editor = st.data_editor(transfer_vol_df.T,
-                                                    height=80,
-                                                    use_container_width=True, 
-                                                    key="volume_df", 
-                                                    disabled=not allow_edit)
-    tip_col, _ = st.columns(2)
-    if allow_edit:
-        tip_col.info('To change the volume, click or double click on the cell, type in the new value and hit Enter')
-    
-    if reset_vols:
-        success = exp.add_custom_volumes({'DNA_VOL':util.DNA_VOL, 
-                                          'PRIMER_VOL':util.PRIMER_VOL, 
-                                          'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
-                                          'PRIMER_WATER_VOL':util.PRIMER_WATER_VOL, 
-                                          'INDEX_VOL':util.INDEX_VOL, 
-                                          'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
-                                          'INDEX_WATER_VOL':util.INDEX_WATER_VOL})
-        if success:
-            st.experimental_rerun()
-        else:
-            st.error('Volumes were not reset. Check the log for more information')
-
-    #if edit is made to dataframe
-    if st.session_state['volume_df']['edited_rows']:
-        for vol in list(volumes_dict.keys()):
-            volumes_dict[vol] = float(custom_vol_editor[vol]['Volume'])
-        success = exp.add_custom_volumes(volumes_dict)
-        if success:
-            st.success("Added new volume")
-            st.experimental_rerun()
-        else:
-            st.warning("Volume could not be added. Please enter in integers only.")
-
     stutil.add_vertical_space(1)
 
 
