@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.23.007"
+VER="v0.23.008"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: duplicate match bug
+* Fixed: missing underscore in primer family search string
 EOM
 
 mv changelog.txt changelog_old.txt
