@@ -587,7 +587,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     on_target_seqs = set()
     off_target_seqs = set()
     for name in id_seq:
-        if name.lower().startswith(primer.split('_')[0].lower()):
+        if name.lower().startswith(primer.split('_')[0].lower() + '_'):
             on_target_ids.add(name)
             on_target_seqs.add(id_seq[name])
         else:
