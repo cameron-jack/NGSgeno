@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VER="v0.23.007"
+VER="v0.23.008"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
