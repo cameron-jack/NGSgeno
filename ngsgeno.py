@@ -869,6 +869,7 @@ def main():
                         minprop = st.number_input(label="Do not match unique sequences with less than this "+\
                                 "proportion of the reads seen for the most observed (expected) allele, default 0.2. Must be between 0.0 and 1.0",
                                 format='%f',min_value=0.0, max_value=1.0, value=0.2)
+                        exact_only = st.checkbox("Exact only: disable inexact matching")
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
                         debug_mode = st.checkbox('Turn on debugging for allele calling')
                         do_matching = st.form_submit_button("Run allele calling")
@@ -891,6 +892,8 @@ def main():
                         else:
                             matching_prog = os.path.join('bin','ngsmatch.py')
                             cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} --mincov {mincov} --minprop {minprop}'
+                            if exact_only:
+                                cmd_str += ' --exact'
                             if exhaustive_mode:
                                 cmd_str += ' --exhaustive'
                             if debug_mode:
