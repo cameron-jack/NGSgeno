@@ -863,6 +863,8 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
     
         fnstage2 = "Stage2.csv"
         fnstage3 = exp.get_exp_fn("Stage3.csv", trans=True)
+        total_wells = 0
+        # we need to decompose S2tab so that we can add the amplicon rows to it
         if amplicon_bcs and not pcr_bcs:
             s2_header = ['samplePlate', 'sampleWell', 'sampleBarcode', 'strain', 'sex', 'alleleSymbol',
                                   'alleleKey', 'assayKey', 'assays', 'assayFamilies', 'clientName', 'sampleName',
@@ -870,25 +872,20 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
             s2_data = []
         else:
             s2tab = util.CSVTable('S2Rec', exp.get_exp_fn(fnstage2))
-            total_wells += len(s2tab.data)
-            print(f'{total_wells=}')
+            
  
             s2_header = s2tab.header
             s2_data = s2tab.data # list of S3 records, each is a namedtuple
-                
+        total_wells += len(s2_data)
+        print(f'{total_wells=}')      
             
         index_vol = exp.transfer_volumes['INDEX_VOL']  # 175 nanolitres
-        # count up all amplicon sample wells
-        total_wells = len(s2tab.data)
-        print(f'{total_wells=}')
+        
         for amp_pid in amplicon_bcs:
             total_wells += len(exp.plate_location_sample[amp_pid]['wells'])
-        #print(f'{total_wells=}')
+        
         index_alloc = i7i5alloc_rot(exp, index_vol, total_wells)
         print(f'{len(index_alloc)=}')
-        # we need to decompose S2tab so that we can add the amplicon rows to it
-        s2_header = s2tab.header
-        s2_data = s2tab.data # list of S3 records, each is a namedtuple
         s2_data_rows = []
         for s2_record in s2_data:
             s2_data_rows.append([s2_record[i] for i,h in enumerate(s2_header)])
