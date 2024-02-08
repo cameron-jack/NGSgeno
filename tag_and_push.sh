@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.23.008"
+VER="v0.23.009"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: duplicate match bug
+* New: exact-only matching
 EOM
 
 mv changelog.txt changelog_old.txt

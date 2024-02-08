@@ -1,3 +1,7 @@
+v0.23.009
+Date: Thu Feb  8 13:04:12 AEDT 2024
+* New: exact-only matching
+
 v0.23.008
 Date: Wed Feb  7 11:23:25 AEDT 2024
 * Fixed: duplicate match bug
