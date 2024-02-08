@@ -74,7 +74,7 @@ def upload(exp, streams, purpose, overwrite=False):
     - Each file is uploaded with a pending_ prefix and
     - saved to /exp/uploads/
     - A new exp.uploaded_files record is created and
-    - it is added to exp.transaction_queue if required,
+    - it is added to exp.pending_uploads if required,
     - or is sent to process_upload(exp, file, purpose)
     Return True if all uploaded streams are correctly saved and parsed, else False
     """

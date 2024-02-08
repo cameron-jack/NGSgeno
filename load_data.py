@@ -320,7 +320,59 @@ def cancel_amplicons():
     warning_area = st.session_state['message_area']
     st.session_state['upload_option'] = ''  # do we display pending files here
 
-                               
+
+def load_amplicons(key):
+    """
+    Upload only amplicon plates here
+    """
+    exp = st.session_state['experiment']
+    warning_area = st.session_state['message_area']
+    
+    st.write('')
+    st.write('**Upload Amplicon Plate Files**')
+    with st.form('index plate upload'+key, clear_on_submit=True): 
+        uploaded_amplicon_plates = st.file_uploader(
+                    'Upload Extra Amplicon Plates - CSV or XLSX.'+
+                    'Invalidates MiSeq and Stage3 CSV files if they exist', 
+                    key='amplicon_plate_uploader'+key, 
+                    type=['csv', 'xlsx'], 
+                    accept_multiple_files=True)
+        
+        upload_button = st.form_submit_button("Upload Files")
+    
+        if upload_button:
+            st.session_state['upload_option'] = 'amplicons'
+            if uploaded_amplicon_plates:
+                # Try to remove obsolete files
+                miseq_fn = exp.get_exp_fn('MiSeq_'+exp.name+'.csv')
+                if Path(miseq_fn).exists():
+                    success = exp.del_file_record(miseq_fn)
+                    if success:
+                        exp.log(f'Info: removed obsolete Miseq.csv file')
+                    else:
+                        exp.log(f'Warning: could not remove obsolete Miseq.csv file')
+                    
+                stage3_fn = exp.get_exp_fn('Stage3.csv')
+                if Path(stage3_fn).exists():
+                    success = exp.del_file_record(stage3_fn)
+                    if success:
+                        exp.log(f'Info: removed obsolete Stage3.csv file')
+                    else:
+                        exp.log(f'Warning: could not remove obsolete Stage3.csv file')
+
+                success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
+                uap_ids = [uap.name for uap in uploaded_amplicon_plates]
+                if success:
+                    warning_area.success(f'Added amplicon manifests from files {uap_ids}')
+                else:
+                    warning_area.write(f'Failed to upload at least one amplicon manifest, please see the log')
+    # manage transactions
+    if trans.is_pending(exp) and st.session_state['upload_option'] == 'amplicons':
+        pending_file_widget(key)
+        st.session_state['upload_option'] = ''   
+    st.write('')           
+    
+
 def upload_pcr2_files(key):
     """
     Upload inputs for indexing layout and volume. Extra option for amplicon plate upload.

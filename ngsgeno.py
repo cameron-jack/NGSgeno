@@ -93,83 +93,6 @@ def create_run_folder(newpath):
     return exp, ''
 
 
-def plate_checklist_expander(available_nimbus, pcr_stage=1):
-    """
-    Allows the selection/deselection all plates involved in a reaction stage
-    """
-    exp = st.session_state['experiment']
-    included_PCR_plates = set()
-    included_taqwater_plates = set()
-    checklist_col = st.columns(4)
-    pcr_plate_title = "PCR Plates"
-    taqwater_plate_title = "Taq/Water Plates"
-
-    if pcr_stage == 1:
-        included_DNA_plates = set()
-        dna_plate_title = "DNA Plates"
-        
-        checklist_col[0].markdown(f'**{dna_plate_title}**')
-        for nim in available_nimbus:
-            echo_filename=Path(nim).stem
-            inc_dna = checklist_col[0].checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
-            if inc_dna:
-                included_DNA_plates.add(util.guard_pbc(echo_filename.split('_')[-2], silent=True))
-    
-        checklist_col[1].markdown(f'**{pcr_plate_title}**')
-        for pcr_pid in exp.get_pcr_pids():
-            inc_pcr = checklist_col[1].checkbox(util.unguard_pbc(pcr_pid, silent=True),\
-                            value=True, key='chk_box_pcr_'+pcr_pid)
-            if inc_pcr:
-                included_PCR_plates.add(util.guard_pbc(pcr_pid, silent=True))
-
-        checklist_col[2].markdown(f'**{taqwater_plate_title}**')
-        for taqwater_pid in exp.get_taqwater_pids(pcr_stage):
-            inc_taqwater = checklist_col[2].checkbox(util.unguard_pbc(taqwater_pid, silent=True), 
-                        value=True, key='chk_box_taqwater_'+taqwater_pid)
-            if inc_taqwater:
-                included_taqwater_plates.add(util.guard_pbc(taqwater_pid, silent=True))
-        
-        return included_DNA_plates, included_PCR_plates, included_taqwater_plates
-
-    if pcr_stage == 2:
-        included_index_plates = set()
-        included_amplicon_plates = set()
-        #could make a for loop
-
-        index_plate_title = "Index Plates"
-        amplicon_plate_title = "Amplicon Plates"
-
-        checklist_col[0].markdown(f'**{pcr_plate_title}**')
-        for pcr_pid in exp.get_pcr_pids():
-            inc_pcr = checklist_col[0].checkbox(util.unguard_pbc(pcr_pid, silent=True),
-                    value=True, key='chk_box_pcr_'+pcr_pid)
-            if inc_pcr:
-                included_PCR_plates.add(pcr_pid)
-
-        checklist_col[1].markdown(f'**{taqwater_plate_title}**')
-        for taqwater_pid in exp.get_taqwater_pids(pcr_stage):
-            inc_taqwater = checklist_col[1].checkbox(util.unguard_pbc(taqwater_pid, silent=True), 
-                    value=True, key='chk_box_taqwater_'+taqwater_pid)
-            if inc_taqwater:
-                included_taqwater_plates.add(taqwater_pid)
-
-        checklist_col[2].markdown(f'**{index_plate_title}**')
-        for index_pid in exp.get_index_pids():
-            inc_index = checklist_col[2].checkbox(util.unguard_pbc(index_pid, silent=True),
-                                                value=True, key='chk_box_index_'+index_pid)
-            if inc_index:
-                included_index_plates.add(index_pid)
-        
-        checklist_col[3].markdown(f'**{amplicon_plate_title}**')
-        for amplicon_pid in exp.get_amplicon_pids():
-            amplicon_index = checklist_col[3].checkbox(util.unguard_pbc(amplicon_pid, silent=True), 
-                    value=True, key='chk_box_amplicon_'+amplicon_pid)
-            if amplicon_index:
-                included_amplicon_plates.add(amplicon_pid)
-
-        return included_PCR_plates, included_taqwater_plates, included_index_plates, included_amplicon_plates
- 
-    
 async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog):
     """
     Allows the interface to keep running while a background process (ngsmatch.py) progress is tracked
@@ -417,6 +340,7 @@ def main():
                         st.session_state['run queue'] = []
                     ld.load_rodentity_data('rodentity_load1')
                     ld.load_custom_manifests('custom_load1')
+                    ld.load_amplicons('amp_load1')
                 st.session_state['load_tab'] = 1
                 with summary_holder:
                     summary = exp.summarise_inputs()
@@ -580,7 +504,7 @@ def main():
                     if efs:
                         with primer_checklist:
                             included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                        plate_checklist_expander(efs, pcr_stage=pcr_stage)
+                                        dc.plate_checklist_pcr1(exp)
                             
                         if included_DNA_plates:
                             dc.display_pcr_components(pcr_stage=pcr_stage, dna_pids=included_DNA_plates)
@@ -610,7 +534,7 @@ def main():
                     else:
                         with primer_checklist_exp:
                             included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                    plate_checklist_expander(efs,pcr_stage=1)
+                                    dc.plate_checklist_expander(exp)
                             st.session_state['included_DNA_pids'] = included_DNA_plates
                         
                         if included_DNA_plates:
@@ -662,12 +586,6 @@ def main():
                     st.session_state['index_tab'] = 1
                 index_tab = st.session_state['index_tab']
 
-            #nimbus fp, echo fp, barcodes not in echo
-            nfs, efs, xbcs = exp.get_nimbus_filepaths()
-            print(f'{efs=}')
-            missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
-            available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
-            
             #PCR 2 components
             if index_tab == 1:
                 if exp.locked:
@@ -685,29 +603,17 @@ def main():
                     ld.custom_volumes(exp)
 
                     st.session_state['index_tab'] = 1
-                    #                     if efs:
-                    #     with primer_checklist:
-                    #         included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                    #                     plate_checklist_expander(efs, pcr_stage=pcr_stage)
-                            
-                    #     if included_DNA_plates:
-                    #         dc.display_pcr_components(PCR_stage=pcr_stage, dna_pids=included_DNA_plates)
-                    # else:
-                    #     no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
-                    #     st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
-                    #             unsafe_allow_html=True)
+                    with index_checklist:
+                        included_PCR_plates, included_taqwater_plates, included_index_plates, \
+                                included_amplicon_plates = dc.plate_checklist_pcr2(exp)
+                    with pcr_comp_holder:
+                        dc.display_pcr_components(pcr_stage=pcr_stage)
                     
-                    if available_nimbus:
-                        with index_checklist:
-                            included_PCR_plates, included_taqwater_plates, included_index_plates,\
-                                    included_amplicon_plates =\
-                                    plate_checklist_expander(available_nimbus, pcr_stage=pcr_stage)
-                        with pcr_comp_holder:
-                            dc.display_pcr_components(pcr_stage=pcr_stage)
-                    else:
+                    if not included_PCR_plates and not included_amplicon_plates:
                         no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                         title_holder.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
                                 unsafe_allow_html=True)
+                    
                 st.session_state['index_tab'] = 1
 
             #generate PCR 2 picklist
@@ -715,22 +621,33 @@ def main():
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
+                    if 'amplicon_only' not in st.session_state:
+                        st.session_state['amplicon_only'] = False
                     st.write('Plate checklist')
                     index_checklist = st.container()
                     st.write('***')
-                    if not available_nimbus:
-                        st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
-                    else:
-                        with index_checklist:
-                            included_PCR_plates, included_taqwater_plates, included_index_plates,\
-                                    included_amplicon_plates =\
-                                    plate_checklist_expander(available_nimbus, pcr_stage=2)
+                    with index_checklist:
+                        included_PCR_plates, included_taqwater_plates, included_index_plates,\
+                                included_amplicon_plates =\
+                                dc.plate_checklist_pcr2(exp)
                         pcr2_messages = []  # pass by reference
                         if not exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
                                 included_index_plates, included_amplicon_plates, pcr2_messages):
                             for msg in pcr2_messages:
                                 st.warning(msg)
-                        else:
+                            if included_amplicon_plates and not st.session_state['amplicon_only']:
+                                _, amp1, amp2, amp3, _ = st.columns([3, 3, 1, 1, 3])
+                                amp1.warning('Is this an amplicon only run?')
+                                yes_amplicon = amp2.button('Yes')
+                                no_amplicon = amp3.button('No')
+
+                                if yes_amplicon:
+                                    st.session_state['amplicon_only'] = True    
+                                elif no_amplicon:
+                                    st.session_state['amplicon_only'] = False
+                        
+                        if exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
+                                included_index_plates, included_amplicon_plates, pcr2_messages) or st.session_state['amplicon_only']:
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
 
                             echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
@@ -745,6 +662,7 @@ def main():
                                         included_index_plates, included_taqwater_plates, included_amplicon_plates)
                                 if not success:
                                     st.write('Picklist generation failed. Please see the log')
+                        
 
                 dc.show_echo2_outputs()
                 st.session_state['index_tab'] = 2            

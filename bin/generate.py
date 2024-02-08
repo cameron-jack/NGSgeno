@@ -863,13 +863,19 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
     
         fnstage2 = "Stage2.csv"
         fnstage3 = exp.get_exp_fn("Stage3.csv", trans=True)
-    
-        ### i7i5 barcodes
-        # read Stage2 csv file
-        #sampleNumber	samplePlate	sampleWell	sampleBarcode	assays	assayFamilies	strain	sex	dnaPlate	dnaWell	primer	pcrPlate	pcrWell
-        #typebc = Table.newtype('S2Record',
-        # Because this reads from a file and is immutible, we can't filter by user PID choices
-        s2tab = util.CSVTable('S2Rec', exp.get_exp_fn(fnstage2))           
+        if amplicon_bcs and not pcr_bcs:
+            s2_header = ['samplePlate', 'sampleWell', 'sampleBarcode', 'strain', 'sex', 'alleleSymbol',
+                                  'alleleKey', 'assayKey', 'assays', 'assayFamilies', 'clientName', 'sampleName',
+                                  'dnaPlate', 'dnaWell', 'primer', 'primerPlate', 'primerWell', 'pcrPlate', 'pcrWell']
+            s2_data = []
+        else:
+            s2tab = util.CSVTable('S2Rec', exp.get_exp_fn(fnstage2))
+            total_wells += len(s2tab.data)
+            print(f'{total_wells=}')
+ 
+            s2_header = s2tab.header
+            s2_data = s2tab.data # list of S3 records, each is a namedtuple
+                
             
         index_vol = exp.transfer_volumes['INDEX_VOL']  # 175 nanolitres
         # count up all amplicon sample wells

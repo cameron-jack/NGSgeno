@@ -139,13 +139,13 @@ def cancel_delete(category, ids):
 
 
 def display_samples(key, height=250):
-    """ display a summary of all loaded DNA and sample plates """
+    """ display a summary of all loaded DNA, amplicon, and sample plates """
     exp = st.session_state['experiment']
     selection = []
     df = exp.inputs_as_dataframe()
     if df is None or not isinstance(df, pd.DataFrame):
         st.write('No 384-well DNA plate data loaded')
-    else:        
+    else:    
         selection = aggrid_interactive_table(df, key=key, grid_height=height)
         if 'selected_rows' in selection and selection['selected_rows']:
             rows = selection["selected_rows"]
@@ -205,7 +205,7 @@ def display_consumables(key, height=300):
             height = st.session_state['view_box_size']
         else:
             height = height
-        selection = aggrid_interactive_table(plate_df, grid_height=height, key='plate_aggrid')
+        selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'consumables_aggrid')
 
 
 def display_plates(key, plate_usage, height=300): 
@@ -219,7 +219,7 @@ def display_plates(key, plate_usage, height=300):
         else:
             height = height
 
-        selection = aggrid_interactive_table(plate_df, grid_height=height, key='plate_aggrid')
+        selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'plate_aggrid')
         #print(f'{selection=} {selection["selected_rows"]=} {[row["Plates"] for row in selection["selected_rows"]]=}')
         if selection and 'selected_rows' in selection:
             pids = [row['Plates'] for row in selection['selected_rows']]
@@ -250,6 +250,8 @@ def display_pcr_components(pcr_stage=1, dna_pids=None):
     Args:
         assay_usage: from Experiment.get_assay_usage
         pcr_stage (1, 2): 1 = Echo Primer stage, 2 = Echo Indexing
+        
+    TODO: split this function into separate PCR1, PCR2 functions
     """
     exp = st.session_state['experiment']
     DNA_PLATE_WELLS = 384
@@ -546,7 +548,7 @@ def display_files(key, file_usage, height=250):
 
     file_df.reset_index(inplace=True)
     file_df = file_df.rename(columns = {'index':'File', 'plates':'Plates', 'purpose':'Purpose'})
-    selection = aggrid_interactive_table(file_df, grid_height=height, key='file_aggrid')
+    selection = aggrid_interactive_table(file_df, grid_height=height, key=str(key)+'file_aggrid')
     if selection and 'selected_rows' in selection:
         fns = [row['File'] for row in selection['selected_rows']]
         fns = [fn for fn in fns if fn in exp.uploaded_files]
@@ -677,27 +679,27 @@ def info_bar(key):
             already_on = False
             if 'status' in st.session_state['screens_open']:
                 already_on = True
-            on = st.toggle(label='Status', value=already_on, key='status_toggle'+key, 
+            on = st.toggle(label='Status', value=already_on, key='status_toggle'+str(key), 
                     on_change=change_screens_open, args=['status'], help='Display status window')
 
             already_on = False
 
             if 'primers' in st.session_state['screens_open']:
                 already_on = True
-            on = st.toggle(label='Primers', value=already_on, key='primers_toggle'+key, 
+            on = st.toggle(label='Primers', value=already_on, key='primers_toggle'+str(key), 
                     on_change=change_screens_open, args=['primers'], help='Display primers window')
             
         with row1[1]:  # files
             already_on = False
             if 'files' in st.session_state['screens_open']:
                 already_on = True
-            on = st.toggle(label='files', value=already_on, key='files_toggle'+key, 
+            on = st.toggle(label='files', value=already_on, key='files_toggle'+str(key), 
                     on_change=change_screens_open, args=['files'], help='Display files window')
             already_on = False
 
             if 'indexes' in st.session_state['screens_open']:
                 already_on = True
-            on = st.toggle(label='Indexes', value=already_on, key='index_toggle'+key, 
+            on = st.toggle(label='Indexes', value=already_on, key='index_toggle'+str(key), 
                     on_change=change_screens_open, args=['indexes'], help='Display indexes window')
 
         with row1[2]:  # plates
@@ -705,7 +707,7 @@ def info_bar(key):
 
             if 'plates' in st.session_state['screens_open']:
                 already_on = True
-            on = st.toggle(label='Plates', value=already_on, key='plates_toggle'+key, 
+            on = st.toggle(label='Plates', value=already_on, key='plates_toggle'+str(key), 
                     on_change=change_screens_open, args=['plates'], help='Display plates window')
 
             already_on = False
@@ -713,7 +715,7 @@ def info_bar(key):
             if 'references' in st.session_state['screens_open']:
                 already_on = True
 
-            on = st.toggle(label='References', value=already_on, key='references_toggle'+key, 
+            on = st.toggle(label='References', value=already_on, key='references_toggle'+str(key), 
                     on_change=change_screens_open, args=['references'], help='Display status window')
 
         with row1[3]:  # plate viewer
@@ -721,19 +723,19 @@ def info_bar(key):
 
             if 'plate_viewer' in st.session_state['screens_open']:
                 already_on = True
-            on = st.toggle(label='Plate viewer', value=already_on, key='plate_view_toggle'+key, 
+            on = st.toggle(label='Plate viewer', value=already_on, key='plate_view_toggle'+str(key), 
                     on_change=change_screens_open, args=['plate_viewer'], help='Display plate viewer window')
 
             already_on = False
 
             if 'log' in st.session_state['screens_open']:
                 already_on = True
-            on = st.toggle(label='Log', value=already_on, key='log_toggle'+key, 
+            on = st.toggle(label='Log', value=already_on, key='log_toggle'+str(key), 
                     on_change=change_screens_open, args=['log'], help='Display log window')
 
         with row1[4]:
             view_height = st.number_input('Set display height', min_value=50, max_value=700, 
-                    value=350, step=25, help="Size of display grid", key=key)
+                    value=350, step=25, help="Size of display grid", key=str(key))
 
         st.divider()
 
@@ -753,7 +755,7 @@ def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=
     col1,col2 = st.columns([7,1])
     with col2:
         view_height = st.number_input('Set display height', min_value=50, max_value=700, 
-                value=350, step=25, help="Size of display grid", key=key)
+                value=350, step=25, help="Size of display grid", key=str(key))
     with col1:
         view_tab = stx.tab_bar(data=[
             stx.TabBarItemData(id=1, title="Status", description=""),
@@ -808,6 +810,99 @@ def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=
             display_log(key, height=view_height)
     
 
+def plate_checklist_pcr1(exp):
+    """
+    Allows the selection/deselection all plates involved in the PCR1 (primer) reaction stage
+    DNA plates, PCR plates, taq/water plates, primer plates
+    """
+    pcr_stage = 1
+    checklist_col = st.columns(4)
+    included_DNA_plates = set()
+    included_PCR_plates = set()
+    included_taqwater_plates = set()
+    
+    pcr_plate_title = "PCR Plates"
+    taqwater_plate_title = "Taq/Water Plates"
+    dna_plate_title = "DNA Plates"
+    
+    #nimbus fp, echo fp, barcodes not in echo
+    nfs, efs, xbcs = exp.get_nimbus_filepaths()
+    #print(f'{efs=}')
+    missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
+    available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
+        
+    checklist_col[0].markdown(f'**{dna_plate_title}**')
+    for nim in available_nimbus:
+        echo_filename=Path(nim).stem
+        inc_dna = checklist_col[0].checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
+        if inc_dna:
+            included_DNA_plates.add(util.guard_pbc(echo_filename.split('_')[-2], silent=True))
+    
+    checklist_col[1].markdown(f'**{pcr_plate_title}**')
+    for pcr_pid in exp.get_pcr_pids():
+        inc_pcr = checklist_col[1].checkbox(util.unguard_pbc(pcr_pid, silent=True),\
+                        value=True, key='chk_box_pcr_'+pcr_pid)
+        if inc_pcr:
+            included_PCR_plates.add(util.guard_pbc(pcr_pid, silent=True))
 
+    checklist_col[2].markdown(f'**{taqwater_plate_title}**')
+    for taqwater_pid in exp.get_taqwater_pids(pcr_stage):
+        inc_taqwater = checklist_col[2].checkbox(util.unguard_pbc(taqwater_pid, silent=True), 
+                    value=True, key='chk_box_taqwater_'+taqwater_pid)
+        if inc_taqwater:
+            included_taqwater_plates.add(util.guard_pbc(taqwater_pid, silent=True))
+        
+    return included_DNA_plates, included_PCR_plates, included_taqwater_plates
+
+
+def plate_checklist_pcr2(exp):
+    """
+    Allows the selection/deselection all plates involved in the PCR2 (indexing) reaction stage
+    DNA plates, PCR plates, taq/water plates, primer plates
+    """
+    pcr_stage = 2
+    checklist_col = st.columns(4)
+    included_PCR_plates = set()
+    included_index_plates = set()
+    included_taqwater_plates = set()
+    included_amplicon_plates = set()
+    #could make a for loop
+
+    index_plate_title = "Index Plates"
+    amplicon_plate_title = "Amplicon Plates"
+    pcr_plate_title = "PCR Plates"
+    taqwater_plate_title = "Taq/Water Plates"
+
+    checklist_col[0].markdown(f'**{pcr_plate_title}**')
+    for pcr_pid in exp.get_pcr_pids():
+        inc_pcr = checklist_col[0].checkbox(util.unguard_pbc(pcr_pid, silent=True),
+                value=True, key='chk_box_pcr_'+pcr_pid)
+        if inc_pcr:
+            included_PCR_plates.add(pcr_pid)
+
+    checklist_col[1].markdown(f'**{taqwater_plate_title}**')
+    for taqwater_pid in exp.get_taqwater_pids(pcr_stage):
+        inc_taqwater = checklist_col[1].checkbox(util.unguard_pbc(taqwater_pid, silent=True), 
+                value=True, key='chk_box_taqwater_'+taqwater_pid)
+        if inc_taqwater:
+            included_taqwater_plates.add(taqwater_pid)
+
+    checklist_col[2].markdown(f'**{index_plate_title}**')
+    for index_pid in exp.get_index_pids():
+        inc_index = checklist_col[2].checkbox(util.unguard_pbc(index_pid, silent=True),
+                                            value=True, key='chk_box_index_'+index_pid)
+        if inc_index:
+            included_index_plates.add(index_pid)
+        
+    checklist_col[3].markdown(f'**{amplicon_plate_title}**')
+    for amplicon_pid in exp.get_amplicon_pids():
+        amplicon_index = checklist_col[3].checkbox(util.unguard_pbc(amplicon_pid, silent=True), 
+                value=True, key='chk_box_amplicon_'+amplicon_pid)
+        if amplicon_index:
+            included_amplicon_plates.add(amplicon_pid)
+
+    return included_PCR_plates, included_taqwater_plates, included_index_plates, included_amplicon_plates
+ 
+    
 
 

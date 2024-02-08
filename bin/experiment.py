@@ -371,13 +371,21 @@ class Experiment():
         
 
     def summarise_inputs(self):
-        """ return a list of fields and a list of headers, summarising the contents of plate sets """
+        """ return a list of fields and a list of headers, summarising the contents of sample, amplicon, and DNA plate sets """
         plate_set_summary = []
-        plate_set_headers = ['DNA PID', 'Sample PID1', 'Sample PID2', 'Sample PID3', 'Sample PID4', 'Custom samples', 'Rodentity samples']
+        plate_set_headers = ['DNA/amplicon PID', 'Sample PID1', 'Sample PID2', 'Sample PID3', 'Sample PID4', 'Custom samples', 'Rodentity samples']
         total_wells = 0
         total_unique_samples = set()
         total_unique_assays = set()
-        total_well_counts = {'c':0,'m':0,'r':0}
+        total_well_counts = {'a':0,'c':0,'m':0,'r':0}
+        for amp_pid in self.get_amplicon_pids():
+            amp_wells = 0
+            for well in self.plate_location_sample[amp_pid]['wells']:
+                if util.is_guarded_abc(self.plate_location_sample[amp_pid][well]['barcode']):
+                    amp_wells += 1
+                    total_well_counts['a'] += 1
+            plate_set_summary.append([util.unguard_abc(amp_pid, silent=True), '', '', '', '', amp_wells, 0])
+            
         for dna_pid in self.dest_sample_plates:
             plate_set_details = [util.unguard_pbc(dna_pid)]
             custom_wells = 0
@@ -406,7 +414,7 @@ class Experiment():
             # print(f'{plate_set_details=}', file=sys.stderr)
             plate_set_summary.append(plate_set_details)
         if len(plate_set_summary) > 0:
-            plate_set_summary.append(['Total','','','','',total_well_counts['c'], total_well_counts['r']])
+            plate_set_summary.append(['Total','','','','',total_well_counts['c']+total_well_counts['a'], total_well_counts['r']])
                     # 'Total assays': len(total_unique_assays)})
         #print(f"{plate_set_summary=}")
         return plate_set_summary, plate_set_headers
@@ -841,7 +849,7 @@ class Experiment():
         pcr_stage: 1 (primer) or 2 (index). If None, return all plate IDs for taq/water plates
         """
         pids = []
-        #Plate ID specific to PCR stage (1 or 2). Otherwise get all taq/water plates. 
+        #Plate ID specific to PCR stage (numeric 1 or 2). Otherwise get all taq/water plates. 
         if pcr_stage:
             for p in self.plate_location_sample:
                 if self.plate_location_sample[p]['purpose'] == 'taq_water':
