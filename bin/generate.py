@@ -878,7 +878,15 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
             s2_data = s2tab.data # list of S3 records, each is a namedtuple
         total_wells += len(s2_data)
         print(f'{total_wells=}')      
-            
+        
+        def check_quotes(string:str) -> str:
+            if string.startswith(("'", '"')) and not string.endswith(("'", '"')):
+                return string + string[0]
+            elif not string.startswith(("'", '"')) and string.endswith(("'", '"')):
+                return string[0] + string
+            else:
+                return string        
+
         index_vol = exp.transfer_volumes['INDEX_VOL']  # 175 nanolitres
         
         for amp_pid in amplicon_bcs:
@@ -903,8 +911,8 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                         amp_well['amplicons'][0],       # alleleSymbol
                         '',                             # alleleKey
                         '',                             # assayKey
-                        amp_well['amplicons'][0].split('_')[0], # assay
-                        amp_well['amplicons'][0].split('_')[0], # assayFamily
+                        check_quotes(amp_well['amplicons'][0].split('_')[0]), # assay
+                        check_quotes(amp_well['amplicons'][0].split('_')[0]), # assayFamily
                         amp_well.get('clientName', ''),     # clientName
                         amp_well.get('sampleName', ''),     # sampleName
                         amp_pid,                        # dnaPlate
@@ -915,7 +923,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                         amp_pid,                        # pcrPlate
                         well_str]                       # pcrWell
                 s2_data_rows.append(amp_row)
-        
+        print(s2_data_rows)
         # convert to stream of characters from row*column lists
         s2hdr_str = ','.join(s2_header)
         s2amp_stream = StringIO(s2hdr_str + '\n' + '\n'.join([','.join(row) for row in s2_data_rows]))
