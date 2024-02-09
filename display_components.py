@@ -827,13 +827,16 @@ def plate_checklist_pcr1(exp):
     
     #nimbus fp, echo fp, barcodes not in echo
     nfs, efs, xbcs = exp.get_nimbus_filepaths()
-    #print(f'{efs=}')
-    missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
-    available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
-        
+
+    print(f'{efs=}')
+
+    #missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
+    #available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
+   
     checklist_col[0].markdown(f'**{dna_plate_title}**')
-    for nim in available_nimbus:
+    for nim in efs:
         echo_filename=Path(nim).stem
+        print(echo_filename)
         inc_dna = checklist_col[0].checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
         if inc_dna:
             included_DNA_plates.add(util.guard_pbc(echo_filename.split('_')[-2], silent=True))
@@ -851,6 +854,8 @@ def plate_checklist_pcr1(exp):
                     value=True, key='chk_box_taqwater_'+taqwater_pid)
         if inc_taqwater:
             included_taqwater_plates.add(util.guard_pbc(taqwater_pid, silent=True))
+    
+    print(included_DNA_plates)
         
     return included_DNA_plates, included_PCR_plates, included_taqwater_plates
 

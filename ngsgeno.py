@@ -534,7 +534,7 @@ def main():
                     else:
                         with primer_checklist_exp:
                             included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                    dc.plate_checklist_expander(exp)
+                                    dc.plate_checklist_pcr1(exp)
                             st.session_state['included_DNA_pids'] = included_DNA_plates
                         
                         if included_DNA_plates:
@@ -646,8 +646,15 @@ def main():
                                 elif no_amplicon:
                                     st.session_state['amplicon_only'] = False
                         
-                        if exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
-                                included_index_plates, included_amplicon_plates, pcr2_messages) or st.session_state['amplicon_only']:
+                        print(st.session_state['amplicon_only'])
+                        
+                        if exp.check_ready_pcr2(included_PCR_plates, 
+                                                included_taqwater_plates, 
+                                                included_index_plates, 
+                                                included_amplicon_plates, 
+                                                pcr2_messages) \
+                                or st.session_state['amplicon_only']:
+                            
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
 
                             echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
