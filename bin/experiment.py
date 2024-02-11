@@ -972,6 +972,7 @@ class Experiment():
         Check the everything required to successfully generate PCR2 picklists is available
         TODO: Check that volumes and wells are sufficient!
         messages is a list, allowing us to pass useful info back to the UI
+        Amplicon plates are optional
         Return success
         """
         success = True
@@ -995,6 +996,29 @@ class Experiment():
         if not amplicon_success:
             success = False
       
+        return success
+    
+
+    def check_ready_pcr2_amplicon_only(self, taq_water_plates, index_plates, amplicon_plates, messages):
+        """
+        As check_ready_pcr2(), but for amplicon-only runs. Amplicon plates are not optional.
+        """
+        success = True
+        if not amplicon_plates or not taq_water_plates or not index_plates:
+            success = False
+          
+        taq_success = self.check_plate_presence(taq_water_plates, 'taq_water', messages)
+        if not taq_success:
+            success = False
+
+        index_success = self.check_plate_presence(index_plates, 'index', messages)
+        if not index_success:
+            success = False
+
+        amplicon_success = self.check_plate_presence(amplicon_plates, 'amplicon', messages)
+        if not amplicon_success:
+            success = False
+            
         return success
 
 

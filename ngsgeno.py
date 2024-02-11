@@ -621,54 +621,66 @@ def main():
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 else:
-                    if 'amplicon_only' not in st.session_state:
-                        st.session_state['amplicon_only'] = False
                     st.write('Plate checklist')
                     index_checklist = st.container()
                     st.write('***')
                     with index_checklist:
+                        do_generate = False
                         included_PCR_plates, included_taqwater_plates, included_index_plates,\
                                 included_amplicon_plates =\
                                 dc.plate_checklist_pcr2(exp)
                         pcr2_messages = []  # pass by reference
-                        if not exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
-                                included_index_plates, included_amplicon_plates, pcr2_messages):
-                            for msg in pcr2_messages:
-                                st.warning(msg)
-                            if included_amplicon_plates and not st.session_state['amplicon_only']:
+                        if included_PCR_plates:  # standard run
+                            if not exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
+                                    included_index_plates, included_amplicon_plates, pcr2_messages):
+                                for msg in pcr2_messages:
+                                    st.warning(msg)
+                            else:
+                                do_generate = True
+                        else:
+                            if included_amplicon_plates:
+                                if not exp.check_ready_pcr2_amplicon_only(included_taqwater_plates,
+                                        included_index_plates, included_amplicon_plates, pcr2_messages):
+                                    for msg in pcr2_messages:
+                                        st.warning(msg)
+                                else:
+                                    do_generate = True
+                                    
+                        if do_generate:
+                            show_generate = False
+                            if 'amplicon_only' in st.session_state:
+                                show_generate = st.session_state['amplicon_only']
+                            if included_PCR_plates:
+                                show_generate = True
+
+                            if included_amplicon_plates and not included_PCR_plates:
                                 _, amp1, amp2, amp3, _ = st.columns([3, 3, 1, 1, 3])
                                 amp1.warning('Is this an amplicon only run?')
                                 yes_amplicon = amp2.button('Yes')
                                 no_amplicon = amp3.button('No')
 
                                 if yes_amplicon:
-                                    st.session_state['amplicon_only'] = True    
+                                    st.session_state['amplicon_only'] = True
+                                    show_generate = True
                                 elif no_amplicon:
                                     st.session_state['amplicon_only'] = False
+                                    show_generate = False
                         
-                        print(st.session_state['amplicon_only'])
-                        
-                        if exp.check_ready_pcr2(included_PCR_plates, 
-                                                included_taqwater_plates, 
-                                                included_index_plates, 
-                                                included_amplicon_plates, 
-                                                pcr2_messages) \
-                                or st.session_state['amplicon_only']:
+                            if show_generate:
+                                _,picklist_button_col,_ = st.columns([2, 2, 1])
+
+                                echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
+                                            key='echo_pcr2_go_button')
+
+                                picklist_button_col.write('')
+
+                                if echo_picklist_go:
+                                    st.session_state['idx_picklist'] = True
                             
-                            _,picklist_button_col,_ = st.columns([2, 2, 1])
-
-                            echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
-                                        key='echo_pcr2_go_button')
-
-                            picklist_button_col.write('')
-
-                            if echo_picklist_go:
-                                st.session_state['idx_picklist'] = True
-                            
-                                success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_plates,
-                                        included_index_plates, included_taqwater_plates, included_amplicon_plates)
-                                if not success:
-                                    st.write('Picklist generation failed. Please see the log')
+                                    success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_plates,
+                                            included_index_plates, included_taqwater_plates, included_amplicon_plates)
+                                    if not success:
+                                        st.write('Picklist generation failed. Please see the log')
                         
 
                 dc.show_echo2_outputs()
