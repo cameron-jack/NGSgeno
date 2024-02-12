@@ -27,6 +27,8 @@ import extra_streamlit_components as stx
 
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
+
+import stutil
 #try:
 #    from bin.experiment import Experiment, EXP_FN, load_experiment
 #except ModuleNotFoundError:
@@ -59,7 +61,6 @@ except ModuleNotFoundError:
 
 import display_components as dc
 
-
 credits="""
 @created: March 2022
 @author: Gabrielle Ryan, Cameron Jack, ANU Bioinformatics Consultancy, 2019-2021
@@ -69,6 +70,9 @@ Web application style interface using Streamlit. Present information as both a d
 The GUI interacts with a single Experiment object at one time. Methods are called on this to activate pipeline
 functionality. The Experiment then deals directly with the pipeline logic.
 """
+
+HELP_COLOUR = '#7f8b8f'
+FORM_BUTTON_COLOUR = '#4287f5'
 
 def do_pending(combined_pending):
     """
@@ -206,11 +210,10 @@ def upload_echo_inputs(key):
         title = ''
         title_colour = '#f63366'
         info_area = st.container()
-        #col1, col2 = st.columns([3,5])
-        upload_col,_ = st.columns([2,1])
+        _,upload_col,_ = st.columns([1,3,1])
         with upload_col:                
             with st.form("Echo input upload", clear_on_submit=True):  
-                nim_outputs = st.file_uploader('Upload files: Echo_384_COC_0001_....csv', type='csv', 
+                nim_outputs = st.file_uploader('Upload files: e.g. Echo_384_COC_0001_....csv', type='csv', 
                         accept_multiple_files=True, help='You can upload more than one file at once')
                 submitted = st.form_submit_button("Upload files")
 
@@ -220,27 +223,24 @@ def upload_echo_inputs(key):
         nfs, efs, xbcs = exp.get_nimbus_filepaths()
         if not efs and not xbcs:
             title = "Load data inputs to enable Nimbus input file generation."
-            
         if efs and not xbcs:
             title = 'All expected Echo inputs/Nimbus outputs now uploaded'
             title_colour = '#83b3c9'
-            uploaded_nims = [Path(ef).name for ef in efs]
-            msg = '</br>'.join(uploaded_nims)          
-            info_area.markdown(f'<p>{msg}</p>', unsafe_allow_html=True)
+            uploaded_nims = '</br>'.join([Path(ef).name for ef in efs])
+            with info_area:
+                stutil.custom_text('p', 'green', uploaded_nims)         
         if xbcs:
             title = 'Further Echo inputs/Nimbus outputs are expected'
-            uploaded_nims = [Path(ef).name for ef in efs]
-            msg = '</br>'.join(uploaded_nims)
-            info_area.markdown(f'<p>{msg}</p>', unsafe_allow_html=True)
-            missing_nims = ['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs]
-            files_str = '</br>'.join(missing_nims)
-            info_area.write('The following Echo input files are expected (from the Nimbus):')
-            info_area.markdown('<p style="text-align:left;color:#17754d">'+
-                         f'{files_str}</p>',
-                         unsafe_allow_html=True)
-        title_area.markdown('<h5 style="text-align:center;color:'f'{title_colour}">'+
-        f'{title}</h5>', unsafe_allow_html=True)
-        title_area.write('')
+            uploaded_nims = '</br>'.join([Path(ef).name for ef in efs])
+            missing_nims = '</br>'.join(['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs])
+            with info_area:
+                stutil.custom_text('p', 'green', uploaded_nims)
+                stutil.custom_text('p', 'black', 'The following Echo input files are expected (from the Nimbus):')
+                stutil.custom_text('p', '#cf3276', missing_nims)
+
+        with title_area:
+            stutil.custom_text('h5', title_colour, title)
+            stutil.add_vertical_space(1)
                         
 
 def upload_pcr1_files(key):
@@ -473,11 +473,13 @@ def upload_extra_consumables(key):
     upload_form = st.form('Consumables upload'+key, clear_on_submit=True)
     
     col1, col2 = upload_form.columns(2)
-    uploaded_references = col1.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
+    uploaded_assaylists = col1.file_uploader('Upload Assay Lists', key='assaylist_uploader'+key, 
+            type=['txt','csv'], accept_multiple_files=True)
+
+    uploaded_references = col2.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
             type=['txt','fa','fasta'], accept_multiple_files=True)
                                                                     
-    uploaded_assaylists = col2.file_uploader('Upload Assay Lists', key='assaylist_uploader'+key, 
-            type=['txt','csv'], accept_multiple_files=True)
+    
                   
     # maybe someday?
     #uploaded_taqwater_plates = col1.file_uploader('Upload Taq and Water Plates', key='taq_water_upload'+key, 
