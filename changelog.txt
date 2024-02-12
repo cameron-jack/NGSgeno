@@ -1,3 +1,7 @@
+v0.24.000
+Date: Mon Feb 12 11:27:31 AEDT 2024
+* New: amplicon-only runs supported
+
 <<<<<<< HEAD
 v0.23.009
 Date: Thu Feb  8 13:04:12 AEDT 2024

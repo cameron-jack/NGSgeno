@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.23.009"
+VER="v0.24.000"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* New: exact-only matching
+* New: amplicon-only runs supported
 EOM
 
 mv changelog.txt changelog_old.txt
