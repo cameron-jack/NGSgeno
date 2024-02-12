@@ -1158,7 +1158,7 @@ class Experiment():
                         for pid in thing:
                             pids.append(util.unguard_pbc(pid, silent=True))
                 else:
-                    pids = [util.unguard_pbc(pid, silent=True) for pid in self.pending_steps[file_name]]
+                    pids = [util.unguard_pbc(pid, silent=True) for pid in self.pending_steps[file_name] if pid != {}]
                 stages.append([str(counter), file_name, ', '.join(pids), 'pending'])
         return stages, header
 

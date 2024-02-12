@@ -877,7 +877,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
             s2_header = s2tab.header
             s2_data = s2tab.data # list of S3 records, each is a namedtuple
         total_wells += len(s2_data)
-        print(f'{total_wells=}')      
+        #print(f'{total_wells=}')      
         
         def check_quotes(string:str) -> str:
             if string.startswith(("'", '"')) and not string.endswith(("'", '"')):
@@ -893,7 +893,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
             total_wells += len(exp.plate_location_sample[amp_pid]['wells'])
         
         index_alloc = i7i5alloc_rot(exp, index_vol, total_wells)
-        print(f'{len(index_alloc)=}')
+        #print(f'{len(index_alloc)=}')
         s2_data_rows = []
         for s2_record in s2_data:
             s2_data_rows.append([s2_record[i] for i,h in enumerate(s2_header)])
@@ -923,7 +923,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                         amp_pid,                        # pcrPlate
                         well_str]                       # pcrWell
                 s2_data_rows.append(amp_row)
-        print(s2_data_rows)
+        #print(s2_data_rows)
         # convert to stream of characters from row*column lists
         s2hdr_str = ','.join(s2_header)
         s2amp_stream = StringIO(s2hdr_str + '\n' + '\n'.join([','.join(row) for row in s2_data_rows]))
