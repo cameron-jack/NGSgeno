@@ -25,6 +25,8 @@ import streamlit.components.v1 as components
 import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
+
+from stutil import custom_text
 try:
     from bin.experiment import Experiment, EXP_FN, load_experiment
 except ModuleNotFoundError:
@@ -410,6 +412,54 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
                     unsafe_allow_html=True)
 
     return st.session_state['path']
+
+def handle_picklist_download(picklist_type, picklist_paths, error_msgs, file_col, btn_col):
+    if not picklist_paths:
+        error_msgs.append(f"No {picklist_type} picklist available")
+    else:
+        for ppp in picklist_paths:
+            ppp_fn = Path(ppp).name
+            with file_col:
+                custom_text('p', '#4b778c', ppp_fn, 'right', padding='5px')
+            with btn_col:
+                st.download_button(label="Download", 
+                                   data=open(ppp, 'rt'), 
+                                   file_name=ppp_fn, 
+                                   mime='text/csv', 
+                                   key=f'{picklist_type}_download_'+ppp_fn)
+
+
+def get_echo1_download_btns():
+    exp = st.session_state['experiment']
+    picklist_file_col, picklist_btn_col = st.columns(2)
+    error_msgs = []
+
+    dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR1_picklist_filepaths()
+    
+    picklist_dict = {'DNA': dna_picklist_paths, 'primer': primer_picklist_paths, 'taq/water': taqwater_picklist_paths}
+
+    for pltype, plpath in picklist_dict.items():
+        handle_picklist_download(pltype, plpath, error_msgs, picklist_file_col, picklist_btn_col)
+
+    if error_msgs:
+        for msg in error_msgs:
+            custom_text('p', '#ff0000', msg, 'center', padding='5px')
+
+def get_echo2_download_btns():
+    exp = st.session_state['experiment']
+    picklist_file_col, picklist_btn_col = st.columns(2)    
+    error_msgs = []
+
+    index_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
+
+    picklist_dict = {'index': index_picklist_paths, 'taq/water': taqwater_picklist_paths}
+
+    for pltype, plpath in picklist_dict.items():
+        handle_picklist_download(pltype, plpath, error_msgs, picklist_file_col, picklist_btn_col)
+    
+    if error_msgs:
+        for msg in error_msgs:
+            custom_text('p', '#ff0000', msg, 'center', padding='5px')
 
 
 def show_echo1_outputs():
