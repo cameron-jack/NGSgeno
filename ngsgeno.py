@@ -167,70 +167,18 @@ def show_info_viewer_checkbox():
         st.session_state['show_info_viewer'] = False
 
 
-def main():
+def load_experiment_screen():
     """
-    The NGSgeno "Xplorer" application. Allows full control of all sections of the pipeline,
-    and displays all aspects of the experiment state at any time.
+    Landing screen
     """
-    st.set_page_config(
-        page_title="NGS Genotyping",
-        page_icon="ngsg_icon.png",
-        layout="wide"
-    )
-
-    st.markdown('''
-    <style>
-        .stApp [data-testid="stToolbar"]{
-            display:none;
-        }
-        #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 1rem;}
-     </style>
-     ''', unsafe_allow_html=True)
-
-   
-
-    if 'experiment' not in st.session_state:
-        st.session_state['experiment'] = None
-        print('Current experiment set to clear')
-
-    if 'folder' not in st.session_state:
-        st.session_state['folder'] = None
-    #Folder inputs
-    
-    #remove drag and drop labels from upload buttons. Class name 'css-9ycgxx' could change in future streamlit versions
-    hide_label = """
-    <style>
-        .css-9ycgxx {
-            display: none;
-        }
-    </style>
-    """
-    st.markdown(hide_label, unsafe_allow_html=True)
-
+    experiment_title = 'Current Experiment: None'
     logo_col, ver_col,_, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,2,2,2,1,2,1])
-    # current_experiment_col, _ = st.columns(2)
-    # with title_column:
-    #     st.markdown('<h3 style="align:center; color:#2040a1">NGS Genotyping</h3>', unsafe_allow_html=True)
-    #     
-    #     if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
-    #         experiment_title += (st.session_state['experiment'].name)
-    #     else:
-    #         experiment_title += ('None')
-
-    #     st.markdown(f'<p style="color:#83b3c9">{experiment_title}</p>', unsafe_allow_html=True)
-    experiment_title = 'Current Experiment: '
-    if 'experiment' in st.session_state and st.session_state['experiment'] is not None:
-             experiment_title += (st.session_state['experiment'].name)
-    else:
-             experiment_title += ('None')
-
     current_status, current_ver = get_status_output("git describe")
-    ver_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', unsafe_allow_html=True)
+    ver_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', 
+            unsafe_allow_html=True)
 
     logo_col.image('ngsg_explorer.png', caption=f'{experiment_title}')
-
-
-
+        
     add_run_folder = new_folder_col.text_input('Create new run folder')
     create_button_col.write('')
     create_button_col.write('')
@@ -259,10 +207,7 @@ def main():
                 error_msg = "Folder name already exists"
             else:
                 error_msg = "Fatal path error: " + msg
-
-    if 'stage' not in st.session_state:
-        st.session_state['stage'] = None
-
+                    
     if run_folder:
         if st.session_state['experiment'] == None or st.session_state['experiment'].name != run_folder:
             
@@ -285,14 +230,82 @@ def main():
                     st.experimental_rerun()
                 else:
                     error_msg = "Invalid experiment file in: " + ch_run_path
-        
     new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
             unsafe_allow_html=True)
 
-    if st.session_state['experiment']:
+
+def display_pipeline_header(exp):
+    """
+    main pipeline header section (constant across pipeline stages)
+    exp - Experiment (st.session_state['experiment'])
+    """
+    experiment_title = 'Current Experiment: ' + exp.name
+    logo_col, info_col, pipe_col = st.columns([1,2,9])
+    logo_col.image('ngsg_icon.png')
+    current_status, current_ver = get_status_output("git describe")
+    info_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', 
+            unsafe_allow_html=True)
+    info_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {experiment_title}</p>', 
+            unsafe_allow_html=True)
+    unload_button = info_col.button('Unload experiment')
+    if unload_button:
+        st.session_state['experiment'] = None
+        st.experimental_rerun()
+
+    if 'stage' not in st.session_state:
+        st.session_state['stage'] = None
+            
+    exp = st.session_state['experiment']
+    pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Reports"]
+    pipe_stage = None
+    with pipe_col:
+        pipe_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
+    return pipe_stage
+
+
+def main():
+    """
+    The NGSgeno "Xplorer" application. Allows full control of all sections of the pipeline,
+    and displays all aspects of the experiment state at any time.
+    """
+    st.set_page_config(
+        page_title="NGS Genotyping",
+        page_icon="ngsg_icon.png",
+        layout="wide"
+    )
+
+    st.markdown('''
+    <style>
+        .stApp [data-testid="stToolbar"]{
+            display:none;
+        }
+        #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 1rem;}
+     </style>
+     ''', unsafe_allow_html=True)
+
+    if 'experiment' not in st.session_state:
+        st.session_state['experiment'] = None
+
+    if 'folder' not in st.session_state:
+        st.session_state['folder'] = None
+    
+    #remove drag and drop labels from upload buttons. Class name 'css-9ycgxx' could change in future streamlit versions
+    hide_label = """
+    <style>
+        .css-9ycgxx {
+            display: none;
+        }
+    </style>
+    """
+    st.markdown(hide_label, unsafe_allow_html=True)
+
+    if 'experiment' not in st.session_state or st.session_state['experiment'] is None:
+        load_experiment_screen()
+        
+    else:  # main program
         exp = st.session_state['experiment']
-        pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Reports"]
-        pipeline_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
+        pipeline_stage = display_pipeline_header(exp)
+        
         if pipeline_stage:
             st.session_state['info_expand'] = False
 
@@ -407,11 +420,11 @@ def main():
                             nimbus_title += ' ' + str(yet_to_run) + " 96-well plate sets need Nimbus input file generation"
 
                             plates_to_run = [dest_plate for dest_plate in exp.dest_sample_plates\
-                                         if all([dest_plate not in nf for nf in nfs])]
+                                            if all([dest_plate not in nf for nf in nfs])]
                             plates_to_run_str = '\n'.join(plates_to_run)
                                 
                     st.markdown(f'<h5 style="text-align:center;color:#f63366">{nimbus_title}</h5>',\
-                             unsafe_allow_html=True)
+                                unsafe_allow_html=True)
                     st.write('')
 
                     run_gen_nimbus = st.button('Generate Nimbus input files')
