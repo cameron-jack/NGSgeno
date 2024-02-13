@@ -100,8 +100,10 @@ def do_pending(combined_pending):
     for pending, pc in zip(combined_pending, pending_checked):
         if pc:
             clashing_filenames, clashing_pids = trans.check_for_clashing_transactions(exp, filenames=pending)
+
             msg = f'Overwriting the previous version of {str(pending)} with the new file'
-            warning_area.info(msg)
+            st.toast(f':blue[**Overwriting the previous version of {str(pending)} with the new file]**')
+            #warning_area.info(msg)
             exp.log(f'Info: {msg}')
             if pending in exp.pending_uploads:
                 success = parse.accept_pending_upload(exp, pending)
@@ -123,7 +125,8 @@ def do_pending(combined_pending):
                 warning_area.error(msg)
             
         else:
-            warning_area.info(f'Keeping the old version of the file {pending}')
+            st.toast(f':blue[**Keeping the old version of the file {pending}**]')
+            #warning_area.info(f'Keeping the old version of the file {pending}')
             exp.log(f'Info: removing unwanted pending file {pending}')
             if pending in exp.pending_uploads:
                 exp.pending_uploads.remove(pending)
@@ -277,7 +280,8 @@ def upload_pcr1_files(key):
                 upl_pids = ''.join(upl.name.split('_')[0] for upl in uploaded_primer_layouts)
                 success = parse.upload(exp, uploaded_primer_layouts, purpose='primer_layout')
                 if success and not trans.is_pending(exp):
-                    st.success(f'Added primer layouts for plates {",".join(upl_pids)}')
+                    st.toast(f'Added primer layouts for plates {",".join(upl_pids)}')
+                    #st.success(f'Added primer layouts for plates {",".join(upl_pids)}')
                 elif not success:
                     st.error(f'Failed to write at least one primer layout, please see the log')
                      
@@ -285,7 +289,8 @@ def upload_pcr1_files(key):
                 upv_pids = ''.join(upv.name.split('_')[0] for upv in uploaded_primer_volumes)
                 success = parse.upload(exp, uploaded_primer_volumes, purpose='primer_volume')
                 if success and not trans.is_pending(exp):
-                    st.success(f'Added primer volumes for plates {",".join(upv_pids)}')
+                    st.toast(f'Added primer volumes for plates {",".join(upv_pids)}')
+                    #st.success(f'Added primer volumes for plates {",".join(upv_pids)}')
                 elif not success:
                     st.error(f'Failed to write at least one set of primer volumes, please see the log')
     
@@ -308,7 +313,8 @@ def accept_amplicons(uploaded_amplicon_files, miseq_fn, stage3_fn):
     uaf_ids = ''.join(uaf.name for uaf in uploaded_amplicon_files)
     success = parse.upload(exp, uploaded_amplicon_files, purpose='amplicon')
     if success:
-        warning_area.success(f'Added amplicon manifests from files {uaf_ids}')
+        st.toast(f'Added amplicon manifests from files {uaf_ids}')
+        #warning_area.success(f'Added amplicon manifests from files {uaf_ids}')
     else:          
         warning_area.error(f'Failed to upload at least one amplicon manifest, please see the log')
 
@@ -319,7 +325,6 @@ def cancel_amplicons():
     exp = st.session_state['experiment']
     warning_area = st.session_state['message_area']
     st.session_state['upload_option'] = ''  # do we display pending files here
-
 
 def load_amplicons(key):
     """
@@ -414,7 +419,8 @@ def upload_pcr2_files(key):
                 uil_pids = ''.join(uil.name for uil in uploaded_index_layouts)
                 success = parse.upload(exp, uploaded_index_layouts, purpose='index_layout')
                 if success and not trans.is_pending(exp):
-                    st.success(f'Added index layouts for plates {uil_pids}')
+                    st.toast(f':green[**Added index layouts for plates {uil_pids}]')
+                    #st.success(f'Added index layouts for plates {uil_pids}')
                 elif not success:
                     st.error(f'Failed to write at least one index layout, please see the log')    
 
@@ -422,6 +428,7 @@ def upload_pcr2_files(key):
                 uiv_pids = ''.join(uiv.name for uiv in uploaded_index_volumes)
                 success = parse.upload(exp, uploaded_index_volumes, purpose='index_volume')
                 if success and not trans.is_pending(exp):
+                    st.toast(f':green[**Added index volumes for plates {uiv_pids}**]')
                     st.success(f'Added index volumes for plates {uiv_pids}')
                 elif not success:
                     st.error(f'Failed to write at least one set of index volumes, please see the log')   
@@ -447,6 +454,7 @@ def upload_pcr2_files(key):
                 success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
                 uap_ids = [uap.name for uap in uploaded_amplicon_plates]
                 if success:
+                    st.toast(f':green[**Added amplicon manifests from files {uap_ids}**]')
                     warning_area.success(f'Added amplicon manifests from files {uap_ids}')
                 else:
                     warning_area.write(f'Failed to upload at least one amplicon manifest, please see the log')
@@ -492,6 +500,7 @@ def upload_extra_consumables(key):
             success = parse.upload(exp, uploaded_references, 'reference_sequences')
             ref_names = [ur.name for ur in uploaded_references]
             if success and not trans.is_pending(exp):
+                st.toast(f':green[**Added reference sequences from files {ref_names}**]')
                 st.success(f'Added reference sequences from files {ref_names}')
             elif not success:
                 st.error(f'Failed to upload at least one reference sequence file, please see the log')
@@ -501,6 +510,7 @@ def upload_extra_consumables(key):
             success = parse.upload(exp, uploaded_assaylists, 'assay_primer_map')
             assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
             if success and not trans.is_pending(exp):
+                st.toast(f':green[**Added assay/primer lists from files {assaylist_names}**]')
                 st.success(f'Added assay/primer lists from files {assaylist_names}')
             elif not success:
                 st.error(f'Failed to upload at least one assay/primer list file, please see the log')
@@ -516,10 +526,7 @@ def upload_extra_consumables(key):
     st.write('')
 
 def check_assay_file(exp):
-    for f in exp.uploaded_files:
-        if exp.uploaded_files[f].get('purpose','') == 'assay_primer_map':
-            return True
-    return False
+    return any(file.get('purpose', '') == 'assay_primer_map' for file in exp.uploaded_files.values())
 
 
 def custom_volumes(exp):
@@ -617,6 +624,7 @@ def load_rodentity_data(key):
             success = parse.upload(exp, rodentity_epps, 'rodentity_sample')
             rod_names = ', '.join(rod.name for rod in rodentity_epps)
             if success:
+                st.toast(f':green[**Added rodentity plate data from files {rod_names}**]')
                 st.success(f'Added rodentity plate data from files {rod_names}')
             else:
                 st.error(f'Failed to upload at least one rodentity plate file, please see the log')
@@ -700,11 +708,10 @@ def load_rodentity_data(key):
                     sample_plate_ids = [exp.unassigned_plates[k] for k in [1,2,3,4] if exp.unassigned_plates[k]]
                     success = exp.build_dna_plate_entry(sample_plate_ids, rod_dp, source='rodentity')
                     if not success:
-                        st.markdown('<p style="color:#FF0000">' +
-                                    'Failed to incorporate plate set. Please read the log.</p>', 
-                                    unsafe_allow_html=True)
+                        st.error('Failed to incorporate plate set. Please read the log')
                         sleep(1.5)
                     else:
+                        st.toast(f':green[**Added plate set for {util.unguard_pbc(rod_dp, silent=True)}**]')
                         st.success('Added plate set')
                         exp.unassigned_plates = {1:'',2:'',3:'',4:''}
                         exp.save()
@@ -728,11 +735,13 @@ def load_custom_manifests(key):
                 submit_manifest = st.form_submit_button()
                 if submit_manifest and manifest_uploads:
                     success = parse.upload(exp, manifest_uploads, 'custom_sample')
+                    if success:
+                        st.toast(f':green[**Custom file uploaded**]')
                     st.session_state['upload_option'] = 'custom'
 
         if trans.is_pending(exp) and st.session_state['upload_option'] == 'custom':
-            with st.form(f'clash form {key}', clear_on_submit=True):
-                pending_file_widget(key)
+            #with st.form(f'clash form {key}', clear_on_submit=True):
+            pending_file_widget(key)
             st.session_state['upload_option'] = ''
        
         with st.form(key='selection_form', clear_on_submit=True):
@@ -772,6 +781,7 @@ def load_custom_manifests(key):
                             st.markdown('<p style="color:#FF0000">Failed to assign custom plates.'+\
                                     'Please see the log</p>', unsafe_allow_html=True)
                         if success:
+                            st.toast(f':green[**Assigned custom plates to {dest_pid}**]')
                             st.success('Assigned custom plates')
     exp.save()
 
@@ -794,6 +804,7 @@ def provide_barcodes(key, pcr_stage):
             if guarded_pcr_plate_barcode not in exp.plate_location_sample:
                 success = exp.add_pcr_plates([guarded_pcr_plate_barcode])
                 if success:
+                    st.toast(f':green[Added PCR plate barcode {pcr_plate_barcode}]')
                     st.success(f'Added PCR plate barcode {pcr_plate_barcode}')
                     sleep(1.5)
                     st.experimental_rerun()
@@ -812,6 +823,7 @@ def provide_barcodes(key, pcr_stage):
             if guarded_taqwater_plate_barcode not in exp.plate_location_sample:
                 success = exp.add_standard_taqwater_plates([taqwater_plate_barcode], pcr_stage)
                 if success:
+                    st.toast(f':green[Added taq+water plate barcode {taqwater_plate_barcode}]')
                     st.success(f'Added taq+water plate barcode {taqwater_plate_barcode}')
                     sleep(1.5)
                     st.experimental_rerun()

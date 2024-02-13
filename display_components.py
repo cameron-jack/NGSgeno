@@ -26,7 +26,7 @@ import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
-from stutil import custom_text
+from stutil import custom_text, add_vertical_space
 try:
     from bin.experiment import Experiment, EXP_FN, load_experiment
 except ModuleNotFoundError:
@@ -1270,7 +1270,7 @@ def set_nimbus_title(exp, efs, nfs):
         if echo_files_exist:
             return 'All Echo inputs received.'
         if yet_to_run > 0:
-            return f'{str(yet_to_run)} 96-well plate set(s)'
+            return f'For {str(yet_to_run)} 96-well plate set(s)'
         
 def get_echo_download_buttons(nfs):
     """
@@ -1305,41 +1305,30 @@ def get_echo_download_buttons(nfs):
                                     key='nimbus_input'+str(i), 
                                     help=f"Download Nimbus input file {nf}")
             
-    
-def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
+
+def get_miseq_download_btn(exp):
     """
-    *Stage 3: PCR1*
-    Display for generate echo pcr 1 picklist
+    *Stage 5: Miseq*
     Args:
         exp (st.session_state['experiment])
-        DNA_plates: included DNA plates
-        PCR_plates: included PCR plates
-        taqwater_plates: included Taq/water plates
     """
-    pcr1_messages = []
-    if not exp.check_ready_pcr1(DNA_plates,\
-                                PCR_plates, \
-                                taqwater_plates, \
-                                pcr1_messages):
+    add_vertical_space(2)
+    _, miseq_col1,_, miseq_col2, _ =  st.columns([5,2,1,3,3])
+    for fp in exp.get_miseq_samplesheets():
         
-        for msg in pcr1_messages:
-            st.warning(msg)
-    
-    else:
-        _,button_col,_ = st.columns([2, 2, 1])
-        echo_picklist_go = button_col.button('Generate Echo Picklists',
-                                              key='echo_pcr1_go_button',
-                                              type='primary')
-        if echo_picklist_go:
-            success = run_generate(exp, 
-                                   exp.generate_echo_PCR1_picklists, 
-                                   DNA_plates, 
-                                   PCR_plates, 
-                                   taqwater_plates)
-            if not success:
-                st.error('Picklist generation failed. Please see the log')
-            else:
-                st.session_state['pcr1 picklist'] = True
+        fp_name = str(Path(fp).name)
+        with miseq_col1:
+            add_vertical_space(1)
+            custom_text(size='h5', color='#cf3276', text=fp_name, align='right')
+        
+        with miseq_col2:
+            add_vertical_space(1)
+            download_miseq = st.download_button(label='Download', 
+                                                data=open(fp, 'rt'), 
+                                                file_name=fp_name, 
+                                                mime='text/csv', 
+                                                key='dnld_samplesheet_'+str(fp), 
+                                                type='secondary')
 
 
 def add_css():
