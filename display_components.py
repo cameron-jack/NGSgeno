@@ -243,9 +243,212 @@ def display_plates(key, plate_usage, height=300):
                             args=(delbox,'plate',pids), key="delete " + str(key), help=f"Delete {pids}")
                     del_col3.button("No", on_click=cancel_delete,
                             args=('plate',pids), key="keep " + str(key), help=f"Keep {pids}")
+                    
+
+def display_pcr_components(dna_pids=None):
+    """
+    Expander widget that shows the PCR plate information for both PCR reactions
+    Args:
+        dna_pids: DNA plate IDs included in the reaction
+    """
+    exp = st.session_state['experiment']
+    DNA_PLATE_WELLS = 384
+    ul_conv = 1000
+    
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+    num_reactions = sum([primer_usage[p] for p in primer_usage])
+
+    #PCR
+    required_pcr_plates = ceil(num_reactions/DNA_PLATE_WELLS)
+    user_supplied_pcr = ', '.join([util.unguard_pbc(p, silent=True)\
+                for p in exp.get_pcr_pids()])
+    num_supplied_pcr = len(exp.get_pcr_pids())
+
+    req_PCR_text = '**Number of required PCR plates**'
+    req_PCR_num = str(required_pcr_plates)
+    if num_supplied_pcr < required_pcr_plates:
+        req_PCR_text = '<p style="color:#FF0000"><b>Number of required PCR plates</b></p>'
+        req_PCR_num = f'<p style="color:#FF0000">{str(required_pcr_plates)}</p>'
+    
+    user_PCR_text = user_supplied_pcr
+    if not user_supplied_pcr:
+        user_PCR_text = '<p style="color:#FF0000">None</p>'
+    
+    #Page set up
+    pcr_comps_area = st.container()
+    col_size = [6, 4, 6, 4]
+    pcr_cols = pcr_comps_area.columns(col_size)
+
+    pcr_cols[0].markdown(req_PCR_text, unsafe_allow_html=True)
+    pcr_cols[1].markdown(req_PCR_num, unsafe_allow_html=True)
+
+    pcr_cols[0].markdown('**Worst case required reaction wells**')
+    pcr_cols[1].write(str(num_reactions), unsafe_allow_html=True)
+
+    pcr_cols[2].markdown('**User supplied PCR plates**')
+    pcr_cols[3].markdown(user_PCR_text, unsafe_allow_html=True)
+    
+    #Adding white space
+    i=0
+    while i < 3:
+        pcr_cols[2].write('')
+        pcr_cols[3].write('')
+        i+=1
+
+    for i in range(4):
+        pcr_cols[i].write('')
+
+
+def display_pcr1_components(dna_pids=None):
+    """
+    Expander widget that shows the required componenents for each PCR reaction, 
+    including wells, PCR plates, taq+water plates, index pairs 
+    Args:
+        dna_pids: DNA plate IDs provided by user
+    """
+    exp = st.session_state['experiment']
+    DNA_PLATE_WELLS = 384
+    ul_conv = 1000
+    pcr_stage = 1
+    
+    #Page set up
+    pcr_comps_area = st.container()
+    col_size = [6, 4, 6, 4]
+    req_cols = pcr_comps_area.columns(col_size)
+    pcr_cols = pcr_comps_area.columns(col_size)
+
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+    num_reactions = sum([primer_usage[p] for p in primer_usage])
+    
+    #Taq/water (based on pcr stage)
+    primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol = exp.get_taq_water_volumes_required(num_reactions)
+    user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
+                for p in exp.get_taqwater_avail(pcr_stage=pcr_stage)[2]])
+    num_supplied_taqwater = len(user_supplied_taqwater)
+
+    taq_avail, water_avail, pids = exp.get_taqwater_avail(pcr_stage=pcr_stage)
+    taq_avail_vol = taq_avail/ul_conv
+    water_avail_vol = water_avail/ul_conv            
+
+    #get actual values for volume of taq water plates
+    required_water_vol_str = str(primer_water_vol/ul_conv) + ' μl'
+    water_avail_vol_str = str(water_avail_vol)+' μl'
+    required_taq_vol_str = str(primer_taq_vol/ul_conv) + ' μl'
+    avail_taq_vol_str = str(taq_avail_vol)+' μl'
+
+    num_req_taq_water_plates = util.num_req_taq_water_plates(primer_taq_vol, primer_water_vol)
+
+    user_taqwater_text = user_supplied_taqwater
+    if not user_supplied_taqwater:
+        user_taqwater_text = '<p style="color:#FF0000">None</p>'
+    
+    if num_supplied_taqwater < num_req_taq_water_plates:
+        req_taqwater_text = '<p style="color:#FF0000"><b>Number of required taq/water plates</b></p>'
+        req_taqwater_num = f'<p style="color:#FF0000">{str(num_req_taq_water_plates)}</p>'
+    else:
+        req_taqwater_text = '**Number of required taq/water plates**'
+        req_taqwater_num = str(num_req_taq_water_plates)
+
+    for i in range(4):
+        req_cols[i].write('')
+
+    req_cols[0].markdown(req_taqwater_text, unsafe_allow_html=True)
+    req_cols[1].markdown(req_taqwater_num, unsafe_allow_html=True)
+
+    req_cols[2].markdown(f'**User supplied taq/water plates (PCR {pcr_stage})**', unsafe_allow_html=True)
+    req_cols[3].write(user_taqwater_text, unsafe_allow_html=True)
+
+    pcr_cols[0].markdown('**Required water volume**')
+    pcr_cols[1].write(required_water_vol_str, unsafe_allow_html=True)
+    pcr_cols[2].markdown('**Available water volume**')
+    pcr_cols[3].write(water_avail_vol_str, unsafe_allow_html=True)
+    pcr_cols[0].markdown('**Required taq volume**')
+    pcr_cols[1].markdown(required_taq_vol_str, unsafe_allow_html=True)
+    pcr_cols[2].markdown('**Available taq volume**')
+    pcr_cols[3].write(avail_taq_vol_str, unsafe_allow_html=True)
+
+def display_pcr2_components(dna_pids=None, pcr_pids=None, amplicon_pids=None):
+    """
+    Expander widget that shows the required componenents for PCR 2 reaction (index).
+    Args:
+        pcr_stage (1, 2): 1 = Echo Primer stage, 2 = Echo Indexing
+        dna_pids:
+        pcr_pids: 
+        amplicon_pids:
+    """
+    #Need to add info about taq water
+    exp = st.session_state['experiment']
+    DNA_PLATE_WELLS = 384
+    ul_conv = 1000
+    pcr_stage = 2
+
+    #Index
+    fwd_idx, rev_idx = exp.get_index_avail()
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+
+    num_reactions = sum([primer_usage[p] for p in primer_usage])
+    index_remain, index_max = exp.get_index_reactions(primer_usage, fwd_idx, rev_idx)
+
+    #Taq/water (based on pcr stage)
+    primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol = exp.get_taq_water_volumes_required(num_reactions)
+    user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
+                for p in exp.get_taqwater_avail(pcr_stage=pcr_stage)[2]])
+    num_supplied_taqwater = len(user_supplied_taqwater)
+
+    taq_avail, water_avail, pids = exp.get_taqwater_avail(pcr_stage=pcr_stage)
+    taq_avail_vol = taq_avail/ul_conv
+    water_avail_vol = water_avail/ul_conv  
+    required_water_vol_str = str(index_water_vol/ul_conv)+ ' μl'
+    water_avail_vol_str = str(water_avail_vol) + ' μl'
+    required_taq_vol_str = str(index_taq_vol/ul_conv)+ ' μl'
+    avail_taq_vol_str = str(taq_avail_vol)+ ' μl'
+
+    num_req_taq_water_plates = util.num_req_taq_water_plates(index_taq_vol, index_water_vol)
+    
+    user_taqwater_text = user_supplied_taqwater
+    if not user_supplied_taqwater:
+        user_taqwater_text = '<p style="color:#FF0000">None</p>'
+
+    if num_supplied_taqwater < num_req_taq_water_plates:
+        req_taqwater_text = f'<p style="color:#FF0000"><b>Number of required taq/water plates (PCR {pcr_stage})</b></p>'
+        req_taqwater_num = f'<p style="color:#FF0000">{str(num_req_taq_water_plates)}</p>'
+    else:
+        req_taqwater_text = f'**Number of required taq/water plates (PCR {pcr_stage})**'
+        req_taqwater_num = str(num_req_taq_water_plates)
+
+    if index_remain >= 0:
+        index_pairs_allowed = '<p style="color:green">'+str(index_remain)+'</p>'     
+    else:
+        index_pairs_allowed = '<p style="color:red">'+str(index_remain)+'</p>'
+
+    #Page set up
+    pcr_comps_area = st.container()
+    col_size = [6, 4, 6, 4]
+    pcr2_col = pcr_comps_area.columns(col_size)
+
+    pcr2_col[0].markdown(req_taqwater_text, unsafe_allow_html=True)
+    pcr2_col[1].markdown(req_taqwater_num, unsafe_allow_html=True)
+    pcr2_col[2].markdown(f'**Number of user supplied taq/water plates (PCR {pcr_stage})**',unsafe_allow_html=True)
+    pcr2_col[3].markdown(user_taqwater_text, unsafe_allow_html=True)
+
+    pcr2_col[0].markdown('**Required water volume**')
+    pcr2_col[1].write(required_water_vol_str)
+    pcr2_col[2].markdown('**Available water volume**')
+    pcr2_col[3].write(water_avail_vol_str)
+    pcr2_col[0].markdown('**Required taq volume**')
+    pcr2_col[1].markdown(required_taq_vol_str)
+    pcr2_col[2].markdown('**Available taq volume**')
+    pcr2_col[3].write(avail_taq_vol_str)
+
+    pcr2_col[0].markdown('**Index Pairs Remaining**')
+    pcr2_col[1].write(str(index_remain))
+    pcr2_col[2].markdown('**Max Possible Index Pairs**')
+    pcr2_col[3].write(str(index_max))
+    pcr2_col[0].markdown('**Index Pairs Allowed by Volume**')
+    pcr2_col[1].markdown(index_pairs_allowed, unsafe_allow_html=True)
     
 
-def display_pcr_components(pcr_stage=1, dna_pids=None):
+def display_pcr_components_old(pcr_stage=1, dna_pids=None):
     """
     Expander widget that shows the required componenents for each PCR reaction, 
     including wells, PCR plates, taq+water plates, index pairs 
@@ -858,6 +1061,67 @@ def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=
     if view_tab == 7:
         with container:
             display_log(key, height=view_height)
+
+
+def display(selection, key, dna_pids, view_height):
+    exp = st.session_state['experiment']
+
+    if selection == 'Summary':
+        display_samples(key=selection)
+
+    if selection == "Status":
+        # Status tab should tell us where we are up to in the pipeline and what's happened so far
+            display_status(key=selection, height=view_height)
+                
+    if selection == "Files":
+        file_usage = exp.get_file_usage()
+        display_files(key, file_usage, height=view_height)
+
+    if selection == "Plates":
+        plate_usage = exp.get_plate_usage()
+        display_plates(key, plate_usage, height=view_height)
+
+    if selection == "Plate Viewer":
+        view_height = 500
+        view_plates(key, height=view_height)
+
+
+    if selection == "Primers":
+        display_primers(key, dna_pids=dna_pids, height=view_height)
+        
+    if selection == "Indexes":
+        display_indexes(key, dna_pids=dna_pids, height=view_height)
+
+    if selection == "Log":
+
+        display_log(key, height=view_height)
+
+
+
+def info_selection(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=None, amp_pids=None, taq_pids=None):
+    """
+    Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
+    Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
+    """
+    exp = st.session_state['experiment']
+    if 'info_expand' not in st.session_state:
+        st.session_state['info_expand'] = False
+    
+    options = ["Status", "Files", "Plates", "Primers", "Indexes", "Log"]
+    #add summary from first stage
+    
+    col1, col2,_ = st.columns([4,1,4])
+    with col1:
+        selection = st.multiselect("Choose the info to view", options=["Status", "Files", "Plates", "Primers", "Indexes", "Log"])
+    with col2:
+        view_height = st.number_input('Set display height', min_value=50, max_value=700, 
+                value=350, step=25, help="Size of display grid", key=str(key))
+    if selection:
+        columns = st.columns(len(selection))
+        for i in range(len(selection)):
+            with columns[i]:
+                display(selection[i], selection[i], dna_pids, view_height)
+
     
 
 def plate_checklist_pcr1(exp):
@@ -958,6 +1222,210 @@ def plate_checklist_pcr2(exp):
 
     return included_PCR_plates, included_taqwater_plates, included_index_plates, included_amplicon_plates
  
+
+def create_tabs(tab_data):
+    """
+    Create tabs from streamlit_extra_components. Assigns ID through enumerating given list.
+    Args:
+        tab_data (list): list of tuples containg the name and description of each tab
+    Returns
+        Create tab bar
+    """
+    return stx.tab_bar(data=[
+        stx.TabBarItemData(id=i+1, title=title, description=desc)
+        for i, (title, desc) in enumerate(tab_data)
+    ], return_type=int)
+
+def show_info_viewer_checkbox():
+    """
+    Allows the user to turn the info viewer panel on and off
+    """
+    if 'show_info_viewer' not in st.session_state:
+        st.session_state['show_info_viewer'] = False
+    
+    if st.checkbox('Info Viewer'):
+        st.session_state['show_info_viewer'] = True
+    else:
+        st.session_state['show_info_viewer'] = False
+
+def set_nimbus_title(exp, efs, nfs):
+    """
+    *Stage 2: Nimbus*
+    Title for nimbus stage
+    Args:
+        exp (st.session_state['experiment'])
+        efs (str): file path to echo files
+        nfs (str): file path for nimbus files
+    Return
+        str or None: title
+    """
+    #first stage sample files haven't been loaded
+    if not st.session_state['experiment'].dest_sample_plates:
+        return "Load data inputs to enable Nimbus input file generation."
+    else:
+        # do we have any Nimbus inputs to generate + download
+        echo_files_exist = len(efs) == len(nfs) and len(efs) != 0
+        yet_to_run = len(exp.dest_sample_plates) - len(nfs)
+
+        if echo_files_exist:
+            return 'All Echo inputs received.'
+        if yet_to_run > 0:
+            return f'{str(yet_to_run)} 96-well plate set(s)'
+        
+def get_echo_download_buttons(nfs):
+    """
+    *Stage 2: Nimbus*
+    Generates the echo file download buttons
+    Args:
+        nfs (str): nimbus file paths
+    """
+
+    _,dl_col1,dl_col2,dl_col3,dl_col4,_= st.columns([1,9,6,9,6,1])
+    
+    #print(f"{nfs=} {efs=} {xbcs=}")
+    for i,nf in enumerate(nfs):
+        nimbus_fn=Path(nf).name
+
+        if (i+1) % 2 != 0:
+            with dl_col1:
+                custom_text("p", "#4b778c", nimbus_fn, "left")
+
+            dl_col2.download_button("Download ", 
+                                    open(nf), 
+                                    file_name=nimbus_fn, 
+                                    key='nimbus_input'+str(i), 
+                                    help=f"Download Nimbus input file {nf}")
+    
+        else:
+            with dl_col3:
+                custom_text("p", "#4b778c", nimbus_fn, "left")
+        
+            dl_col4.download_button("Download ", 
+                                    open(nf), file_name=nimbus_fn,\
+                                    key='nimbus_input'+str(i), 
+                                    help=f"Download Nimbus input file {nf}")
+            
+    
+def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
+    """
+    *Stage 3: PCR1*
+    Display for generate echo pcr 1 picklist
+    Args:
+        exp (st.session_state['experiment])
+        DNA_plates: included DNA plates
+        PCR_plates: included PCR plates
+        taqwater_plates: included Taq/water plates
+    """
+    pcr1_messages = []
+    if not exp.check_ready_pcr1(DNA_plates,\
+                                PCR_plates, \
+                                taqwater_plates, \
+                                pcr1_messages):
+        
+        for msg in pcr1_messages:
+            st.warning(msg)
+    
+    else:
+        _,button_col,_ = st.columns([2, 2, 1])
+        echo_picklist_go = button_col.button('Generate Echo Picklists',
+                                              key='echo_pcr1_go_button',
+                                              type='primary')
+        if echo_picklist_go:
+            success = run_generate(exp, 
+                                   exp.generate_echo_PCR1_picklists, 
+                                   DNA_plates, 
+                                   PCR_plates, 
+                                   taqwater_plates)
+            if not success:
+                st.error('Picklist generation failed. Please see the log')
+            else:
+                st.session_state['pcr1 picklist'] = True
+
+
+def add_css():
+    #CSS
+    st.markdown('''
+    <style>
+        .stApp [data-testid="stToolbar"]{
+            display:none;
+        }
+        #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 1rem;}
+     </style>
+     ''', unsafe_allow_html=True)
+    
+    #remove drag and drop labels from upload buttons. Class name 'css-9ycgxx' could change in future streamlit versions
+    hide_label = """
+    <style>
+        .css-9ycgxx {
+            display: none;
+        }
+    </style>
+    """
+    st.markdown(hide_label, unsafe_allow_html=True)
+
+    #css for all form_submit_buttons
+    form_button_css = """
+    <style>
+    div[data-testid="stFormSubmitButton"] button {
+        background-color: #4287f5;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        margin: 8px 0;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 400;
+        width: fit-content;
+        height: auto
+    }
+    div[data-testid="stFormSubmitButton"] button:hover {
+        opacity: 0.8;
+        background-color: #cf3276;
+        color:white;
+
+    }
+    </style>
+    """
+    st.markdown(form_button_css, unsafe_allow_html=True)
+
+    #css for all buttons with type primary
+    primary_button_css = """
+    <style>
+    button[data-testid="baseButton-primary"] {
+        background-color: #4287f5;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        margin: 8px 0;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 400;
+        width: fit-content;
+        height: auto
+    }
+    button[data-testid="baseButton-primary"]:hover {
+        opacity: 0.8;
+    }
+    </style>
+    """
+    st.markdown(primary_button_css, unsafe_allow_html=True)
+    #css for all buttons with type secondary
+    secondary_button_css = """
+    <style>
+    button[data-testid="baseButton-secondary"] {
+        background-color: #83b3c9;
+        color: black;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 400;
+    }
+    button[data-testid="baseButton-secondary"]:hover {
+        opacity: 0.8;
+    }
+    </style>
+    """
+    st.markdown(secondary_button_css, unsafe_allow_html=True)
     
 
 

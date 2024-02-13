@@ -155,20 +155,6 @@ def run_generate(exp, target_func, *args, **kwargs):
                 trans.accept_pending_transactions(exp)
     return success
 
-
-def show_info_viewer_checkbox():
-    """
-    Allows the user to turn the info viewer panel on and off
-    """
-    if 'show_info_viewer' not in st.session_state:
-        st.session_state['show_info_viewer'] = False
-    
-    if st.checkbox('Info Viewer'):
-        st.session_state['show_info_viewer'] = True
-    else:
-        st.session_state['show_info_viewer'] = False
-
-
 def load_experiment_screen():
     """
     Landing screen
@@ -290,162 +276,17 @@ def set_session_state(key, value):
     if key not in st.session_state:
         st.session_state[key] = value
 
-def create_tabs(tab_data):
+def pcr1_picklists_exist(exp):
     """
-    Create tabs from streamlit_extra_components. Assigns ID through enumerating given list.
-    Args:
-        tab_data (list): list of tuples containg the name and description of each tab
-    Returns
-        Create tab bar
+    *Stage 3: PCR1*
+    Check if the files that are generated for PCR 1 exist
     """
-    return stx.tab_bar(data=[
-        stx.TabBarItemData(id=i+1, title=title, description=desc)
-        for i, (title, desc) in enumerate(tab_data)
-    ], return_type=int)
-
-def add_css():
-    #CSS
-    st.markdown('''
-    <style>
-        .stApp [data-testid="stToolbar"]{
-            display:none;
-        }
-        #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 1rem;}
-     </style>
-     ''', unsafe_allow_html=True)
+    picklist_files = ['Stage2.csv', 
+                        'PCR1_dna-picklist_test_picklists.csv', 
+                        'PCR1_primer-picklist_test_picklists.csv', 
+                        'PCR1_taqwater-picklist_test_picklists.csv']
     
-    #remove drag and drop labels from upload buttons. Class name 'css-9ycgxx' could change in future streamlit versions
-    hide_label = """
-    <style>
-        .css-9ycgxx {
-            display: none;
-        }
-    </style>
-    """
-    st.markdown(hide_label, unsafe_allow_html=True)
-
-    #css for all form_submit_buttons
-    form_button_css = """
-    <style>
-    div[data-testid="stFormSubmitButton"] button {
-        background-color: #4287f5;
-        color: white;
-        padding: 0.25rem 0.75rem;
-        margin: 8px 0;
-        border: none;
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: 400;
-        width: fit-content;
-        height: auto
-    }
-    div[data-testid="stFormSubmitButton"] button:hover {
-        opacity: 0.8;
-        background-color: #cf3276;
-        color:white;
-
-    }
-    </style>
-    """
-    st.markdown(form_button_css, unsafe_allow_html=True)
-
-    #css for all buttons with type primary
-    primary_button_css = """
-    <style>
-    button[data-testid="baseButton-primary"] {
-        background-color: #4287f5;
-        color: white;
-        padding: 0.25rem 0.75rem;
-        margin: 8px 0;
-        border: none;
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: 400;
-        width: fit-content;
-        height: auto
-    }
-    button[data-testid="baseButton-primary"]:hover {
-        opacity: 0.8;
-    }
-    </style>
-    """
-    st.markdown(primary_button_css, unsafe_allow_html=True)
-    #css for all buttons with type secondary
-    secondary_button_css = """
-    <style>
-    button[data-testid="baseButton-secondary"] {
-        background-color: #83b3c9;
-        color: black;
-        border: none;
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: 400;
-    }
-    button[data-testid="baseButton-secondary"]:hover {
-        opacity: 0.8;
-    }
-    </style>
-    """
-    st.markdown(secondary_button_css, unsafe_allow_html=True)
-    
-
-def set_nimbus_title(exp, efs, nfs):
-    """
-    *Stage 2: Nimbus*
-    Title for nimbus stage
-    Args:
-        exp (st.session_state['experiment'])
-        efs (str): file path to echo files
-        nfs (str): file path for nimbus files
-    Return
-        str or None: title
-    """
-    #first stage sample files haven't been loaded
-    if not st.session_state['experiment'].dest_sample_plates:
-        return "Load data inputs to enable Nimbus input file generation."
-    else:
-        # do we have any Nimbus inputs to generate + download
-        echo_files_exist = len(efs) == len(nfs) and len(efs) != 0
-        yet_to_run = len(exp.dest_sample_plates) - len(nfs)
-
-        if echo_files_exist:
-            return 'All Echo inputs received.'
-        if yet_to_run > 0:
-            return f'{str(yet_to_run)} 96-well plate set(s)' 
-    
-def generate_download_buttons(nfs):
-    """
-    *Stage 2: Nimbus*
-    Generates the echo file download buttons
-    Args:
-        nfs (str): nimbus file paths
-    """
-
-    _,dl_col1,dl_col2,dl_col3,dl_col4,_= st.columns([1,9,6,9,6,1])
-    
-    #print(f"{nfs=} {efs=} {xbcs=}")
-    for i,nf in enumerate(nfs):
-        nimbus_fn=Path(nf).name
-
-        if (i+1) % 2 != 0:
-            with dl_col1:
-                custom_text("p", "#4b778c", nimbus_fn, "left")
-
-            dl_col2.download_button("Download ", 
-                                    open(nf), 
-                                    file_name=nimbus_fn, 
-                                    key='nimbus_input'+str(i), 
-                                    help=f"Download Nimbus input file {nf}")
-    
-        else:
-            with dl_col3:
-                custom_text("p", "#4b778c", nimbus_fn, "left")
-        
-            dl_col4.download_button("Download ", 
-                                    open(nf), file_name=nimbus_fn,\
-                                    key='nimbus_input'+str(i), 
-                                    help=f"Download Nimbus input file {nf}")
-    
+    return all(os.path.exists(exp.get_exp_fn(file)) for file in picklist_files)
 
 def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
     """
@@ -482,41 +323,6 @@ def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
             else:
                 st.session_state['pcr1 picklist'] = True
 
-def pcr1_picklists_exist(exp):
-    """
-    *Stage 3: PCR1*
-    Check if the files that are generated for PCR 1 exist
-    """
-    picklist_files = ['Stage2.csv', 
-                        'PCR1_dna-picklist_test_picklists.csv', 
-                        'PCR1_primer-picklist_test_picklists.csv', 
-                        'PCR1_taqwater-picklist_test_picklists.csv']
-    
-    return all(os.path.exists(exp.get_exp_fn(file)) for file in picklist_files)
-
-
-def get_miseq_download_btn(exp):
-    """
-    *Stage 5: Miseq*
-    Args:
-        exp (st.session_state['experiment])
-    """
-    _, miseq_col1, miseq_col2, _ =  st.columns([2,1,1,2])
-    for fp in exp.get_miseq_samplesheets():
-        
-        fp_name = str(Path(fp).name)
-        with miseq_col1:
-            add_vertical_space(1)
-            custom_text('strong', 'black', fp_name, align='right')
-        
-        with miseq_col2:
-            download_miseq = st.download_button(label='Download', 
-                                                data=open(fp, 'rt'), 
-                                                file_name=fp_name, 
-                                                mime='text/csv', 
-                                                key='dnld_samplesheet_'+str(fp), 
-                                                type='primary')
-
 
 def main():
     """
@@ -529,7 +335,7 @@ def main():
         layout="wide"
     )
 
-    add_css()
+    dc.add_css()
 
     set_session_state('experiment', None)
     set_session_state('experiment', None)
@@ -577,19 +383,14 @@ def main():
             #                 style="italic")   
             
             with tab_col1:
-                load_data_tab = create_tabs([("Load Samples", ""),("Load Consumables", "")])                   
+                load_data_tab = dc.create_tabs([("Load Samples", ""),("Load Consumables", "")])                   
             if not load_data_tab:
                 set_session_state('load_tab', 1)
                 load_data_tab = st.session_state['load_tab']
             
-            print(f"0. {load_data_tab=}")
-            print(f"0. {st.session_state['load_tab']=}")
-            
             #------------------------------------ Load ~ TAB 1: Load sample data  --------------------------------------
             if load_data_tab == 1:
                 if unlocked(exp):
-                    print(f"1. {load_data_tab=}")
-                    print(f"1. {st.session_state['load_tab']=}")
                     set_session_state('run queue', [])
 
                     st.subheader('Upload Sample Files')
@@ -598,6 +399,7 @@ def main():
                     ld.load_amplicons('amp_load1')
 
                     with summary_holder:
+                        st.subheader('Summary')
                         summary = exp.summarise_inputs()
                         if len(summary) > 1:
                             dc.display_samples('load_data_tab1', height=180)
@@ -611,8 +413,6 @@ def main():
                 dc.display_consumables('load_data_tab2')
 
                 if unlocked(exp):
-                    print(f"2. {load_data_tab=}")
-                    print(f"2. {st.session_state['load_tab']=}")
                     set_session_state('upload stage', None)
 
                     st.subheader('Custom Volumes')
@@ -629,17 +429,18 @@ def main():
             # ** Info Viewer **
             with tab_col2:
                 add_vertical_space(1)
-                show_info_viewer_checkbox()
+                dc.show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
-                    dc.info_viewer(1)
+                    #dc.info_viewer
+                    dc.info_selection(1)
         
         #=============================================== STAGE 2: Nimbus ===============================================
         if pipeline_stage == 1:
             exp = st.session_state['experiment']
-
             _,help_col = subsection.columns([2,4])
-            tab_col1, tab_col2 = st.columns([9,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
+            _,tip_col, _ = st.columns(3)
             info_holder = st.container()
 
             # with help_col:
@@ -652,13 +453,13 @@ def main():
                 
 
             with tab_col1:
-                nimbus_tab = create_tabs([("Download", "Nimbus input files"),("Upload", "Echo input files")])
+                nimbus_tab = dc.create_tabs([("Download", "Nimbus input files"),("Upload", "Echo input files")])
             if not nimbus_tab:
                 set_session_state('nimbus_tab', 1)
                 nimbus_tab = st.session_state['nimbus_tab']
             
-            print(f"0. {nimbus_tab=}")
-            print(f"0. {st.session_state['nimbus_tab']=}")
+            if not ld.check_assay_file(exp):
+                tip_col.warning("Upload assay list file before generating Echo files")
 
             exp = st.session_state['experiment']
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
@@ -666,18 +467,16 @@ def main():
             #------------------------------------ Nimbus ~ TAB 1: Download Nimbus --------------------------------------
             if nimbus_tab == 1:
                 if unlocked(exp):
-                    print(f"1. {nimbus_tab=}")
-                    print(f"1. {st.session_state['nimbus_tab']=}")
 
                     _, header_col, _ = st.columns([2,2,1])
                     header_col.subheader('Generate Echo Files')
 
                     #Subtitle
-                    nimbus_title = set_nimbus_title(exp, nfs, efs)
+                    nimbus_title = dc.set_nimbus_title(exp, nfs, efs)
                     if nimbus_title:
-                        _, title_col,_ = st.columns([1, 10, 2])
+                        _, title_col,_ = st.columns([5,20,6])
                         with title_col:
-                            custom_text('h5', '#83b3c9', set_nimbus_title(exp, nfs, efs))
+                            custom_text('h5', '#83b3c9', dc.set_nimbus_title(exp, nfs, efs))
                     add_vertical_space(1)
 
                     #Generate files button
@@ -694,15 +493,14 @@ def main():
                             add_vertical_space(2)
                             nfs, efs, xbcs = exp.get_nimbus_filepaths()
                     
-                    generate_download_buttons(nfs)
+                    add_vertical_space(3)
+                    dc.get_echo_download_buttons(nfs)
                         
                 st.session_state['nimbus_tab'] = 1
 
 
             #---------------------------------- Nimbus ~ TAB 2: Upload echo input files --------------------------------
             if nimbus_tab == 2:
-                print(f"2. {nimbus_tab=}")
-                print(f"2. {st.session_state['nimbus_tab']=}")
                 if unlocked(exp):
                     _, header_col, _ = st.columns([2,2,1])
                     
@@ -714,10 +512,11 @@ def main():
             # ** Info viewer **
             with tab_col2:
                 add_vertical_space(2)
-                show_info_viewer_checkbox()
+                dc.show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
-                    dc.info_viewer(1)
+                    #dc.info_viewer(1)
+                    dc.info_selection(1)
 
         #=========================================== STAGE 3: PCR 1 Primers ============================================
         if pipeline_stage == 2:
@@ -734,7 +533,7 @@ def main():
 
             #Tabs
             with tab_col1:
-                primer_tab = create_tabs([("PCR 1", "Components"), ("Generate", "Picklists")])
+                primer_tab = dc.create_tabs([("PCR 1", "Components"), ("Generate", "Picklists")])
             if not primer_tab:
                 set_session_state("primer_tab", 1)
                 primer_tab = st.session_state['primer_tab']
@@ -757,7 +556,8 @@ def main():
                             
                         if included_DNA_plates:
                             st.subheader('PCR 1 Components', help='Required plates and volumes for the PCR reaction')
-                            dc.display_pcr_components(pcr_stage=pcr_stage, dna_pids=included_DNA_plates)
+                            dc.display_pcr_components(dna_pids=included_DNA_plates)
+                            dc.display_pcr1_components(dna_pids=included_DNA_plates)
                             hline()
                     else:
                         st.error("Load Nimbus output files to enable PCR stages")
@@ -806,22 +606,23 @@ def main():
             
             with tab_col2:
                 add_vertical_space(2)
-                show_info_viewer_checkbox()
+                dc.show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
-                    dc.info_viewer(1)
+                    #dc.info_viewer(1)
+                    dc.info_selection(1)
 
         #============================================ STAGE 4: PCR 2 Index =============================================
         if pipeline_stage == 3:
             exp = st.session_state['experiment']
             pcr_stage = 2
 
-            tab_col1, tab_col2 = st.columns([9,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
             info_holder = st.container()
 
             #Tab setup
             with tab_col1:
-                index_tab = create_tabs([("PCR 2", "Components"), ("Generate", "Picklists")])
+                index_tab = dc.create_tabs([("PCR 2", "Components"), ("Generate", "Picklists")])
             if not index_tab:
                 set_session_state('index_tab', 1)
                 index_tab = st.session_state['index_tab']
@@ -854,7 +655,9 @@ def main():
                         
                     with pcr_comp_holder:
                         st.subheader('PCR 2 Components')
-                        dc.display_pcr_components(pcr_stage=pcr_stage)
+                        dc.display_pcr_components()
+                        dc.display_pcr2_components(pcr_pids=included_PCR_plates, \
+                                                    amplicon_pids=included_amplicon_plates)
                         hline()
                         add_vertical_space(1)
                     
@@ -933,19 +736,21 @@ def main():
                 
             with tab_col2:
                 add_vertical_space(2)
-                show_info_viewer_checkbox()
+                dc.show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
-                    dc.info_viewer(1)
+                    #dc.info_viewer(1)
+                    dc.info_selection(1)
 
         #=============================================== STAGE 5: Miseq ================================================
         if pipeline_stage == 4:
             exp = st.session_state['experiment']
-            tab_col1, tab_col2 = st.columns([9,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
+            info_holder = st.container()
 
             with tab_col1:
                 with tab_col1:
-                    miseq_tab = create_tabs([("Download", "Miseq Samplesheet"), ("Upload", "Miseq Sequence Files")])
+                    miseq_tab = dc.create_tabs([("Download", "Miseq Samplesheet"), ("Upload", "Miseq Sequence Files")])
                 if not miseq_tab:
                     set_session_state('miseq_tab', 1)
                     miseq_tab = st.session_state['miseq_tab']
@@ -955,16 +760,21 @@ def main():
             #-------------------------------- Miseq ~ TAB 1: Download Miseq Samplesheet --------------------------------
             if miseq_tab == 1:
                 exp = st.session_state['experiment']
+                _,header_col,_ = st.columns([2,2,1])
 
                 if exp.locked:
                     st.warning(f'Experiment {exp.name} locked from further modification')
                 
-                st.subheader('Download File')
+                with header_col:
+                    st.subheader('Download MiSeq File')
+                    add_vertical_space(1)
+                #hline()
+
                 #ld.upload_reference_sequences('reference_miseq1')
                 if exp.get_miseq_samplesheets():
                     get_miseq_download_btn(exp)
                     add_vertical_space(4)
-                    hline()
+                    
                 else:
                     st.warning(f'No MiSeq Samplesheet available for download')
                 
@@ -990,19 +800,20 @@ def main():
             # ** Info viewer **
             with tab_col2:
                 add_vertical_space(2)
-                show_info_viewer_checkbox()
+                dc.show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
-                    dc.info_viewer(1)
+                    #dc.info_viewer(1)
+                    dc.info_selection(1)
 
         #=========================================== STAGE 6: Allele Calling ===========================================
         if pipeline_stage == 5:
             exp = st.session_state['experiment']
-            tab_col1, tab_col2 = st.columns([9,1])
+            tab_col1, tab_col2 = subsection.columns([9,1])
             info_holder = st.container()
 
             with tab_col1:
-                allele_tab = create_tabs([("Allele Calling", "")])
+                allele_tab = dc.create_tabs([("Allele Calling", "")])
             if not allele_tab:
                 set_session_state('allele_tab', 1)
                 allele_tab = st.session_state['allele_tab']
@@ -1095,17 +906,18 @@ def main():
 
             with tab_col2:
                 st.write('')
-                show_info_viewer_checkbox()
+                dc.show_info_viewer_checkbox()
                 
             with info_holder:
                 if st.session_state['show_info_viewer']:
-                    dc.info_viewer(1)
+                    #dc.info_viewer(1)
+                    dc.info_selection(1)
         
-        # Reports
+        #=============================================== STAGE 7: Reports ==============================================
         if pipeline_stage == 6:
             exp = st.session_state['experiment']
             results_fp = exp.get_exp_fn('results.csv')
-            tab_col1, tab_col2 = st.columns([9, 1])
+            tab_col1, tab_col2 = subsection.columns([9, 1])
             info_holder = st.container()
             
             
@@ -1152,11 +964,12 @@ def main():
                     dc.aggrid_interactive_table(dfo, key='other_view_key')
 
             with tab_col2:
-                st.write('')
-                show_info_viewer_checkbox()
+                add_vertical_space(1)
+                dc.show_info_viewer_checkbox()
             with info_holder:
                 if st.session_state['show_info_viewer']:
-                    dc.info_viewer(1)
+                    #dc.info_viewer(1)
+                    dc.info_selection(1)
 
         st.session_state['pipeline_stage'] = pipeline_stage
 
