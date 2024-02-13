@@ -474,9 +474,9 @@ def main():
                     #Subtitle
                     nimbus_title = dc.set_nimbus_title(exp, nfs, efs)
                     if nimbus_title:
-                        _, title_col,_ = st.columns([5,20,6])
+                        _, title_col,_ = st.columns([2,2,1])
                         with title_col:
-                            custom_text('h5', '#83b3c9', dc.set_nimbus_title(exp, nfs, efs))
+                            custom_text('h5', '#83b3c9', dc.set_nimbus_title(exp, nfs, efs), align="left")
                     add_vertical_space(1)
 
                     #Generate files button
@@ -664,7 +664,7 @@ def main():
                         add_vertical_space(1)
                     
                     if not included_PCR_plates and not included_amplicon_plates:
-                        title_holder.error("Load Nimbus output files to enable PCR stages")
+                        title_holder.error("Load Nimbus output files to enable PCR stages. For amplicon only, upload amplicon and index files and provide a taq water plate barcode.")
                     
                 st.session_state['index_tab'] = 1
 
