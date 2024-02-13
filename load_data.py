@@ -515,6 +515,12 @@ def upload_extra_consumables(key):
         st.session_state['upload_option'] = ''
     st.write('')
 
+def check_assay_file(exp):
+    for f in exp.uploaded_files:
+        if exp.uploaded_files[f].get('purpose','') == 'assay_primer_map':
+            return True
+    return False
+
 
 def custom_volumes(exp):
     volumes_dict = exp.transfer_volumes.copy()
@@ -845,4 +851,7 @@ def upload_miseq_fastqs():
         if not exp.locked:
             exp.lock()
             st.warning(f'Experiment {exp.name} is now locked from changes to plate layouts')
+
+
+
 
