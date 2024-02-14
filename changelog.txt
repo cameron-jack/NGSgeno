@@ -1,3 +1,7 @@
+v0.25.000
+Date: Wed Feb 14 16:18:48 AEDT 2024
+* New: variant sequences for each well now saved to variants.fa
+
 v0.24.000
 Date: Mon Feb 12 11:27:31 AEDT 2024
 * New: amplicon-only runs supported
