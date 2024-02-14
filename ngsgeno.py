@@ -323,6 +323,12 @@ def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
             else:
                 st.session_state['pcr1 picklist'] = True
 
+def show_info_viewer(selection, height):
+    columns = st.columns(len(selection))
+    for i in range(len(selection)):
+        with columns[i]:
+            dc.info_viewer(selection[i], selection[i], view_height=height)
+
 
 def main():
     """
@@ -368,11 +374,11 @@ def main():
 
         #============================================== STAGE 1: Load data =============================================
         if pipeline_stage == 0:
-            _,help_col = subsection.columns([2,4]) 
-            tab_col1, tab_col2 = subsection.columns([9,1])
+            #_,help_col = subsection.columns([2,4]) 
+            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
             tip_col, _ = st.columns(2)
             info_holder = st.container()
-            summary_holder = st.container()
+            #summary_holder = st.container()
         
             # with help_col:
             #     custom_text(size='p', 
@@ -398,19 +404,30 @@ def main():
                     ld.load_custom_manifests('custom_load1')
                     ld.load_amplicons('amp_load1')
 
-                    with summary_holder:
-                        st.subheader('Summary')
-                        summary = exp.summarise_inputs()
-                        if len(summary) > 1:
-                            dc.display_samples('load_data_tab1', height=180)
+                    # with summary_holder:
+                    #     st.subheader('Summary')
+                    #     summary = exp.summarise_inputs()
+                    #     if len(summary) > 1:
+                    #         dc.display_samples('load_data_tab1', height=180)
 
                 st.session_state['load_tab'] = 1
+            
+                # ** Info viewer **
+                with tab_col3:
+                    add_vertical_space(2)
+                    dc.show_info_viewer_checkbox()
+                if st.session_state['show_info_viewer']:
+                    with tab_col2:
+                        selection, height = dc.info_selection(1, load_samples=True)
+                    if selection:
+                        with info_holder:
+                            show_info_viewer(selection, height)
                
 
             #------------------------------------ Load ~ TAB 2: Load consumables ---------------------------------------
             if load_data_tab == 2:
-                st.subheader('Summary')
-                dc.display_consumables('load_data_tab2')
+                # st.subheader('Summary')
+                # dc.display_consumables('load_data_tab2')
 
                 if unlocked(exp):
                     set_session_state('upload stage', None)
@@ -426,22 +443,25 @@ def main():
 
                 st.session_state['load_tab'] = 2
 
-            # ** Info Viewer **
-            with tab_col2:
-                add_vertical_space(1)
-                dc.show_info_viewer_checkbox()
-            with info_holder:
+                # ** Info viewer **
+                with tab_col3:
+                    add_vertical_space(2)
+                    dc.show_info_viewer_checkbox()
                 if st.session_state['show_info_viewer']:
-                    #dc.info_viewer
-                    dc.info_selection(1)
+                    with tab_col2:
+                        selection, height = dc.info_selection(2, load_consumables=True)
+                    if selection:
+                        with info_holder:
+                            show_info_viewer(selection, height)
         
         #=============================================== STAGE 2: Nimbus ===============================================
         if pipeline_stage == 1:
             exp = st.session_state['experiment']
-            _,help_col = subsection.columns([2,4])
-            tab_col1, tab_col2 = subsection.columns([9,1])
-            _,tip_col, _ = st.columns(3)
+            #_,help_col = subsection.columns([2,4])
+            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
             info_holder = st.container()
+            _,tip_col, _ = st.columns(3)
+            
 
             # with help_col:
             #     custom_text(size='p', 
@@ -510,13 +530,15 @@ def main():
                 st.session_state['nimbus_tab'] = 2
 
             # ** Info viewer **
-            with tab_col2:
+            with tab_col3:
                 add_vertical_space(2)
                 dc.show_info_viewer_checkbox()
-            with info_holder:
-                if st.session_state['show_info_viewer']:
-                    #dc.info_viewer(1)
-                    dc.info_selection(1)
+            if st.session_state['show_info_viewer']:
+                with tab_col2:
+                    selection, height = dc.info_selection(1)
+                if selection:
+                    with info_holder:
+                        show_info_viewer(selection, height)
 
         #=========================================== STAGE 3: PCR 1 Primers ============================================
         if pipeline_stage == 2:
@@ -524,7 +546,7 @@ def main():
             st.session_state['assay_filter'] = True
             pcr_stage = 1
 
-            tab_col1, tab_col2 = subsection.columns([9,1])
+            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
             info_holder = st.container()
             tip_col, _ = st.columns([2,1])
 
@@ -604,20 +626,23 @@ def main():
 
                 st.session_state['primer_tab'] = 2
             
-            with tab_col2:
+            # ** Info viewer **
+            with tab_col3:
                 add_vertical_space(2)
                 dc.show_info_viewer_checkbox()
-            with info_holder:
-                if st.session_state['show_info_viewer']:
-                    #dc.info_viewer(1)
-                    dc.info_selection(1)
+            if st.session_state['show_info_viewer']:
+                with tab_col2:
+                    selection, height = dc.info_selection(3)
+                if selection:
+                    with info_holder:
+                        show_info_viewer(selection, height)
 
         #============================================ STAGE 4: PCR 2 Index =============================================
         if pipeline_stage == 3:
             exp = st.session_state['experiment']
             pcr_stage = 2
 
-            tab_col1, tab_col2 = subsection.columns([9,1])
+            tab_col1, tab_col2,tab_col3 = subsection.columns([9,3,1])
             info_holder = st.container()
 
             #Tab setup
@@ -734,18 +759,21 @@ def main():
                 dc.show_echo2_outputs()
                 st.session_state['index_tab'] = 2            
                 
-            with tab_col2:
+            # ** Info viewer **
+            with tab_col3:
                 add_vertical_space(2)
                 dc.show_info_viewer_checkbox()
-            with info_holder:
-                if st.session_state['show_info_viewer']:
-                    #dc.info_viewer(1)
-                    dc.info_selection(1)
+            if st.session_state['show_info_viewer']:
+                with tab_col2:
+                    selection, height = dc.info_selection(4)
+                if selection:
+                    with info_holder:
+                        show_info_viewer(selection, height)
 
         #=============================================== STAGE 5: Miseq ================================================
         if pipeline_stage == 4:
             exp = st.session_state['experiment']
-            tab_col1, tab_col2 = subsection.columns([9,1])
+            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
             info_holder = st.container()
 
             with tab_col1:
@@ -772,7 +800,7 @@ def main():
 
                 #ld.upload_reference_sequences('reference_miseq1')
                 if exp.get_miseq_samplesheets():
-                    get_miseq_download_btn(exp)
+                    dc.get_miseq_download_btn(exp)
                     add_vertical_space(4)
                     
                 else:
@@ -797,19 +825,21 @@ def main():
                 
                 st.session_state['miseq_tab'] = 2
 
-            # ** Info viewer **
-            with tab_col2:
+             # ** Info viewer **
+            with tab_col3:
                 add_vertical_space(2)
                 dc.show_info_viewer_checkbox()
-            with info_holder:
-                if st.session_state['show_info_viewer']:
-                    #dc.info_viewer(1)
-                    dc.info_selection(1)
+            if st.session_state['show_info_viewer']:
+                with tab_col2:
+                    selection, height = dc.info_selection(5)
+                if selection:
+                    with info_holder:
+                        show_info_viewer(selection, height)
 
         #=========================================== STAGE 6: Allele Calling ===========================================
         if pipeline_stage == 5:
             exp = st.session_state['experiment']
-            tab_col1, tab_col2 = subsection.columns([9,1])
+            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
             info_holder = st.container()
 
             with tab_col1:
@@ -904,20 +934,23 @@ def main():
                     
                 st.session_state['allele_tab'] = 1
 
-            with tab_col2:
-                st.write('')
+             # ** Info viewer **
+            with tab_col3:
+                add_vertical_space(2)
                 dc.show_info_viewer_checkbox()
-                
-            with info_holder:
-                if st.session_state['show_info_viewer']:
-                    #dc.info_viewer(1)
-                    dc.info_selection(1)
+            if st.session_state['show_info_viewer']:
+                with tab_col2:
+                    selection, height = dc.info_selection(6)
+                if selection:
+                    with info_holder:
+                        show_info_viewer(selection, height)
+
         
         #=============================================== STAGE 7: Reports ==============================================
         if pipeline_stage == 6:
             exp = st.session_state['experiment']
             results_fp = exp.get_exp_fn('results.csv')
-            tab_col1, tab_col2 = subsection.columns([9, 1])
+            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
             info_holder = st.container()
             
             
@@ -963,13 +996,17 @@ def main():
                     dfo = pd.DataFrame(other_results, columns=hdr)
                     dc.aggrid_interactive_table(dfo, key='other_view_key')
 
-            with tab_col2:
-                add_vertical_space(1)
+            # ** Info viewer **
+            with tab_col3:
+                add_vertical_space(2)
                 dc.show_info_viewer_checkbox()
-            with info_holder:
-                if st.session_state['show_info_viewer']:
-                    #dc.info_viewer(1)
-                    dc.info_selection(1)
+            if st.session_state['show_info_viewer']:
+                with tab_col2:
+                    selection, height = dc.info_selection(7)
+                if selection:
+                    with info_holder:
+                        show_info_viewer(selection, height)
+
 
         st.session_state['pipeline_stage'] = pipeline_stage
 
