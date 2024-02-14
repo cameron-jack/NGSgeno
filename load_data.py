@@ -528,7 +528,6 @@ def upload_extra_consumables(key):
 def check_assay_file(exp):
     return any(file.get('purpose', '') == 'assay_primer_map' for file in exp.uploaded_files.values())
 
-
 def custom_volumes(exp):
     volumes_dict = exp.transfer_volumes.copy()
 
@@ -558,6 +557,7 @@ def custom_volumes(exp):
                                           'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
                                           'INDEX_WATER_VOL':util.INDEX_WATER_VOL})
         if success:
+            st.toast(f':blue[Volumes reset]')
             st.experimental_rerun()
         else:
             st.error('Volumes were not reset. Check the log for more information')
@@ -568,6 +568,7 @@ def custom_volumes(exp):
             volumes_dict[vol] = float(custom_vol_editor[vol]['Volume'])
         success = exp.add_custom_volumes(volumes_dict)
         if success:
+            st.toast(':blue[**Added new volume**]')
             st.success("Added new volume")
             st.experimental_rerun()
         else:

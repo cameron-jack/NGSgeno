@@ -1435,6 +1435,10 @@ class Experiment():
             self.log(f'Error: {e}')
             return False
     #End of Gabi's code for custom volumes
+    
+    def check_assay_list_file(self):
+        for sample in self.plate_location_sample:
+            print(self.plate_location_sample[sample])
 
 
     def read_allele_results(self):

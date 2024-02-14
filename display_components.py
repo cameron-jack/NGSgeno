@@ -858,7 +858,7 @@ def view_plates(key, height=500):
         plate_ids.append(f"{exp.plate_location_sample[pid]['purpose']} plate: {util.unguard(pid, silent=True)}")
 
     #Let user choose which plate to view
-    _, col1, _ = st.columns([2, 1,2])
+    _, col1, _ = st.columns([1,2,1])
     plate_selectbox = col1.selectbox('Plate ID to view', plate_ids, key=str(key)+'plate_viewer')
     if plate_selectbox:
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
@@ -1083,7 +1083,7 @@ def info_bar(key):
         st.divider()
 
 
-def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=None, amp_pids=None, taq_pids=None):
+def info_viewer_old(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=None, amp_pids=None, taq_pids=None):
     """
     Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
     Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
@@ -1133,7 +1133,6 @@ def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=
             view_height = 500
             view_plates(key, height=view_height)
 
-
     if view_tab == 5:
         with container:
             display_primers(key, dna_pids=dna_pids, height=view_height)
@@ -1142,22 +1141,19 @@ def info_viewer(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=
         with container:
             display_indexes(key, dna_pids=dna_pids, height=view_height)
 
-
-    #if view_tab == 7:
-    #    with container:
-    #        display_references(key, height=view_height)
-
-
     if view_tab == 7:
         with container:
             display_log(key, height=view_height)
 
 
-def display(selection, key, dna_pids, view_height):
+def info_viewer(selection, key, dna_pids=None, view_height=350):
     exp = st.session_state['experiment']
 
-    if selection == 'Summary':
-        display_samples(key=selection)
+    if selection == 'Samples Summary':
+        display_samples(key=selection, height=view_height)
+    
+    if selection == 'Consumables Summary':
+        display_consumables(key=selection, height=view_height)
 
     if selection == "Status":
         # Status tab should tell us where we are up to in the pipeline and what's happened so far
@@ -1175,7 +1171,6 @@ def display(selection, key, dna_pids, view_height):
         view_height = 500
         view_plates(key, height=view_height)
 
-
     if selection == "Primers":
         display_primers(key, dna_pids=dna_pids, height=view_height)
         
@@ -1183,12 +1178,12 @@ def display(selection, key, dna_pids, view_height):
         display_indexes(key, dna_pids=dna_pids, height=view_height)
 
     if selection == "Log":
-
         display_log(key, height=view_height)
+    
 
 
 
-def info_selection(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=None, amp_pids=None, taq_pids=None):
+def info_selection(key, dna_pids=None, load_samples=False, load_consumables=False):
     """
     Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
     Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
@@ -1197,20 +1192,27 @@ def info_selection(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pi
     if 'info_expand' not in st.session_state:
         st.session_state['info_expand'] = False
     
-    options = ["Status", "Files", "Plates", "Primers", "Indexes", "Log"]
-    #add summary from first stage
+    options = ["Status", "Files", "Plates", "Plate Viewer", "Primers", "Indexes", "Log"]
+    view_height=350
     
-    col1, col2,_ = st.columns([4,1,4])
+    col1, col2 = st.columns([2,1])
+    default = None
+    if load_samples:
+        options = ['Samples Summary'] + options
+        default = 'Samples Summary'
+    if load_consumables:
+        options = ['Consumables Summary'] + options
+        default = 'Consumables Summary'
+
     with col1:
-        selection = st.multiselect("Choose the info to view", options=["Status", "Files", "Plates", "Primers", "Indexes", "Log"])
+        selection = st.multiselect("Choose info to view", options=options,placeholder='', default=default)
     with col2:
-        view_height = st.number_input('Set display height', min_value=50, max_value=700, 
-                value=350, step=25, help="Size of display grid", key=str(key))
-    if selection:
-        columns = st.columns(len(selection))
-        for i in range(len(selection)):
-            with columns[i]:
-                display(selection[i], selection[i], dna_pids, view_height)
+        if selection:
+            view_height = st.number_input('Set display height', min_value=50, max_value=700, 
+                    value=350, step=25, help="Size of display grid", key=str(key))
+    
+    return selection, view_height
+
 
     
 
@@ -1331,9 +1333,9 @@ def show_info_viewer_checkbox():
     Allows the user to turn the info viewer panel on and off
     """
     if 'show_info_viewer' not in st.session_state:
-        st.session_state['show_info_viewer'] = False
+        st.session_state['show_info_viewer'] = True
     
-    if st.checkbox('Info Viewer'):
+    if st.checkbox('Info Viewer', value=True):
         st.session_state['show_info_viewer'] = True
     else:
         st.session_state['show_info_viewer'] = False
