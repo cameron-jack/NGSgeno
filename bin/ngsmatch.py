@@ -902,6 +902,81 @@ def parse_primer_file(paf):
                 assayfam_primers[assayfam].add(pmr)
     return primer_assayfam, assayfam_primers
 
+
+def get_variant_seq(var_name, id_seq):
+    """
+    Reverse engineer the variant sequence from annotations in the var name
+    Positions are 1-based
+    """
+    if '//' not in var_name:
+        return var_name  # We should never see this happen, but to be safe...
+    primer = var_name.split('//')[0]
+    if primer not in id_seq:
+        print(f'Error: no known primer: {primer}')
+        return ''
+    original_seq = id_seq[primer]
+    parts = re.split(r'(\d+)', var_name.split('//')[1])
+    rev_parts = parts[::-1]
+    new_seq = original_seq
+    # need to go through changes in reverse order to avoid length changes from affecting position
+    for i, p in enumerate(rev_parts):
+        if i % 2 == 0:
+            if p == '':
+                break  # we've reached the end
+            change = p
+            if len(parts) <= i+1:
+                print(f'Error: no matching change for position: {pos} in {parts} from {var_name}', flush=True)
+                return ''
+            try:
+                pos = int(rev_parts[i+1]) -1  # 1-based
+            except Exception as e:
+                print(f'Error: could not convert position {rev_parts[i+1]=} to integer', flush=True)
+                return ''
+            #print(f'{rev_parts=} {i=} {p=} {pos=} {new_seq=}',flush=True)
+            if '+' in change:
+                new_seq = new_seq[:pos] + change[1:] + new_seq[pos:]
+            if '-' in change:
+                new_seq = new_seq[:pos] + new_seq[pos+len(change)-1:]
+            if '/' in change:
+                repl_bases = change.split('/')[1] 
+                new_seq = new_seq[:pos] + repl_bases +new_seq[pos+len(repl_bases):]
+            
+    #print(f'{original_seq=}', flush=True)
+    #print(f'{new_seq=}', flush=True)
+    return new_seq
+
+
+def test_variant_seq():
+    """
+    unit tests for get_variant_seq()
+    """
+    print('beginning unit tests for variant sequence recreation', flush=True)
+    test_id_seq = {'orig':'ACTGAACCTTGG'}
+    test1 = 'orig//4+C'
+    expected = 'ACTCGAACCTTGG'
+    new_seq = get_variant_seq(test1, test_id_seq)
+    if expected != new_seq:
+        print(f'Test 1: {expected} does not match {new_seq}!', flush=True)
+    else:
+        print('Test 1: pass', flush=True)
+        
+    test2 = 'orig//4-G'
+    expected = 'ACTAACCTTGG'
+    new_seq = get_variant_seq(test2, test_id_seq)
+    if expected != new_seq:
+        print(f'Test 2: {expected} does not match {new_seq}!', flush=True)
+    else:
+        print('Test 2: pass', flush=True)
+        
+    test3 = 'orig//4G/C'
+    expected = 'ACTCAACCTTGG'
+    new_seq = get_variant_seq(test3, test_id_seq)
+    if expected != new_seq:
+        print(f'Test 3: {expected} does not match {new_seq}!', flush=True)
+    else:
+        print('Test 3: pass', flush=True)
+        
+
 # def main(rundir, stagefile, logfn, outfn, targets, exhaustive=False, debugfn='debug.log', debug=False):
 def main(args):
     """
@@ -1029,19 +1104,48 @@ def main(args):
         with lock_r:
             completed_jobs = [reps[key] for key in sorted(reps.keys())]
 
-        with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd:
-            print(f"Opening {args.outfn} for results", file=sys.stderr)
+        test_variant_seq()
+
+        with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd,\
+                open(os.path.join(args.rundir,args.variants), 'wt', buffering=1) as varfd:
+            print(f"Opening {args.outfn} for results", flush=True)
+            print(f"Opening {args.variants} for variant sequences", flush=True)
+
+        #with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd:
+        #    print(f"Opening {args.outfn} for results", file=sys.stderr)
             dst = csv.writer(dstfd, dialect="unix", quoting=csv.QUOTE_ALL)
             hdrres1 = ("readCount", "cleanCount", "mergeCount")
             hdrres2 = ("seqCount", "seqName", "otherCount", "otherName")
             complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))
+            primer_col = [i for i,col in enumerate(complete_row_hdr) if col=='primer'][0]
             dst.writerow(complete_row_hdr)
-            for job in completed_jobs:
+            for i,job in enumerate(completed_jobs):
                 try:
                     dst.writerow(job)
                 except Exception as exc:
                     print(f'{exc=}', flush=True)
+                #print(i, job, flush=True)
+                var_count_entries = job[-2].split(';')
+                var_name_entries = job[-1].split(';')
+                primer_name = job[primer_col]
+                #print(f'{primer_name=} {var_count_entries=} {var_name_entries=}')
+                for var_count, var_name in zip(var_count_entries, var_name_entries):
+                    if var_name.startswith('other'):
+                        continue
+                    var_row_name = f'>Sample:{i+1};Primer:{primer_name}'
+                    if '//' in var_name:
+                        var_row_name += f';{var_name}'
+                    else:
+                        var_row_name += f';No_match'
+                    var_row_name += f';count:{var_count}'
+                    print(var_row_name, file=varfd)
+                    if '//' in var_name:
+                        print(get_variant_seq(var_name, id_seq), file=varfd)
+                    else:
+                        print(var_name, file=varfd)
+                        
             dstfd.flush()
+            varfd.flush()
 
     end_time = datetime.datetime.now()
     msg = f"End: {end_time} took: {end_time - start_time}"
@@ -1071,11 +1175,12 @@ if __name__=="__main__":
     parser.add_argument("-t", "--targets", default="targets.fa", help="file of targets in FASTA format (default=targets.fa)")
     parser.add_argument('-P', '--primer_assayfam', default="primers.csv", help='file of primer to assay family mappings')
     parser.add_argument('-o','--outfn', default='results.csv', help='Name of output file (CSV format)')
+    parser.add_argument('-v','--variants', default='variant_seqs.fa', help='Name of variant sequences file (FASTA format)'),
     parser.add_argument('-n','--ncpus', type=int, default=os.cpu_count()-1, help='Number of processes to run simultaneously, default=number of CPUs in system - 1')
     parser.add_argument('-l','--logfn', default='match.log', help='Name of logging file (default=match.log)')
     parser.add_argument('-r','--rundir', required=True, help='Path to experiment folder')
-    parser.add_argument('-m','--mincov', type=int, default=50, help='Do not match unique sequences with less than this many reads coverage, default 50')
-    parser.add_argument('-p','--minprop', type=float, default=0.2, help='Do not match unique sequences '+\
+    parser.add_argument('-m','--mincov', type=int, default=5, help='Do not match unique sequences with less than this many reads coverage, default 50')
+    parser.add_argument('-p','--minprop', type=float, default=0.1, help='Do not match unique sequences '+\
             'with less than this proportion of the total number of exact matched on-target reads, default 0.2. Must be between 0.0 and 1.0')
     parser.add_argument('-e','--exact', action="store_true", help="disable inexact matching")
     parser.add_argument('-x','--exhaustive',action='store_true',help='Try to match every sequence, '+\
