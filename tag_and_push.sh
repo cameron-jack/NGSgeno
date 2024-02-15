@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.25.000"
+VER="v0.25.001"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* New: variant sequences for each well now saved to variants.fa
+* Updated README.md with to do list
 EOM
 
 mv changelog.txt changelog_old.txt

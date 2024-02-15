@@ -1,3 +1,7 @@
+v0.25.001
+Date: Thu Feb 15 11:10:42 AEDT 2024
+* Updated README.md with to do list
+
 v0.25.000
 Date: Wed Feb 14 16:18:48 AEDT 2024
 * New: variant sequences for each well now saved to variants.fa
