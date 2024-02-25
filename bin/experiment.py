@@ -686,7 +686,6 @@ class Experiment():
         For a given set of DNA plates, return the number of times each assay and primer is needed
         If an dna_pids is None, use all available dna plates
         """
-        print(f'{dna_pids=}')
         assay_usage = defaultdict(int)
         primer_usage = defaultdict(int)
         if dna_pids:
@@ -698,7 +697,6 @@ class Experiment():
         if not dpids:
             self.log(f'Error: no DNA plates found matching DNA plate IDs: {dna_pids}')
             return assay_usage, primer_usage
-        print(f'{dpids=}')
 
         for dpid in dpids:        
             for well in self.plate_location_sample[dpid]['wells']:       
@@ -830,16 +828,35 @@ class Experiment():
                             taq_avail += transactions[pid][well]
         return taq_avail, water_avail, pids
 
-
-    def get_taq_water_volumes_required(self, num_reactions):
+    def get_taqwater_req_vols_primers(self, num_reactions):
         """
-        Returns the taq and water volumes required for the primer and index stages in nl
+        Returns the taq and water volumes required for the primer stage in nl
+        Args:
+            num_reactions(int):
         """
-        primer_taq_vol = num_reactions * self.transfer_volumes['PRIMER_TAQ_VOL']
-        primer_water_vol = num_reactions * self.transfer_volumes['PRIMER_WATER_VOL']
-        index_water_vol = num_reactions * self.transfer_volumes['INDEX_WATER_VOL']
-        index_taq_vol = num_reactions * self.transfer_volumes['INDEX_TAQ_VOL'] 
-        return primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol
+        taq_vol = num_reactions * self.transfer_volumes['PRIMER_TAQ_VOL']
+        water_vol = num_reactions * self.transfer_volumes['PRIMER_WATER_VOL']
+        return taq_vol, water_vol
+        
+    def get_taqwater_req_vols_index(self, num_reactions):
+        """
+        Returns the taq and water volumes required for the index stages in nl
+        Args:
+            num_reactions(int): number of reactions for index stage, including amplicon
+        """
+        water_vol = num_reactions * self.transfer_volumes['INDEX_WATER_VOL']
+        taq_vol = num_reactions * self.transfer_volumes['INDEX_TAQ_VOL'] 
+        return taq_vol, water_vol
+    
+    def get_taqwater_req_vols_amplicon(self, num_reactions):
+        """
+        Returns the taq and water volumes required for the amplicons in nl
+        Args:
+            num_reactions(int): Number of wells in amplicon plate
+        """
+        water_vol = num_reactions * self.transfer_volumes['INDEX_WATER_VOL']
+        taq_vol = num_reactions * self.transfer_volumes['INDEX_TAQ_VOL'] 
+        return taq_vol, water_vol
 
 
     def get_taqwater_pids(self, pcr_stage=None):
@@ -878,6 +895,25 @@ class Experiment():
         """ return a list of user supplied amplicon plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'amplicon']
 
+    def get_num_amplicon_wells(self, amplicon_pids=None)->int:
+        """ 
+        Return the number of wells in the chosen amplicon plates. If amplicon_pids is None, get number of wells for
+        all amplicons in experiment
+        """
+        if amplicon_pids:
+            num_wells = sum(len(self.plate_location_sample[pid]['wells']) for pid in self.plate_location_sample if pid in amplicon_pids)
+        else:
+            num_wells = sum(len(plate['wells']) for plate in self.plate_location_sample.values() if plate['purpose'] == 'amplicon')
+        
+        return num_wells
+    
+    def get_num_reactions(self, primer_usage, pcr_pids, amplicon_pids):
+        num_reactions = 0
+        if amplicon_pids:
+            num_reactions += self.get_num_amplicon_wells(amplicon_pids)
+        if pcr_pids:
+            num_reactions += sum([primer_usage[p] for p in primer_usage])
+        return num_reactions
 
     def generate_echo_primer_survey(self, primer_survey_filename='primer-svy.csv'):
         """ 

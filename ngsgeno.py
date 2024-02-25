@@ -507,7 +507,8 @@ def main():
                                         dc.plate_checklist_pcr1(exp)
                             
                         if included_DNA_plates:
-                            dc.display_pcr_components(pcr_stage=pcr_stage, dna_pids=included_DNA_plates)
+                            dc.display_pcr_components(dna_pids=included_DNA_plates, pcr_pids=included_PCR_plates)
+                            dc.display_pcr1_components(dna_pids=included_DNA_plates)
                     else:
                         no_nimbus_msg = "Load Nimbus output files to enable PCR stages"
                         st.markdown(f'<h5 style="text-align:center;color:#f63366">{no_nimbus_msg}</h5',\
@@ -595,7 +596,7 @@ def main():
                     index_checklist = st.container()
                     st.write('***')
                     title_holder = st.empty()
-                    pcr_comp_holder = st.empty()
+                    pcr_comp_holder = st.container()
 
                     #provide barcodes for pcr & taq/water, upload index files, adjust volumes
                     ld.provide_barcodes('index_barcodes', 2)
@@ -607,7 +608,8 @@ def main():
                         included_PCR_plates, included_taqwater_plates, included_index_plates, \
                                 included_amplicon_plates = dc.plate_checklist_pcr2(exp)
                     with pcr_comp_holder:
-                        dc.display_pcr_components(pcr_stage=pcr_stage)
+                        dc.display_pcr_components(pcr_pids=included_PCR_plates, amplicon_pids=included_amplicon_plates)
+                        dc.display_pcr2_components(pcr_pids=included_PCR_plates,amplicon_pids=included_amplicon_plates)
                     
                     if not included_PCR_plates and not included_amplicon_plates:
                         no_nimbus_msg = "Load Nimbus output files to enable PCR stages"

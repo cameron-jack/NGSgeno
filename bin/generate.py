@@ -871,7 +871,12 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
                                   'dnaPlate', 'dnaWell', 'primer', 'primerPlate', 'primerWell', 'pcrPlate', 'pcrWell']
             s2_data = []
         else:
-            s2tab = util.CSVTable('S2Rec', exp.get_exp_fn(fnstage2))
+            try:
+            
+                s2tab = util.CSVTable('S2Rec', exp.get_exp_fn(fnstage2))
+            except FileNotFoundError as fne:
+                exp.log(f"Error: Stage 2 file has not been generated from Primer stage. {fne}")
+                return False
             
  
             s2_header = s2tab.header
