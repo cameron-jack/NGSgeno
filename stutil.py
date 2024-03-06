@@ -11,6 +11,22 @@ Utility functions for streamlit
 
 import streamlit as st
 
+upper_info = "upper_info_viewer"
+upper_height = "upper_info_height"
+lower_info = "lower_info_viewer"
+lower_height = "lower_info_height"
+
+def init_state(key, value):
+    """
+    Initialises a session state with the value if the key is not in session state.
+    Args:
+        key (str): for the st.session_state dictionary
+        value (str or None): value for the key in st.session_state
+    """
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+
 def add_vertical_space(num_lines: int):
   """
   Add vertical space to your container

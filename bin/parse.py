@@ -14,6 +14,7 @@ from copy import deepcopy
 from io import StringIO, BytesIO
 from shutil import copyfileobj
 from string import ascii_uppercase
+import functools
 
 import openpyxl
 from Bio.SeqIO.FastaIO import SimpleFastaParser
@@ -248,6 +249,12 @@ def process_upload(exp, filepath, purpose, overwrite=False):
 # parse_index_layout
 # parse_index_volume
 # parse_amplicons
+
+@functools.lru_cache
+def load_json(fp):
+    """ JSON data loader that is cached for fast reading """
+    with open(fp, 'rt', errors='ignore') as src:
+        info = json.load(src) 
 
 def parse_rodentity_json(exp, fp, overwrite=False):
     """

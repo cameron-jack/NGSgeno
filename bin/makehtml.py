@@ -13,6 +13,14 @@ import sys
 import csv
 import json
 import collections
+import functools
+import jsonpickle
+
+try:
+    import bin.transaction as transaction
+except ModuleNotFoundError:
+    import transaction
+
 try:
     import bin.util as util 
 except ModuleNotFoundError:
@@ -21,14 +29,17 @@ except ModuleNotFoundError:
 templatefn = os.path.join('library','ResultPlate.tpl') # name of template file
 rtfn = os.path.join('library','ResultTable.tpl')
 
-def generate_heatmap_html(exp, plate_id, scaling=0.5):
-    """ Given a given plate_id and the experiment it belongs in, generate a heatmap style plate image
+
+@functools.lru_cache
+def generate_heatmap_html(jsonpickle_plate, pid, scaling=0.5):
+    """ Given a given plate taken from transaction.get_plate(), generate a heatmap style plate image
     In future, add options for which things to highlight or scale, etc.
     Return a string containing html for the heatmap
     """
+    plate = jsonpickle.decode(jsonpickle_plate, keys=True)
     purpose = 'Unknown purpose'
-    if 'purpose' in exp.plate_location_sample[plate_id]:
-        purpose = exp.plate_location_sample[plate_id]['purpose']
+    if 'purpose' in plate:
+        purpose = plate['purpose']
 
     chart_data_str = "chart.data = ["
     well_entries = []
@@ -45,7 +56,7 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
         well_fields = ['barcode', 'sex', 'strain', 'assays', 'gts']
         tool_text = '{y}{x}: ID: {barcode}\\nStrain: {strain}\\nAssays: {assays}\\nSex: {sex}\\nObserved GT: {gts}';
         
-    if purpose == 'sample':
+    elif purpose == 'sample':
         #sample plate: 96-wells
         plate_order = util.col_ordered_96
         well_fields = ['barcode', 'sex', 'strain', 'assays', 'gts']
@@ -54,11 +65,11 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
         height_num = 400
         left_padding = str(33)
     
-    if purpose == 'pcr':
+    elif purpose == 'pcr':
         #384-well plates
         purpose = 'PCR'
 
-    if purpose == 'taq_water':
+    elif purpose == 'taq_water':
         #taq/water plate: 6 wells
         plate_order = util.col_ordered_6
         well_fields = ['name', 'volume']
@@ -67,12 +78,12 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
         height_num = 300
         left_padding = str(37)
 
-    if purpose == 'primer':
+    elif purpose == 'primer':
         #384-well plates
         well_fields = ['primer', 'volume']
         tool_text = '{y}{x}: Primer: {primer}\\nVolume: {volume} μL';
 
-    if purpose == 'index':
+    elif purpose == 'index':
         #384-well plates
         well_fields = ['idt_name', 'index', 'bc_name', 'oligo', 'volume']
         tool_text = '{y}{x}: Index Name: {idt_name}\\nIndex: {index}\\nBarcode Name: {bc_name}\\nVolume: {volume} μL';
@@ -80,15 +91,15 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
 
     for well in plate_order:
         entry_str = f'"y" : "{well[0].upper()}", "x" : "{well[1:]}"'
-        if well not in exp.plate_location_sample[plate_id]:
+        if well not in plate:
             entry_str += ', "color" : colors.empty'
-        elif purpose == 'index' and 'idt_name' not in exp.plate_location_sample[plate_id][well]:
+        elif purpose == 'index' and 'idt_name' not in plate[well]:
             entry_str += ', "color" : colors.empty'
-        elif purpose == 'primer' and 'primer' not in exp.plate_location_sample[plate_id][well]:
+        elif purpose == 'primer' and 'primer' not in plate[well]:
             entry_str += ', "color" : colors.empty'
         else:
             entry_str += ', "color" : colors.passed'
-            sample_data = exp.plate_location_sample[plate_id][well]
+            sample_data = plate[well]
             for field in well_fields:
                 if field in sample_data:
                     if field in ['assays','gts']:
@@ -283,12 +294,12 @@ def generate_heatmap_html(exp, plate_id, scaling=0.5):
 
     <!-- HTML -->
     <body>
-        <h1 style="text-align:center;color:#458cde">PUPUPU Plate PPPPPP</h1>
+        <!-- <h1 style="text-align:center;color:#458cde">PUPUPU Plate PPPPPP</h1> Save the height-->
         <div id="plate_container">
             <div id="chartdiv"></div>
         </div>
     </body>
-    """.replace('PUPUPU', purpose.capitalize()).replace('PPPPPP', str(util.unguard(plate_id, silent=True)))
+    """.replace('PUPUPU', purpose.capitalize()).replace('PPPPPP', str(util.unguard_pbc(pid, silent=True)))
 
     return header_str + chart_data_str + footer_str
 

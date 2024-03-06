@@ -16,6 +16,7 @@ import itertools
 from math import fabs, factorial, floor, ceil
 from io import StringIO
 import inspect
+import jsonpickle
 from time import sleep
 
 import pandas as pd
@@ -44,6 +45,7 @@ try:
 except ModuleNotFoundError:
     from makehtml import generate_heatmap_html
 
+
 def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1):
     """Creates an st-aggrid interactive table based on a dataframe.
 
@@ -53,8 +55,6 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
     Returns:
         dict: The selected row
     """
-    if 'view_box_size' in st.session_state:
-        grid_height = st.session_state['view_box_size']
     options = GridOptionsBuilder.from_dataframe(
         df, enableRowGroup=True, enableValue=True, enablePivot=True
     )
@@ -166,7 +166,7 @@ def display_samples(key, height=250):
                             args=(delbox, 'group',rows), key="delete " + str(key), help=f"Delete {lines}")
                     del_col3.button("No",on_click=cancel_delete, args=('group',rows), 
                             key="keep " + str(key), help=f"Keep {lines}")
-        selection = None
+    selection = None
 
 
 def display_consumables(key, height=300):
@@ -203,10 +203,6 @@ def display_consumables(key, height=300):
     if plate_df is None or not isinstance(plate_df, pd.DataFrame):
         st.write('No plates loaded')
     else:
-        if 'view_box_size' in st.session_state:
-            height = st.session_state['view_box_size']
-        else:
-            height = height
         selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'consumables_aggrid')
 
 
@@ -216,11 +212,6 @@ def display_plates(key, plate_usage, height=300):
     if plate_df is None or not isinstance(plate_df, pd.DataFrame):
         st.write('No plates loaded')
     else:
-        if 'view_box_size' in st.session_state:
-            height = st.session_state['view_box_size']
-        else:
-            height = height
-
         selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'plate_aggrid')
         #print(f'{selection=} {selection["selected_rows"]=} {[row["Plates"] for row in selection["selected_rows"]]=}')
         if selection and 'selected_rows' in selection:
@@ -321,7 +312,7 @@ def display_pcr1_components(dna_pids=None):
     num_reactions = sum([primer_usage[p] for p in primer_usage])
     
     #Taq/water (based on pcr stage)
-    primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol = exp.get_taq_water_volumes_required(num_reactions)
+    primer_taq_vol, primer_water_vol = exp.get_taqwater_volumes_primer(num_reactions)
     user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
                 for p in exp.get_taqwater_avail(pcr_stage=pcr_stage)[2]])
     num_supplied_taqwater = len(user_supplied_taqwater)
@@ -390,7 +381,7 @@ def display_pcr2_components(dna_pids=None, pcr_pids=None, amplicon_pids=None):
     index_remain, index_max = exp.get_index_reactions(primer_usage, fwd_idx, rev_idx)
 
     #Taq/water (based on pcr stage)
-    primer_taq_vol, primer_water_vol, index_taq_vol, index_water_vol = exp.get_taq_water_volumes_required(num_reactions)
+    index_taq_vol, index_water_vol = exp.get_taqwater_volumes_index(num_reactions)
     user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
                 for p in exp.get_taqwater_avail(pcr_stage=pcr_stage)[2]])
     num_supplied_taqwater = len(user_supplied_taqwater)
@@ -858,12 +849,13 @@ def view_plates(key, height=500):
         plate_ids.append(f"{exp.plate_location_sample[pid]['purpose']} plate: {util.unguard(pid, silent=True)}")
 
     #Let user choose which plate to view
-    _, col1, _ = st.columns([1,2,1])
-    plate_selectbox = col1.selectbox('Plate ID to view', plate_ids, key=str(key)+'plate_viewer')
+    # _, col1, _ = st.columns([1,2,1])
+    plate_selectbox = st.selectbox('Plate ID to view', plate_ids, key=str(key)+'plate_viewer')
     if plate_selectbox:
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
-            heatmap_str = generate_heatmap_html(exp, plate_id, scaling=0.9)
+            jsonpickle_plate = jsonpickle.encode(exp.get_plate(plate_id), keys=True)
+            heatmap_str = generate_heatmap_html(jsonpickle_plate, plate_id, scaling=0.9)
             with open("makehtml.html", 'wt', encoding="utf-8") as outf:
                 print(heatmap_str, file=outf)
             components.html(heatmap_str, height=height, scrolling=True)
@@ -883,12 +875,7 @@ def display_files(key, file_usage, height=250):
     if file_df is None or not isinstance(file_df, pd.DataFrame):
         st.write('No plates loaded')
         return
-    else:
-        if 'view_box_size' in st.session_state:
-            height = st.session_state['view_box_size']
-        else:
-            height = height
-
+   
     file_df.reset_index(inplace=True)
     file_df = file_df.rename(columns = {'index':'File', 'plates':'Plates', 'purpose':'Purpose'})
     selection = aggrid_interactive_table(file_df, grid_height=height, key=str(key)+'file_aggrid')
@@ -991,228 +978,260 @@ def change_screens_open(screen_name):
     else:
         st.session_state['screens_open'].add(screen_name)
 
-def info_bar(key):
-    """
-    Define a bar and populate state if the toggle in screens_open.
-    """
-    if 'screens_open' not in st.session_state:
-        st.session_state['screens_open'] = set()
-    info_on = False
-    if 'info_on' in st.session_state:
-        if st.session_state['info_on']:
-            info_on = True
 
-    info_cols = st.columns([1,7])
+# def info_bar(key):
+#     """
+#     DEPRECATED - retain for potential future projects
+#     Define a bar and populate state if the toggle in screens_open.
+#     """
+#     if 'screens_open' not in st.session_state:
+#         st.session_state['screens_open'] = set()
+#     info_on = False
+#     if 'info_on' in st.session_state:
+#         if st.session_state['info_on']:
+#             info_on = True
 
-    with info_cols[0]:
-        info_on = st.toggle('Info viewer', 
-                value=info_on, 
-                help='Show extra information toggles')
+#     info_cols = st.columns([1,7])
+
+#     with info_cols[0]:
+#         info_on = st.toggle('Info viewer', 
+#                 value=info_on, 
+#                 help='Show extra information toggles')
         
-    with info_cols[1]:
-        st.divider()
+#     with info_cols[1]:
+#         st.divider()
 
-    if not info_on:
-        st.session_state['info_on'] = False
-        return
+#     if not info_on:
+#         st.session_state['info_on'] = False
+#         return
 
-    if info_on:
-        row1 = st.columns([1,1,1,1,1])
-        with row1[0]:  # status
-            already_on = False
-            if 'status' in st.session_state['screens_open']:
-                already_on = True
-            on = st.toggle(label='Status', value=already_on, key='status_toggle'+str(key), 
-                    on_change=change_screens_open, args=['status'], help='Display status window')
+#     if info_on:
+#         row1 = st.columns([1,1,1,1,1])
+#         with row1[0]:  # status
+#             already_on = False
+#             if 'status' in st.session_state['screens_open']:
+#                 already_on = True
+#             on = st.toggle(label='Status', value=already_on, key='status_toggle'+str(key), 
+#                     on_change=change_screens_open, args=['status'], help='Display status window')
 
-            already_on = False
+#             already_on = False
 
-            if 'primers' in st.session_state['screens_open']:
-                already_on = True
-            on = st.toggle(label='Primers', value=already_on, key='primers_toggle'+str(key), 
-                    on_change=change_screens_open, args=['primers'], help='Display primers window')
+#             if 'primers' in st.session_state['screens_open']:
+#                 already_on = True
+#             on = st.toggle(label='Primers', value=already_on, key='primers_toggle'+str(key), 
+#                     on_change=change_screens_open, args=['primers'], help='Display primers window')
             
-        with row1[1]:  # files
-            already_on = False
-            if 'files' in st.session_state['screens_open']:
-                already_on = True
-            on = st.toggle(label='files', value=already_on, key='files_toggle'+str(key), 
-                    on_change=change_screens_open, args=['files'], help='Display files window')
-            already_on = False
+#         with row1[1]:  # files
+#             already_on = False
+#             if 'files' in st.session_state['screens_open']:
+#                 already_on = True
+#             on = st.toggle(label='files', value=already_on, key='files_toggle'+str(key), 
+#                     on_change=change_screens_open, args=['files'], help='Display files window')
+#             already_on = False
 
-            if 'indexes' in st.session_state['screens_open']:
-                already_on = True
-            on = st.toggle(label='Indexes', value=already_on, key='index_toggle'+str(key), 
-                    on_change=change_screens_open, args=['indexes'], help='Display indexes window')
+#             if 'indexes' in st.session_state['screens_open']:
+#                 already_on = True
+#             on = st.toggle(label='Indexes', value=already_on, key='index_toggle'+str(key), 
+#                     on_change=change_screens_open, args=['indexes'], help='Display indexes window')
 
-        with row1[2]:  # plates
-            already_on = False
+#         with row1[2]:  # plates
+#             already_on = False
 
-            if 'plates' in st.session_state['screens_open']:
-                already_on = True
-            on = st.toggle(label='Plates', value=already_on, key='plates_toggle'+str(key), 
-                    on_change=change_screens_open, args=['plates'], help='Display plates window')
+#             if 'plates' in st.session_state['screens_open']:
+#                 already_on = True
+#             on = st.toggle(label='Plates', value=already_on, key='plates_toggle'+str(key), 
+#                     on_change=change_screens_open, args=['plates'], help='Display plates window')
 
-            already_on = False
+#             already_on = False
 
-            if 'references' in st.session_state['screens_open']:
-                already_on = True
+#             if 'references' in st.session_state['screens_open']:
+#                 already_on = True
 
-            on = st.toggle(label='References', value=already_on, key='references_toggle'+str(key), 
-                    on_change=change_screens_open, args=['references'], help='Display status window')
+#             on = st.toggle(label='References', value=already_on, key='references_toggle'+str(key), 
+#                     on_change=change_screens_open, args=['references'], help='Display status window')
 
-        with row1[3]:  # plate viewer
-            already_on = False
+#         with row1[3]:  # plate viewer
+#             already_on = False
 
-            if 'plate_viewer' in st.session_state['screens_open']:
-                already_on = True
-            on = st.toggle(label='Plate viewer', value=already_on, key='plate_view_toggle'+str(key), 
-                    on_change=change_screens_open, args=['plate_viewer'], help='Display plate viewer window')
+#             if 'plate_viewer' in st.session_state['screens_open']:
+#                 already_on = True
+#             on = st.toggle(label='Plate viewer', value=already_on, key='plate_view_toggle'+str(key), 
+#                     on_change=change_screens_open, args=['plate_viewer'], help='Display plate viewer window')
 
-            already_on = False
+#             already_on = False
 
-            if 'log' in st.session_state['screens_open']:
-                already_on = True
-            on = st.toggle(label='Log', value=already_on, key='log_toggle'+str(key), 
-                    on_change=change_screens_open, args=['log'], help='Display log window')
+#             if 'log' in st.session_state['screens_open']:
+#                 already_on = True
+#             on = st.toggle(label='Log', value=already_on, key='log_toggle'+str(key), 
+#                     on_change=change_screens_open, args=['log'], help='Display log window')
 
-        with row1[4]:
-            view_height = st.number_input('Set display height', min_value=50, max_value=700, 
-                    value=350, step=25, help="Size of display grid", key=str(key))
+#         with row1[4]:
+#             view_height = st.number_input('Set display height', min_value=50, max_value=700, 
+#                     value=350, step=25, help="Size of display grid", key=str(key))
 
-        st.divider()
+#         st.divider()
 
 
-def info_viewer_old(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=None, amp_pids=None, taq_pids=None):
-    """
-    Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
-    Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
-    """
-    exp = st.session_state['experiment']
-    if 'info_expand' not in st.session_state:
-        st.session_state['info_expand'] = False
+# def info_viewer_old(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=None, amp_pids=None, taq_pids=None):
+#     """
+#     Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
+#     Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
+#     DEPRECATED: Maintain as an alternative display system
+#     """
+#     exp = st.session_state['experiment']
+#     if 'info_expand' not in st.session_state:
+#         st.session_state['info_expand'] = False
     
-    #info_expander = st.expander('Info Panel', expanded=st.session_state['info_expand'])
-    container = st.container()
+#     #info_expander = st.expander('Info Panel', expanded=st.session_state['info_expand'])
+#     container = st.container()
         
-    col1,col2 = st.columns([7,1])
-    with col2:
-        view_height = st.number_input('Set display height', min_value=50, max_value=700, 
-                value=350, step=25, help="Size of display grid", key=str(key))
-    with col1:
-        view_tab = stx.tab_bar(data=[
-            stx.TabBarItemData(id=1, title="Status", description=""),
-            stx.TabBarItemData(id=2, title="Files", description=""),
-            stx.TabBarItemData(id=3, title="Plates", description=""),
-            stx.TabBarItemData(id=4, title="Plate Viewer", description=""),
-            stx.TabBarItemData(id=5, title="Primers", description=""),
-            stx.TabBarItemData(id=6, title="Indexes", description=""),
-            #stx.TabBarItemData(id=7, title="Reference sequences", description=""),
-            stx.TabBarItemData(id=7, title="Log", description="")
-        ], return_type=int, default=1)
+#     col1,col2 = st.columns([7,1])
+#     with col2:
+#         view_height = st.number_input('Set display height', min_value=50, max_value=700, 
+#                 value=350, step=25, help="Size of display grid", key=str(key))
+#     with col1:
+#         view_tab = stx.tab_bar(data=[
+#             stx.TabBarItemData(id=1, title="Status", description=""),
+#             stx.TabBarItemData(id=2, title="Files", description=""),
+#             stx.TabBarItemData(id=3, title="Plates", description=""),
+#             stx.TabBarItemData(id=4, title="Plate Viewer", description=""),
+#             stx.TabBarItemData(id=5, title="Primers", description=""),
+#             stx.TabBarItemData(id=6, title="Indexes", description=""),
+#             #stx.TabBarItemData(id=7, title="Reference sequences", description=""),
+#             stx.TabBarItemData(id=7, title="Log", description="")
+#         ], return_type=int, default=1)
 
-    if view_tab == 1:
-        # Status tab should tell us where we are up to in the pipeline and what's happened so far
-        with container:
-            display_status(key, height=view_height)
+#     if view_tab == 1:
+#         # Status tab should tell us where we are up to in the pipeline and what's happened so far
+#         with container:
+#             display_status(key, height=view_height)
                 
-    if view_tab == 2:
-        #view_expander = container.expander(label='All uploaded files', expanded=False)
-        file_usage = exp.get_file_usage()
-        with container:
-            display_files(key, file_usage, height=view_height)
+#     if view_tab == 2:
+#         #view_expander = container.expander(label='All uploaded files', expanded=False)
+#         file_usage = exp.get_file_usage()
+#         with container:
+#             display_files(key, file_usage, height=view_height)
 
 
-    if view_tab == 3:
-        plate_usage = exp.get_plate_usage()
-        with container:
-            display_plates(key, plate_usage, height=view_height)
+#     if view_tab == 3:
+#         plate_usage = exp.get_plate_usage()
+#         with container:
+#             display_plates(key, plate_usage, height=view_height)
 
-    if view_tab == 4:
-        with container:
-            view_height = 500
-            view_plates(key, height=view_height)
+#     if view_tab == 4:
+#         with container:
+#             view_height = 500
+#             view_plates(key, height=view_height)
 
-    if view_tab == 5:
-        with container:
-            display_primers(key, dna_pids=dna_pids, height=view_height)
+#     if view_tab == 5:
+#         with container:
+#             display_primers(key, dna_pids=dna_pids, height=view_height)
         
-    if view_tab == 6:
-        with container:
-            display_indexes(key, dna_pids=dna_pids, height=view_height)
+#     if view_tab == 6:
+#         with container:
+#             display_indexes(key, dna_pids=dna_pids, height=view_height)
 
-    if view_tab == 7:
-        with container:
-            display_log(key, height=view_height)
+#     if view_tab == 7:
+#         with container:
+#             display_log(key, height=view_height)
 
 
 def info_viewer(selection, key, dna_pids=None, view_height=350):
     exp = st.session_state['experiment']
 
-    if selection == 'Samples Summary':
-        display_samples(key=selection, height=view_height)
+    if selection == 'Samples':
+        display_samples(key=key+selection, height=view_height)
     
-    if selection == 'Consumables Summary':
-        display_consumables(key=selection, height=view_height)
+    if selection == 'Consumables':
+        display_consumables(key=key+selection, height=view_height)
 
     if selection == "Status":
         # Status tab should tell us where we are up to in the pipeline and what's happened so far
-            display_status(key=selection, height=view_height)
+            display_status(key=key+selection, height=view_height)
                 
     if selection == "Files":
         file_usage = exp.get_file_usage()
-        display_files(key, file_usage, height=view_height)
+        display_files(key+selection, file_usage, height=view_height)
 
     if selection == "Plates":
         plate_usage = exp.get_plate_usage()
-        display_plates(key, plate_usage, height=view_height)
+        display_plates(key+selection, plate_usage, height=view_height)
 
     if selection == "Plate Viewer":
         view_height = 500
-        view_plates(key, height=view_height)
+        view_plates(key+selection, height=view_height)
 
     if selection == "Primers":
-        display_primers(key, dna_pids=dna_pids, height=view_height)
+        display_primers(key+selection, dna_pids=dna_pids, height=view_height)
         
     if selection == "Indexes":
-        display_indexes(key, dna_pids=dna_pids, height=view_height)
+        display_indexes(key+selection, dna_pids=dna_pids, height=view_height)
 
     if selection == "Log":
-        display_log(key, height=view_height)
+        display_log(key+selection, height=view_height)
     
 
+def set_state(key, value):
+    """ Callback function for display elements """
+    st.session_state[key] = value
 
 
-def info_selection(key, dna_pids=None, load_samples=False, load_consumables=False):
+def set_selection(set_key, widget_key):
+    """ Callback function for selectbox display elements """
+    if widget_key in st.session_state:
+        st.session_state[set_key] = st.session_state[widget_key]
+
+
+def info_selection(key, view1_key, view2_key, height_key, default_view1="None", 
+        default_view2="None", default_height=250):
     """
     Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
     Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
+    Function handles a single case and extra keys are needed for correct naming and identification
+    key - the general key applied to this set of widgets
+    view1_key - the key for selection1 lookups in other code
+    view2_key - the key for selection2 lookups in other code
+    height_key - the key for height lookups in other code
+    defaults are returned, otherwise these are set via callbacks
     """
-    exp = st.session_state['experiment']
-    if 'info_expand' not in st.session_state:
-        st.session_state['info_expand'] = False
+    key=str(key)
     
-    options = ["Status", "Files", "Plates", "Plate Viewer", "Primers", "Indexes", "Log"]
-    view_height=350
+    options = ["None","Samples", "Consumables", "Status", "Files", "Plates", "Plate Viewer", 
+            "Primers", "Indexes", "Log"]
     
-    col1, col2 = st.columns([2,1])
-    default = None
-    if load_samples:
-        options = ['Samples Summary'] + options
-        default = 'Samples Summary'
-    if load_consumables:
-        options = ['Consumables Summary'] + options
-        default = 'Consumables Summary'
+    disp_col1, disp_col2, height_col = st.columns([2,2,2])
+    
+    with disp_col1:
+        select1_key = key+"_select1"
+        selection1 = st.selectbox("Choose info to view", options=options, placeholder='',
+                index=options.index(default_view1), on_change=set_selection, 
+                args=[view1_key, select1_key], key=select1_key)
+        set_state(view1_key, selection1)
+        
+    with disp_col2:
+        select2_key = key+"_select2"    
+        selection2 = st.selectbox("Choose info to view", options=options, placeholder='',
+                index=options.index(default_view2), on_change=set_selection,
+                args=[view2_key, select2_key], key=select2_key)
+        set_state(view2_key, selection2)
+        
+    with height_col:
+        height_widget_key = key+"_height"
+        view_height = st.number_input('Set display height', min_value=50, max_value=700, 
+                value=default_height, step=25, help="Size of display grid", on_change=set_selection,
+                args=[height_key, height_widget_key], key=height_widget_key)
+        set_state(height_key, view_height)        
 
-    with col1:
-        selection = st.multiselect("Choose info to view", options=options,placeholder='', default=default)
-    with col2:
-        if selection:
-            view_height = st.number_input('Set display height', min_value=50, max_value=700, 
-                    value=350, step=25, help="Size of display grid", key=str(key))
-    
-    return selection, view_height
+    return True
 
+
+def show_info_viewer(selection, height, groupkey):
+    """ Display any number of info view windows side-by-side. Select must be an iterable container """
+    if len(selection) != 0:
+        columns = st.columns(len(selection))
+        for i in range(len(selection)):
+            with columns[i]:
+                info_viewer(selection[i], str(groupkey)+selection[i]+str(i), view_height=height)
 
     
 
@@ -1328,17 +1347,25 @@ def create_tabs(tab_data):
         for i, (title, desc) in enumerate(tab_data)
     ], return_type=int)
 
-def show_info_viewer_checkbox():
+
+def show_upper_info_viewer_checkbox(widget_key): #, default_panel1='None', default_panel2='None'):
     """
-    Allows the user to turn the info viewer panel on and off
+    Allows the user to turn the upper info viewer panel on and off
+    The bottom info viewer display is always on
+    Allows the default display panels to be set (page specific content)
     """
     if 'show_info_viewer' not in st.session_state:
-        st.session_state['show_info_viewer'] = True
+        st.session_state['show_upper_info_viewer'] = True
     
-    if st.checkbox('Info Viewer', value=True):
-        st.session_state['show_info_viewer'] = True
+    if st.checkbox('Info Viewer', value=True, key=widget_key):
+        st.session_state['show_upper_info_viewer'] = True
+        # if default_panel1:
+        #     st.session_state['info_panel1'] == default_panel1
+        # if default_panel2:
+        #     st.session_state['info_panel2'] == default_panel2
     else:
-        st.session_state['show_info_viewer'] = False
+        st.session_state['show_upper_info_viewer'] = False
+
 
 def set_nimbus_title(exp, efs, nfs):
     """
@@ -1423,6 +1450,25 @@ def get_miseq_download_btn(exp):
                                                 type='secondary')
 
 
+def display_messages(container):
+    """ 
+    Display any user alerts in the given container 
+    Messages are tuples of message, level. Where level: info/warning/error 
+    """
+    if st.session_state['messages']:
+        with container:
+            for message, level in st.session_state['messages']:
+                if level == 'info':
+                    st.info(message)
+                elif level == 'warning':
+                    st.warning(message)
+                elif level == 'error':
+                    st.error(message)
+                else:
+                    st.error('Level incorrect! Must be: info/warning/error')
+                    st.error(message)
+                    
+
 def add_css():
     #CSS
     st.markdown('''
@@ -1443,6 +1489,19 @@ def add_css():
     </style>
     """
     st.markdown(hide_label, unsafe_allow_html=True)
+    
+    margins_css = """
+    <style>
+        .appview-container .main .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+            padding-left: 2rem;
+            padding-right: 2rem;
+            }
+
+    </style>
+    """
+    st.markdown(margins_css, unsafe_allow_html=True)
 
     #css for all form_submit_buttons
     form_button_css = """

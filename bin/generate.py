@@ -15,6 +15,7 @@ from copy import deepcopy
 from io import StringIO, BytesIO
 from shutil import copyfileobj
 from string import ascii_uppercase
+import functools
 
 import openpyxl
 from Bio.SeqIO.FastaIO import SimpleFastaParser
@@ -72,6 +73,7 @@ Behaves like a C++ "friend" of the Experiment class - very tightly coupled.
 # generate_miseq_samplesheet
 # generate_targets
 
+@functools.lru_cache
 def get_single_pos(resource_dict, name_offset, res_name, rotate=True):
     """
     Generic plate and well chooser for a single resource that manages well capacity 
@@ -532,6 +534,7 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True):
                 else:
                     offset += 1
     return success
+
 
 def stage_write(exp, fn, header, data, output_plate_guards=False, ignore_missing_plate_info=False):
     """ 

@@ -78,8 +78,8 @@ def do_pending(combined_pending):
     """
     Action the pending_file_widget
     """
+    message_container = st.session_state['message_container']
     exp = st.session_state['experiment']
-    warning_area = st.container()
     expected_keys = ['pending_file_checkbox_'+str(pending) for pending in combined_pending]
     pending_checked = []
     # test all the checkboxes to see if they were ticked
@@ -103,7 +103,7 @@ def do_pending(combined_pending):
 
             msg = f'Overwriting the previous version of {str(pending)} with the new file'
             st.toast(f':blue[**Overwriting the previous version of {str(pending)} with the new file]**')
-            #warning_area.info(msg)
+            message_container.info(msg)
             exp.log(f'Info: {msg}')
             if pending in exp.pending_uploads:
                 success = parse.accept_pending_upload(exp, pending)
@@ -114,19 +114,19 @@ def do_pending(combined_pending):
                 if clashing_filenames:
                     msg = f'{", ".join(clashing_filenames)} potentially affected by change'
                     exp.log(msg)
-                    warning_area.warning(msg)
+                    message_container.warning(msg)
                 if clashing_pids:
                     msg = f'{", ".join(clashing_pids)} potentially affected by change'
                     exp.log(msg)
-                    warning_area.warning(msg)
+                    message_container.warning(msg)
             else:
                 msg = f'Failure: Could not overwrite existing file {pending}'
                 exp.log(msg)
-                warning_area.error(msg)
+                message_container.error(msg)
             
         else:
             st.toast(f':blue[**Keeping the old version of the file {pending}**]')
-            #warning_area.info(f'Keeping the old version of the file {pending}')
+            message_container.info(f'Keeping the old version of the file {pending}')
             exp.log(f'Info: removing unwanted pending file {pending}')
             if pending in exp.pending_uploads:
                 exp.pending_uploads.remove(pending)
@@ -139,7 +139,7 @@ def do_pending(combined_pending):
             else:
                 msg = f'Failure: pending file or transaction {pending} could not be removed'
                 exp.log(msg)
-                warning_area.error(msg)
+                message_container.error(msg)
 
     exp.save()          
 
@@ -149,8 +149,8 @@ def pending_file_widget(key):
     Allow user input via checkboxes to deal with clashes.
     Requires st.session_state['clashes'] from previously calling set_pending_file_clashes()
     """
+    message_container = st.session_state['message_container']
     exp = st.session_state['experiment']
-    warning_area = st.container()
     combined_pending = []  # both pending_uploads and pending_steps
     
     pending_uploads = {}
@@ -182,10 +182,10 @@ def pending_file_widget(key):
     if not pending_uploads and not pending_steps:
         return
     
-    warning_area.warning('The following files have been uploaded previously. '+
+    message_container.warning('The following files have been uploaded previously. '+
                         'Select the ones you want to overwrite and submit')
 
-    with warning_area.form('warning_area_'+key, clear_on_submit=True):
+    with message_container.form('message_container_'+key, clear_on_submit=True):
         for pending_upload in pending_uploads:
             combined_pending.append(pending_upload)
             #affected_pids = trans.get_affected_pid_chain(pending_upload)
@@ -204,9 +204,10 @@ def upload_echo_inputs(key):
     """
     Echo inputs are Nimbus outputs
     """
+    message_container = st.session_state['message_container']
     exp = st.session_state['experiment']
     if exp.locked:
-        st.warning(f'Experiment {exp.name} locked from further modification')
+        message_container.warning(f'Experiment {exp.name} locked from further modification')
     else:
         title_area = st.container()
         title_area.write('')
@@ -251,10 +252,10 @@ def upload_pcr1_files(key):
     Upload form for primer layout and volumes. Copies input files into the directory 
     and manages transactions
     """
+    message_container = st.session_state['message_container']
     st.write('')
     st.write('**Upload Primer Files (PCR round 1)**')
     exp = st.session_state['experiment']
-    warning_area = st.container()
     st.session_state['upload_option'] = ''  # do we display pending files here
     primer_form = st.form('primer plate upload'+key, clear_on_submit=True)
     with primer_form:
@@ -295,7 +296,7 @@ def upload_pcr1_files(key):
                     st.error(f'Failed to write at least one set of primer volumes, please see the log')
     
     #manage transactions:
-    with warning_area:
+    with message_container:
         if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr1':
             pending_file_widget(key)
             st.session_state['upload_option'] = ''
@@ -303,7 +304,7 @@ def upload_pcr1_files(key):
 
 def accept_amplicons(uploaded_amplicon_files, miseq_fn, stage3_fn):
     exp = st.session_state['experiment']
-    warning_area = st.session_state['message_area']
+    message_container = st.session_state['message_container']
     
     if Path(miseq_fn).exists():
         Path(miseq_fn).unlink()
@@ -314,16 +315,16 @@ def accept_amplicons(uploaded_amplicon_files, miseq_fn, stage3_fn):
     success = parse.upload(exp, uploaded_amplicon_files, purpose='amplicon')
     if success:
         st.toast(f'Added amplicon manifests from files {uaf_ids}')
-        #warning_area.success(f'Added amplicon manifests from files {uaf_ids}')
+        message_container.success(f'Added amplicon manifests from files {uaf_ids}')
     else:          
-        warning_area.error(f'Failed to upload at least one amplicon manifest, please see the log')
+        message_container.error(f'Failed to upload at least one amplicon manifest, please see the log')
 
 
 def cancel_amplicons():
     st.write('')
     st.write('**Upload Amplicon Files (PCR round 2)**')
     exp = st.session_state['experiment']
-    warning_area = st.session_state['message_area']
+    message_container = st.session_state['message_container']
     st.session_state['upload_option'] = ''  # do we display pending files here
 
 def load_amplicons(key):
@@ -331,8 +332,7 @@ def load_amplicons(key):
     Upload only amplicon plates here
     """
     exp = st.session_state['experiment']
-    warning_area = st.session_state['message_area']
-    
+    message_container = st.session_state['message_container']
     st.write('')
     st.write('**Upload Amplicon Plate Files**')
     with st.form('index plate upload'+key, clear_on_submit=True): 
@@ -368,9 +368,9 @@ def load_amplicons(key):
                 success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
                 uap_ids = [uap.name for uap in uploaded_amplicon_plates]
                 if success:
-                    warning_area.success(f'Added amplicon manifests from files {uap_ids}')
+                    message_container.success(f'Added amplicon manifests from files {uap_ids}')
                 else:
-                    warning_area.write(f'Failed to upload at least one amplicon manifest, please see the log')
+                    message_container.write(f'Failed to upload at least one amplicon manifest, please see the log')
     # manage transactions
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'amplicons':
         pending_file_widget(key)
@@ -378,7 +378,7 @@ def load_amplicons(key):
     st.write('')           
     
 
-def upload_pcr2_files(key):
+def upload_pcr2_files(key, message_container):
     """
     Upload inputs for indexing layout and volume. Extra option for amplicon plate upload.
     Copy uploaded files into the run folder and manage subsequent transactions
@@ -386,7 +386,6 @@ def upload_pcr2_files(key):
     st.write('')
     st.write('**Upload Index Files (PCR round 2)**')
     exp = st.session_state['experiment']
-    warning_area = st.session_state['message_area']
     st.session_state['upload_option'] = ''  # do we display pending files here
     with st.form('index plate upload'+key, clear_on_submit=True):
         col1, col2 = st.columns(2)
@@ -455,9 +454,9 @@ def upload_pcr2_files(key):
                 uap_ids = [uap.name for uap in uploaded_amplicon_plates]
                 if success:
                     st.toast(f':green[**Added amplicon manifests from files {uap_ids}**]')
-                    warning_area.success(f'Added amplicon manifests from files {uap_ids}')
+                    message_container.success(f'Added amplicon manifests from files {uap_ids}')
                 else:
-                    warning_area.write(f'Failed to upload at least one amplicon manifest, please see the log')
+                    message_container.write(f'Failed to upload at least one amplicon manifest, please see the log')
                 
     
     # manage transactions
@@ -467,7 +466,7 @@ def upload_pcr2_files(key):
     st.write('')
 
 
-def upload_extra_consumables(key):
+def upload_extra_consumables(key, message_container):
     """
     Uploads for extra files such as custom references, assay lists, and taq/water plates.
     Copy the uploaded files into the run folder and deal with subsequent transactions.
@@ -476,7 +475,6 @@ def upload_extra_consumables(key):
     st.write('**Upload Custom Reference / Assay Lists**')
     exp = st.session_state['experiment']
     st.session_state['upload_option'] = ''  # do we display pending files here
-    warning_area = st.container()
     #with st.form('Consumables upload'+key, clear_on_submit=True):
     upload_form = st.form('Consumables upload'+key, clear_on_submit=True)
     
@@ -520,7 +518,7 @@ def upload_extra_consumables(key):
    
     #manage transactions:
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'consumables':
-        with warning_area:
+        with message_container:
             pending_file_widget(key)
         st.session_state['upload_option'] = ''
     st.write('')
@@ -603,12 +601,11 @@ def upload_reference_sequences(key):
             exp.log(msg)
 
 
-def load_rodentity_data(key):
+def load_rodentity_data(key, message_container):
     """
     Manage combining up to four rodentity plates (from JSON) with one destination PID 
     """
     exp = st.session_state['experiment']
-    warning_area = st.session_state['message_area']
     st.session_state['upload_option'] = ''  # do we display pending files here
     plates_to_clear = [False, False, False, False]
     with st.expander('Add data from Rodentity JSON files',expanded=True):
@@ -631,7 +628,7 @@ def load_rodentity_data(key):
                 st.error(f'Failed to upload at least one rodentity plate file, please see the log')
                
             if trans.is_pending(exp) and st.session_state['upload_option'] == 'rodentity':
-                with warning_area:
+                with message_container:
                     pending_file_widget(key)
                 st.session_state['upload_option'] = ''
 
@@ -720,10 +717,9 @@ def load_rodentity_data(key):
                         st.experimental_rerun()
                         
                    
-def load_custom_manifests(key):
+def load_custom_manifests(key, message_container):
     """ Demonstration upload panel for custom manifests """
     exp = st.session_state['experiment']
-    warning_area = st.session_state['message_area']
     st.session_state['upload_option'] = ''  # do we display pending files here
     if 'custom' not in exp.unassigned_plates or not exp.unassigned_plates['custom']:
         exp.unassigned_plates['custom'] = {'None':{}}

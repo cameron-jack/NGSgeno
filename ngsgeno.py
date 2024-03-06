@@ -26,7 +26,8 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from stutil import add_vertical_space, custom_text, hline
+from stutil import add_vertical_space, custom_text, hline, init_state, \
+        upper_info, upper_height, lower_info, lower_height
 
 from bin.experiment import Experiment, EXP_FN, load_experiment
 try:
@@ -266,15 +267,6 @@ def unlocked(exp):
         return False
     return True
 
-def set_session_state(key, value):
-    """
-    Initialises a session state with the value if the key is not in session state.
-    Args:
-        key (str): for the st.session_state dictionary
-        value (str or None): value for the key in st.session_state
-    """
-    if key not in st.session_state:
-        st.session_state[key] = value
 
 def pcr1_picklists_exist(exp):
     """
@@ -323,11 +315,6 @@ def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
             else:
                 st.session_state['pcr1 picklist'] = True
 
-def show_info_viewer(selection, height):
-    columns = st.columns(len(selection))
-    for i in range(len(selection)):
-        with columns[i]:
-            dc.info_viewer(selection[i], selection[i], view_height=height)
 
 
 def main():
@@ -343,8 +330,7 @@ def main():
 
     dc.add_css()
 
-    set_session_state('experiment', None)
-    set_session_state('experiment', None)
+    init_state('experiment', None)
 
     if 'experiment' not in st.session_state or st.session_state['experiment'] is None:
         load_experiment_screen()
@@ -366,199 +352,167 @@ def main():
             pipeline_stage = st.session_state['pipeline_stage']
         
         #info_bar = dc.info_bar('central')
-        set_session_state('info_expand', False)
+        init_state('info_expand', False)
+        upper_container = st.container()
+        message_container = st.container()
+        main_body_container = st.container()
+        lower_container = st.container()
         
-        subsection = st.container()
-        message_area = st.container()
-        st.session_state['message_area'] = message_area
+        st.session_state['message_container'] = message_container
+        
+        # callbacks can't write directly as the callbacks go out of scope
+        init_state('messages', [])  # messages are tuples of (message, level:info/warning/error)
+        dc.display_messages(message_container)
+        
+        # define four info panels, two upper, two lower
+        init_state('info_panel1', 'None')
+        init_state('info_panel2', 'None')
+        init_state('info_panel3', 'Files')
+        init_state('info_panel4', 'Log')
+        
+        # define default heights for these panels
+        init_state('upper_panel_height', 250)
+        init_state('lower_panel_height', 350)
+        
+        # standard upper info viewer code for each tab
+        def upper_info_viewer_code(tab_col3, tab_col2, widget_key, default_view1='None', default_view2='None'):
+            with tab_col3:
+                add_vertical_space(2)
+                dc.show_upper_info_viewer_checkbox(widget_key)
+            if st.session_state['show_upper_info_viewer']:
+                with tab_col2:
+                    ignore = dc.info_selection(widget_key+"top_viewer", 'info_panel1', 'info_panel2', 
+                            'upper_panel_height', default_view1=default_view1, default_view2=default_view2, 
+                            default_height=st.session_state.get('upper_panel_height',250))
 
+        # info panel displays are updated at the bottom of the script, so that they reflect any changes
+        with lower_container:
+            success = dc.info_selection("bottom_viewer", 'info_panel3', 'info_panel4', 
+                    'lower_panel_height', default_view1='Files', default_view2='Log', 
+                    default_height=st.session_state.get('lower_panel_height',350))
+            
         #============================================== STAGE 1: Load data =============================================
-        if pipeline_stage == 0:
-            #_,help_col = subsection.columns([2,4]) 
-            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
-            tip_col, _ = st.columns(2)
-            info_holder = st.container()
-            #summary_holder = st.container()
-        
-            # with help_col:
-            #     custom_text(size='p', 
-            #                 color=ld.HELP_COLOUR, 
-            #                 text='Step 1: Upload sample data and assign to plate(s). '+\
-            #                      'Then upload the assay lists, and optionally other files.', 
-            #                 align='left',
-            #                 style="italic")   
-            
+        if pipeline_stage == 0:          
+            tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
             with tab_col1:
-                load_data_tab = dc.create_tabs([("Load Samples", ""),("Load Consumables", "")])                   
+                load_data_tab = dc.create_tabs([("Load Samples", ""),("Load Consumables", "")])   
             if not load_data_tab:
-                set_session_state('load_tab', 1)
+                init_state('load_tab', 1)
                 load_data_tab = st.session_state['load_tab']
-            
             #------------------------------------ Load ~ TAB 1: Load sample data  --------------------------------------
             if load_data_tab == 1:
-                if unlocked(exp):
-                    set_session_state('run queue', [])
-
-                    st.subheader('Upload Sample Files')
-                    ld.load_rodentity_data('rodentity_load1')
-                    ld.load_custom_manifests('custom_load1')
-                    ld.load_amplicons('amp_load1')
-
-                    # with summary_holder:
-                    #     st.subheader('Summary')
-                    #     summary = exp.summarise_inputs()
-                    #     if len(summary) > 1:
-                    #         dc.display_samples('load_data_tab1', height=180)
-
                 st.session_state['load_tab'] = 1
-            
+                if unlocked(exp):
+                    init_state('run queue', [])
+                    with main_body_container:
+                        st.subheader('Upload Sample Files')
+                        ld.load_rodentity_data('rodentity_load1')
+                        ld.load_custom_manifests('custom_load1')
+                        ld.load_amplicons('amp_load1')
+
                 # ** Info viewer **
-                with tab_col3:
-                    add_vertical_space(2)
-                    dc.show_info_viewer_checkbox()
-                if st.session_state['show_info_viewer']:
-                    with tab_col2:
-                        selection, height = dc.info_selection(1, load_samples=True)
-                    if selection:
-                        with info_holder:
-                            show_info_viewer(selection, height)
-               
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_load', default_view1='Samples', 
+                        default_view2='Files')
 
             #------------------------------------ Load ~ TAB 2: Load consumables ---------------------------------------
             if load_data_tab == 2:
-                # st.subheader('Summary')
-                # dc.display_consumables('load_data_tab2')
-
-                if unlocked(exp):
-                    set_session_state('upload stage', None)
-
-                    st.subheader('Custom Volumes')
-                    ld.custom_volumes(exp)
-                    add_vertical_space(1)
-
-                    st.subheader('Upload Consumables')
-                    ld.upload_extra_consumables('consumables_load2')
-                    ld.upload_pcr1_files('pcr1_load2')
-                    ld.upload_pcr2_files('pcr2_load2')
-
                 st.session_state['load_tab'] = 2
 
+                if unlocked(exp):
+                    init_state('upload stage', None)
+                    with main_body_container:
+                        st.subheader('Custom Volumes')
+                        ld.custom_volumes(exp)
+                        add_vertical_space(1)
+
+                        st.subheader('Upload Consumables')
+                        ld.upload_extra_consumables('consumables_load2')
+                        ld.upload_pcr1_files('pcr1_load2')
+                        ld.upload_pcr2_files('pcr2_load2')
+
                 # ** Info viewer **
-                with tab_col3:
-                    add_vertical_space(2)
-                    dc.show_info_viewer_checkbox()
-                if st.session_state['show_info_viewer']:
-                    with tab_col2:
-                        selection, height = dc.info_selection(2, load_consumables=True)
-                    if selection:
-                        with info_holder:
-                            show_info_viewer(selection, height)
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_consumables', default_view1='Consumables', 
+                        default_view2='Samples')
         
         #=============================================== STAGE 2: Nimbus ===============================================
         if pipeline_stage == 1:
-            exp = st.session_state['experiment']
-            #_,help_col = subsection.columns([2,4])
-            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
-            info_holder = st.container()
-            _,tip_col, _ = st.columns(3)
-            
-
-            # with help_col:
-            #     custom_text(size='p', 
-            #                 color=ld.HELP_COLOUR, 
-            #                 text='Step 2: Generate and download files for the Nimbus. After running these, upload '+\
-            #                       'the outputs (ie Echo input files.)', 
-            #                 align='left',
-            #                 style="italic")
-                
+            tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
 
             with tab_col1:
                 nimbus_tab = dc.create_tabs([("Download", "Nimbus input files"),("Upload", "Echo input files")])
             if not nimbus_tab:
-                set_session_state('nimbus_tab', 1)
+                init_state('nimbus_tab', 1)
                 nimbus_tab = st.session_state['nimbus_tab']
-            
-            if not ld.check_assay_file(exp):
-                tip_col.warning("Upload assay list file before generating Echo files")
 
-            exp = st.session_state['experiment']
+            if not ld.check_assay_file(exp):
+                with message_container:
+                    st.warning("Upload assay list file before generating Echo files")
+
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
 
             #------------------------------------ Nimbus ~ TAB 1: Download Nimbus --------------------------------------
             if nimbus_tab == 1:
-                if unlocked(exp):
-
-                    _, header_col, _ = st.columns([2,2,1])
-                    header_col.subheader('Generate Echo Files')
-
-                    #Subtitle
-                    nimbus_title = dc.set_nimbus_title(exp, nfs, efs)
-                    if nimbus_title:
-                        _, title_col,_ = st.columns([2,2,1])
-                        with title_col:
-                            custom_text('h5', '#83b3c9', dc.set_nimbus_title(exp, nfs, efs), align="left")
-                    add_vertical_space(1)
-
-                    #Generate files button
-                    _, btn_col,_ = st.columns([2,2,1])
-                    with btn_col:
-                        run_gen_nimbus = st.button('Generate Nimbus input files', type="primary")
-
-                    #Generate files
-                    if run_gen_nimbus:
-                        success = run_generate(exp, exp.generate_nimbus_inputs)    
-                        if not success:
-                            st.error('Failed to generate the Nimbus files. Check the log for information.')
-                        else:
-                            add_vertical_space(2)
-                            nfs, efs, xbcs = exp.get_nimbus_filepaths()
-                    
-                    add_vertical_space(3)
-                    dc.get_echo_download_buttons(nfs)
-                        
                 st.session_state['nimbus_tab'] = 1
+                if unlocked(exp):
+                    with main_body_container:
+                        _, header_col, _ = st.columns([2,2,1])
+                        header_col.subheader('Generate Echo Files')
 
+                        #Subtitle
+                        nimbus_title = dc.set_nimbus_title(exp, nfs, efs)
+                        if nimbus_title:
+                            _, title_col,_ = main_body_container.columns([2,2,1])
+                            with title_col:
+                                custom_text('h5', '#83b3c9', dc.set_nimbus_title(exp, nfs, efs), align="left")
+                        add_vertical_space(1)
+
+                        #Generate files button
+                        _, btn_col,_ = st.columns([2,2,1])
+                        with btn_col:
+                            run_gen_nimbus = st.button('Generate Nimbus input files', type="primary")
+
+                        #Generate files
+                        if run_gen_nimbus:
+                            success = run_generate(exp, exp.generate_nimbus_inputs)    
+                            if not success:
+                                message_container.error('Failed to generate the Nimbus files. Check the log for information.')
+                            else:
+                                add_vertical_space(2)
+                                nfs, efs, xbcs = exp.get_nimbus_filepaths()
+                    
+                        add_vertical_space(3)
+                        dc.get_echo_download_buttons(nfs)
+                
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_nimbus1', default_view1='Status', 
+                        default_view2='Files')
 
             #---------------------------------- Nimbus ~ TAB 2: Upload echo input files --------------------------------
             if nimbus_tab == 2:
-                if unlocked(exp):
-                    _, header_col, _ = st.columns([2,2,1])
-                    
-                    header_col.subheader('Upload Echo Input Files')
-                    ld.upload_echo_inputs('1')
-
                 st.session_state['nimbus_tab'] = 2
+                if unlocked(exp):
+                    with main_body_container:
+                        _, header_col, _ = st.columns([2,2,1])
+                    
+                        header_col.subheader('Upload Echo Input Files')
+                        ld.upload_echo_inputs('1')
 
-            # ** Info viewer **
-            with tab_col3:
-                add_vertical_space(2)
-                dc.show_info_viewer_checkbox()
-            if st.session_state['show_info_viewer']:
-                with tab_col2:
-                    selection, height = dc.info_selection(1)
-                if selection:
-                    with info_holder:
-                        show_info_viewer(selection, height)
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_nimbus2', default_view1='Status', 
+                        default_view2='Files')
 
         #=========================================== STAGE 3: PCR 1 Primers ============================================
         if pipeline_stage == 2:
-            exp = st.session_state['experiment']
             st.session_state['assay_filter'] = True
             pcr_stage = 1
-
-            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
-            info_holder = st.container()
-            tip_col, _ = st.columns([2,1])
-
-            tip_col.info('Provide the barcodes for PCR plates and Taq/water plates and '+\
-                            'upload primer layouts and volumes to generate the picklists.')
-
+            init_state("primer_tab", 1)
+            primer_tab = st.session_state['primer_tab']
+            
+            tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
+    
             #Tabs
             with tab_col1:
                 primer_tab = dc.create_tabs([("PCR 1", "Components"), ("Generate", "Picklists")])
-            if not primer_tab:
-                set_session_state("primer_tab", 1)
-                primer_tab = st.session_state['primer_tab']
             
             #nimbus fp, echo fp, barcodesnot in echo
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
@@ -566,230 +520,221 @@ def main():
 
             #------------------------------------ Primers ~ TAB 1: PCR 1 Components ------------------------------------
             if primer_tab == 1:
-                if unlocked:
-                    primer_checklist = st.container()
-                    primer_checklist.subheader('Plate Checklist')
-                    hline()
-
-                    if efs:
-                        with primer_checklist:
-                            included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
-                                        dc.plate_checklist_pcr1(exp)
-                            
-                        if included_DNA_plates:
-                            dc.display_pcr1_components(dna_pids=included_DNA_plates)
-                            st.subheader('PCR 1 Components', help='Required plates and volumes for the PCR reaction')
-                            dc.display_pcr_components(dna_pids=included_DNA_plates)
-                            dc.display_pcr1_components(dna_pids=included_DNA_plates)
-                            hline()
-                    else:
-                        st.error("Load Nimbus output files to enable PCR stages")
-
-                    #barcodes for PCR and taq and water, upload files for primer, adjust volumes
-                    add_vertical_space(1)
-                    st.subheader('Add Barcodes', help='Add barcodes for plates')
-                    ld.provide_barcodes('barcodes_tab1', pcr_stage=pcr_stage)
-                    add_vertical_space(1)
-
-                    st.subheader('Upload Files')
-                    ld.upload_pcr1_files(key='pcr1_primer1')
-                    add_vertical_space(1)
-
-                    st.subheader('Custom Volumes')
-                    ld.custom_volumes(exp)
-
                 st.session_state['primer_tab'] = 1
-                
+                if unlocked:
+                    with main_body_container:
+                        tip_col, _ = st.columns([2,1])
+                        tip_col.info('Provide the barcodes for PCR plates and Taq/water plates and '+\
+                                'upload primer layouts and volumes to generate the picklists.')
+                        primer_checklist = st.container()
+                        primer_checklist.subheader('Plate Checklist')
+                        hline()
+
+                        if efs:
+                            with primer_checklist:
+                                included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
+                                            dc.plate_checklist_pcr1(exp)
+                            
+                            if included_DNA_plates:
+                                st.subheader('PCR 1 Components', help='Required plates and volumes for the PCR reaction')
+                                dc.display_pcr_components(dna_pids=included_DNA_plates)
+                                dc.display_pcr1_components(dna_pids=included_DNA_plates)
+                                hline()
+                        else:
+                            st.error("Load Nimbus output files to enable PCR stages")
+
+                        #barcodes for PCR and taq and water, upload files for primer, adjust volumes
+                        add_vertical_space(1)
+                        st.subheader('Add Barcodes', help='Add barcodes for plates')
+                        ld.provide_barcodes('barcodes_tab1', pcr_stage=pcr_stage)
+                        add_vertical_space(1)
+
+                        st.subheader('Upload Files')
+                        ld.upload_pcr1_files(key='pcr1_primer1')
+                        add_vertical_space(1)
+
+                        st.subheader('Custom Volumes')
+                        ld.custom_volumes(exp)
+
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr1', default_view1='Primers', 
+                        default_view2='Files')   
 
             #-------------------------------- Primers ~ TAB 2: Generate PCR 1 picklists --------------------------------
             if primer_tab == 2:
+                st.session_state['primer_tab'] = 2
                 if unlocked:
-                    set_session_state('pcr1 picklist', False)
+                    with main_body_container:
+                        init_state('pcr1 picklist', False)
 
-                    st.subheader('Plate checklist')
-                    primer_checklist_exp = st.container()
-                    hline()
-                    if not efs:
-                        st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
-                    else:
-                        with primer_checklist_exp:
-                            included_DNA_plates, included_PCR_plates,\
-                                    included_taqwater_plates = dc.plate_checklist_pcr1(exp)
+                        st.subheader('Plate checklist')
+                        primer_checklist_exp = st.container()
+                        hline()
+                        if not efs:
+                            st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
+                        else:
+                            with primer_checklist_exp:
+                                included_DNA_plates, included_PCR_plates,\
+                                        included_taqwater_plates = dc.plate_checklist_pcr1(exp)
                                     
-                            st.session_state['included_DNA_pids'] = included_DNA_plates
+                                st.session_state['included_DNA_pids'] = included_DNA_plates
                         
-                        if included_DNA_plates:
-                            get_echo_picklist_btn_pcr1(exp, included_DNA_plates, included_PCR_plates,\
-                                                                included_taqwater_plates)
+                            if included_DNA_plates:
+                                get_echo_picklist_btn_pcr1(exp, included_DNA_plates, included_PCR_plates,\
+                                                                    included_taqwater_plates)
 
                 if st.session_state['pcr1 picklist'] or pcr1_picklists_exist(exp):
                     dc.get_echo1_download_btns()
-
-                st.session_state['primer_tab'] = 2
-            
-            # ** Info viewer **
-            with tab_col3:
-                add_vertical_space(2)
-                dc.show_info_viewer_checkbox()
-            if st.session_state['show_info_viewer']:
-                with tab_col2:
-                    selection, height = dc.info_selection(3)
-                if selection:
-                    with info_holder:
-                        show_info_viewer(selection, height)
+                
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr2', default_view1='Primers', 
+                        default_view2='Consumables') 
 
         #============================================ STAGE 4: PCR 2 Index =============================================
         if pipeline_stage == 3:
-            exp = st.session_state['experiment']
             pcr_stage = 2
-
-            tab_col1, tab_col2,tab_col3 = subsection.columns([9,3,1])
-            info_holder = st.container()
+            init_state('index_tab', 1)
+            index_tab = st.session_state['index_tab']
+            
+            tab_col1, tab_col2,tab_col3 = upper_container.columns([5,5,1])
 
             #Tab setup
             with tab_col1:
                 index_tab = dc.create_tabs([("PCR 2", "Components"), ("Generate", "Picklists")])
-            if not index_tab:
-                set_session_state('index_tab', 1)
-                index_tab = st.session_state['index_tab']
-
+            
             #------------------------------------- Index ~ TAB 1: PCR 2 Components -------------------------------------
             if index_tab == 1:
-                if unlocked(exp):
-                    index_checklist = st.container()
-                    index_checklist.subheader('Plate Checklist')
-                    hline()
-                    
-                    title_holder = st.empty()
-                    pcr_comp_holder = st.container()
-
-                    #provide barcodes for pcr & taq/water, upload index files, adjust volumes
-                    st.subheader('Add Barcodes', help='Add barcodes for plates')
-                    ld.provide_barcodes('index_barcodes', 2)
-                    add_vertical_space(1)
-
-                    st.subheader('Upload Files')
-                    ld.upload_pcr2_files(key='pcr2_index1')
-                    add_vertical_space(1)
-
-                    st.subheader('Custom Volumes')
-                    ld.custom_volumes(exp)
-                    
-                    with index_checklist:
-                        included_PCR_plates, included_taqwater_plates, included_index_plates, \
-                                included_amplicon_plates = dc.plate_checklist_pcr2(exp)
-                        
-                    with pcr_comp_holder:
-                        dc.display_pcr2_components(pcr_pids=included_PCR_plates,amplicon_pids=included_amplicon_plates)
-                        st.subheader('PCR 2 Components')
-                        dc.display_pcr_components()
-                        dc.display_pcr2_components(pcr_pids=included_PCR_plates, \
-                                                    amplicon_pids=included_amplicon_plates)
-                        hline()
-                        add_vertical_space(1)
-                    
-                    if not included_PCR_plates and not included_amplicon_plates:
-                        title_holder.error("Load Nimbus output files to enable PCR stages. For amplicon only, upload amplicon and index files and provide a taq water plate barcode.")
-                    
                 st.session_state['index_tab'] = 1
+                if unlocked(exp):
+                    with main_body_container:
+                        index_checklist = st.container()
+                        index_checklist.subheader('Plate Checklist')
+                        hline()
+                    
+                        title_holder = st.empty()
+                        pcr_comp_holder = st.container()
+
+                        #provide barcodes for pcr & taq/water, upload index files, adjust volumes
+                        st.subheader('Add Barcodes', help='Add barcodes for plates')
+                        ld.provide_barcodes('index_barcodes', 2)
+                        add_vertical_space(1)
+
+                        st.subheader('Upload Files')
+                        ld.upload_pcr2_files(key='pcr2_index1')
+                        add_vertical_space(1)
+
+                        st.subheader('Custom Volumes')
+                        ld.custom_volumes(exp)
+                    
+                        with index_checklist:
+                            included_PCR_plates, included_taqwater_plates, included_index_plates, \
+                                    included_amplicon_plates = dc.plate_checklist_pcr2(exp)
+                        
+                        with pcr_comp_holder:
+                            st.subheader('PCR 2 Components')
+                            dc.display_pcr_components()
+                            dc.display_pcr2_components(pcr_pids=included_PCR_plates, \
+                                                        amplicon_pids=included_amplicon_plates)
+                            hline()
+                            add_vertical_space(1)
+                    
+                        if not included_PCR_plates and not included_amplicon_plates:
+                            title_holder.error("Load Nimbus output files to enable PCR stages. For amplicon "+\
+                                    "only, upload amplicon and index files and provide a taq water plate barcode.")
+                
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_index1', default_view1='Indexes', 
+                        default_view2='Consumables')
 
             #--------------------------------- Index ~ TAB 2: Generate PCR 2 picklists ---------------------------------
-            if index_tab == 2:
+            if index_tab == 2:                
+                st.session_state['index_tab'] = 2 
                 if unlocked(exp):
-                    index_checklist = st.container()
-                    index_checklist.subheader('Plate Checklist')
-                    hline()
+                    with main_body_container:
+                        index_checklist = st.container()
+                        index_checklist.subheader('Plate Checklist')
+                        hline()
         
-                    with index_checklist:
-                        do_generate = False
-                        included_PCR_plates, included_taqwater_plates, included_index_plates,\
-                                included_amplicon_plates =\
-                                dc.plate_checklist_pcr2(exp)
-                        pcr2_messages = []  # pass by reference
-                        if included_PCR_plates:  # standard run
-                            if not exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
-                                    included_index_plates, included_amplicon_plates, pcr2_messages):
-                                for msg in pcr2_messages:
-                                    st.warning(msg)
-                            else:
-                                do_generate = True
-                        else:
-                            if included_amplicon_plates:
-                                if not exp.check_ready_pcr2_amplicon_only(included_taqwater_plates,
+                        with index_checklist:
+                            do_generate = False
+                            included_PCR_plates, included_taqwater_plates, included_index_plates,\
+                                    included_amplicon_plates =\
+                                    dc.plate_checklist_pcr2(exp)
+                            pcr2_messages = []  # pass by reference
+                            if included_PCR_plates:  # standard run
+                                if not exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
                                         included_index_plates, included_amplicon_plates, pcr2_messages):
                                     for msg in pcr2_messages:
                                         st.warning(msg)
                                 else:
                                     do_generate = True
+                            else:
+                                if included_amplicon_plates:
+                                    if not exp.check_ready_pcr2_amplicon_only(included_taqwater_plates,
+                                            included_index_plates, included_amplicon_plates, pcr2_messages):
+                                        for msg in pcr2_messages:
+                                            st.warning(msg)
+                                    else:
+                                        do_generate = True
                                     
-                    if do_generate:
-                        show_generate = False
-                        if 'amplicon_only' in st.session_state:
-                            show_generate = st.session_state['amplicon_only']
-                        if included_PCR_plates:
-                            show_generate = True
-
-                        if included_amplicon_plates and not included_PCR_plates:
-                            _, amp1, amp2, amp3, _ = st.columns([3, 3, 1, 1, 3])
-                            amp1.warning('Is this an amplicon only run?')
-                            yes_amplicon = amp2.button('Yes')
-                            no_amplicon = amp3.button('No')
-
-                            if yes_amplicon:
-                                st.session_state['amplicon_only'] = True
+                        if do_generate:
+                            show_generate = False
+                            if 'amplicon_only' in st.session_state:
+                                show_generate = st.session_state['amplicon_only']
+                            if included_PCR_plates:
                                 show_generate = True
-                            elif no_amplicon:
-                                st.session_state['amplicon_only'] = False
-                                show_generate = False
+
+                            if included_amplicon_plates and not included_PCR_plates:
+                                _, amp1, amp2, amp3, _ = st.columns([3, 3, 1, 1, 3])
+                                amp1.warning('Is this an amplicon only run?')
+                                yes_amplicon = amp2.button('Yes')
+                                no_amplicon = amp3.button('No')
+
+                                if yes_amplicon:
+                                    st.session_state['amplicon_only'] = True
+                                    show_generate = True
+                                elif no_amplicon:
+                                    st.session_state['amplicon_only'] = False
+                                    show_generate = False
                     
-                        if show_generate:
-                            _,picklist_button_col,_ = st.columns([2, 2, 1])
+                            if show_generate:
+                                _,picklist_button_col,_ = st.columns([2, 2, 1])
 
-                            echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
-                                        key='echo_pcr2_go_button')
+                                echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
+                                            key='echo_pcr2_go_button')
 
-                            picklist_button_col.write('')
+                                picklist_button_col.write('')
 
-                            if echo_picklist_go:
-                                st.session_state['idx_picklist'] = True
+                                if echo_picklist_go:
+                                    st.session_state['idx_picklist'] = True
                         
-                                success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_plates,
-                                        included_index_plates, included_taqwater_plates, included_amplicon_plates)
-                                if not success:
-                                    st.write('Picklist generation failed. Please see the log')
+                                    success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_plates,
+                                            included_index_plates, included_taqwater_plates, included_amplicon_plates)
+                                    if not success:
+                                        st.write('Picklist generation failed. Please see the log')
                         
-                dc.show_echo2_outputs()
-                st.session_state['index_tab'] = 2            
+                        dc.show_echo2_outputs()           
                 
             # ** Info viewer **
-            with tab_col3:
-                add_vertical_space(2)
-                dc.show_info_viewer_checkbox()
-            if st.session_state['show_info_viewer']:
-                with tab_col2:
-                    selection, height = dc.info_selection(4)
-                if selection:
-                    with info_holder:
-                        show_info_viewer(selection, height)
+            upper_info_viewer_code(tab_col3, tab_col2, 'upper_index1', default_view1='Status', 
+                        default_view2='Files')
 
         #=============================================== STAGE 5: Miseq ================================================
         if pipeline_stage == 4:
-            exp = st.session_state['experiment']
-            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
+            tab_col1, tab_col2, tab_col3 = main_body_container.columns([9,3,1])
             info_holder = st.container()
 
             with tab_col1:
                 with tab_col1:
                     miseq_tab = dc.create_tabs([("Download", "Miseq Samplesheet"), ("Upload", "Miseq Sequence Files")])
                 if not miseq_tab:
-                    set_session_state('miseq_tab', 1)
+                    init_state('miseq_tab', 1)
                     miseq_tab = st.session_state['miseq_tab']
 
             add_vertical_space(1)
             
             #-------------------------------- Miseq ~ TAB 1: Download Miseq Samplesheet --------------------------------
             if miseq_tab == 1:
-                exp = st.session_state['experiment']
                 _,header_col,_ = st.columns([2,2,1])
 
                 if exp.locked:
@@ -830,24 +775,23 @@ def main():
              # ** Info viewer **
             with tab_col3:
                 add_vertical_space(2)
-                dc.show_info_viewer_checkbox()
-            if st.session_state['show_info_viewer']:
+                dc.show_upper_info_viewer_checkbox()
+            if st.session_state['show_upper_info_viewer']:
                 with tab_col2:
                     selection, height = dc.info_selection(5)
                 if selection:
                     with info_holder:
-                        show_info_viewer(selection, height)
+                        dc.show_info_viewer(selection, height)
 
         #=========================================== STAGE 6: Allele Calling ===========================================
         if pipeline_stage == 5:
-            exp = st.session_state['experiment']
-            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
+            tab_col1, tab_col2, tab_col3 = main_body_container.columns([9,3,1])
             info_holder = st.container()
 
             with tab_col1:
                 allele_tab = dc.create_tabs([("Allele Calling", "")])
             if not allele_tab:
-                set_session_state('allele_tab', 1)
+                init_state('allele_tab', 1)
                 allele_tab = st.session_state['allele_tab']
 
             # Only offer upload in the Miseq pipeline section
@@ -939,20 +883,19 @@ def main():
              # ** Info viewer **
             with tab_col3:
                 add_vertical_space(2)
-                dc.show_info_viewer_checkbox()
-            if st.session_state['show_info_viewer']:
+                dc.show_upper_info_viewer_checkbox()
+            if st.session_state['show_upper_info_viewer']:
                 with tab_col2:
                     selection, height = dc.info_selection(6)
                 if selection:
                     with info_holder:
-                        show_info_viewer(selection, height)
+                        dc.show_info_viewer(selection, height)
 
         
         #=============================================== STAGE 7: Reports ==============================================
         if pipeline_stage == 6:
-            exp = st.session_state['experiment']
             results_fp = exp.get_exp_fn('results.csv')
-            tab_col1, tab_col2, tab_col3 = subsection.columns([9,3,1])
+            tab_col1, tab_col2, tab_col3 = main_body_container.columns([9,3,1])
             info_holder = st.container()
             
             
@@ -998,19 +941,25 @@ def main():
                     dfo = pd.DataFrame(other_results, columns=hdr)
                     dc.aggrid_interactive_table(dfo, key='other_view_key')
 
-            # ** Info viewer **
-            with tab_col3:
-                add_vertical_space(2)
-                dc.show_info_viewer_checkbox()
-            if st.session_state['show_info_viewer']:
-                with tab_col2:
-                    selection, height = dc.info_selection(7)
-                if selection:
-                    with info_holder:
-                        show_info_viewer(selection, height)
-
-
         st.session_state['pipeline_stage'] = pipeline_stage
+
+        #=============================================== UPPER INFO SECTION ============================================
+        
+        upper_panels = [v for v in (st.session_state.get('info_panel1', 'None'), 
+                st.session_state.get('info_panel2', 'None')) if v != 'None']
+        if any(upper_panels) and st.session_state.get('show_upper_info_viewer'):
+            with upper_container:
+                dc.show_info_viewer(upper_panels, st.session_state.get('upper_panel_height',250), 'upper_view_panels')  
+        
+        #=============================================== LOWER INFO SECTION ============================================
+        
+        lower_panels = [v for v in (st.session_state.get('info_panel3','None'),
+                st.session_state.get('info_panel4','None')) if v != "None"]
+        if any(lower_panels):
+            with lower_container:
+                dc.show_info_viewer(lower_panels, st.session_state.get('lower_panel_height',350), 'lower_view_panels')
+
+        ### End of main display ###
 
 if __name__ == '__main__':
     main()

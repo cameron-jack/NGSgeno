@@ -5,6 +5,8 @@ from copy import deepcopy
 from pathlib import Path
 import os
 import sys
+import functools
+import jsonpickle
 
 """
 @created: Nov 2021
