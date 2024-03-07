@@ -1,3 +1,7 @@
+v0.25.002
+Date: Thu Mar  7 12:04:54 AEDT 2024
+* Fixed: index and taq/water calculations for amplicon runs
+
 v0.25.001
 Date: Thu Feb 15 11:10:42 AEDT 2024
 * Updated README.md with to do list
