@@ -392,7 +392,10 @@ def display_pcr2_components(dna_pids=None, pcr_pids=None, amplicon_pids=None):
     print(f'{num_reactions=}')
 
     # num_reactions = sum([primer_usage[p] for p in primer_usage])
-    index_remain, index_max = exp.get_index_reactions(primer_usage, fwd_idx, rev_idx)
+    #index_fwd, index_rev = exp.get_index_avail()
+    index_max = len(exp.get_index_pairs_avail())
+    index_remain = index_max - num_reactions
+    #index_remain, index_max = exp.get_index_reactions(primer_usage, fwd_idx, rev_idx)
 
     #Taq/water (based on pcr stage)
     index_taq_vol, index_water_vol = exp.get_taqwater_req_vols_index(num_reactions)
@@ -424,9 +427,9 @@ def display_pcr2_components(dna_pids=None, pcr_pids=None, amplicon_pids=None):
         req_taqwater_num = str(num_req_taq_water_plates)
 
     if index_remain >= 0:
-        index_pairs_allowed = '<p style="color:green">'+str(index_remain)+'</p>'     
+        index_pairs_remain = '<p style="color:green">'+str(index_remain)+'</p>'     
     else:
-        index_pairs_allowed = '<p style="color:red">'+str(index_remain)+'</p>'
+        index_pairs_remain = '<p style="color:red">'+str(index_remain)+'</p>'
 
     #Page set up
     pcr_comps_area = st.container()
@@ -447,12 +450,11 @@ def display_pcr2_components(dna_pids=None, pcr_pids=None, amplicon_pids=None):
     pcr2_col[2].markdown('**Available taq volume**')
     pcr2_col[3].write(avail_taq_vol_str)
 
+    pcr2_col[0].markdown('**Index Pairs Possible**')
+    pcr2_col[1].write(str(index_max))
     pcr2_col[0].markdown('**Index Pairs Remaining**')
-    pcr2_col[1].write(str(index_remain))
-    pcr2_col[2].markdown('**Max Possible Index Pairs**')
-    pcr2_col[3].write(str(index_max))
-    pcr2_col[0].markdown('**Index Pairs Allowed by Volume**')
-    pcr2_col[1].markdown(index_pairs_allowed, unsafe_allow_html=True)
+    pcr2_col[1].markdown(index_pairs_remain, unsafe_allow_html=True)
+    
 
 
 

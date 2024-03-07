@@ -754,37 +754,69 @@ class Experiment():
                     self.log(f'Warning: unexpected index name: {name}')
 
         return fwd_idx, rev_idx
-     
     
-    def get_index_reactions(self, primer_usage, fwd_idx=None, rev_idx=None):
-        """
-        Returns the barcode pairs remaining, max available barcode pairs
-        Can take the output of get_index_avail to save recalculating them
-        """
-        reactions_required = sum([v for v in primer_usage.values()])
 
-        if not fwd_idx or not rev_idx:
-            fwd_idx, rev_idx = self.get_index_avail()
-
-        if not fwd_idx or not rev_idx:
-            return 0, 0
-
-        reactions_possible = 0
-        max_i7F = len(fwd_idx)
-        max_i5R = len(rev_idx)
-        for fwd in fwd_idx:
-            if fwd_idx[fwd]['avail_transfers'] < 1:
+    def get_index_pairs_avail(self):
+        """ returns all available pairings of barcode ends """
+        fwd_idx, rev_idx = self.get_index_avail()
+        fwd_idx_names = list(fwd_idx.keys())
+        rev_idx_names = list(rev_idx.keys())
+        pairs_allocated = []
+        idx_uses = {}
+        total_fwd = len(fwd_idx_names)
+        total_rev = len(rev_idx_names)
+        # cycle through all combinations in an evenly
+        for i in range(total_fwd*total_rev):
+            fi = fwd_idx_names[i%total_fwd]
+            ri = rev_idx_names[i%total_rev]
+            if fi not in idx_uses:
+                idx_uses[fi] = 0
+            if ri not in idx_uses:
+                idx_uses[ri] = 0
+            if idx_uses[fi] == fwd_idx[fi]['avail_transfers']:
                 continue
-            for rev in rev_idx:
-                if fwd_idx[fwd]['avail_transfers'] < 1:
-                    break
-                if rev_idx[rev]['avail_transfers'] < 1:
-                    continue
-                reactions_possible += 1
-                fwd_idx[fwd]['avail_transfers'] -= 1
-                rev_idx[rev]['avail_transfers'] -= 1
+            if idx_uses[ri] == rev_idx[ri]['avail_transfers']:
+                continue
+            pairs_allocated.append((fi,ri))
+            idx_uses[fi] += 1
+            idx_uses[ri] += 1
+        return pairs_allocated
+    
+     
+    # DEPRECATED - use self.get_num_reactions() and self.get_index_avail() instead
+    # def get_index_reactions(self, primer_usage, amplicon_pids=None, fwd_idx=None, rev_idx=None):
+    #     """
+    #     Returns the barcode pairs remaining, max available barcode pairs
+    #     Can take the output of get_index_avail to save recalculating them
+    #     """
+    #     amp_pids = [util.guard_pbc(pid, silent=True) for pid in amplicon_pids]
+    #     for pid in amp_pids:
+    #         print(f'{pid=} {self.plate_location_sample[pid]=} {self.plate_location_sample[pid]["wells"]=}')
+    #     reactions_required = sum([v for v in primer_usage.values()]) + \
+    #             sum([len(self.plate_location_sample[pid]['wells']) for pid in amp_pids])
 
-        return reactions_possible - reactions_required, reactions_possible
+    #     if not fwd_idx or not rev_idx:
+    #         fwd_idx, rev_idx = self.get_index_avail()
+
+    #     if not fwd_idx or not rev_idx:
+    #         return 0, 0
+
+    #     reactions_possible = 0
+    #     max_i7F = len(fwd_idx)
+    #     max_i5R = len(rev_idx)
+    #     for fwd in fwd_idx:
+    #         if fwd_idx[fwd]['avail_transfers'] < 1:
+    #             continue
+    #         for rev in rev_idx:
+    #             if fwd_idx[fwd]['avail_transfers'] < 1:
+    #                 break
+    #             if rev_idx[rev]['avail_transfers'] < 1:
+    #                 continue
+    #             reactions_possible += 1
+    #             fwd_idx[fwd]['avail_transfers'] -= 1
+    #             rev_idx[rev]['avail_transfers'] -= 1
+
+    #     return reactions_possible - reactions_required, reactions_possible
 
 
     def get_taqwater_avail(self, taqwater_bcs=None, transactions=None, pcr_stage=None):
