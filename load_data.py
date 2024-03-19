@@ -28,7 +28,7 @@ import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
-import stutil
+from stutil import custom_text, add_vertical_space, add_tm, add_pm
 #try:
 #    from bin.experiment import Experiment, EXP_FN, load_experiment
 #except ModuleNotFoundError:
@@ -69,16 +69,19 @@ Web application style interface using Streamlit. Present information as both a d
 
 The GUI interacts with a single Experiment object at one time. Methods are called on this to activate pipeline
 functionality. The Experiment then deals directly with the pipeline logic.
+
+All callbacks must be labelled _cb. Because callbacks are executed first, they must create message
+entries to be displayed, rather than writing the messages themselves
 """
 
 HELP_COLOUR = '#7f8b8f'
 FORM_BUTTON_COLOUR = '#4287f5'
 
-def do_pending(combined_pending):
+
+def do_pending_cb(combined_pending):
     """
     Action the pending_file_widget
     """
-    message_container = st.session_state['message_container']
     exp = st.session_state['experiment']
     expected_keys = ['pending_file_checkbox_'+str(pending) for pending in combined_pending]
     pending_checked = []
@@ -102,8 +105,6 @@ def do_pending(combined_pending):
             clashing_filenames, clashing_pids = trans.check_for_clashing_transactions(exp, filenames=pending)
 
             msg = f'Overwriting the previous version of {str(pending)} with the new file'
-            st.toast(f':blue[**Overwriting the previous version of {str(pending)} with the new file]**')
-            message_container.info(msg)
             exp.log(f'Info: {msg}')
             if pending in exp.pending_uploads:
                 success = parse.accept_pending_upload(exp, pending)
@@ -111,22 +112,22 @@ def do_pending(combined_pending):
                 success = trans.accept_pending_transaction(exp, pending)
             if success:
                 exp.log(f'Success: overwrote existing file {pending}')
+                add_tm(f'Overwrote existing file {pending}', 'success')
                 if clashing_filenames:
                     msg = f'{", ".join(clashing_filenames)} potentially affected by change'
                     exp.log(msg)
-                    message_container.warning(msg)
+                    add_tm(msg, 'warning')
                 if clashing_pids:
                     msg = f'{", ".join(clashing_pids)} potentially affected by change'
                     exp.log(msg)
-                    message_container.warning(msg)
+                    add_tm(msg, 'warning')
             else:
                 msg = f'Failure: Could not overwrite existing file {pending}'
                 exp.log(msg)
-                message_container.error(msg)
+                add_pm(msg, 'error')
             
         else:
-            st.toast(f':blue[**Keeping the old version of the file {pending}**]')
-            message_container.info(f'Keeping the old version of the file {pending}')
+            add_tm(f':blue[**Keeping the old version of the file {pending}**]')
             exp.log(f'Info: removing unwanted pending file {pending}')
             if pending in exp.pending_uploads:
                 exp.pending_uploads.remove(pending)
@@ -139,7 +140,7 @@ def do_pending(combined_pending):
             else:
                 msg = f'Failure: pending file or transaction {pending} could not be removed'
                 exp.log(msg)
-                message_container.error(msg)
+                add_pm(msg, 'error')
 
     exp.save()          
 
@@ -197,23 +198,21 @@ def pending_file_widget(key):
         for pending_step in pending_steps:
             combined_pending.append(pending_step)
             st.checkbox(pending_step, key=f'pending_file_checkbox_{pending_step}')
-        st.form_submit_button('Submit', on_click=do_pending, args=[combined_pending])
+        st.form_submit_button('Submit', on_click=do_pending_cb, args=[combined_pending])
     
 
 def upload_echo_inputs(key):
     """
     Echo inputs are Nimbus outputs
     """
-    message_container = st.session_state['message_container']
     exp = st.session_state['experiment']
     if exp.locked:
-        message_container.warning(f'Experiment {exp.name} locked from further modification')
+        add_tm(f'Experiment {exp.name} locked from further modification', 'warning')
     else:
         title_area = st.container()
         title_area.write('')
         title = ''
         title_colour = '#f63366'
-        info_area = st.container()
         _,upload_col,_ = st.columns([1,3,1])
         with upload_col:                
             with st.form("Echo input upload", clear_on_submit=True):  
@@ -222,7 +221,10 @@ def upload_echo_inputs(key):
                 submitted = st.form_submit_button("Upload files")
 
             if submitted and nim_outputs is not None:
-                success = parse.upload(exp, nim_outputs, purpose='dna', overwrite=True)   
+                success = parse.upload(exp, nim_outputs, purpose='dna', overwrite=True)  
+                nim_names = [nim.name for nim in nim_outputs]
+                if success:
+                    add_tm(f'{nim_names} successfully uploaded')
 
         nfs, efs, xbcs = exp.get_nimbus_filepaths()
         if not efs and not xbcs:
@@ -231,20 +233,17 @@ def upload_echo_inputs(key):
             title = 'All expected Echo inputs/Nimbus outputs now uploaded'
             title_colour = '#83b3c9'
             uploaded_nims = '</br>'.join([Path(ef).name for ef in efs])
-            with info_area:
-                stutil.custom_text('p', 'green', uploaded_nims)         
+            add_tm(custom_text('p', 'green', uploaded_nims))         
         if xbcs:
             title = 'Further Echo inputs/Nimbus outputs are expected'
             uploaded_nims = '</br>'.join([Path(ef).name for ef in efs])
             missing_nims = '</br>'.join(['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs])
-            with info_area:
-                stutil.custom_text('p', 'green', uploaded_nims)
-                stutil.custom_text('p', 'black', 'The following Echo input files are expected (from the Nimbus):')
-                stutil.custom_text('p', '#cf3276', missing_nims)
-
+            add_tm(custom_text('p', 'green', uploaded_nims))
+            add_tm(custom_text('p', 'black', 'The following Echo input files are expected (from the Nimbus):'))
+            add_tm(custom_text('p', '#cf3276', missing_nims))
         with title_area:
-            stutil.custom_text('h5', title_colour, title)
-            stutil.add_vertical_space(1)
+            custom_text('h5', title_colour, title, display=True)
+            add_vertical_space(1)
                         
 
 def upload_pcr1_files(key):
@@ -252,7 +251,6 @@ def upload_pcr1_files(key):
     Upload form for primer layout and volumes. Copies input files into the directory 
     and manages transactions
     """
-    message_container = st.session_state['message_container']
     st.write('')
     st.write('**Upload Primer Files (PCR round 1)**')
     exp = st.session_state['experiment']
@@ -281,22 +279,20 @@ def upload_pcr1_files(key):
                 upl_pids = ''.join(upl.name.split('_')[0] for upl in uploaded_primer_layouts)
                 success = parse.upload(exp, uploaded_primer_layouts, purpose='primer_layout')
                 if success and not trans.is_pending(exp):
-                    st.toast(f'Added primer layouts for plates {",".join(upl_pids)}')
-                    #st.success(f'Added primer layouts for plates {",".join(upl_pids)}')
+                    add_tm(f'Added primer layouts for plates {",".join(upl_pids)}', 'success')
                 elif not success:
-                    st.error(f'Failed to write at least one primer layout, please see the log')
+                    add_pm(f'Failed to write at least one primer layout, please see the log', 'error')
                      
             if uploaded_primer_volumes:
                 upv_pids = ''.join(upv.name.split('_')[0] for upv in uploaded_primer_volumes)
                 success = parse.upload(exp, uploaded_primer_volumes, purpose='primer_volume')
                 if success and not trans.is_pending(exp):
-                    st.toast(f'Added primer volumes for plates {",".join(upv_pids)}')
-                    #st.success(f'Added primer volumes for plates {",".join(upv_pids)}')
+                    add_tm(f'Added primer volumes for plates {",".join(upv_pids)}', 'success')
                 elif not success:
-                    st.error(f'Failed to write at least one set of primer volumes, please see the log')
+                    add_pm(f'Failed to write at least one set of primer volumes, please see the log', 'error')
     
     #manage transactions:
-    with message_container:
+    with st.session_state['message_container']:
         if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr1':
             pending_file_widget(key)
             st.session_state['upload_option'] = ''
@@ -314,17 +310,15 @@ def accept_amplicons(uploaded_amplicon_files, miseq_fn, stage3_fn):
     uaf_ids = ''.join(uaf.name for uaf in uploaded_amplicon_files)
     success = parse.upload(exp, uploaded_amplicon_files, purpose='amplicon')
     if success:
-        st.toast(f'Added amplicon manifests from files {uaf_ids}')
-        message_container.success(f'Added amplicon manifests from files {uaf_ids}')
+        add_tm(f'Added amplicon manifests from files {uaf_ids}', 'success')
     else:          
-        message_container.error(f'Failed to upload at least one amplicon manifest, please see the log')
+        add_pm(f'Failed to upload at least one amplicon manifest, please see the log', 'error')
 
 
 def cancel_amplicons():
     st.write('')
     st.write('**Upload Amplicon Files (PCR round 2)**')
     exp = st.session_state['experiment']
-    message_container = st.session_state['message_container']
     st.session_state['upload_option'] = ''  # do we display pending files here
 
 def load_amplicons(key):
@@ -332,7 +326,6 @@ def load_amplicons(key):
     Upload only amplicon plates here
     """
     exp = st.session_state['experiment']
-    message_container = st.session_state['message_container']
     st.write('')
     st.write('**Upload Amplicon Plate Files**')
     with st.form('index plate upload'+key, clear_on_submit=True): 
@@ -353,24 +346,29 @@ def load_amplicons(key):
                 if Path(miseq_fn).exists():
                     success = exp.del_file_record(miseq_fn)
                     if success:
-                        exp.log(f'Info: removed obsolete Miseq.csv file')
+                        add_tm(f'Removed existing file {miseq_fn}', 'info')
+                        exp.log(f'Info: removed obsolete file {miseq_fn}')
                     else:
-                        exp.log(f'Warning: could not remove obsolete Miseq.csv file')
+                        exp.log(f'Warning: could not remove obsolete file {miseq_fn}')
+                        add_tm(f'Could not remove obsolete file {miseq_fn}', 'warning')
                     
                 stage3_fn = exp.get_exp_fn('Stage3.csv')
                 if Path(stage3_fn).exists():
                     success = exp.del_file_record(stage3_fn)
                     if success:
-                        exp.log(f'Info: removed obsolete Stage3.csv file')
+                        exp.log(f'Info: removed obsolete file {stage3_fn}')
+                        add_tm(f'Removed obsolete file {stage3_fn}', 'info')
                     else:
                         exp.log(f'Warning: could not remove obsolete Stage3.csv file')
+                        add_tm(f'Could not remove obsolete file {stage3_fn}', 'warning')
 
                 success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
                 uap_ids = [uap.name for uap in uploaded_amplicon_plates]
                 if success:
-                    message_container.success(f'Added amplicon manifests from files {uap_ids}')
+                    exp.log(f'Info: Added amplicon manifests from files {uap_ids}')
+                    add_tm(f'Added amplicon manifests from files {uap_ids}', 'success')
                 else:
-                    message_container.write(f'Failed to upload at least one amplicon manifest, please see the log')
+                    add_pm(f'Failed to upload at least one amplicon manifest, please see the log', 'error')
     # manage transactions
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'amplicons':
         pending_file_widget(key)
@@ -378,7 +376,7 @@ def load_amplicons(key):
     st.write('')           
     
 
-def upload_pcr2_files(key, message_container):
+def upload_pcr2_files(key):
     """
     Upload inputs for indexing layout and volume. Extra option for amplicon plate upload.
     Copy uploaded files into the run folder and manage subsequent transactions
@@ -418,19 +416,17 @@ def upload_pcr2_files(key, message_container):
                 uil_pids = ''.join(uil.name for uil in uploaded_index_layouts)
                 success = parse.upload(exp, uploaded_index_layouts, purpose='index_layout')
                 if success and not trans.is_pending(exp):
-                    st.toast(f':green[**Added index layouts for plates {uil_pids}]')
-                    #st.success(f'Added index layouts for plates {uil_pids}')
+                    add_tm(f'Added index layouts for plates {uil_pids}', 'success')
                 elif not success:
-                    st.error(f'Failed to write at least one index layout, please see the log')    
+                    add_pm(f'Failed to write at least one index layout, please see the log', 'error')    
 
             if uploaded_index_volumes:
                 uiv_pids = ''.join(uiv.name for uiv in uploaded_index_volumes)
                 success = parse.upload(exp, uploaded_index_volumes, purpose='index_volume')
                 if success and not trans.is_pending(exp):
-                    st.toast(f':green[**Added index volumes for plates {uiv_pids}**]')
-                    st.success(f'Added index volumes for plates {uiv_pids}')
+                    add_tm(f'Added index volumes for plates {uiv_pids}', 'success')
                 elif not success:
-                    st.error(f'Failed to write at least one set of index volumes, please see the log')   
+                    add_pm(f'Failed to write at least one set of index volumes, please see the log', 'error')   
 
             if uploaded_amplicon_plates:
                 # Try to remove obsolete files
@@ -438,35 +434,39 @@ def upload_pcr2_files(key, message_container):
                 if Path(miseq_fn).exists():
                     success = exp.del_file_record(miseq_fn)
                     if success:
-                        exp.log(f'Info: removed obsolete Miseq.csv file')
+                        exp.log(f'Info: removed obsolete file {miseq_fn}')
+                        add_tm(f'Removed obsolete file {miseq_fn}', 'success')
                     else:
-                        exp.log(f'Warning: could not remove obsolete Miseq.csv file')
+                        exp.log(f'Warning: could not remove obsolete file {miseq_fn}')
+                        add_pm(f'Could not remove obsolete file {miseq_fn}', 'warning')
                     
                 stage3_fn = exp.get_exp_fn('Stage3.csv')
                 if Path(stage3_fn).exists():
                     success = exp.del_file_record(stage3_fn)
                     if success:
-                        exp.log(f'Info: removed obsolete Stage3.csv file')
+                        exp.log(f'Info: removed obsolete file {stage3_fn}')
+                        add_tm(f'Removed obsolete file {stage3_fn}', 'success')
                     else:
                         exp.log(f'Warning: could not remove obsolete Stage3.csv file')
+                        add_pm(f'Could not remove obsolete file {stage3_fn}', 'warning')
 
                 success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
                 uap_ids = [uap.name for uap in uploaded_amplicon_plates]
                 if success:
-                    st.toast(f':green[**Added amplicon manifests from files {uap_ids}**]')
-                    message_container.success(f'Added amplicon manifests from files {uap_ids}')
+                    add_tm(f'Added amplicon manifests from files {uap_ids}', 'success')
                 else:
-                    message_container.write(f'Failed to upload at least one amplicon manifest, please see the log')
+                    add_pm(f'Failed to upload at least one amplicon manifest, please see the log', 'error')
                 
     
     # manage transactions
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr2':
-        pending_file_widget(key)
+        with st.session_state['message_container']:
+            pending_file_widget(key)
         st.session_state['upload_option'] = ''   
     st.write('')
 
 
-def upload_extra_consumables(key, message_container):
+def upload_extra_consumables(key):
     """
     Uploads for extra files such as custom references, assay lists, and taq/water plates.
     Copy the uploaded files into the run folder and deal with subsequent transactions.
@@ -475,7 +475,6 @@ def upload_extra_consumables(key, message_container):
     st.write('**Upload Custom Reference / Assay Lists**')
     exp = st.session_state['experiment']
     st.session_state['upload_option'] = ''  # do we display pending files here
-    #with st.form('Consumables upload'+key, clear_on_submit=True):
     upload_form = st.form('Consumables upload'+key, clear_on_submit=True)
     
     col1, col2 = upload_form.columns(2)
@@ -498,27 +497,25 @@ def upload_extra_consumables(key, message_container):
             success = parse.upload(exp, uploaded_references, 'reference_sequences')
             ref_names = [ur.name for ur in uploaded_references]
             if success and not trans.is_pending(exp):
-                st.toast(f':green[**Added reference sequences from files {ref_names}**]')
-                st.success(f'Added reference sequences from files {ref_names}')
+                add_tm(f'Added reference sequences from files {ref_names}', 'success')
             elif not success:
-                st.error(f'Failed to upload at least one reference sequence file, please see the log')
+                add_pm(f'Failed to upload at least one reference sequence file, please see the log', 'error')
         if uploaded_assaylists:
             #success = parse.upload(exp, uploaded_assaylists, 'primer_assay_map')
             # Genotyping team use the assay->primer direction
             success = parse.upload(exp, uploaded_assaylists, 'assay_primer_map')
             assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
             if success and not trans.is_pending(exp):
-                st.toast(f':green[**Added assay/primer lists from files {assaylist_names}**]')
-                st.success(f'Added assay/primer lists from files {assaylist_names}')
+                add_tm(f'Added assay/primer lists from files {assaylist_names}', 'success')
             elif not success:
-                st.error(f'Failed to upload at least one assay/primer list file, please see the log')
+                add_pm(f'Failed to upload at least one assay/primer list file, please see the log', 'error')
         # TODO: add the ability to add a custom taq+water plate, perhaps?
         #if uploaded_taqwater_plates:
         #    success = exp.add_taqwater_layout_volume
    
     #manage transactions:
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'consumables':
-        with message_container:
+        with st.session_state['message_container']:
             pending_file_widget(key)
         st.session_state['upload_option'] = ''
     st.write('')
@@ -558,7 +555,7 @@ def custom_volumes(exp):
             st.toast(f':blue[Volumes reset]')
             st.experimental_rerun()
         else:
-            st.error('Volumes were not reset. Check the log for more information')
+            add_pm('Transfer volumes were not reset. Check the log for more information', 'error')
 
     #if edit is made to dataframe
     if st.session_state['volume_df']['edited_rows']:
@@ -593,19 +590,22 @@ def upload_reference_sequences(key):
         ur_names = [ur.name for ur in uploaded_references] 
         if success:
             msg = f'Succcess: added rodentity plate data from files {ur_names}'
+            add_tm(msg, 'success')
             st.write(msg)
             exp.log(msg)
         else:
             msg = f'Failure: to upload at least one rodentity plate file, please see the log'
             st.write(msg)
+            add_pm(msg, 'error')
             exp.log(msg)
 
 
-def load_rodentity_data(key, message_container):
+def load_rodentity_data(key):
     """
     Manage combining up to four rodentity plates (from JSON) with one destination PID 
     """
     exp = st.session_state['experiment']
+    message_container = st.session_state['message_container']
     st.session_state['upload_option'] = ''  # do we display pending files here
     plates_to_clear = [False, False, False, False]
     with st.expander('Add data from Rodentity JSON files',expanded=True):
@@ -717,9 +717,10 @@ def load_rodentity_data(key, message_container):
                         st.experimental_rerun()
                         
                    
-def load_custom_manifests(key, message_container):
+def load_custom_manifests(key):
     """ Demonstration upload panel for custom manifests """
     exp = st.session_state['experiment']
+    message_container = st.session_state['message_container']
     st.session_state['upload_option'] = ''  # do we display pending files here
     if 'custom' not in exp.unassigned_plates or not exp.unassigned_plates['custom']:
         exp.unassigned_plates['custom'] = {'None':{}}

@@ -27,7 +27,6 @@ from math import ceil, floor
 from pathlib import Path
 import inspect  
 from collections import defaultdict
-import functools
 
 import pandas as pd
 
@@ -159,7 +158,7 @@ class Experiment():
 
 
     ### functions for returning locally held file paths
-    @functools.lru_cache
+    
     def get_exp_dn(self, subdir=None):
         """ 
         Return the experiment directory name
@@ -185,7 +184,7 @@ class Experiment():
         else:                                                       
             self.log(f'Critical: {subdir=} not in {allowed_subdirs=}')
 
-    @functools.lru_cache
+
     def get_exp_fn(self, filename, subdir=None, trans=False):
         """ 
         Return the expected experiment path to filename as a string
@@ -201,7 +200,7 @@ class Experiment():
             fp = transaction.transact(str(fp)) 
         return str(fp)
       
-    @functools.lru_cache
+    
     def get_raw_fastq_pairs(self):
         """ return a sorted list of tuple(R1_path, R2_path) to raw FASTQ files """
         valid_pairs = []
@@ -342,7 +341,7 @@ class Experiment():
             self.unassigned_plates = {1:'', 2:'', 3:'', 4:''}
         return True
 
-    @functools.lru_cache
+
     def get_musterer_pids(self):
         """ return [pids] with samples that are sourced from Musterer. DEPRECATED """
         # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], 
@@ -354,7 +353,7 @@ class Experiment():
                     musterer_pids.add(pid)
         return musterer_pids
 
-    @functools.lru_cache
+
     def get_rodentity_pids(self):
         """ return [pids] with samples that are sourced from Rodentity """
         # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], 
@@ -366,7 +365,7 @@ class Experiment():
                     rodentity_pids.add(pid)
         return rodentity_pids
 
-    @functools.lru_cache
+    
     def get_custom_pids(self):
         """ return [pids] with samples that are sourced as custom - useful for mixed content plates """
         # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], 
@@ -378,7 +377,7 @@ class Experiment():
                     custom_pids.add(pid)
         return custom_pids
         
-    @functools.lru_cache
+    
     def summarise_inputs(self):
         """ return a list of fields and a list of headers, summarising the contents of sample, amplicon, and DNA plate sets """
         plate_set_summary = []
@@ -396,12 +395,12 @@ class Experiment():
             plate_set_summary.append([util.unguard_abc(amp_pid, silent=True), '', '', '', '', amp_wells, 0])
             
         for dna_pid in self.dest_sample_plates:
-            plate_set_details = [util.unguard_pbc(dna_pid)]
+            plate_set_details = [util.unguard_pbc(dna_pid, silent=True)]
             custom_wells = 0
             rodentity_wells = 0
             pid_count = 0
             for i,sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
-                plate_set_details.append(util.unguard_pbc(sample_pid))
+                plate_set_details.append(util.unguard_pbc(sample_pid, silent=True))
                 for well in self.plate_location_sample[sample_pid]['wells']:  
                     if util.is_guarded_cbc(self.plate_location_sample[sample_pid][well]['barcode']):
                         custom_wells += 1
@@ -409,9 +408,7 @@ class Experiment():
                     elif util.is_guarded_rbc(self.plate_location_sample[sample_pid][well]['barcode']):
                         rodentity_wells += 1
                         total_well_counts['r'] += 1   
-                    #for assay in info['assays']:
-                    #    d['Primers required'].add(assay)
-                    #    total_unique_assays.add(assay)
+                    
                     total_unique_samples.add(self.plate_location_sample[sample_pid][well]['barcode'])
                 #print(f'{dna_pid=} {sample_pid=} {custom_wells=} {rodentity_wells=}')
                 pid_count += 1
@@ -428,7 +425,7 @@ class Experiment():
         #print(f"{plate_set_summary=}")
         return plate_set_summary, plate_set_headers
 
-    @functools.lru_cache
+    
     def inputs_as_dataframe(self):
         """ return the experiment contents as a pandas dataframe """
         rows, headers = self.summarise_inputs()
@@ -436,7 +433,7 @@ class Experiment():
             return None
         return pd.DataFrame(rows, columns=headers)
 
-    @functools.lru_cache
+
     def summarise_consumables(self):
         """
         Return a dictionary of all consumables: primers, indexes, taq+water plates
@@ -541,7 +538,7 @@ class Experiment():
         self.save()
         return True
 
-    @functools.lru_cache                                                        
+
     def get_dna_pids(self, dna_pids=None):
         """ return a list of available DNA plate ids """
         dpids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'dna']
@@ -550,7 +547,7 @@ class Experiment():
             dpids = [d for d in dpids if d in dna_pids]
         return dpids
                     
-    @functools.lru_cache
+
     def get_dna_records(self, dna_pids=None):
         """
         dna_fields=['samplePlate','sampleWell','sampleBarcode','strain','sex','alleleSymbol',
@@ -614,12 +611,12 @@ class Experiment():
         self.save()
         return True
 
-    @functools.lru_cache                                                                                        
+
     def get_pcr_pids(self):
         """ return a list of available PCR plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'pcr']
 
-    @functools.lru_cache
+
     def get_primer_pids(self, pmr_pids=None):
         """ return all primer pids, unless restricted by pmr_pids """
         if pmr_pids:
@@ -630,7 +627,7 @@ class Experiment():
                     if ppid in self.plate_location_sample and self.plate_location_sample[ppid]['purpose'] == 'primer']
         return primer_pids
 
-    @functools.lru_cache
+
     def get_available_primer_wells(self, pmr_pids=None):
         """
         returns dictionary {pmr:[[pid,well,vol,doses],...]
@@ -652,7 +649,7 @@ class Experiment():
                         primer_wells_vols_doses[pmr].append([ppid, well, usable_vol, doses])
         return primer_wells_vols_doses
 
-    @functools.lru_cache
+
     def get_available_primer_vols_doses(self, pmr_pids=None):
         """
         return a dictionary of primer names and total volumes and uses across all wells
@@ -670,7 +667,7 @@ class Experiment():
             primer_vols_doses[pmr] = tuple([primer_vols[pmr], primer_doses[pmr]])
         return primer_vols_doses
 
-    @functools.lru_cache
+
     def get_primers_for_assays(self, assays):
         """
         For each assay in assays, find the matching assay family and the corresponding primers
@@ -689,7 +686,7 @@ class Experiment():
             assay_primers[assay] = primers
         return assay_primers
 
-    @functools.lru_cache
+
     def get_assay_primer_usage(self, dna_pids=None):
         """
         For a given set of DNA plates, return the number of times each assay and primer is needed
@@ -718,7 +715,7 @@ class Experiment():
                         primer_usage[primer] += 1
         return assay_usage, primer_usage
 
-    @functools.lru_cache
+
     def get_index_avail(self):
         """
         Use all index plates available and return dictionaries of fwd and rev indexes
@@ -791,43 +788,7 @@ class Experiment():
             idx_uses[ri] += 1
         return pairs_allocated
     
-     
-    # DEPRECATED - use self.get_num_reactions() and self.get_index_avail() instead
-    # def get_index_reactions(self, primer_usage, amplicon_pids=None, fwd_idx=None, rev_idx=None):
-    #     """
-    #     Returns the barcode pairs remaining, max available barcode pairs
-    #     Can take the output of get_index_avail to save recalculating them
-    #     """
-    #     amp_pids = [util.guard_pbc(pid, silent=True) for pid in amplicon_pids]
-    #     for pid in amp_pids:
-    #         print(f'{pid=} {self.plate_location_sample[pid]=} {self.plate_location_sample[pid]["wells"]=}')
-    #     reactions_required = sum([v for v in primer_usage.values()]) + \
-    #             sum([len(self.plate_location_sample[pid]['wells']) for pid in amp_pids])
 
-    #     if not fwd_idx or not rev_idx:
-    #         fwd_idx, rev_idx = self.get_index_avail()
-
-    #     if not fwd_idx or not rev_idx:
-    #         return 0, 0
-
-    #     reactions_possible = 0
-    #     max_i7F = len(fwd_idx)
-    #     max_i5R = len(rev_idx)
-    #     for fwd in fwd_idx:
-    #         if fwd_idx[fwd]['avail_transfers'] < 1:
-    #             continue
-    #         for rev in rev_idx:
-    #             if fwd_idx[fwd]['avail_transfers'] < 1:
-    #                 break
-    #             if rev_idx[rev]['avail_transfers'] < 1:
-    #                 continue
-    #             reactions_possible += 1
-    #             fwd_idx[fwd]['avail_transfers'] -= 1
-    #             rev_idx[rev]['avail_transfers'] -= 1
-
-    #     return reactions_possible - reactions_required, reactions_possible
-
-    @functools.lru_cache
     def get_taqwater_avail(self, taqwater_bcs=None, transactions=None, pcr_stage=None):
         """ 
         Returns (int) taq and (int) water volumes (in nanolitres) loaded as available 
@@ -870,7 +831,6 @@ class Experiment():
         return taq_avail, water_avail, pids
 
 
-    @functools.lru_cache
     def get_taqwater_volumes_primer(self, num_reactions):
         """
         Returns the taq and water volumes required for the primer stage in nl
@@ -881,7 +841,7 @@ class Experiment():
         water_vol = num_reactions * self.transfer_volumes['PRIMER_WATER_VOL']
         return taq_vol, water_vol
         
-    @functools.lru_cache
+
     def get_taqwater_req_vols_index(self, num_reactions):
         """
         Returns the taq and water volumes required for the index stages in nl
@@ -893,7 +853,6 @@ class Experiment():
         return taq_vol, water_vol
     
 
-    @functools.lru_cache
     def get_taqwater_pids(self, pcr_stage=None):
         """
         Return plate IDs for taq/water plates.
@@ -944,6 +903,7 @@ class Experiment():
         
         return num_wells
     
+
     def get_num_reactions(self, primer_usage, pcr_pids, amplicon_pids):
         num_reactions = 0
         if amplicon_pids:
@@ -991,8 +951,8 @@ class Experiment():
         self.log(f"Success: written Echo primer survey to {primer_survey_fn}")
         return True
 
-    @functools.lru_cache
-    def check_plate_presence(self, pids, purpose, messages):
+
+    def check_plate_presence(self, pids, purpose):
         """ 
         Check given plate for presence in self.plate_location_sample and compare purpose
         return success (and messages by reference)
@@ -1005,43 +965,40 @@ class Experiment():
                     msg = f"Error: plate already exists with PID {pid} with purpose "+\
                             f"{self.plate_location_sample[pid]['purpose']}, expected {purpose}"
                     self.log(msg)
-                    messages.append(msg)
                     success = False
             else:
                 msg = f"Critical: No plate exists with barcode {pid}"
                 self.log(msg)
-                messages.append(msg)
                 success = False
         return success
+    
 
-    @functools.lru_cache
-    def check_ready_pcr1(self, dna_plates, pcr_plates, taq_water_plates, messages):
+    def check_ready_pcr1(self, dna_pids, pcr_pids, taq_water_pids):
         """
         Check that everything required to successfully generate PCR1 picklists is available
         TODO: Check that volumes and wells are sufficient!
-        messages is an optional list, allowing us to pass useful info back to the UI
         Returns success
         """
         success = True
-        if not dna_plates or not pcr_plates or not taq_water_plates:
+        if not dna_pids or not pcr_pids or not taq_water_pids:
             success = False
 
-        dna_success= self.check_plate_presence(dna_plates, 'dna', messages)
+        dna_success = self.check_plate_presence(dna_pids, 'dna')
         if not dna_success:
             success = False
 
-        pcr_success = self.check_plate_presence(pcr_plates, 'pcr', messages)
+        pcr_success = self.check_plate_presence(pcr_pids, 'pcr')
         if not pcr_success:
             success = False
 
-        taq_success = self.check_plate_presence(taq_water_plates, 'taq_water', messages)
+        taq_success = self.check_plate_presence(taq_water_pids, 'taq_water')
         if not taq_success:
             success = False
       
         return success
 
-    @functools.lru_cache
-    def check_ready_pcr2(self, pcr_plates, taq_water_plates, index_plates, amplicon_plates, messages):
+
+    def check_ready_pcr2(self, pcr_pids, taq_water_pids, index_pids, amplicon_pids):
         """
         Check the everything required to successfully generate PCR2 picklists is available
         TODO: Check that volumes and wells are sufficient!
@@ -1051,45 +1008,45 @@ class Experiment():
         """
         success = True
 
-        if not pcr_plates or not taq_water_plates or not index_plates:
+        if not pcr_pids or not taq_water_pids or not index_pids:
             success = False
 
-        pcr_success = self.check_plate_presence(pcr_plates, 'pcr', messages)
+        pcr_success = self.check_plate_presence(pcr_pids, 'pcr')
         if not pcr_success:
             success = False
 
-        taq_success = self.check_plate_presence(taq_water_plates, 'taq_water', messages)
+        taq_success = self.check_plate_presence(taq_water_pids, 'taq_water')
         if not taq_success:
             success = False
 
-        index_success = self.check_plate_presence(index_plates, 'index', messages)
+        index_success = self.check_plate_presence(index_pids, 'index')
         if not index_success:
             success = False
 
-        amplicon_success = self.check_plate_presence(amplicon_plates, 'amplicon', messages)
+        amplicon_success = self.check_plate_presence(amplicon_pids, 'amplicon')
         if not amplicon_success:
             success = False
       
         return success
     
-    @functools.lru_cache
-    def check_ready_pcr2_amplicon_only(self, taq_water_plates, index_plates, amplicon_plates, messages):
+
+    def check_ready_pcr2_amplicon_only(self, taq_water_pids, index_pids, amplicon_pids):
         """
         As check_ready_pcr2(), but for amplicon-only runs. Amplicon plates are not optional.
         """
         success = True
-        if not amplicon_plates or not taq_water_plates or not index_plates:
+        if not amplicon_pids or not taq_water_pids or not index_pids:
             success = False
           
-        taq_success = self.check_plate_presence(taq_water_plates, 'taq_water', messages)
+        taq_success = self.check_plate_presence(taq_water_pids, 'taq_water')
         if not taq_success:
             success = False
 
-        index_success = self.check_plate_presence(index_plates, 'index', messages)
+        index_success = self.check_plate_presence(index_pids, 'index')
         if not index_success:
             success = False
 
-        amplicon_success = self.check_plate_presence(amplicon_plates, 'amplicon', messages)
+        amplicon_success = self.check_plate_presence(amplicon_pids, 'amplicon')
         if not amplicon_success:
             success = False
             
@@ -1117,7 +1074,7 @@ class Experiment():
         self.log('Success: generated PCR1 picklists')
         return True
 
-    @functools.lru_cache
+
     def get_echo_PCR1_picklist_filepaths(self):
         """
         Return file paths for PCR1_dna-picklist_XXX.csv, PCR1_primer-picklist_XXX.csv, PCR1_taqwater-picklist_XXX.csv
@@ -1175,7 +1132,7 @@ class Experiment():
         self.log('Success: generated PCR2 (index) picklists')
         return success
 
-    @functools.lru_cache
+
     def get_echo_PCR2_picklist_filepaths(self):
         """
         Return file paths for PCR2_index-picklist_XXX.csv, PCR2_taqwater-picklist_XXX.csv
@@ -1215,7 +1172,7 @@ class Experiment():
         self.save()
         return success
     
-    @functools.lru_cache
+
     def get_stages(self):
         """ get all information on reproducible steps and pending steps for display purposes """
         header = ['Stage order','Staged file', 'Affected plates', 'Status']
@@ -1246,7 +1203,7 @@ class Experiment():
                 stages.append([str(counter), file_name, ', '.join(pids), 'pending'])
         return stages, header
 
-    @functools.lru_cache
+
     def get_stage2_pcr_plates(self):
         """
         Used by Indexing stage to find all the used PCR plate IDs
@@ -1264,7 +1221,7 @@ class Experiment():
                 stage2_pcr_plates.add(cols[8].strip())
         return stage2_pcr_plates
 
-    @functools.lru_cache
+
     def get_file_usage(self):
         file_usage = {}
         for filename in self.uploaded_files:
@@ -1279,7 +1236,7 @@ class Experiment():
             file_usage[filename]['plates'] = ', '.join(file_usage[filename]['plates'])
         return file_usage
     
-    @functools.lru_cache
+
     def get_plate_usage(self):
         """return list of plate information to display"""
         plate_usage = []
@@ -1290,12 +1247,13 @@ class Experiment():
             plate_usage.append([pid, len(self.plate_location_sample[p]['wells']), self.plate_location_sample[p]['purpose']])
         return plate_usage
 
-    @functools.lru_cache
+
     def get_index_pids(self):
         """
         Used by Indexing stage
         """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'index']
+
 
     def generate_echo_index_survey(self, user_index_pids, index_survey_filename='index-svy.csv'):
         """ 
@@ -1338,6 +1296,7 @@ class Experiment():
                     print(outline, file=fout)
         self.log(f'Success: index survey file written to {fn}')
         return True
+
 
     def add_standard_taqwater_plates(self, plate_barcodes, pcr_stage):  # <- they're the same for primer and barcode stages
         """ These plates have a fixed layout with water in row A and taq in row B of a 6-well reservoir plate.
@@ -1384,13 +1343,13 @@ class Experiment():
         self.save()
         return True
 
-    @functools.lru_cache
+
     def get_miseq_samplesheets(self):
         """ return the MiSeq-XXX.csv samplesheet, if it exists """
         miseq_fps = list(Path(self.get_exp_dn()).glob('MiSeq_*.csv'))
         return miseq_fps  
 
-    @functools.lru_cache
+
     def check_sequence_upload_ready(self, messages):
         """
         Prevent users from uploading sequence files without references being loaded, or without generating Stage3 or MiSeq files
@@ -1418,7 +1377,7 @@ class Experiment():
         self.save()
         return success
 
-    @functools.lru_cache
+ 
     def check_allele_calling_ready(self, messages):
         """ 
         Return True if everything needed for allele calling is present
@@ -1443,8 +1402,10 @@ class Experiment():
         return success
 
 
-    #Gabi's code for custom volumes
     def add_custom_volumes(self, custom_volumes:dict) -> bool:
+        """
+        Modify transfer volume info
+        """
         try:
             for value in list(custom_volumes.values()):
                 value = int(value)
@@ -1455,13 +1416,7 @@ class Experiment():
         except (TypeError, ValueError) as e:
             self.log(f'Error: {e}')
             return False
-    #End of Gabi's code for custom volumes
     
-    @functools.lru_cache
-    def check_assay_list_file(self):
-        for sample in self.plate_location_sample:
-            print(self.plate_location_sample[sample])
-
      
     def save(self):
         """ save experiment details to self.name/experiment.json, returns True on success and False on fail. Assumes the correct working directory """
@@ -1541,16 +1496,17 @@ class Experiment():
         if (now - self.log_time).seconds > 10 or level in ['Error','Critical','Failure','End']:
             self.save()
 
-    @functools.lru_cache
+
     def get_log_header(self):
         return ['Time', 'Function name', 'Func line', 'Calling function', 'Call line', 'Level', 'Message']
 
-    @functools.lru_cache
+
     def get_log(self, num_entries=100):
         """ return a chunk of the log. -1 gives everything """
         if num_entries == -1:
             return self.log[::-1]
         return self.log_entries[:-(num_entries+1):-1]
+
 
     def clear_log(self, message_type=None):
         """ delete all the log entries with level='Debug' """

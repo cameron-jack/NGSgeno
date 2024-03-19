@@ -25,6 +25,20 @@ def init_state(key, value):
     """
     if key not in st.session_state:
         st.session_state[key] = value
+        
+
+def add_tm(message, level=None):
+    """ adds a temporary message to the st.session_state['messages_temp'] list """
+    if 'messages_temp' not in st.session_state:
+        st.session_state['messages_temp'] = []
+    st.session_state['messages_temp'].append((message, level))
+    
+
+def add_pm(message, level=None):
+    """ adds a persistent message to the st.session_state['messages_persist'] list """
+    if 'messages_persist' not in st.session_state:
+        st.session_state['messages_persist'] = []
+    st.session_state['messages_persist'].append((message, level))
 
 
 def add_vertical_space(num_lines: int):
@@ -43,13 +57,14 @@ def hline():
    st.write('***')
 
 
-def custom_text(size, color, text, align="center", style="normal", padding='0px'):
+def custom_text(size, color, text, align="center", style="normal", padding='0px', display=False):
     """
     Centred customised streamlit text
     Args:
         size (str): style size, either h1-6 or p
         color (str): can use hex # for a specific colour
         text (str): string to display
+        display (bool): if True, display the markdown immediately, else return the string
     Return:
         str: Text with the size and colour implemented for html markdown.
     """
@@ -58,9 +73,11 @@ def custom_text(size, color, text, align="center", style="normal", padding='0px'
                  f'font-style:{style};'+\
                  f'color:{color}">'+\
                  f'{text}</{size}>'
-
-    st.markdown(custom_css, unsafe_allow_html=True)
-
+    if display:
+        st.markdown(custom_css, unsafe_allow_html=True)
+    else:
+        return custom_css
+    
 
 def custom_button(color, text):
     """

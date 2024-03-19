@@ -358,11 +358,12 @@ def main():
         main_body_container = st.container()
         lower_container = st.container()
         
+        # required for interactive content
         st.session_state['message_container'] = message_container
         
         # callbacks can't write directly as the callbacks go out of scope
-        init_state('messages', [])  # messages are tuples of (message, level:info/warning/error)
-        dc.display_messages(message_container)
+        init_state('messages_temp', [])  # messages are tuples of (message, level:info/warning/error/None)
+        init_state('messages_persist', [])
         
         # define four info panels, two upper, two lower
         init_state('info_panel1', 'None')
@@ -505,14 +506,15 @@ def main():
         if pipeline_stage == 2:
             st.session_state['assay_filter'] = True
             pcr_stage = 1
-            init_state("primer_tab", 1)
-            primer_tab = st.session_state['primer_tab']
             
             tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
     
             #Tabs
             with tab_col1:
                 primer_tab = dc.create_tabs([("PCR 1", "Components"), ("Generate", "Picklists")])
+            if not primer_tab:
+                init_state("primer_tab", 1)
+                primer_tab = st.session_state['primer_tab']
             
             #nimbus fp, echo fp, barcodesnot in echo
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
@@ -532,13 +534,13 @@ def main():
 
                         if efs:
                             with primer_checklist:
-                                included_DNA_plates, included_PCR_plates, included_taqwater_plates =\
+                                included_DNA_pids, included_PCR_pids, included_taqwater_pids =\
                                             dc.plate_checklist_pcr1(exp)
                             
-                            if included_DNA_plates:
+                            if included_DNA_pids:
                                 st.subheader('PCR 1 Components', help='Required plates and volumes for the PCR reaction')
-                                dc.display_pcr_components(dna_pids=included_DNA_plates)
-                                dc.display_pcr1_components(dna_pids=included_DNA_plates)
+                                dc.display_pcr_common_components(dna_pids=included_DNA_pids)
+                                dc.display_pcr1_components(dna_pids=included_DNA_pids)
                                 hline()
                         else:
                             st.error("Load Nimbus output files to enable PCR stages")
@@ -574,14 +576,14 @@ def main():
                             st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
                         else:
                             with primer_checklist_exp:
-                                included_DNA_plates, included_PCR_plates,\
-                                        included_taqwater_plates = dc.plate_checklist_pcr1(exp)
+                                included_DNA_pids, included_PCR_pids,\
+                                        included_taqwater_pids = dc.plate_checklist_pcr1(exp)
                                     
-                                st.session_state['included_DNA_pids'] = included_DNA_plates
+                                st.session_state['included_DNA_pids'] = included_DNA_pids
                         
-                            if included_DNA_plates:
-                                get_echo_picklist_btn_pcr1(exp, included_DNA_plates, included_PCR_plates,\
-                                                                    included_taqwater_plates)
+                            if included_DNA_pids:
+                                get_echo_picklist_btn_pcr1(exp, included_DNA_pids, included_PCR_pids,\
+                                                                    included_taqwater_pids)
 
                 if st.session_state['pcr1 picklist'] or pcr1_picklists_exist(exp):
                     dc.get_echo1_download_btns()
@@ -593,14 +595,15 @@ def main():
         #============================================ STAGE 4: PCR 2 Index =============================================
         if pipeline_stage == 3:
             pcr_stage = 2
-            init_state('index_tab', 1)
-            index_tab = st.session_state['index_tab']
             
             tab_col1, tab_col2,tab_col3 = upper_container.columns([5,5,1])
 
             #Tab setup
             with tab_col1:
                 index_tab = dc.create_tabs([("PCR 2", "Components"), ("Generate", "Picklists")])
+            if not index_tab:
+                init_state('index_tab', 1)
+                index_tab = st.session_state['index_tab']
             
             #------------------------------------- Index ~ TAB 1: PCR 2 Components -------------------------------------
             if index_tab == 1:
@@ -627,18 +630,23 @@ def main():
                         ld.custom_volumes(exp)
                     
                         with index_checklist:
-                            included_PCR_plates, included_taqwater_plates, included_index_plates, \
-                                    included_amplicon_plates = dc.plate_checklist_pcr2(exp)
+                            checkbox_keys = dc.display_plate_checklist('idx_checklist', inc_pcr=True, 
+                                    inc_taqwater=True, inc_amplicon=True, inc_index=True)
+                            # included_PCR_pids, included_taqwater_pids, included_index_pids, \
+                            #         included_amplicon_pids = dc.plate_checklist_pcr2(exp)
                         
                         with pcr_comp_holder:
                             st.subheader('PCR 2 Components')
-                            dc.display_pcr_components()
-                            dc.display_pcr2_components(pcr_pids=included_PCR_plates, \
-                                                        amplicon_pids=included_amplicon_plates)
+                            selected_pids = dc.collect_checklists(checkbox_keys)
+                            dc.display_pcr_common_components(pcr_pids=selected_pids['pcr'],
+                                    amplicon_pids=selected_pids['amplicon'])
+                            dc.display_pcr2_components(pcr_pids=selected_pids['pcr'], 
+                                    amplicon_pids=selected_pids['amplicon'], 
+                                    taqwater_pids=selected_pids['taqwater'])
                             hline()
                             add_vertical_space(1)
                     
-                        if not included_PCR_plates and not included_amplicon_plates:
+                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
                             title_holder.error("Load Nimbus output files to enable PCR stages. For amplicon "+\
                                     "only, upload amplicon and index files and provide a taq water plate barcode.")
                 
@@ -657,23 +665,19 @@ def main():
         
                         with index_checklist:
                             do_generate = False
-                            included_PCR_plates, included_taqwater_plates, included_index_plates,\
-                                    included_amplicon_plates =\
-                                    dc.plate_checklist_pcr2(exp)
-                            pcr2_messages = []  # pass by reference
-                            if included_PCR_plates:  # standard run
-                                if not exp.check_ready_pcr2(included_PCR_plates, included_taqwater_plates, 
-                                        included_index_plates, included_amplicon_plates, pcr2_messages):
-                                    for msg in pcr2_messages:
-                                        st.warning(msg)
+                            included_PCR_pids, included_taqwater_pids, included_index_pids,\
+                                    included_amplicon_pids = dc.plate_checklist_pcr2(exp)
+                            if included_PCR_pids:  # standard run
+                                if not exp.check_ready_pcr2(included_PCR_pids, included_taqwater_pids, 
+                                        included_index_pids, included_amplicon_pids):
+                                    st.warning('Cannot generate PCR2 picklists, please see the log for details')
                                 else:
                                     do_generate = True
                             else:
-                                if included_amplicon_plates:
-                                    if not exp.check_ready_pcr2_amplicon_only(included_taqwater_plates,
-                                            included_index_plates, included_amplicon_plates, pcr2_messages):
-                                        for msg in pcr2_messages:
-                                            st.warning(msg)
+                                if included_amplicon_pids:
+                                    if not exp.check_ready_pcr2_amplicon_only(included_taqwater_pids,
+                                            included_index_pids, included_amplicon_pids):
+                                        st.warning('Cannot generate PCR2 picklists, please see the log for details')
                                     else:
                                         do_generate = True
                                     
@@ -681,10 +685,10 @@ def main():
                             show_generate = False
                             if 'amplicon_only' in st.session_state:
                                 show_generate = st.session_state['amplicon_only']
-                            if included_PCR_plates:
+                            if included_PCR_pids:
                                 show_generate = True
 
-                            if included_amplicon_plates and not included_PCR_plates:
+                            if included_amplicon_pids and not included_PCR_pids:
                                 _, amp1, amp2, amp3, _ = st.columns([3, 3, 1, 1, 3])
                                 amp1.warning('Is this an amplicon only run?')
                                 yes_amplicon = amp2.button('Yes')
@@ -708,15 +712,15 @@ def main():
                                 if echo_picklist_go:
                                     st.session_state['idx_picklist'] = True
                         
-                                    success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_plates,
-                                            included_index_plates, included_taqwater_plates, included_amplicon_plates)
+                                    success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_pids,
+                                            included_index_pids, included_taqwater_pids, included_amplicon_pids)
                                     if not success:
                                         st.write('Picklist generation failed. Please see the log')
                         
                         dc.show_echo2_outputs()           
                 
-            # ** Info viewer **
-            upper_info_viewer_code(tab_col3, tab_col2, 'upper_index1', default_view1='Status', 
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_index2', default_view1='Status', 
                         default_view2='Files')
 
         #=============================================== STAGE 5: Miseq ================================================
@@ -735,6 +739,7 @@ def main():
             
             #-------------------------------- Miseq ~ TAB 1: Download Miseq Samplesheet --------------------------------
             if miseq_tab == 1:
+                st.session_state['miseq_tab'] = 1
                 _,header_col,_ = st.columns([2,2,1])
 
                 if exp.locked:
@@ -752,12 +757,10 @@ def main():
                     
                 else:
                     st.warning(f'No MiSeq Samplesheet available for download')
-                
-                st.session_state['miseq_tab'] = 1
 
             #------------------------ Miseq ~ TAB 2: Upload Reference File and Miseq Sequences -------------------------
             if miseq_tab == 2:
-                
+                st.session_state['miseq_tab'] = 2
                 st.subheader('Upload Custom Reference Files')
                 ld.upload_reference_sequences('reference_miseq2')
                 add_vertical_space(2)
@@ -769,8 +772,6 @@ def main():
                     st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
                 else:
                     ld.upload_miseq_fastqs()
-                
-                st.session_state['miseq_tab'] = 2
 
              # ** Info viewer **
             with tab_col3:
@@ -797,6 +798,7 @@ def main():
             # Only offer upload in the Miseq pipeline section
             #-------------------------------- Allele ~ TAB 1: Allele calling --------------------------------
             if allele_tab == 1:
+                st.session_state['allele_tab'] = 1
                 rundir = exp.get_exp_dn()
                 seq_ready_messages = []
                 call_ready_messages = []
@@ -877,8 +879,6 @@ def main():
                     completion_msg = st.empty()
                     match_prog = st.progress(0)
                     asyncio.run(report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog))
-                    
-                st.session_state['allele_tab'] = 1
 
              # ** Info viewer **
             with tab_col3:
@@ -890,7 +890,6 @@ def main():
                 if selection:
                     with info_holder:
                         dc.show_info_viewer(selection, height)
-
         
         #=============================================== STAGE 7: Reports ==============================================
         if pipeline_stage == 6:
@@ -958,6 +957,12 @@ def main():
         if any(lower_panels):
             with lower_container:
                 dc.show_info_viewer(lower_panels, st.session_state.get('lower_panel_height',350), 'lower_view_panels')
+
+        #=============================================== UPDATE MESSAGES ==============================================
+        with message_container:
+            dc.display_temporary_messages()
+            dc.display_persistent_messages(key='main1')
+
 
         ### End of main display ###
 

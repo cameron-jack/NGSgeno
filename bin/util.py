@@ -15,6 +15,8 @@ import csv
 import hashlib
 from math import ceil
 
+import functools
+
 import itertools
 
 ### Set up SSL/TLS certificate
@@ -81,23 +83,24 @@ TAQ_WELLS = ['B'+c for c in '123']
 # global - set of all possible guard types
 GUARD_TYPES = set(['m','r','c','p', 'a'])
 
-        
+
+@functools.lru_cache
 def usable_volume(vol, plate_type):
     return max(vol - DEAD_VOLS[PLATE_TYPES[plate_type]],0)
 
-
+@functools.lru_cache
 def num_doses(raw_vol, per_use_vol, plate_type):
     """ The number of available doses (dispenses) in a well """
     number_of_doses = usable_volume(raw_vol, plate_type) // per_use_vol
     return number_of_doses
-
-                                 
+                    
+@functools.lru_cache
 def num_req_wells(req_vol, plate_type='Echo384'):
     """ Save a bunch of boilerplate by doing the calculation for us """
     req_wells = ceil(req_vol / (CAP_VOLS[PLATE_TYPES[plate_type]] - DEAD_VOLS[PLATE_TYPES[plate_type]]))
     return req_wells
 
-
+@functools.lru_cache
 def num_req_taq_water_plates(req_taq_vol, req_water_vol):
     """ Save some boilerplate """
     per_plate_avail = 3*(CAP_VOLS[PLATE_TYPES['Echo6']] - DEAD_VOLS[PLATE_TYPES['Echo6']])
@@ -588,6 +591,28 @@ def match_assays_to_primers(exp, assays):
                     assay_primers[assay].add(p)
     return assay_primers
 
+    @functools.lru_cache
+    def get_taqwater_volumes_primer(self, num_reactions):
+        """
+        Returns the taq and water volumes required for the primer stage in nl
+        Args:
+            num_reactions(int):
+        """
+        taq_vol = num_reactions * self.transfer_volumes['PRIMER_TAQ_VOL']
+        water_vol = num_reactions * self.transfer_volumes['PRIMER_WATER_VOL']
+        return taq_vol, water_vol
+        
+    @functools.lru_cache
+    def get_taqwater_req_vols_index(self, num_reactions):
+        """
+        Returns the taq and water volumes required for the index stages in nl
+        Args:
+            num_reactions(int): number of reactions for index stage, including amplicon
+        """
+        water_vol = num_reactions * self.transfer_volumes['INDEX_WATER_VOL']
+        taq_vol = num_reactions * self.transfer_volumes['INDEX_TAQ_VOL'] 
+        return taq_vol, water_vol
+
 
 ### Table classes to act like a relational DB
 
@@ -692,19 +717,6 @@ class Table:
     def picker(self, keys=None, restype=list):
         return picker_index([self.keyidx(x) for x in keys] if keys else list(range(len(self.data[0]))), restype=restype)
     
-    # def getidx(self, k):
-    #     "return a function that retrieves required fields"
-    #     if k in tuple:
-    #         idxs = tuple(map(self.getidx, k))
-    #         return lambda x: tuple(x[i] for i in idxs)
-    #     if k is str:
-    #         kv = self.tt._fields.index(k)
-    #         if kv<0:
-    #             kv = self.header.index(k)
-    #         assert not kv<0, 'unknown table column: '+k
-            
-    #     assert kv in int, 'improper index type for getidx(): '+type(k)
-    #     return lambda x:x[kv]
             
     def joiner(self, kidxs):
         fk =self.getidx(kidxs)
