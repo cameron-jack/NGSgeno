@@ -74,10 +74,10 @@ def custom_text(size, color, text, align="center", style="normal", padding='0px'
                  f'color:{color}">'+\
                  f'{text}</{size}>'
     if display:
-        st.markdown(custom_css, unsafe_allow_html=True)
+    st.markdown(custom_css, unsafe_allow_html=True)
     else:
         return custom_css
-    
+
 
 def custom_button(color, text):
     """

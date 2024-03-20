@@ -1127,6 +1127,9 @@ def show_info_viewer(selection, height, groupkey):
                 info_viewer(selection[i], str(groupkey)+selection[i]+str(i), view_height=height)
 
 
+
+    
+
 def plate_checklist_pcr1(exp):
     """
     Allows the selection/deselection all plates involved in the PCR1 (primer) reaction stage
