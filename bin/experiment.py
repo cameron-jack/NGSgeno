@@ -399,6 +399,15 @@ class Experiment():
             custom_wells = 0
             rodentity_wells = 0
             pid_count = 0
+            # check the sample plates still exist
+            new_dest_scheme = []
+            for i, spid in enumerate(self.dest_sample_plates[dna_pid]):
+                if spid in self.plate_location_sample:
+                    new_dest_scheme.append(spid)
+                # drop any deleted plates
+            self.dest_sample_plates[dna_pid] = new_dest_scheme
+
+
             for i,sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
                 plate_set_details.append(util.unguard_pbc(sample_pid, silent=True))
                 for well in self.plate_location_sample[sample_pid]['wells']:  

@@ -73,6 +73,28 @@ Behaves like a C++ "friend" of the Experiment class - very tightly coupled.
 # generate_miseq_samplesheet
 # generate_targets
 
+def pcr1_picklists_exist(exp):
+    """
+    *Stage 3: PCR1*
+    Check if the files that are generated for PCR 1 exist
+    """
+    picklist_files = ['Stage2.csv', 'PCR1_dna-picklist_test_picklists.csv', 
+            'PCR1_primer-picklist_test_picklists.csv', 'PCR1_taqwater-picklist_test_picklists.csv']
+    
+    return all(os.path.exists(exp.get_exp_fn(file)) for file in picklist_files)
+
+
+def pcr2_picklists_exist(exp):
+    """
+    *Stage 4: PCR2*
+    Check if the files that are generated for PCR 2 exist
+    """
+    picklist_files = ['Stage3.csv', 'PCR2_index-picklist_test_picklists.csv', 
+            'PCR2_taqwater-picklist_test_picklists.csv', f'Miseq_{exp["name"]}.csv']
+    
+    return all(os.path.exists(exp.get_exp_fn(file)) for file in picklist_files)
+
+
 @functools.lru_cache
 def get_single_pos(resource_dict, name_offset, res_name, rotate=True):
     """

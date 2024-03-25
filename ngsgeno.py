@@ -27,7 +27,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from stutil import add_vertical_space, custom_text, hline, init_state, \
-        upper_info, upper_height, lower_info, lower_height
+        upper_info, upper_height, lower_info, lower_height, m
 
 from bin.experiment import Experiment, EXP_FN, load_experiment
 try:
@@ -79,16 +79,16 @@ def get_run_folders():
 
 def create_run_folder(newpath):
     """ returns Experiment or None, and a message string. Requires a full path and generates a new experiment file """
-    print('Attempting to create: ', newpath)
+    m(f'Attempting to create: {newpath}')
     if not os.path.exists(newpath):
         try:
             os.mkdir(newpath)
         except Exception as exc:
-            print(f'Could not create new folder: {newpath} {exc}', file=sys.stderr)
+            m(f'Could not create new folder: {newpath} {exc}', debug=True)
             return None, 'Failed to create new folder: ' + newpath
     else:
         if os.path.exists(os.path.join(newpath, EXP_FN)):
-            return None, 'Experiment already exists with this name: ' + newpath
+            return None, f'Experiment already exists with this name: {newpath}'
     print('Generating experiment: ', newpath)
     if 'experiment' in st.session_state and st.session_state['experiment']:
         st.session_state['experiment'].save()
@@ -268,17 +268,7 @@ def unlocked(exp):
     return True
 
 
-def pcr1_picklists_exist(exp):
-    """
-    *Stage 3: PCR1*
-    Check if the files that are generated for PCR 1 exist
-    """
-    picklist_files = ['Stage2.csv', 
-                        'PCR1_dna-picklist_test_picklists.csv', 
-                        'PCR1_primer-picklist_test_picklists.csv', 
-                        'PCR1_taqwater-picklist_test_picklists.csv']
-    
-    return all(os.path.exists(exp.get_exp_fn(file)) for file in picklist_files)
+
 
 def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
     """
@@ -290,26 +280,16 @@ def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
         PCR_plates: included PCR plates
         taqwater_plates: included Taq/water plates
     """
-    pcr1_messages = []
-    if not exp.check_ready_pcr1(DNA_plates,\
-                                PCR_plates, \
-                                taqwater_plates, \
-                                pcr1_messages):
-        
-        for msg in pcr1_messages:
-            st.warning(msg)
-    
+    if not exp.check_ready_pcr1(DNA_plates, PCR_plates, taqwater_plates):
+        m('Cannot create PCR1 picklists, please see the log for details', level='warning')
     else:
         _,button_col,_ = st.columns([2, 2, 1])
         echo_picklist_go = button_col.button('Generate Echo Picklists',
                                               key='echo_pcr1_go_button',
                                               type='primary')
         if echo_picklist_go:
-            success = run_generate(exp, 
-                                   exp.generate_echo_PCR1_picklists, 
-                                   DNA_plates, 
-                                   PCR_plates, 
-                                   taqwater_plates)
+            success = run_generate(exp, exp.generate_echo_PCR1_picklists, DNA_plates, 
+                    PCR_plates, taqwater_plates)
             if not success:
                 st.error('Picklist generation failed. Please see the log')
             else:
@@ -356,6 +336,8 @@ def main():
         upper_container = st.container()
         message_container = st.container()
         main_body_container = st.container()
+        add_vertical_space(2)
+        hline()
         lower_container = st.container()
         
         # required for interactive content
@@ -376,10 +358,10 @@ def main():
         init_state('lower_panel_height', 350)
         
         # standard upper info viewer code for each tab
-        def upper_info_viewer_code(tab_col3, tab_col2, widget_key, default_view1='None', default_view2='None'):
+        def upper_info_viewer_code(tab_col3, tab_col2, widget_key, default_view1='None', default_view2='None', checked=True):
             with tab_col3:
                 add_vertical_space(2)
-                dc.show_upper_info_viewer_checkbox(widget_key)
+                dc.show_upper_info_viewer_checkbox(widget_key, value=checked)
             if st.session_state['show_upper_info_viewer']:
                 with tab_col2:
                     ignore = dc.info_selection(widget_key+"top_viewer", 'info_panel1', 'info_panel2', 
@@ -447,7 +429,7 @@ def main():
 
             if not ld.check_assay_file(exp):
                 with message_container:
-                    st.warning("Upload assay list file before generating Echo files")
+                    m("Upload assay list file before generating Echo files", level='warning')
 
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
 
@@ -464,7 +446,9 @@ def main():
                         if nimbus_title:
                             _, title_col,_ = main_body_container.columns([2,2,1])
                             with title_col:
-                                custom_text('h5', '#83b3c9', dc.set_nimbus_title(exp, nfs, efs), align="left")
+                                m(dc.set_nimbus_title(exp, nfs, efs), css=True, size='h5', color='#83b3c9', 
+                                        align='left')
+                                #custom_text('h5', '#83b3c9', dc.set_nimbus_title(exp, nfs, efs), align="left", display=True)
                         add_vertical_space(1)
 
                         #Generate files button
@@ -476,7 +460,8 @@ def main():
                         if run_gen_nimbus:
                             success = run_generate(exp, exp.generate_nimbus_inputs)    
                             if not success:
-                                message_container.error('Failed to generate the Nimbus files. Check the log for information.')
+                                m('Failed to generate the Nimbus files. See the log for details', 
+                                        level='error', persist=True)
                             else:
                                 add_vertical_space(2)
                                 nfs, efs, xbcs = exp.get_nimbus_filepaths()
@@ -578,14 +563,26 @@ def main():
                             with primer_checklist_exp:
                                 included_DNA_pids, included_PCR_pids,\
                                         included_taqwater_pids = dc.plate_checklist_pcr1(exp)
-                                    
-                                st.session_state['included_DNA_pids'] = included_DNA_pids
                         
-                            if included_DNA_pids:
-                                get_echo_picklist_btn_pcr1(exp, included_DNA_pids, included_PCR_pids,\
-                                                                    included_taqwater_pids)
+                                if included_DNA_pids:
+                                    if not exp.check_ready_pcr1(included_DNA_pids, included_PCR_pids, included_taqwater_pids):
+                                        m('Cannot create PCR1 picklists, please see the log for details', level='warning')
+                                    else:
+                                        _,button_col,_ = st.columns([2, 2, 1])
+                                        echo_picklist_go = button_col.button('Generate Echo Picklists',
+                                                  key='echo_pcr1_go_button',
+                                                  type='primary')
+                                        if echo_picklist_go:
+                                            success = run_generate(exp, exp.generate_echo_PCR1_picklists, included_DNA_pids, 
+                                                    included_PCR_pids, included_taqwater_pids)
+                                            if not success:
+                                                st.error('Picklist generation failed. Please see the log')
+                                            else:
+                                                st.session_state['pcr1 picklist'] = True
+                                    get_echo_picklist_btn_pcr1(exp, included_DNA_pids, included_PCR_pids,\
+                                                                        included_taqwater_pids)
 
-                if st.session_state['pcr1 picklist'] or pcr1_picklists_exist(exp):
+                if generate.pcr1_picklists_exist(exp):
                     dc.get_echo1_download_btns()
                 
                 # ** Info viewer **
@@ -670,35 +667,37 @@ def main():
                             if included_PCR_pids:  # standard run
                                 if not exp.check_ready_pcr2(included_PCR_pids, included_taqwater_pids, 
                                         included_index_pids, included_amplicon_pids):
-                                    st.warning('Cannot generate PCR2 picklists, please see the log for details')
+                                    m('Cannot generate PCR2 picklists, please see the log for details', 
+                                            level='warning')
                                 else:
                                     do_generate = True
                             else:
                                 if included_amplicon_pids:
                                     if not exp.check_ready_pcr2_amplicon_only(included_taqwater_pids,
                                             included_index_pids, included_amplicon_pids):
-                                        st.warning('Cannot generate PCR2 picklists, please see the log for details')
+                                        m('Cannot generate PCR2 picklists, please see the log for details',
+                                                level='warning')
                                     else:
                                         do_generate = True
                                     
                         if do_generate:
                             show_generate = False
-                            if 'amplicon_only' in st.session_state:
-                                show_generate = st.session_state['amplicon_only']
+                            #if 'amplicon_only' in st.session_state:
+                            #    show_generate = st.session_state['amplicon_only']
+
                             if included_PCR_pids:
                                 show_generate = True
-
-                            if included_amplicon_pids and not included_PCR_pids:
+                            elif included_amplicon_pids and not included_PCR_pids:
                                 _, amp1, amp2, amp3, _ = st.columns([3, 3, 1, 1, 3])
                                 amp1.warning('Is this an amplicon only run?')
                                 yes_amplicon = amp2.button('Yes')
                                 no_amplicon = amp3.button('No')
 
                                 if yes_amplicon:
-                                    st.session_state['amplicon_only'] = True
+                            #        st.session_state['amplicon_only'] = True
                                     show_generate = True
                                 elif no_amplicon:
-                                    st.session_state['amplicon_only'] = False
+                            #        st.session_state['amplicon_only'] = False
                                     show_generate = False
                     
                             if show_generate:
@@ -715,9 +714,9 @@ def main():
                                     success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_pids,
                                             included_index_pids, included_taqwater_pids, included_amplicon_pids)
                                     if not success:
-                                        st.write('Picklist generation failed. Please see the log')
-                        
-                        dc.show_echo2_outputs()           
+                                        m('Picklist generation failed. Please see the log')
+                        if generate.pcr2_picklists_exist(exp):
+                            dc.show_echo2_outputs()           
                 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_index2', default_view1='Status', 
@@ -725,7 +724,7 @@ def main():
 
         #=============================================== STAGE 5: Miseq ================================================
         if pipeline_stage == 4:
-            tab_col1, tab_col2, tab_col3 = main_body_container.columns([9,3,1])
+            tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
             info_holder = st.container()
 
             with tab_col1:
@@ -740,54 +739,52 @@ def main():
             #-------------------------------- Miseq ~ TAB 1: Download Miseq Samplesheet --------------------------------
             if miseq_tab == 1:
                 st.session_state['miseq_tab'] = 1
-                _,header_col,_ = st.columns([2,2,1])
+                with main_body_container:
+                    _,header_col,_ = st.columns([2,2,1])
 
-                if exp.locked:
-                    st.warning(f'Experiment {exp.name} locked from further modification')
+                    if exp.locked:
+                        st.warning(f'Experiment {exp.name} locked from further modification')
                 
-                with header_col:
-                    st.subheader('Download MiSeq File')
-                    add_vertical_space(1)
-                #hline()
+                    with header_col:
+                        st.subheader('Download MiSeq File')
+                        add_vertical_space(1)
+                    #hline()
 
-                #ld.upload_reference_sequences('reference_miseq1')
-                if exp.get_miseq_samplesheets():
-                    dc.get_miseq_download_btn(exp)
-                    add_vertical_space(4)
+                    #ld.upload_reference_sequences('reference_miseq1')
+                    if exp.get_miseq_samplesheets():
+                        dc.get_miseq_download_btn(exp)
+                        add_vertical_space(4)
                     
-                else:
-                    st.warning(f'No MiSeq Samplesheet available for download')
+                    else:
+                        st.warning(f'No MiSeq Samplesheet available for download')
+                
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq1', default_view1='Status', 
+                        default_view2='Plates', checked=False)
 
             #------------------------ Miseq ~ TAB 2: Upload Reference File and Miseq Sequences -------------------------
             if miseq_tab == 2:
                 st.session_state['miseq_tab'] = 2
-                st.subheader('Upload Custom Reference Files')
-                ld.upload_reference_sequences('reference_miseq2')
-                add_vertical_space(2)
+                with main_body_container:
+                    st.subheader('Upload Custom Reference Files')
+                    ld.upload_reference_sequences('reference_miseq2')
+                    add_vertical_space(2)
                 
-                ready_messages = []
-                if not exp.check_sequence_upload_ready(ready_messages):
-                    for msg in ready_messages:
-                        st.error(msg)
-                    st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
-                else:
-                    ld.upload_miseq_fastqs()
+                    ready_messages = []
+                    if not exp.check_sequence_upload_ready(ready_messages):
+                        for msg in ready_messages:
+                            st.error(msg)
+                        st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
+                    else:
+                        ld.upload_miseq_fastqs()
 
-             # ** Info viewer **
-            with tab_col3:
-                add_vertical_space(2)
-                dc.show_upper_info_viewer_checkbox()
-            if st.session_state['show_upper_info_viewer']:
-                with tab_col2:
-                    selection, height = dc.info_selection(5)
-                if selection:
-                    with info_holder:
-                        dc.show_info_viewer(selection, height)
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq2', default_view1='Status', 
+                        default_view2='Plates', checked=False)
 
         #=========================================== STAGE 6: Allele Calling ===========================================
         if pipeline_stage == 5:
-            tab_col1, tab_col2, tab_col3 = main_body_container.columns([9,3,1])
-            info_holder = st.container()
+            tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
 
             with tab_col1:
                 allele_tab = dc.create_tabs([("Allele Calling", "")])
@@ -799,146 +796,143 @@ def main():
             #-------------------------------- Allele ~ TAB 1: Allele calling --------------------------------
             if allele_tab == 1:
                 st.session_state['allele_tab'] = 1
-                rundir = exp.get_exp_dn()
-                seq_ready_messages = []
-                call_ready_messages = []
-                ld.upload_reference_sequences('reference_allele1')
-                if not exp.check_sequence_upload_ready(seq_ready_messages):
-                    for msg in seq_ready_messages:
-                        st.error(msg)
-                    st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
+                with main_body_container:
+                    rundir = exp.get_exp_dn()
+                    seq_ready_messages = []
+                    call_ready_messages = []
+                    ld.upload_reference_sequences('reference_allele1')
+                    if not exp.check_sequence_upload_ready(seq_ready_messages):
+                        for msg in seq_ready_messages:
+                            st.error(msg)
+                        st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
 
-                elif not exp.check_allele_calling_ready(call_ready_messages):
-                    for msg in call_ready_messages:
-                        st.error(msg)
-                    st.warning('These resources are required before allele calling can proceed')
-                    ld.upload_miseq_fastqs()
-                else:
-                    ld.upload_miseq_fastqs()
-                    # check whether output files already exist and are opened elsewhere
-                    target_fn = exp.get_exp_fn('target.fa')
-                    results_fn = exp.get_exp_fn('results.csv')
-                    matchlog_fn = exp.get_exp_fn('match.log')
-                    for fn in [target_fn, results_fn, matchlog_fn]:
-                        if Path(fn).exists():
-                            try:
-                                os.rename(fn, fn.replace('.','_tmp_swap.'))
-                                os.rename(fn.replace('.','_tmp_swap.'), fn)
-                            except PermissionError:
-                                st.error(f'{fn} appears to be in use. Please close this file before continuing')
+                    elif not exp.check_allele_calling_ready(call_ready_messages):
+                        for msg in call_ready_messages:
+                            st.error(msg)
+                        st.warning('These resources are required before allele calling can proceed')
+                        ld.upload_miseq_fastqs()
+                    else:
+                        ld.upload_miseq_fastqs()
+                        # check whether output files already exist and are opened elsewhere
+                        target_fn = exp.get_exp_fn('target.fa')
+                        results_fn = exp.get_exp_fn('results.csv')
+                        matchlog_fn = exp.get_exp_fn('match.log')
+                        for fn in [target_fn, results_fn, matchlog_fn]:
+                            if Path(fn).exists():
+                                try:
+                                    os.rename(fn, fn.replace('.','_tmp_swap.'))
+                                    os.rename(fn.replace('.','_tmp_swap.'), fn)
+                                except PermissionError:
+                                    st.error(f'{fn} appears to be in use. Please close this file before continuing')
                             
-                    with st.form('allele_calling_form', clear_on_submit=True):
-                        #num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
-                        cpus_avail = os.cpu_count() -1
-                        num_cpus = st.number_input(\
-                                label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
-                                        value=cpus_avail)
-                        mincov = st.number_input(label="Do not match unique sequences with less than this "+\
-                                "many reads coverage, default 50", format='%i',min_value=0, step=1,value=50)
-                        minprop = st.number_input(label="Do not match unique sequences with less than this "+\
-                                "proportion of the reads seen for the most observed (expected) allele, default 0.2. Must be between 0.0 and 1.0",
-                                format='%f',min_value=0.0, max_value=1.0, value=0.2)
-                        exact_only = st.checkbox("Exact only: disable inexact matching")
-                        exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
-                        debug_mode = st.checkbox('Turn on debugging for allele calling')
-                        do_matching = st.form_submit_button("Run allele calling")
+                        with st.form('allele_calling_form', clear_on_submit=True):
+                            #num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
+                            cpus_avail = os.cpu_count() -1
+                            num_cpus = st.number_input(\
+                                    label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
+                                            value=cpus_avail)
+                            mincov = st.number_input(label="Do not match unique sequences with less than this "+\
+                                    "many reads coverage, default 50", format='%i',min_value=0, step=1,value=50)
+                            minprop = st.number_input(label="Do not match unique sequences with less than this "+\
+                                    "proportion of the reads seen for the most observed (expected) allele, default 0.2. Must be between 0.0 and 1.0",
+                                    format='%f',min_value=0.0, max_value=1.0, value=0.2)
+                            exact_only = st.checkbox("Exact only: disable inexact matching")
+                            exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
+                            debug_mode = st.checkbox('Turn on debugging for allele calling')
+                            do_matching = st.form_submit_button("Run allele calling")
+
+                        if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
+                            st.info('Analysis in progress')
+                        if do_matching:
+                            success = generate.generate_targets(exp)
+                            if not success:
+                                m('Critical: failed to save reference sequences to target file', log=True)
+                                sleep(0.5)
+                            success = generate.generate_primer_assayfams(exp)
+                            if not success:
+                                m('Critical: failed to save primers and assay families to file', log=True)
+                                sleep(0.5)
+                            else:
+                                matching_prog = os.path.join('bin','ngsmatch.py')
+                                cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} --mincov {mincov} --minprop {minprop}'
+                                if exact_only:
+                                    cmd_str += ' --exact'
+                                if exhaustive_mode:
+                                    cmd_str += ' --exhaustive'
+                                if debug_mode:
+                                    cmd_str += ' --debug'
+                                exp.log(f'Info: {cmd_str}')
+                                #print(f"{cmd_str=}", file=sys.stderr)
+                                subprocess.Popen(cmd_str.split(' '))
+                                st.write(f'Calling {cmd_str}')
+                                sleep(1.0)
 
                     if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
-                        st.info('Analysis in progress')
-                    if do_matching:
-                        success = generate.generate_targets(exp)
-                        if not success:
-                            msg = 'Critical: failed to save reference sequences to target file'
-                            exp.log(msg)
-                            st.error(msg)
-                            sleep(0.5)
-                        success = generate.generate_primer_assayfams(exp)
-                        if not success:
-                            msg = 'Critical: failed to save primers and assay families to file'
-                            exp.log(msg)
-                            st.error(msg)
-                            sleep(0.5)
-                        else:
-                            matching_prog = os.path.join('bin','ngsmatch.py')
-                            cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} --mincov {mincov} --minprop {minprop}'
-                            if exact_only:
-                                cmd_str += ' --exact'
-                            if exhaustive_mode:
-                                cmd_str += ' --exhaustive'
-                            if debug_mode:
-                                cmd_str += ' --debug'
-                            exp.log(f'Info: {cmd_str}')
-                            #print(f"{cmd_str=}", file=sys.stderr)
-                            subprocess.Popen(cmd_str.split(' '))
-                            st.write(f'Calling {cmd_str}')
-                            sleep(1.0)
+                        launch_msg = st.empty()
+                        launch_prog = st.progress(0)
+                        completion_msg = st.empty()
+                        match_prog = st.progress(0)
+                        asyncio.run(report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog))
 
-                if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
-                    launch_msg = st.empty()
-                    launch_prog = st.progress(0)
-                    completion_msg = st.empty()
-                    match_prog = st.progress(0)
-                    asyncio.run(report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog))
-
-             # ** Info viewer **
-            with tab_col3:
-                add_vertical_space(2)
-                dc.show_upper_info_viewer_checkbox()
-            if st.session_state['show_upper_info_viewer']:
-                with tab_col2:
-                    selection, height = dc.info_selection(6)
-                if selection:
-                    with info_holder:
-                        dc.show_info_viewer(selection, height)
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele1', default_view1='Status', 
+                        default_view2='Plates', checked=False)
         
         #=============================================== STAGE 7: Reports ==============================================
         if pipeline_stage == 6:
             results_fp = exp.get_exp_fn('results.csv')
-            tab_col1, tab_col2, tab_col3 = main_body_container.columns([9,3,1])
-            info_holder = st.container()
-            
-            
-            if not Path(results_fp).exists():
-                st.markdown('**No allele calling results available**')
-            else:
-                rodentity_results = []
-                custom_results = []
-                other_results = []
-                with open(results_fp, 'rt') as rfn:
-                    for i, line in enumerate(rfn):
-                        l = line.replace('"','')
-                        cols = [c.strip() for c in l.split(',')]
-                        #if len(cols) != 30:
-                        #    print(cols)
-                        if i == 0:
-                            hdr = cols
-                        else:
-                            sample = cols[3]
-                            
-                            if util.is_guarded_cbc(sample):
-                                custom_results.append(cols)
-                            elif util.is_guarded_rbc(sample):
-                                rodentity_results.append(cols)
+            tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
+            with tab_col1:
+                allele_tab = dc.create_tabs([("Sequencing results", "")])
+            if not allele_tab:
+                init_state('results_tab', 1)
+                allele_tab = st.session_state['results_tab']
+                
+            with main_body_container:
+                if not Path(results_fp).exists():
+                    m('**No allele calling results available**', mkdn=True)
+                else:
+                    rodentity_results = []
+                    custom_results = []
+                    other_results = []
+                    with open(results_fp, 'rt') as rfn:
+                        for i, line in enumerate(rfn):
+                            l = line.replace('"','')
+                            cols = [c.strip() for c in l.split(',')]
+                            #if len(cols) != 30:
+                            #    print(cols)
+                            if i == 0:
+                                hdr = cols
                             else:
-                                other_results.append(cols)
+                                sample = cols[3]
+                            
+                                if util.is_guarded_cbc(sample):
+                                    custom_results.append(cols)
+                                elif util.is_guarded_rbc(sample):
+                                    rodentity_results.append(cols)
+                                else:
+                                    other_results.append(cols)
 
-                #print(hdr)
-                #print(custom_results[0:3])
+                    #print(hdr)
+                    #print(custom_results[0:3])
 
-                print(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}')
-                rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
-                with rodentity_view:
-                    dfr = pd.DataFrame(rodentity_results, columns=hdr)
-                    dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
+                    m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', css=True)
+                    rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
+                    with rodentity_view:
+                        dfr = pd.DataFrame(rodentity_results, columns=hdr)
+                        dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
 
-                custom_view = st.expander('Custom results: '+str(len(custom_results)))
-                with custom_view:
-                    dfc = pd.DataFrame(custom_results, columns=hdr)
-                    dc.aggrid_interactive_table(dfc, key='custom_view_key')
-                other_view = st.expander('Other results: '+str(len(other_results)))
-                with other_view:
-                    dfo = pd.DataFrame(other_results, columns=hdr)
-                    dc.aggrid_interactive_table(dfo, key='other_view_key')
+                    custom_view = st.expander('Custom results: '+str(len(custom_results)))
+                    with custom_view:
+                        dfc = pd.DataFrame(custom_results, columns=hdr)
+                        dc.aggrid_interactive_table(dfc, key='custom_view_key')
+                    other_view = st.expander('Other results: '+str(len(other_results)))
+                    with other_view:
+                        dfo = pd.DataFrame(other_results, columns=hdr)
+                        dc.aggrid_interactive_table(dfo, key='other_view_key')
+            # ** Info viewer **
+            upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Status', 
+                    default_view2='Plates', checked=False)
 
         st.session_state['pipeline_stage'] = pipeline_stage
 
@@ -960,7 +954,7 @@ def main():
 
         #=============================================== UPDATE MESSAGES ==============================================
         with message_container:
-            dc.display_temporary_messages()
+            #dc.display_temporary_messages()
             dc.display_persistent_messages(key='main1')
 
 

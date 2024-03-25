@@ -10,6 +10,7 @@ Utility functions for streamlit
 """
 
 import streamlit as st
+import sys
 
 upper_info = "upper_info_viewer"
 upper_height = "upper_info_height"
@@ -27,19 +28,102 @@ def init_state(key, value):
         st.session_state[key] = value
         
 
+def do_tm(message, level=None):
+    if level is None:
+        st.markdown(message)
+    elif level.lower() == 'info':
+        st.info(message)
+    elif level.lower() == 'warning':
+        st.warning(message)
+    elif level.lower() == 'error':
+        st.error(message)
+    elif level.lower() == 'success':
+        st.success(message)
+    else:
+        st.markdown(message)
+        
+
 def add_tm(message, level=None):
-    """ adds a temporary message to the st.session_state['messages_temp'] list """
+    """ DEPRECATED. adds a temporary message to the st.session_state['messages_temp'] list """
     if 'messages_temp' not in st.session_state:
         st.session_state['messages_temp'] = []
     st.session_state['messages_temp'].append((message, level))
     
 
 def add_pm(message, level=None):
-    """ adds a persistent message to the st.session_state['messages_persist'] list """
+    """ Adds a persistent message to the st.session_state['messages_persist'] list """
+    # will we ever use this?
     if 'messages_persist' not in st.session_state:
         st.session_state['messages_persist'] = []
     st.session_state['messages_persist'].append((message, level))
 
+
+def m(message, level=None, log=False, persist=False, css=False, mkdn=False, console=False, debug=False, noscreen=False,
+        size='p', color='black', align="center", style="normal", padding='0px'):
+    """
+    Standardised message interface. Removes the need for multiple function calls for the same message.
+    Args:
+        message (str): message text
+        level (None/'info'/'warning'/'error'): evokes particular display code
+        log (bool): if True, send to exp.log()
+        persist (bool): if True, make this a persistent message AS WELL as an immediate message
+        css (bool): if True, apply css stylings and display as markdown
+        mkdn (bool): True to show that messsage text is already markdown
+        console (bool): if True, write to stdout as well
+        debug (bool): if True, write to stderr and flush
+        noscreen (bool): if True, do not write to the screen
+    The following args are passed to custom_text():
+        size (str): style size, either h1-6 or p
+        color (str): can use hex # for a specific colour
+        text (str): string to display
+    """
+    if console:
+        print(message)
+    if debug:
+        print(message, file=sys.stderr, flush=True)
+        
+    if 'experiment' not in st.session_state or not st.session_state['experiment']:
+        if log:
+            st.error('Experiment not yet loaded, cannot log messages!')
+            
+    # Most widgets will not handle markdown
+    if level and (css or mkdn):
+        st.warning('Streamlit level displays are not compatible with markdown or css stylings')
+    
+    if log:
+        if mkdn:
+            st.warning('Log cannot render markdown')
+        if 'experiment' in st.session_state and st.session_state['experiment']:
+            exp = st.session_state['experiment']
+            exp.log(message, level=level)
+            
+    if css:
+        message = custom_text(size, color, message, align=align, style=style, padding=padding)    
+
+    if persist:
+        add_pm(message, level=level)
+
+    if css or mkdn:
+        st.markdown(message, unsafe_allow_html=True)
+        return
+    
+    if noscreen:
+        return
+    
+    if message.lower().startswith('critical:') or message.lower().startswith('failure:'):
+        level = 'error'
+    elif message.lower().startswith('success:'):
+        level = 'info'
+    
+    if level == 'info':
+        st.info(message)
+    elif level == 'warning':
+        st.warning(message)
+    elif level == 'error':
+        st.error(message)
+    else:
+        st.write(message)
+            
 
 def add_vertical_space(num_lines: int):
   """
@@ -57,7 +141,7 @@ def hline():
    st.write('***')
 
 
-def custom_text(size, color, text, align="center", style="normal", padding='0px', display=False):
+def custom_text(size, color, text, align="center", style="normal", padding='0px', display=True):
     """
     Centred customised streamlit text
     Args:

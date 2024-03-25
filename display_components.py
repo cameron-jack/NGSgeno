@@ -141,27 +141,27 @@ def cancel_delete(category, ids):
     return True
 
 
-def display_temporary_messages():
-    """ 
-    Display any temporary user alerts
-    Messages are tuples of message, level. Where level: info/warning/error/success
-    """
-    if st.session_state['messages_temp']:
-        for message, level in st.session_state['messages']:
-            if level is None:
-                st.markdown(message)
-            elif level.lower() == 'info':
-                st.info(message)
-            elif level.lower() == 'warning':
-                st.warning(message)
-            elif level.lower() == 'error':
-                st.error(message)
-            elif level.lower() == 'success':
-                st.success(message)
-            else:
-                st.markdown(message)
-    # display only once
-    st.session_state['messages_temp'] = []
+# def display_temporary_messages():
+#     """ 
+#     Display any temporary user alerts
+#     Messages are tuples of message, level. Where level: info/warning/error/success
+#     """
+#     if st.session_state['messages_temp']:
+#         for message, level in st.session_state['messages']:
+#             if level is None:
+#                 st.markdown(message)
+#             elif level.lower() == 'info':
+#                 st.info(message)
+#             elif level.lower() == 'warning':
+#                 st.warning(message)
+#             elif level.lower() == 'error':
+#                 st.error(message)
+#             elif level.lower() == 'success':
+#                 st.success(message)
+#             else:
+#                 st.markdown(message)
+#     # display only once
+#     st.session_state['messages_temp'] = []
     
 
 def display_persistent_messages(key):
@@ -172,10 +172,11 @@ def display_persistent_messages(key):
     """
     if st.session_state['messages_persist']:
         with st.form(key):
+            st.markdown('**System messages**')
             check_col, message_col = st.columns([1,10])
             for message, level in st.session_state['messages_persist']:
                 with check_col:
-                    st.checkbox(key=(key,message,level), label_visibility="collapsed")
+                    st.checkbox(message,key=(key,message,level), label_visibility="collapsed")
                 with message_col:
                     if level is None:
                         st.markdown(message)
@@ -189,14 +190,14 @@ def display_persistent_messages(key):
                         st.success(message)
                     else:
                         st.markdown(message)
-            submitted = st.form_submit_button("Submit")
+            submitted = st.form_submit_button("Clear ticked items")
         if submitted:
             kept_messages = []
             for message, level in st.session_state['messages_persist']:
                 checkbox_name = (key, message, level)
                 if checkbox_name not in st.session_state or not st.session_state[checkbox_name]:
                      kept_messages.append((message,level))
-        st.session_state['messages_persist'] = kept_messages              
+            st.session_state['messages_persist'] = kept_messages              
     
 
 def display_samples(key, height=250):
@@ -402,7 +403,7 @@ def display_pcr1_components(dna_pids=None, pcr_pids=None, taqwater_pids=None):
     num_reactions = sum([primer_usage[p] for p in primer_usage])
     
     #Required taq/water
-    primer_taq_vol, primer_water_vol = exp.get_taqwater_req_vols_primers(num_reactions)
+    primer_taq_vol, primer_water_vol = exp.get_taqwater_volumes_primer(num_reactions)
 
     taq_avail, water_avail, pids = exp.get_taqwater_avail(pcr_stage=pcr_stage)
     taq_avail_vol = taq_avail/ul_conv
@@ -593,7 +594,7 @@ def handle_picklist_download(picklist_type, picklist_paths, error_msgs, file_col
         for ppp in picklist_paths:
             ppp_fn = Path(ppp).name
             with file_col:
-                custom_text('p', '#4b778c', ppp_fn, 'right', padding='5px')
+                custom_text('p', '#4b778c', ppp_fn, 'right', padding='5px', display=True)
             with btn_col:
                 st.download_button(label="Download", 
                                    data=open(ppp, 'rt'), 
@@ -616,7 +617,7 @@ def get_echo1_download_btns():
 
     if error_msgs:
         for msg in error_msgs:
-            custom_text('p', '#ff0000', msg, 'center', padding='5px')
+            custom_text('p', '#ff0000', msg, 'center', padding='5px', display=True)
 
 def get_echo2_download_btns():
     exp = st.session_state['experiment']
@@ -632,7 +633,7 @@ def get_echo2_download_btns():
     
     if error_msgs:
         for msg in error_msgs:
-            custom_text('p', '#ff0000', msg, 'center', padding='5px')
+            custom_text('p', '#ff0000', msg, 'center', padding='5px', display=True)
 
 
 def show_echo1_outputs():
@@ -1092,7 +1093,7 @@ def info_selection(key, view1_key, view2_key, height_key, default_view1="None",
     options = ["None","Samples", "Consumables", "Status", "Files", "Plates", "Plate Viewer", 
             "Primers", "Indexes", "Log"]
     
-    disp_col1, disp_col2, height_col = st.columns([2,2,2])
+    disp_col1, disp_col2, height_col = st.columns([4,4,2])
     
     with disp_col1:
         select1_key = key+"_select1"
@@ -1337,16 +1338,19 @@ def create_tabs(tab_data):
     ], return_type=int)
 
 
-def show_upper_info_viewer_checkbox(widget_key): #, default_panel1='None', default_panel2='None'):
+def show_upper_info_viewer_checkbox(widget_key, value=True): #, default_panel1='None', default_panel2='None'):
     """
     Allows the user to turn the upper info viewer panel on and off
     The bottom info viewer display is always on
     Allows the default display panels to be set (page specific content)
+    args:
+        widget_key (str): a unique identifier to prevent same-page clashes
+        value (bool): the default value of the enabling checkbox
     """
     if 'show_info_viewer' not in st.session_state:
         st.session_state['show_upper_info_viewer'] = True
     
-    if st.checkbox('Info Viewer', value=True, key=widget_key):
+    if st.checkbox('Info Viewer', value=value, key=widget_key):
         st.session_state['show_upper_info_viewer'] = True
         # if default_panel1:
         #     st.session_state['info_panel1'] == default_panel1
@@ -1396,7 +1400,7 @@ def get_echo_download_buttons(nfs):
 
         if (i+1) % 2 != 0:
             with dl_col1:
-                custom_text("p", "#4b778c", nimbus_fn, "left")
+                custom_text("p", "#4b778c", nimbus_fn, "left", display=True)
 
             dl_col2.download_button("Download ", 
                                     open(nf), 
@@ -1406,7 +1410,7 @@ def get_echo_download_buttons(nfs):
     
         else:
             with dl_col3:
-                custom_text("p", "#4b778c", nimbus_fn, "left")
+                custom_text("p", "#4b778c", nimbus_fn, "left", display=True)
         
             dl_col4.download_button("Download ", 
                                     open(nf), file_name=nimbus_fn,\
@@ -1427,7 +1431,7 @@ def get_miseq_download_btn(exp):
         fp_name = str(Path(fp).name)
         with miseq_col1:
             add_vertical_space(1)
-            custom_text(size='h5', color='#cf3276', text=fp_name, align='right')
+            custom_text(size='h5', color='#cf3276', text=fp_name, align='right', display=True)
         
         with miseq_col2:
             add_vertical_space(1)

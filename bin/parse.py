@@ -134,6 +134,7 @@ def upload(exp, streams, purpose, overwrite=False):
             if s is False:
                 success = False
     exp.save()
+    print(f'upload failure {success=}', flush=True)
     return success
 
 
@@ -369,7 +370,7 @@ def parse_custom_manifest(exp, fp, overwrite=False):
             matching_cols = [col_name in cols_lower for col_name in required_cols]
             if not all(matching_cols):
                 exp.log(f'Error: manifest {fp} requires at least columns {required_cols}')
-                return False
+                return False, []
             
             for k in header_dict:
                 if header_dict[k].lower() == 'platebarcode':
@@ -481,8 +482,8 @@ def parse_amplicon_manifest(exp, fp, overwrite=False):
             header_dict = {k:c for k,c in enumerate(cols_lower)}
             matching_cols = [col_name in cols_lower for col_name in required_cols] 
             if not all(matching_cols):
-                exp.log(f'Error: amplicon manifest {fp} requires at least columns {required_cols}')
-                return False
+                exp.log(f'Error: amplicon manifest {fp} requires at least {required_cols} columns')
+                return False, []
             
             for k in header_dict:
                 if header_dict[k] == 'platebarcode':
