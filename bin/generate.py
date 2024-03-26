@@ -90,7 +90,7 @@ def pcr2_picklists_exist(exp):
     Check if the files that are generated for PCR 2 exist
     """
     picklist_files = ['Stage3.csv', 'PCR2_index-picklist_test_picklists.csv', 
-            'PCR2_taqwater-picklist_test_picklists.csv', f'Miseq_{exp["name"]}.csv']
+            'PCR2_taqwater-picklist_test_picklists.csv', f'Miseq_{exp.name}.csv']
     
     return all(os.path.exists(exp.get_exp_fn(file)) for file in picklist_files)
 

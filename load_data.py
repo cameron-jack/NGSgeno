@@ -10,6 +10,7 @@ In all other code they must be guarded. We guard them here before we send them t
 """
 
 import os
+from pickle import TRUE
 import sys
 from pathlib import PurePath, Path
 import itertools
@@ -103,13 +104,14 @@ def do_pending_cb(combined_pending):
     for pending, pc in zip(combined_pending, pending_checked):
         if pc:
             clashing_filenames, clashing_pids = trans.check_for_clashing_transactions(exp, filenames=pending)
-            m(f'Overwriting the previous version of {str(pending)} with the new file', log=True, console=True, level=True)
+            m(f'Overwriting the previous version of {str(pending)} with the new file', 
+                    level='info', log=True, console=True)
             if pending in exp.pending_uploads:
                 success = parse.accept_pending_upload(exp, pending)
             elif pending in exp.pending_steps:
                 success = trans.accept_pending_transaction(exp, pending)
             if success:
-                m(f'Success: overwrote existing file {pending}', log=True)
+                m(f'Success: overwrote existing file {pending}', log=True, console=True)
                 if clashing_filenames:
                     m(f'{", ".join(clashing_filenames)} potentially affected by change', log=True, level='warning', console=True)
                 if clashing_pids:
@@ -328,11 +330,13 @@ def load_amplicons(key):
                     if success:
                         m(f'Removed obsolete file {stage3_fn}', level='info', log=True, console=True)
                     else:
-                        m(f'Could not remove obsolete file {stage3_fn}', level='warning', log=True, debug=True)
+                        m(f'Could not remove obsolete file {stage3_fn}', level='warning', 
+                                log=True, debug=True)
                 success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
                 uap_ids = [uap.name for uap in uploaded_amplicon_plates]
                 if success:
-                    m(f'Added amplicon manifests from files {uap_ids}', level='success', log=True, console=True)
+                    m(f'Added amplicon manifests from files {uap_ids}', level='success', 
+                            log=True, console=True)
                 else:
                     m(f'Failed to upload at least one amplicon manifest, please see the log', 
                             level='error', debug=True)
@@ -751,9 +755,11 @@ def load_custom_manifests(key):
 
                         success = exp.build_dna_plate_entry(sample_pids, dest_pid, source='custom')
                         if success:
-                            m(f'Assigned custom plates to {dest_pid}', css=True, color='green', log=True, console=True)
+                            m(f'Assigned custom plates to {dest_pid}', level='success', css=True, 
+                                    color='green', log=True, console=True)
                         else:
-                            m('Failed to assign custom plates', css=True, color='red', log=True, debug=True)
+                            m('Failed to assign custom plates', level='failure', css=TRUE,
+                                    color='red', log=True, debug=True)
     exp.save()
 
 

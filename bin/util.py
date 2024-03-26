@@ -14,10 +14,15 @@ from collections import defaultdict
 import csv
 import hashlib
 from math import ceil
+import threading
+import queue
 
 import functools
 
 import itertools
+
+### Create a non-blocking log writer?
+
 
 ### Set up SSL/TLS certificate
 try:

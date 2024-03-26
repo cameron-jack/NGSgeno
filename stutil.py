@@ -11,6 +11,7 @@ Utility functions for streamlit
 
 import streamlit as st
 import sys
+from time import sleep
 
 upper_info = "upper_info_viewer"
 upper_height = "upper_info_height"
@@ -26,6 +27,8 @@ def init_state(key, value):
     """
     if key not in st.session_state:
         st.session_state[key] = value
+
+
         
 
 def do_tm(message, level=None):
@@ -95,6 +98,8 @@ def m(message, level=None, log=False, persist=False, css=False, mkdn=False, cons
             st.warning('Log cannot render markdown')
         if 'experiment' in st.session_state and st.session_state['experiment']:
             exp = st.session_state['experiment']
+            if not level:
+                level = 'info'
             exp.log(message, level=level)
             
     if css:
@@ -112,17 +117,22 @@ def m(message, level=None, log=False, persist=False, css=False, mkdn=False, cons
     
     if message.lower().startswith('critical:') or message.lower().startswith('failure:'):
         level = 'error'
-    elif message.lower().startswith('success:'):
+    elif message.lower().startswith('success:') or message.lower().startswith('begin:') or\
+            message.lower().startswith('end:'):
         level = 'info'
-    
-    if level == 'info':
+
+    if not level:
+        level = 'info'
+
+    if level.lower() in set(['info', 'success', 'begin', 'end']):
         st.info(message)
-    elif level == 'warning':
+    elif level.lower() == 'warning':
         st.warning(message)
-    elif level == 'error':
+    elif level.lower() in set(['error', 'critical']):
         st.error(message)
     else:
         st.write(message)
+    sleep(0.5)
             
 
 def add_vertical_space(num_lines: int):

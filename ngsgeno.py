@@ -20,6 +20,9 @@ from pathlib import Path
 from math import fabs, floor, ceil  # leave these incase they're needed later
 from subprocess import check_output, CalledProcessError, STDOUT
 import subprocess
+import queue
+import threading
+import atexit
 
 import pandas as pd
 
@@ -268,8 +271,6 @@ def unlocked(exp):
     return True
 
 
-
-
 def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
     """
     *Stage 3: PCR1*
@@ -296,12 +297,24 @@ def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
                 st.session_state['pcr1 picklist'] = True
 
 
+def last_rites(exp_list):
+    """
+    Save experiments before the application closes
+    """
+    for exp in exp_list:
+        try:
+            print(f'Saving experiment {exp.name}', file=sys.stderr, flush=True) 
+            exp.save()
+        except Exception as exc:
+            print(f'Saving experiment failed! {exc}', file=sys.stderr, flush=True)
+    print('Closing application, goodbye.', file=sys.stderr, flush=True)
+
 
 def main():
     """
     The NGSgeno "Xplorer" application. Allows full control of all sections of the pipeline,
     and displays all aspects of the experiment state at any time.
-    """
+    """    
     st.set_page_config(
         page_title="NGS Genotyping",
         page_icon="ngsg_icon.png",
@@ -311,6 +324,11 @@ def main():
     dc.add_css()
 
     init_state('experiment', None)
+    init_state('last_rites', False)  # lock to ensure we only register this function once
+    init_state('save_list', [])  # a list of experiments that need to be saved at closing time
+    if not st.session_state['last_rites']:
+        atexit.register(last_rites, st.session_state['save_list'])
+        st.session_state['last_rites'] = True
 
     if 'experiment' not in st.session_state or st.session_state['experiment'] is None:
         load_experiment_screen()
