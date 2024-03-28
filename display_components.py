@@ -28,7 +28,7 @@ import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
-from stutil import custom_text, add_vertical_space, add_pm, add_tm
+from stutil import custom_text, add_vertical_space, add_pm, m
 try:
     from bin.experiment import Experiment, EXP_FN, load_experiment
 except ModuleNotFoundError:
@@ -336,16 +336,18 @@ def display_pcr_common_components(dna_pids=None, pcr_pids=None, amplicon_pids=No
     required_pcr_plates = ceil(dna_reactions/PCR_PLATE_WELLS)
     num_supplied_pcr = 0
     supplied_pcr_txt = '<p style="color:#FF0000">None</p>'
-    if pcr_pids:
+    if len(pcr_pids) > 0:
         supplied_pcr_txt = ', '.join([util.unguard_pbc(p, silent=True)\
                 for p in pcr_pids])
         num_supplied_pcr = len(pcr_pids)
         
     # amplicons
     amplicon_pid_txt = 'None'
-    if not amplicon_pids:
+    if len(amplicon_pids) > 0:
         amplicon_pid_txt = ', '.join([util.unguard_pbc(p, silent=True)\
                 for p in amplicon_pids])
+    
+
 
     req_PCR_text = '**Number of required PCR plates**'
     req_PCR_num = str(required_pcr_plates)
@@ -1368,21 +1370,26 @@ def set_nimbus_title(exp, efs, nfs):
         exp (st.session_state['experiment'])
         efs (str): file path to echo files
         nfs (str): file path for nimbus files
-    Return
-        str or None: title
     """
+    title = ''
+    colour = '#f63366'
     #first stage sample files haven't been loaded
     if not st.session_state['experiment'].dest_sample_plates:
-        return "Load data inputs to enable Nimbus input file generation."
+        title = "Load data inputs to enable Nimbus input file generation."
     else:
         # do we have any Nimbus inputs to generate + download
         echo_files_exist = len(efs) == len(nfs) and len(efs) != 0
         yet_to_run = len(exp.dest_sample_plates) - len(nfs)
 
         if echo_files_exist:
-            return 'All Echo inputs received.'
+            title = 'All Echo inputs received.'
+            colour = '#83b3c9'
         if yet_to_run > 0:
-            return f'For {str(yet_to_run)} 96-well plate set(s)'
+            title = f'For {str(yet_to_run)} 96-well plate set(s)'
+            colour = '#83b3c9'
+    
+    
+    m(title, css=True, size='h5', color=colour, align='left')
         
 def get_echo_download_buttons(nfs):
     """
@@ -1392,30 +1399,52 @@ def get_echo_download_buttons(nfs):
         nfs (str): nimbus file paths
     """
 
-    _,dl_col1,dl_col2,dl_col3,dl_col4,_= st.columns([1,9,6,9,6,1])
     
-    #print(f"{nfs=} {efs=} {xbcs=}")
-    for i,nf in enumerate(nfs):
-        nimbus_fn=Path(nf).name
-
-        if (i+1) % 2 != 0:
+    
+    print(f"{len(nfs)=}")
+    if len(nfs) < 5:
+        _,dl_col1,dl_col2,_= st.columns([6,3,2,6])
+        for i, nf in enumerate(nfs):
+            nimbus_fn=Path(nf).name
+            
             with dl_col1:
                 custom_text("p", "#4b778c", nimbus_fn, "left", display=True)
+                add_vertical_space(1)
 
             dl_col2.download_button("Download ", 
                                     open(nf), 
                                     file_name=nimbus_fn, 
-                                    key='nimbus_input'+str(i), 
+                                    key='nimbus_input_1_'+str(i), 
                                     help=f"Download Nimbus input file {nf}")
-    
-        else:
-            with dl_col3:
-                custom_text("p", "#4b778c", nimbus_fn, "left", display=True)
+
+
+    else:
+        _,dl_col1,dl_col2,dl_col3,dl_col4,_= st.columns([3,6,6,6,6,3])
+
+        for i,nf in enumerate(nfs):
+            nimbus_fn=Path(nf).name
+
+            if (i+1) % 2 != 0:
+                with dl_col1:
+                    
+                    custom_text("p", "#4b778c", nimbus_fn, "left", display=True)
+                    add_vertical_space(1)
+
+                dl_col2.download_button("Download ", 
+                                        open(nf), 
+                                        file_name=nimbus_fn, 
+                                        key='nimbus_input_2_'+str(i), 
+                                        help=f"Download Nimbus input file {nf}")
         
-            dl_col4.download_button("Download ", 
-                                    open(nf), file_name=nimbus_fn,\
-                                    key='nimbus_input'+str(i), 
-                                    help=f"Download Nimbus input file {nf}")
+            else:
+                with dl_col3:
+                    custom_text("p", "#4b778c", nimbus_fn, "left", display=True)
+                    add_vertical_space(1)
+            
+                dl_col4.download_button("Download ", 
+                                        open(nf), file_name=nimbus_fn,\
+                                        key='nimbus_input'+str(i), 
+                                        help=f"Download Nimbus input file {nf}")
             
 
 def get_miseq_download_btn(exp):

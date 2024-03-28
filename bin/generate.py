@@ -78,9 +78,8 @@ def pcr1_picklists_exist(exp):
     *Stage 3: PCR1*
     Check if the files that are generated for PCR 1 exist
     """
-    picklist_files = ['Stage2.csv', 'PCR1_dna-picklist_test_picklists.csv', 
-            'PCR1_primer-picklist_test_picklists.csv', 'PCR1_taqwater-picklist_test_picklists.csv']
-    
+    picklist_files = ['Stage2.csv', f'PCR1_dna-picklist_{exp.name}.csv', 
+            f'PCR1_primer-picklist_{exp.name}.csv', f'PCR1_taqwater-picklist_{exp.name}.csv']
     return all(os.path.exists(exp.get_exp_fn(file)) for file in picklist_files)
 
 
@@ -89,8 +88,8 @@ def pcr2_picklists_exist(exp):
     *Stage 4: PCR2*
     Check if the files that are generated for PCR 2 exist
     """
-    picklist_files = ['Stage3.csv', 'PCR2_index-picklist_test_picklists.csv', 
-            'PCR2_taqwater-picklist_test_picklists.csv', f'Miseq_{exp.name}.csv']
+    picklist_files = ['Stage3.csv', f'PCR2_index-picklist_{exp.name}.csv', 
+            f'PCR2_taqwater-picklist_{exp.name}.csv', f'Miseq_{exp.name}.csv']
     
     return all(os.path.exists(exp.get_exp_fn(file)) for file in picklist_files)
 
@@ -512,7 +511,7 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True):
     for i,rec in enumerate(dna_records):
         pmr = rec['primer']
         if pmr not in primer_plate_well_vol_doses:
-            print(f'{i=} {pmr=}')
+            #print(f'{i=} {pmr=}') 
             exp.log(f'Warning: primer {pmr} not available on primer plate(s)')
             dna_records[i]['primerPlate'] = None
             dna_records[i]['primerWell'] = None

@@ -271,7 +271,7 @@ def unlocked(exp):
     return True
 
 
-def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
+def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates, key):
     """
     *Stage 3: PCR1*
     Display for generate echo pcr 1 picklist
@@ -286,7 +286,7 @@ def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates):
     else:
         _,button_col,_ = st.columns([2, 2, 1])
         echo_picklist_go = button_col.button('Generate Echo Picklists',
-                                              key='echo_pcr1_go_button',
+                                              key='echo_pcr1_go_button_' + str(key) ,
                                               type='primary')
         if echo_picklist_go:
             success = run_generate(exp, exp.generate_echo_PCR1_picklists, DNA_plates, 
@@ -457,32 +457,28 @@ def main():
                 if unlocked(exp):
                     with main_body_container:
                         _, header_col, _ = st.columns([2,2,1])
-                        header_col.subheader('Generate Echo Files')
+                        with header_col:
+                            st.subheader('Generate Echo Files')
 
-                        #Subtitle
-                        nimbus_title = dc.set_nimbus_title(exp, nfs, efs)
-                        if nimbus_title:
-                            _, title_col,_ = main_body_container.columns([2,2,1])
-                            with title_col:
-                                m(dc.set_nimbus_title(exp, nfs, efs), css=True, size='h5', color='#83b3c9', 
-                                        align='left')
-                                #custom_text('h5', '#83b3c9', dc.set_nimbus_title(exp, nfs, efs), align="left", display=True)
-                        add_vertical_space(1)
+                            #Subtitle
+                            dc.set_nimbus_title(exp, nfs, efs)
+                            add_vertical_space(2)
 
                         #Generate files button
                         _, btn_col,_ = st.columns([2,2,1])
-                        with btn_col:
-                            run_gen_nimbus = st.button('Generate Nimbus input files', type="primary")
+                        if st.session_state['experiment'].dest_sample_plates:
+                            with btn_col:
+                                run_gen_nimbus = st.button('Generate Nimbus input files', type="primary")
 
-                        #Generate files
-                        if run_gen_nimbus:
-                            success = run_generate(exp, exp.generate_nimbus_inputs)    
-                            if not success:
-                                m('Failed to generate the Nimbus files. See the log for details', 
-                                        level='error', persist=True)
-                            else:
-                                add_vertical_space(2)
-                                nfs, efs, xbcs = exp.get_nimbus_filepaths()
+                            #Generate files
+                            if run_gen_nimbus:
+                                success = run_generate(exp, exp.generate_nimbus_inputs)    
+                                if not success:
+                                    m('Failed to generate the Nimbus files. See the log for details', 
+                                            level='error', persist=True)
+                                else:
+                                    add_vertical_space(2)
+                                    nfs, efs, xbcs = exp.get_nimbus_filepaths()
                     
                         add_vertical_space(3)
                         dc.get_echo_download_buttons(nfs)
@@ -529,37 +525,40 @@ def main():
                 if unlocked:
                     with main_body_container:
                         tip_col, _ = st.columns([2,1])
-                        tip_col.info('Provide the barcodes for PCR plates and Taq/water plates and '+\
-                                'upload primer layouts and volumes to generate the picklists.')
                         primer_checklist = st.container()
-                        primer_checklist.subheader('Plate Checklist')
                         hline()
 
                         if efs:
+                            primer_checklist.subheader('Plate Checklist')
+                            tip_col.info('Provide the barcodes for PCR plates and Taq/water plates and '+\
+                                'upload primer layouts and volumes to generate the picklists.')
+
                             with primer_checklist:
                                 included_DNA_pids, included_PCR_pids, included_taqwater_pids =\
                                             dc.plate_checklist_pcr1(exp)
                             
                             if included_DNA_pids:
                                 st.subheader('PCR 1 Components', help='Required plates and volumes for the PCR reaction')
-                                dc.display_pcr_common_components(dna_pids=included_DNA_pids)
+                                dc.display_pcr_common_components(dna_pids=included_DNA_pids, pcr_pids=included_PCR_pids)
                                 dc.display_pcr1_components(dna_pids=included_DNA_pids)
                                 hline()
+
+
+                            #barcodes for PCR and taq and water, upload files for primer, adjust volumes
+                            add_vertical_space(1)
+                            st.subheader('Add Barcodes', help='Add barcodes for plates')
+                            ld.provide_barcodes('barcodes_tab1', pcr_stage=pcr_stage)
+                            add_vertical_space(1)
+
+                            st.subheader('Upload Files')
+                            ld.upload_pcr1_files(key='pcr1_primer1')
+                            add_vertical_space(1)
+
+                            st.subheader('Custom Volumes')
+                            ld.custom_volumes(exp)
+
                         else:
                             st.error("Load Nimbus output files to enable PCR stages")
-
-                        #barcodes for PCR and taq and water, upload files for primer, adjust volumes
-                        add_vertical_space(1)
-                        st.subheader('Add Barcodes', help='Add barcodes for plates')
-                        ld.provide_barcodes('barcodes_tab1', pcr_stage=pcr_stage)
-                        add_vertical_space(1)
-
-                        st.subheader('Upload Files')
-                        ld.upload_pcr1_files(key='pcr1_primer1')
-                        add_vertical_space(1)
-
-                        st.subheader('Custom Volumes')
-                        ld.custom_volumes(exp)
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr1', default_view1='Primers', 
@@ -571,14 +570,13 @@ def main():
                 if unlocked:
                     with main_body_container:
                         init_state('pcr1 picklist', False)
-
-                        st.subheader('Plate checklist')
                         primer_checklist_exp = st.container()
                         hline()
                         if not efs:
-                            st.warning('No DNA plate information available. Have you uploaded Echo input files yet?')
+                            st.error("Load Nimbus output files to enable PCR stages")
                         else:
                             with primer_checklist_exp:
+                                st.subheader('Plate checklist')
                                 included_DNA_pids, included_PCR_pids,\
                                         included_taqwater_pids = dc.plate_checklist_pcr1(exp)
                         
@@ -596,12 +594,10 @@ def main():
                                             if not success:
                                                 st.error('Picklist generation failed. Please see the log')
                                             else:
-                                                st.session_state['pcr1 picklist'] = True
-                                    get_echo_picklist_btn_pcr1(exp, included_DNA_pids, included_PCR_pids,\
-                                                                        included_taqwater_pids)
+                                                st.session_state['pcr1 picklist'] = True                                    
 
-                if generate.pcr1_picklists_exist(exp):
-                    dc.get_echo1_download_btns()
+                        if generate.pcr1_picklists_exist(exp):
+                            dc.get_echo1_download_btns()
                 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr2', default_view1='Primers', 
@@ -655,6 +651,7 @@ def main():
                             selected_pids = dc.collect_checklists(checkbox_keys)
                             dc.display_pcr_common_components(pcr_pids=selected_pids['pcr'],
                                     amplicon_pids=selected_pids['amplicon'])
+                            
                             dc.display_pcr2_components(pcr_pids=selected_pids['pcr'], 
                                     amplicon_pids=selected_pids['amplicon'], 
                                     taqwater_pids=selected_pids['taqwater'])
@@ -734,7 +731,8 @@ def main():
                                     if not success:
                                         m('Picklist generation failed. Please see the log')
                         if generate.pcr2_picklists_exist(exp):
-                            dc.show_echo2_outputs()           
+                            dc.show_echo2_outputs() 
+          
                 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_index2', default_view1='Status', 

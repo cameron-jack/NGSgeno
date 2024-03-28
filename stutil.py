@@ -61,7 +61,7 @@ def add_pm(message, level=None):
     st.session_state['messages_persist'].append((message, level))
 
 
-def m(message, level=None, log=False, persist=False, css=False, mkdn=False, console=False, debug=False, noscreen=False,
+def m(message, level=None, log=False, persist=False, toast=False, css=False, mkdn=False, console=False, debug=False, noscreen=False,
         size='p', color='black', align="center", style="normal", padding='0px'):
     """
     Standardised message interface. Removes the need for multiple function calls for the same message.
@@ -103,10 +103,17 @@ def m(message, level=None, log=False, persist=False, css=False, mkdn=False, cons
             exp.log(message, level=level)
             
     if css:
-        message = custom_text(size, color, message, align=align, style=style, padding=padding)    
+        message = custom_text(size, color, message, align=align, style=style, padding=padding, display = False)    
+
 
     if persist:
         add_pm(message, level=level)
+
+    if toast and not (css or mkdn):
+        st.toast(message)
+        return
+
+    #m(title, css=True, size='h5', color=colour, align='left')
 
     if css or mkdn:
         st.markdown(message, unsafe_allow_html=True)
