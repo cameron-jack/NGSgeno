@@ -392,7 +392,7 @@ class Experiment():
                 if util.is_guarded_abc(self.plate_location_sample[amp_pid][well]['barcode']):
                     amp_wells += 1
                     total_well_counts['a'] += 1
-            plate_set_summary.append([util.unguard_abc(amp_pid, silent=True), '', '', '', '', amp_wells, 0])
+            plate_set_summary.append([util.unguard_pbc(amp_pid, silent=True), '', '', '', '', amp_wells, 0])
             
         for dna_pid in self.dest_sample_plates:
             plate_set_details = [util.unguard_pbc(dna_pid, silent=True)]
@@ -548,12 +548,22 @@ class Experiment():
         return True
 
 
-    def get_dna_pids(self, dna_pids=None):
-        """ return a list of available DNA plate ids """
+    def get_dna_pids(self, dna_pids=None, echo_ready=False):
+        """ 
+        Return a list of available DNA plate ids 
+        If echo_ready then include only those with echo_coc files uploaded
+        """
         dpids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'dna']
         if dna_pids:
             dna_pids = [util.guard_pbc(d, silent=True) for d in dna_pids]
             dpids = [d for d in dpids if d in dna_pids]
+        if echo_ready:
+            nfs, efs, xbcs = self.get_nimbus_filepaths()
+            echo_ready_pids = []
+            for nim in efs:
+                echo_filename =  Path(nim).stem
+                echo_ready_pids.append(util.guard_pbc(echo_filename.split('_')[-2], silent=True))
+            dpids = [d for d in dpids if d in echo_ready_pids]
         return dpids
                     
 
@@ -725,17 +735,19 @@ class Experiment():
         return assay_usage, primer_usage
 
 
-    def get_index_avail(self):
+    def get_index_avail(self, index_pids=None):
         """
         Use all index plates available and return dictionaries of fwd and rev indexes
         Returns:
             [fwd_index]={'well_count':int, 'avail_transfers':int, 'avail_vol':nl}
             [rev_index]={'well_count':int, 'avail_transfers':int, 'avail_vol':nl}
         """
-        index_pids = []
-        for pid in self.plate_location_sample:
-            if self.plate_location_sample[pid]['purpose'] == 'index':
-                index_pids.append(pid)
+        
+        if index_pids:
+            index_pids = [pid for pid in index_pids if self.plate_location_sample[pid]['purpose'] == 'index']
+        else:
+            index_pids = [pid for pid in self.plate_location_sample \
+                    if self.plate_location_sample[pid]['purpose'] == 'index']
                 
         fwd_idx = {}
         rev_idx = {}
@@ -771,9 +783,9 @@ class Experiment():
         return fwd_idx, rev_idx
 
 
-    def get_index_pairs_avail(self):
+    def get_index_pairs_avail(self, index_pids=None):
         """ returns all available pairings of barcode ends """
-        fwd_idx, rev_idx = self.get_index_avail()
+        fwd_idx, rev_idx = self.get_index_avail(index_pids)
         fwd_idx_names = list(fwd_idx.keys())
         rev_idx_names = list(rev_idx.keys())
         pairs_allocated = []
@@ -982,14 +994,17 @@ class Experiment():
         return success
     
 
-    def check_ready_pcr1(self, dna_pids, pcr_pids, taq_water_pids):
+    def check_ready_pcr1(self, selected_pids):
         """
         Check that everything required to successfully generate PCR1 picklists is available
         TODO: Check that volumes and wells are sufficient!
         Returns success
         """
         success = True
-        if not dna_pids or not pcr_pids or not taq_water_pids:
+        dna_pids = selected_pids['dna']
+        pcr_pids = selected_pids['pcr']
+        taqwater1_pids = selected_pids['taqwater1']
+        if not dna_pids or not pcr_pids or not taqwater1_pids:
             success = False
 
         dna_success = self.check_plate_presence(dna_pids, 'dna')
@@ -1000,14 +1015,14 @@ class Experiment():
         if not pcr_success:
             success = False
 
-        taq_success = self.check_plate_presence(taq_water_pids, 'taq_water')
+        taq_success = self.check_plate_presence(taqwater1_pids, 'taq_water')
         if not taq_success:
             success = False
       
         return success
 
 
-    def check_ready_pcr2(self, pcr_pids, taq_water_pids, index_pids, amplicon_pids):
+    def check_ready_pcr2(self, selected_pids, amplicon_only=False):
         """
         Check the everything required to successfully generate PCR2 picklists is available
         TODO: Check that volumes and wells are sufficient!
@@ -1017,14 +1032,28 @@ class Experiment():
         """
         success = True
 
-        if not pcr_pids or not taq_water_pids or not index_pids:
-            success = False
+        pcr_pids = selected_pids['pcr']
+        taqwater2_pids = selected_pids['taqwater2']
+        index_pids = selected_pids['index']
+        amplicon_pids = selected_pids['amplicon']
+        
+        if amplicon_only:
+            if not amplicon_pids or not taqwater2_pids or not index_pids:
+                return False
+        else:
+            if not pcr_pids or not taqwater2_pids or not index_pids:
+                return False
 
-        pcr_success = self.check_plate_presence(pcr_pids, 'pcr')
-        if not pcr_success:
-            success = False
-
-        taq_success = self.check_plate_presence(taq_water_pids, 'taq_water')
+        if not amplicon_only:
+            pcr_success = self.check_plate_presence(pcr_pids, 'pcr')
+            if not pcr_success:
+                success = False
+        else:
+            amplicon_success = self.check_plate_presence(amplicon_pids, 'amplicon')
+            if not amplicon_success:
+                success = False
+                
+        taq_success = self.check_plate_presence(taqwater2_pids, 'taq_water')
         if not taq_success:
             success = False
 
@@ -1032,51 +1061,20 @@ class Experiment():
         if not index_success:
             success = False
 
-        amplicon_success = self.check_plate_presence(amplicon_pids, 'amplicon')
-        if not amplicon_success:
-            success = False
-      
         return success
     
 
-    def check_ready_pcr2_amplicon_only(self, taq_water_pids, index_pids, amplicon_pids):
-        """
-        As check_ready_pcr2(), but for amplicon-only runs. Amplicon plates are not optional.
-        """
-        success = True
-        if not amplicon_pids or not taq_water_pids or not index_pids:
-            success = False
-          
-        taq_success = self.check_plate_presence(taq_water_pids, 'taq_water')
-        if not taq_success:
-            success = False
-
-        index_success = self.check_plate_presence(index_pids, 'index')
-        if not index_success:
-            success = False
-
-        amplicon_success = self.check_plate_presence(amplicon_pids, 'amplicon')
-        if not amplicon_success:
-            success = False
-            
-        return success
-
-
-    def generate_echo_PCR1_picklists(self, dna_plates, pcr_plates, taq_water_plates):
+    def generate_echo_PCR1_picklists(self, selected_pids):
         """
         Calls echo_primer.generate_echo_PCR1_picklist() to do the work, needs a set of accepted DNA_plates,
         the final assay list, and a set of destination PCR plate barcodes, taq+water plates, primer plates, primer volumes.
         Returns True on success
         TODO: We need to reduce available taq and water during this operation.
         """
-        #print(f"Experiment.generate_echo_PCR1 {dna_plates=} {pcr_plates=} {taq_water_plates=}")
-        
-        #success = self.generate_echo_primer_survey()
-        #if not success:
-        #    self.log('Failure: failed to generate primer survey file')
-        #    return False
-        # do transaction handling in generate_echo_PCR1_picklist()
-        success = generate.generate_echo_PCR1_picklist(self, dna_plates, pcr_plates, taq_water_plates)
+        dna_pids = selected_pids['dna']
+        pcr_pids = selected_pids['pcr']
+        taqwater1_pids = selected_pids['taqwater1']
+        success = generate.generate_echo_PCR1_picklist(self, dna_pids, pcr_pids, taqwater1_pids)
         if not success:
             self.log('Failure: could not generate PCR1 picklists correctly')
             return False
@@ -1102,39 +1100,23 @@ class Experiment():
         return dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths
 
 
-    def generate_echo_PCR2_picklists(self, pcr_plates, index_plates, taq_water_plates, amplicon_plates=None):
+    def generate_echo_PCR2_picklists(self, selected_pids):
         """
         Calls echo_index.generate_echo_PCR2_picklist() to do the work, needs a set of destination PCR plate barcodes, 
         taq+water plates, index plates, index volumes, and optionally any amplicon plates (post-PCR).
         Returns True on success
         """
-        for pid in pcr_plates:
-            if pid in self.plate_location_sample:
-                if self.plate_location_sample[pid]['purpose'] != 'pcr':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
-                    return False
-        for pid in index_plates:
-            if pid in self.plate_location_sample:
-                if self.plate_location_sample[pid]['purpose'] != 'index':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
-                    return False
-        for pid in taq_water_plates:
-            if pid in self.plate_location_sample:
-                if self.plate_location_sample[pid]['purpose'] != 'taq_water':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
-                    return False
-        for pid in amplicon_plates:
-            if pid in self.plate_location_sample:
-                if self.plate_location_sample[pid]['purpose'] != 'amplicon':
-                    self.log(f"Error: plate already exists with PID {pid} with purpose {self.plate_location_sample[pid]['purpose']}")
-                    return False
+        pcr_pids = selected_pids['pcr']
+        index_pids = selected_pids['index']
+        taqwater2_pids = selected_pids['taqwater2']
+        amplicon_pids = selected_pids['amplicon']
             
-        success = self.generate_echo_index_survey(index_plates)
+        success = self.generate_echo_index_survey(index_pids)
         if not success:
             self.log('Failure: failed to generate index survey file')
             return False
         self.log('Success: generated index survey file')
-        success = generate.generate_echo_PCR2_picklist(self, pcr_plates, index_plates, taq_water_plates, amplicon_plates)
+        success = generate.generate_echo_PCR2_picklist(self, pcr_pids, index_pids, taqwater2_pids, amplicon_pids)
         if not success:
             self.log('Failure: could not generate PCR2 (index) picklists correctly')
             return False
@@ -1158,27 +1140,27 @@ class Experiment():
         return index_picklist_paths, taqwater_picklist_paths
 
 
-    def delete_plates(self, pids):
+    def delete_plate(self, pid):
         """
-        Soft-delete plates with the selected pids
+        Soft-delete plate with the given pid. Note: should we check for matching files and delte those?
         """
-        print(f'In delete_plates with {pids=}')
         success = True
-        for pid in pids:
-            if pid in self.plate_location_sample:
-                if pid not in self.deleted_plates:
-                    self.deleted_plates[pid] = []
-                self.deleted_plates[pid].append(deepcopy(self.plate_location_sample[pid]))
-                # need to find this in reproducible steps and delete
-                del self.plate_location_sample[pid]
-                self.log(f'Warning: moved {pid} to deleted plate bin')
-                if pid in self.dest_sample_plates:
-                    del self.dest_sample_plates[pid]
-                    self.log(f'Warning: removed 384-well DNA plate entry {pid}')
-            else:
-                self.log(f'Warning: {pid} has no definition loaded')
-                success = False
-        self.save()
+        if pid in self.plate_location_sample:
+            if pid not in self.deleted_plates:
+                self.deleted_plates[pid] = []
+            self.deleted_plates[pid].append(deepcopy(self.plate_location_sample[pid]))
+            # need to find this in reproducible steps and delete
+            del self.plate_location_sample[pid]
+            self.log(f'Warning: moved {pid} to deleted plate bin')
+            if pid in self.dest_sample_plates:
+                del self.dest_sample_plates[pid]
+                self.log(f'Warning: removed 384-well DNA plate entry {pid}')
+        elif pid in self.dest_sample_plates:
+            del self.dest_sample_plates[pid]
+            self.log(f'Warning: removed 384-well DNA plate entry {pid}')
+        else:
+            self.log(f'Error: {pid} has no definition loaded')
+            success = False
         return success
     
 

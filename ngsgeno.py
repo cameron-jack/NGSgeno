@@ -12,6 +12,8 @@ Needs load_data.py for GUI functions that are responsible for incorporating data
 experiment, and display_components.py for functions dedicated to the presentation of GUI
 elements
 """
+import select
+from telnetlib import theNULL
 import jsonpickle
 import os
 #from ssl import SSLSession  # We may want this for secure logins in future
@@ -87,7 +89,7 @@ def create_run_folder(newpath):
         try:
             os.mkdir(newpath)
         except Exception as exc:
-            m(f'Could not create new folder: {newpath} {exc}', debug=True)
+            m(f'Could not create new folder: {newpath} {exc}', dest=('debug'))
             return None, 'Failed to create new folder: ' + newpath
     else:
         if os.path.exists(os.path.join(newpath, EXP_FN)):
@@ -134,27 +136,17 @@ def run_generate(exp, target_func, *args, **kwargs):
     """
     trans.clear_pending_transactions(exp)
     trans.enforce_file_consistency(exp)
-    #print(f"launching {target_func=}", file=sys.stderr)
     success = target_func(*args, **kwargs)
-    #print(f"completed {target_func=} {success=}", file=sys.stderr)
     if not success:
         trans.clear_pending_transactions(exp)
     else:
         if exp.pending_steps is not None and len(exp.pending_steps) > 0:
             clashes = trans.clashing_pending_transactions(exp)
             if len(clashes) > 0:
-                #if context:
-                #    context.warning(f'The following output files already exist {clashes}')
-                #    context.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages')
-                #    if context.button('Accept'):
-                #        exp.accept_pending_transactions()
-                #    if context.button('Cancel'):
-                #        exp.clear_pending_transactions()
-                #else:
-                    st.warning(f'The following output files already exist {clashes}')
-                    st.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages')
-                    st.button('Accept', on_click=trans.accept_pending_transactions, args=[exp], key='accept_overwrite_button')
-                    st.button('Cancel', on_click=trans.clear_pending_transactions, args=[exp], key='cancel_overwrite_button')
+                st.warning(f'The following output files already exist {clashes}')
+                st.warning(f'Click "Accept" to replace older files and clear all output files from subsequent pipeline stages')
+                st.button('Accept', on_click=trans.accept_pending_transactions, args=[exp], key='accept_overwrite_button')
+                st.button('Cancel', on_click=trans.clear_pending_transactions, args=[exp], key='cancel_overwrite_button')
             else:
                 trans.accept_pending_transactions(exp)
     return success
@@ -192,6 +184,7 @@ def load_experiment_screen():
         add_run_folder_str = 'run_' + add_run_folder
         exp, msg = create_run_folder(add_run_folder_str)
         if exp:
+            print(f'Saving experiment {exp.name}', file=sys.stderr, flush=True)
             exp.save()                                                                      
             st.session_state['experiment'] = exp
             st.experimental_rerun()
@@ -242,6 +235,8 @@ def display_pipeline_header(exp):
             unsafe_allow_html=True)
     unload_button = info_col.button('🏠', type='primary', help='Go back and change experiment')
     if unload_button:
+        if 'experiment' in st.session_state and st.session_state['experiment']:
+            st.session_state['experiment'].save()
         st.session_state['experiment'] = None
         st.experimental_rerun()
 
@@ -269,32 +264,6 @@ def unlocked(exp):
         st.warning(f'Experiment {exp.name} locked from further modification')
         return False
     return True
-
-
-def get_echo_picklist_btn_pcr1(exp, DNA_plates, PCR_plates, taqwater_plates, key):
-    """
-    *Stage 3: PCR1*
-    Display for generate echo pcr 1 picklist
-    Args:
-        exp (st.session_state['experiment])
-        DNA_plates: included DNA plates
-        PCR_plates: included PCR plates
-        taqwater_plates: included Taq/water plates
-    """
-    if not exp.check_ready_pcr1(DNA_plates, PCR_plates, taqwater_plates):
-        m('Cannot create PCR1 picklists, please see the log for details', level='warning')
-    else:
-        _,button_col,_ = st.columns([2, 2, 1])
-        echo_picklist_go = button_col.button('Generate Echo Picklists',
-                                              key='echo_pcr1_go_button_' + str(key) ,
-                                              type='primary')
-        if echo_picklist_go:
-            success = run_generate(exp, exp.generate_echo_PCR1_picklists, DNA_plates, 
-                    PCR_plates, taqwater_plates)
-            if not success:
-                st.error('Picklist generation failed. Please see the log')
-            else:
-                st.session_state['pcr1 picklist'] = True
 
 
 def last_rites(exp_list):
@@ -386,6 +355,7 @@ def main():
                             'upper_panel_height', default_view1=default_view1, default_view2=default_view2, 
                             default_height=st.session_state.get('upper_panel_height',250))
 
+
         # info panel displays are updated at the bottom of the script, so that they reflect any changes
         with lower_container:
             success = dc.info_selection("bottom_viewer", 'info_panel3', 'info_panel4', 
@@ -445,9 +415,10 @@ def main():
                 init_state('nimbus_tab', 1)
                 nimbus_tab = st.session_state['nimbus_tab']
 
-            if not ld.check_assay_file(exp):
-                with message_container:
-                    m("Upload assay list file before generating Echo files", level='warning')
+            # why? We don't need the assay file at this stage
+            #if not ld.check_assay_file(exp):
+            #    with message_container:
+            #        m("Upload assay list file before generating Echo files", level='warning')
 
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
 
@@ -475,7 +446,7 @@ def main():
                                 success = run_generate(exp, exp.generate_nimbus_inputs)    
                                 if not success:
                                     m('Failed to generate the Nimbus files. See the log for details', 
-                                            level='error', persist=True)
+                                            level='error', dest=('debug',))
                                 else:
                                     add_vertical_space(2)
                                     nfs, efs, xbcs = exp.get_nimbus_filepaths()
@@ -524,41 +495,32 @@ def main():
                 st.session_state['primer_tab'] = 1
                 if unlocked:
                     with main_body_container:
-                        tip_col, _ = st.columns([2,1])
-                        primer_checklist = st.container()
-                        hline()
-
+                        st.subheader('Primer (PCR 1) Components')
                         if efs:
-                            primer_checklist.subheader('Plate Checklist')
-                            tip_col.info('Provide the barcodes for PCR plates and Taq/water plates and '+\
-                                'upload primer layouts and volumes to generate the picklists.')
-
-                            with primer_checklist:
-                                included_DNA_pids, included_PCR_pids, included_taqwater_pids =\
-                                            dc.plate_checklist_pcr1(exp)
-                            
-                            if included_DNA_pids:
-                                st.subheader('PCR 1 Components', help='Required plates and volumes for the PCR reaction')
-                                dc.display_pcr_common_components(dna_pids=included_DNA_pids, pcr_pids=included_PCR_pids)
-                                dc.display_pcr1_components(dna_pids=included_DNA_pids)
-                                hline()
-
-
-                            #barcodes for PCR and taq and water, upload files for primer, adjust volumes
-                            add_vertical_space(1)
-                            st.subheader('Add Barcodes', help='Add barcodes for plates')
-                            ld.provide_barcodes('barcodes_tab1', pcr_stage=pcr_stage)
-                            add_vertical_space(1)
-
-                            st.subheader('Upload Files')
-                            ld.upload_pcr1_files(key='pcr1_primer1')
-                            add_vertical_space(1)
-
-                            st.subheader('Custom Volumes')
-                            ld.custom_volumes(exp)
-
+                            st.info('Provide the barcodes for PCR plates and Taq/water plates and '+\
+                                    'upload primer layouts and volumes here, then move to the *Generate Picklists* tab')
                         else:
-                            st.error("Load Nimbus output files to enable PCR stages")
+                            st.error('Load Echo input files (output from Nimbus) to enable PCR1')
+                        checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
+                                inc_dna=True, inc_pcr=True, inc_taqwater1=True)
+                        selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                        hline()    
+                        dc.display_pcr_common_components(selected_pids)
+                        dc.display_pcr1_components(selected_pids)
+                        hline()
+                        
+                        #barcodes for PCR and taq and water, upload files for primer, adjust volumes
+                        add_vertical_space(1)
+                        st.subheader('Add Barcodes', help='Add barcodes for plates')
+                        ld.provide_barcodes('barcodes_tab1', pcr_stage=pcr_stage)
+                        add_vertical_space(1)
+
+                        st.subheader('Upload Files')
+                        ld.upload_pcr1_files(key='pcr1_primer1')
+                        add_vertical_space(1)
+
+                        st.subheader('Custom Volumes')
+                        ld.custom_volumes(exp)
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr1', default_view1='Primers', 
@@ -569,32 +531,30 @@ def main():
                 st.session_state['primer_tab'] = 2
                 if unlocked:
                     with main_body_container:
-                        init_state('pcr1 picklist', False)
-                        primer_checklist_exp = st.container()
+                        st.subheader('Generate Primer (PCR 1) Echo Picklists')
+                        st.info('Select the resources you wish to include for primer PCR and then click on the '+\
+                                '**Generate Echo Picklists** button below, to create Echo picklist files')
+                        checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
+                                inc_dna=True, inc_pcr=True, inc_taqwater1=True)
+                        selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                        hline()    
+                        dc.display_pcr_common_components(selected_pids)
+                        dc.display_pcr1_components(selected_pids)
                         hline()
-                        if not efs:
-                            st.error("Load Nimbus output files to enable PCR stages")
-                        else:
-                            with primer_checklist_exp:
-                                st.subheader('Plate checklist')
-                                included_DNA_pids, included_PCR_pids,\
-                                        included_taqwater_pids = dc.plate_checklist_pcr1(exp)
                         
-                                if included_DNA_pids:
-                                    if not exp.check_ready_pcr1(included_DNA_pids, included_PCR_pids, included_taqwater_pids):
-                                        m('Cannot create PCR1 picklists, please see the log for details', level='warning')
-                                    else:
-                                        _,button_col,_ = st.columns([2, 2, 1])
-                                        echo_picklist_go = button_col.button('Generate Echo Picklists',
-                                                  key='echo_pcr1_go_button',
-                                                  type='primary')
-                                        if echo_picklist_go:
-                                            success = run_generate(exp, exp.generate_echo_PCR1_picklists, included_DNA_pids, 
-                                                    included_PCR_pids, included_taqwater_pids)
-                                            if not success:
-                                                st.error('Picklist generation failed. Please see the log')
-                                            else:
-                                                st.session_state['pcr1 picklist'] = True                                    
+                        if selected_pids['dna']:
+                            if not exp.check_ready_pcr1(selected_pids):
+                                m('Cannot create PCR1 picklists, please see the log for details', level='warning')
+                            else:
+                                _,button_col,_ = st.columns([2, 2, 1])
+                                echo_picklist_go = button_col.button('Generate Echo Picklists',
+                                            key='echo_pcr1_go_button',
+                                            type='primary')
+                                if echo_picklist_go:
+                                    success = run_generate(exp, exp.generate_echo_PCR1_picklists,
+                                            selected_pids)
+                                    if not success:
+                                        st.error('Picklist generation failed. Please see the log')
 
                         if generate.pcr1_picklists_exist(exp):
                             dc.get_echo1_download_btns()
@@ -621,12 +581,19 @@ def main():
                 st.session_state['index_tab'] = 1
                 if unlocked(exp):
                     with main_body_container:
-                        index_checklist = st.container()
-                        index_checklist.subheader('Plate Checklist')
+                        st.subheader('Indexing (PCR 2) Components')
+                        st.info('Provide the resources needed to perform a sufficient number of indexing reactions '+\
+                                'for your experiment, then move to the *Generate Picklists* tab')
+                        checkbox_keys = dc.display_plate_checklist('idx_checklist1', inc_pcr=True, 
+                                    inc_taqwater2=True, inc_amplicon=True, inc_index=True)
                         hline()
-                    
-                        title_holder = st.empty()
-                        pcr_comp_holder = st.container()
+                        selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                        dc.display_pcr_common_components(selected_pids)
+                        dc.display_pcr2_components(selected_pids)
+                        hline()
+                        add_vertical_space(1)
+                        st.info('Indexing (PCR 2) requires index index plates, taq/water plates, '+\
+                                'and either Echo plates (prepared by the Nimbus) or amplicon plates')
 
                         #provide barcodes for pcr & taq/water, upload index files, adjust volumes
                         st.subheader('Add Barcodes', help='Add barcodes for plates')
@@ -639,28 +606,6 @@ def main():
 
                         st.subheader('Custom Volumes')
                         ld.custom_volumes(exp)
-                    
-                        with index_checklist:
-                            checkbox_keys = dc.display_plate_checklist('idx_checklist', inc_pcr=True, 
-                                    inc_taqwater=True, inc_amplicon=True, inc_index=True)
-                            # included_PCR_pids, included_taqwater_pids, included_index_pids, \
-                            #         included_amplicon_pids = dc.plate_checklist_pcr2(exp)
-                        
-                        with pcr_comp_holder:
-                            st.subheader('PCR 2 Components')
-                            selected_pids = dc.collect_checklists(checkbox_keys)
-                            dc.display_pcr_common_components(pcr_pids=selected_pids['pcr'],
-                                    amplicon_pids=selected_pids['amplicon'])
-                            
-                            dc.display_pcr2_components(pcr_pids=selected_pids['pcr'], 
-                                    amplicon_pids=selected_pids['amplicon'], 
-                                    taqwater_pids=selected_pids['taqwater'])
-                            hline()
-                            add_vertical_space(1)
-                    
-                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            title_holder.error("Load Nimbus output files to enable PCR stages. For amplicon "+\
-                                    "only, upload amplicon and index files and provide a taq water plate barcode.")
                 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_index1', default_view1='Indexes', 
@@ -671,48 +616,45 @@ def main():
                 st.session_state['index_tab'] = 2 
                 if unlocked(exp):
                     with main_body_container:
-                        index_checklist = st.container()
-                        index_checklist.subheader('Plate Checklist')
+                        st.subheader('Generate Index (PCR 2) Echo Picklists')
+                        st.info('Select the resources you wish to include for indexing PCR and then click on the '+\
+                                '**Generate Echo Picklists** button below, to create Echo picklist files')
+                        do_generate = False
+                        checkbox_keys = dc.display_plate_checklist('idx_checklist2', inc_pcr=True, 
+                                inc_taqwater2=True, inc_amplicon=True, inc_index=True)
+                        selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                        dc.display_pcr_common_components(selected_pids)
+                        dc.display_pcr2_components(selected_pids)
                         hline()
-        
-                        with index_checklist:
-                            do_generate = False
-                            included_PCR_pids, included_taqwater_pids, included_index_pids,\
-                                    included_amplicon_pids = dc.plate_checklist_pcr2(exp)
-                            if included_PCR_pids:  # standard run
-                                if not exp.check_ready_pcr2(included_PCR_pids, included_taqwater_pids, 
-                                        included_index_pids, included_amplicon_pids):
-                                    m('Cannot generate PCR2 picklists, please see the log for details', 
+                        add_vertical_space(1)
+                
+                        if selected_pids['pcr']:  # standard run
+                            if not exp.check_ready_pcr2(selected_pids):
+                                m('Cannot generate PCR2 picklists, please see the log for details', 
+                                        level='warning')
+                            else:
+                                do_generate = True
+                        else:
+                            if selected_pids['amplicon'] and not selected_pids['pcr']:
+                                if not exp.check_ready_pcr2(selected_pids, amplicon_only=True):
+                                    m('Cannot generate PCR2 picklists, please see the log for details',
                                             level='warning')
                                 else:
                                     do_generate = True
-                            else:
-                                if included_amplicon_pids:
-                                    if not exp.check_ready_pcr2_amplicon_only(included_taqwater_pids,
-                                            included_index_pids, included_amplicon_pids):
-                                        m('Cannot generate PCR2 picklists, please see the log for details',
-                                                level='warning')
-                                    else:
-                                        do_generate = True
                                     
                         if do_generate:
                             show_generate = False
-                            #if 'amplicon_only' in st.session_state:
-                            #    show_generate = st.session_state['amplicon_only']
-
-                            if included_PCR_pids:
+                            if selected_pids['pcr']:
                                 show_generate = True
-                            elif included_amplicon_pids and not included_PCR_pids:
+                            elif selected_pids['amplicon'] and not selected_pids['pcr']:
                                 _, amp1, amp2, amp3, _ = st.columns([3, 3, 1, 1, 3])
-                                amp1.warning('Is this an amplicon only run?')
+                                amp1.warning('Create picklists with only amplicons?')
                                 yes_amplicon = amp2.button('Yes')
                                 no_amplicon = amp3.button('No')
 
                                 if yes_amplicon:
-                            #        st.session_state['amplicon_only'] = True
                                     show_generate = True
                                 elif no_amplicon:
-                            #        st.session_state['amplicon_only'] = False
                                     show_generate = False
                     
                             if show_generate:
@@ -726,13 +668,12 @@ def main():
                                 if echo_picklist_go:
                                     st.session_state['idx_picklist'] = True
                         
-                                    success = run_generate(exp, exp.generate_echo_PCR2_picklists, included_PCR_pids,
-                                            included_index_pids, included_taqwater_pids, included_amplicon_pids)
+                                    success = run_generate(exp, exp.generate_echo_PCR2_picklists,
+                                            selected_pids)
                                     if not success:
                                         m('Picklist generation failed. Please see the log')
                         if generate.pcr2_picklists_exist(exp):
                             dc.show_echo2_outputs() 
-          
                 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_index2', default_view1='Status', 
@@ -862,11 +803,11 @@ def main():
                         if do_matching:
                             success = generate.generate_targets(exp)
                             if not success:
-                                m('Critical: failed to save reference sequences to target file', log=True)
+                                m('Critical: failed to save reference sequences to target file', dest=('log',))
                                 sleep(0.5)
                             success = generate.generate_primer_assayfams(exp)
                             if not success:
-                                m('Critical: failed to save primers and assay families to file', log=True)
+                                m('Critical: failed to save primers and assay families to file', dest=('log'))
                                 sleep(0.5)
                             else:
                                 matching_prog = os.path.join('bin','ngsmatch.py')
@@ -906,7 +847,7 @@ def main():
                 
             with main_body_container:
                 if not Path(results_fp).exists():
-                    m('**No allele calling results available**', mkdn=True)
+                    m('**No allele calling results available**', dest=('mkdn'))
                 else:
                     rodentity_results = []
                     custom_results = []
@@ -932,7 +873,7 @@ def main():
                     #print(hdr)
                     #print(custom_results[0:3])
 
-                    m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', css=True)
+                    m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', dest=('css',))
                     rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
                     with rodentity_view:
                         dfr = pd.DataFrame(rodentity_results, columns=hdr)

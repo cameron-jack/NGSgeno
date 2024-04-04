@@ -282,8 +282,8 @@ def nimbus_gen(exp):
     #print("Transactions in nimbus_gen()", transactions, file=sys.stderr)
     transaction.add_pending_transactions(exp, transactions)
     exp.log(f'Success: Hamilton Nimbus plate definition files have been generated')
-    exp.save()
     return True
+
 
 class PicklistSrc:
     """ read a survey & contents file (echovolume.py output) """ 
@@ -312,6 +312,7 @@ class PicklistSrc:
             return ['']*4
         dx[l][0][-1] -= vol
         return dx[l][0][:4]
+    
 
 class PicklistMemorySrc:
     """ read a survey & contents filehandle (StringIO) """ 
@@ -400,7 +401,6 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
     #    exp.save()
     #    return False
     exp.log(f'Success: Wrote picklist to {fn}')
-    exp.save()
     return True
 
 
@@ -460,7 +460,6 @@ def mk_mytaq_picklist(exp, fn, task_wells, pcrPlate_col, pcrWell_col, taqwater_b
 
     if len(pid_ww_tw_list) < len(task_wells):
         exp.log(f'Failure: Not enough taq or water available from plates {taqwater_bcs}')
-        exp.save()
         print(f'Failure: Not enough taq or water available from plates {taqwater_bcs}', file=sys.stderr)
         return False
 
@@ -738,7 +737,6 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
     #    return False
     transaction.add_pending_transactions(exp, transactions)
     exp.log(f'Success: PCR1 Echo picklists created')
-    exp.save()
     return True
 
 
@@ -848,7 +846,6 @@ Adapter,,,,,,,,,,
     #    return False
     #exp.add_pending_transactions(transactions)
     exp.log(f'Success: Miseq samplesheet written to {miseq_fn}')
-    exp.save()
     return True
 
     
@@ -990,7 +987,6 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         except Exception as exc:
             exp.log(f'Critical: could not write {fnstage3}')
             transactions[fnstage3] = None
-            exp.save()
             return False
 
         # write index picklists
@@ -1079,7 +1075,6 @@ def match_nimbus_to_echo_files(exp):
     except Exception as exc:
         exp.log(f'Error: Problem matching Nimbus to Echo files {exc}')
         exp.log(f'Error: {traceback.print_exc(limit=2)=}')
-        exp.save()
         return [], [], []
 
 
@@ -1099,12 +1094,10 @@ def generate_targets(exp):
                     counter += 1    
     except Exception as exc:
         exp.log(f'Critical: could not write reference sequences to {target_fn} {exc}')
-        exp.save()
         return False
     #transaction.add_pending_transactions(exp, transactions)
     #transaction.accept_pending_transactions(exp)
     exp.log(f'Success: created reference sequences file {target_fn} containing {counter} sequences')
-    exp.save()
     return True
 
 
@@ -1118,10 +1111,8 @@ def generate_primer_assayfams(exp):
                     print(f'{pmr},{af}', file=primerf)
     except Exception as exc:
         exp.log(f'Critical: count not write primer and assay families to {primer_fn} {exc}')
-        exp.save()
         return False
     exp.log(f'Success: created primer assay families file {primer_fn}')
-    exp.save()
     return True
 
 

@@ -28,7 +28,7 @@ import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
-from stutil import custom_text, add_vertical_space, add_pm, m
+from stutil import custom_text, add_vertical_space, add_pm, m, init_state
 try:
     from bin.experiment import Experiment, EXP_FN, load_experiment
 except ModuleNotFoundError:
@@ -83,48 +83,79 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
         selection_mode='multiple',
         rowMultiSelectWithClick=True,
     )
+    #print(f'{selection=}', flush=True)
     return selection
 
 
-def manage_delete(delbox, category, ids):
+def manage_delete_cb(caller_id, category, ids):
     """
     Callback for deletion operations
+    args:
+        caller_id (str): the name of a message queue for a particular display widget
+        category (str): file/plate/group - the resource type to be deleted
+        ids (list): a list of items to be deleted
     """
     exp = st.session_state['experiment']
+    successful_ids = []
+    failed_ids = []
+    init_state('message_queues',dict())
+    if caller_id not in st.session_state['message_queues']:
+        st.session_state['message_queues'][caller_id] = []
+        
     if category == 'file':
         for id in ids:
             if id not in exp.uploaded_files:
                 continue
             success = exp.del_file_record(id)     
             if success:
-                #delbox.write(f'{id} removed')
-                st.write(f'{id} removed')
+                successful_ids.append(id)
+                m(f'{id} removed', level='info', dest=('log','console'))
             else:
-                #delbox.write(f'{id} could not be removed')
-                st.write(f'{id} could not be removed')
+                failed_ids.append(id)
+                m(f'{id} could not be removed', level='warning', dest=('log','console'))
             st.session_state['previous_file_delete_selection'] = ids
     elif category == 'plate':
-        gids = [util.guard_pbc(pid, silent=True) for pid in ids]
-        gids = [gid for gid in gids if gid in exp.plate_location_sample]
-        success = exp.delete_plates(gids)
-        if success:
-            #delbox.write(f'{ids} removed')
-            st.write(f'{ids} removed')
-        else:
-            #delbox.write(f'{ids} could not be removed')
-            st.write(f'{ids} could not be removed')
+        for pid in ids:
+            gid = util.guard_pbc(pid, silent=True)
+            if gid not in exp.plate_location_sample:
+                failed_ids.append(gid)
+            else:
+                success = exp.delete_plate(gid)
+                if success:
+                    successful_ids.append(gid)
+                else:
+                    failed_ids.append(gid)
         st.session_state['previous_plate_delete_selection'] = ids
     elif category == 'group':  # from summary
         for row in ids:
-            dest_pid = util.guard_pbc(row['DNA PID'], silent=True)
-            if dest_pid not in exp.dest_sample_plates:
-                exp.log(f"Error: {row['DNA PID']=} doesn't actually exist in the experiment!")
-                continue
-            sample_pids = exp.dest_sample_plates[dest_pid]
-            delete_pids = sample_pids + [dest_pid]
-            exp.delete_plates(delete_pids)
+            dest_pid = util.guard_pbc(row['DNA/amplicon PID'], silent=True)
+            if dest_pid in exp.plate_location_sample and exp.plate_location_sample[dest_pid]['purpose'] == 'amplicon':
+                success = exp.delete_plate(dest_pid)
+                if success:
+                    successful_ids.append(dest_pid)
+                else:
+                    failed_ids.append(dest_pid)
+            elif dest_pid not in exp.dest_sample_plates:
+                m(f"{dest_pid=} doesn't actually exist in the experiment!",
+                        level='error', dest=('log','toast','debug'))
+                failed_ids.append(dest_pid)
+            else:
+                sample_pids = exp.dest_sample_plates[dest_pid]
+                delete_pids = sample_pids + [dest_pid]
+                for pid in delete_pids:
+                    success = exp.delete_plate(pid)
+                    if success:
+                        successful_ids.append(pid)
+                    else:
+                        failed_ids.append(pid)
         st.session_state['previous_group_delete_selection'] = ids
-    exp.save()
+    # set up messages
+    for sid in successful_ids:
+        m(f'{sid} removed', level='info', dest=('log','console','noGUI'))
+        st.session_state['message_queues'][caller_id].append((f'{sid}','success'))
+    for fid in failed_ids:
+        m(f'{id} could not be removed', level='failure', dest=('log','console'))
+        st.session_state['message_queues'][caller_id].append((f'{fid}','failure'))
     return True
 
 
@@ -172,7 +203,7 @@ def display_persistent_messages(key):
     """
     if st.session_state['messages_persist']:
         with st.form(key):
-            st.markdown('**System messages**')
+            m('**System messages**', dest=('mkdn',))
             check_col, message_col = st.columns([1,10])
             for message, level in st.session_state['messages_persist']:
                 with check_col:
@@ -203,32 +234,39 @@ def display_persistent_messages(key):
 def display_samples(key, height=250):
     """ display a summary of all loaded DNA, amplicon, and sample plates """
     exp = st.session_state['experiment']
+    caller_id = 'display_samples'
     selection = []
     df = exp.inputs_as_dataframe()
     if df is None or not isinstance(df, pd.DataFrame):
-        st.write('No 384-well DNA plate data loaded')
+        m('**No 384-well DNA plate data loaded**', dest=('mkdn',))
     else:    
         selection = aggrid_interactive_table(df, key=key, grid_height=height)
         if 'selected_rows' in selection and selection['selected_rows']:
             rows = selection["selected_rows"]
-            rows = [r for r in rows if 'DNA PID' in r and r['DNA PID'] != 'Total']
+            rows = [r for r in rows if 'DNA/amplicon PID' in r and r['DNA/amplicon PID'] != 'Total']
             if rows:
                 if 'previous_group_delete_selection' not in st.session_state:
                     st.session_state['previous_group_delete_selection'] = None
                 if st.session_state['previous_group_delete_selection'] != rows:
                     #st.session_state['previous_group_delete_selection'] = rows
                     # only do the code below if this is a fresh selection
-                    lines = '\n'.join(['DNA PID: '+r['DNA PID'] for r in rows if r['DNA PID'] != 'Total'])
-                    st.markdown(f"**You selected {lines}**")
+                    lines = '\n'.join(['DNA/amplicon PID: '+r['DNA/amplicon PID'] for r in rows if r['DNA/amplicon PID'] != 'Total'])
+                    m(f"**You selected {lines}**", dest=('mkdn',))
                     delbox = st.container()
                     del_col1, del_col2, del_col3, _ = st.columns([2,1,1,4])
                     del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                    del_col2.button("Yes",on_click=manage_delete, 
-                            args=(delbox, 'group',rows), key="delete " + str(key), help=f"Delete {lines}")
+                    del_col2.button("Yes",on_click=manage_delete_cb, 
+                            args=(caller_id, 'group',rows), key="delete " + str(key), help=f"Delete {lines}")
                     del_col3.button("No",on_click=cancel_delete, args=('group',rows), 
                             key="keep " + str(key), help=f"Keep {lines}")
     selection = None
-
+    init_state('message_queues', dict())
+    if caller_id in st.session_state['message_queues']:
+        for msg,lvl in st.session_state['message_queues'][caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        st.session_state['message_queues'][caller_id] = []
+        
 
 def display_consumables(key, height=300):
     """
@@ -262,51 +300,57 @@ def display_consumables(key, height=300):
             data_rows.append(['assay-primer mappings', f, 0, 'File', consumables['assay_primer_mappings']])
     plate_df = pd.DataFrame(data_rows, columns=headers)
     if plate_df is None or not isinstance(plate_df, pd.DataFrame):
-        st.write('No plates loaded')
+        m('No plates loaded')
     else:
         selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'consumables_aggrid')
 
 
 def display_plates(key, plate_usage, height=300): 
     exp = st.session_state['experiment']
+    caller_id = 'display_plates'
     plate_df = pd.DataFrame(plate_usage, columns=['Plates', 'Num Wells', 'Purpose'])
     if plate_df is None or not isinstance(plate_df, pd.DataFrame):
-        st.write('No plates loaded')
+        m('No plates loaded')
     else:
         selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'plate_aggrid')
-        #print(f'{selection=} {selection["selected_rows"]=} {[row["Plates"] for row in selection["selected_rows"]]=}')
         if selection and 'selected_rows' in selection:
             pids = [row['Plates'] for row in selection['selected_rows']]
             gids = [util.guard_pbc(pid, silent=True) for pid in pids]
             gids = [gid for gid in gids if gid in exp.plate_location_sample]
             if gids:
-                #print(f'{pids=}')
                 if 'previous_plate_delete_selection' not in st.session_state:
                     st.session_state['previous_plate_delete_selection'] = None
                 if st.session_state['previous_plate_delete_selection'] == pids:
                     st.session_state['previous_plate_delete_selection'] = None
                 else:
                     if pids != st.session_state['previous_plate_delete_selection']:
-                        st.markdown(f"**You selected {pids}**")
+                        m(f"**You selected {pids}**", dest=('mkdn'))
                     delbox = st.container() # doesn't work reliably in st1.26
                     del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
                     del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                    del_col2.button("Yes",on_click=manage_delete,
-                            args=(delbox,'plate',pids), key="delete " + str(key), help=f"Delete {pids}")
+                    del_col2.button("Yes",on_click=manage_delete_cb,
+                            args=(caller_id,'plate',pids), key="delete " + str(key), help=f"Delete {pids}")
                     del_col3.button("No", on_click=cancel_delete,
                             args=('plate',pids), key="keep " + str(key), help=f"Keep {pids}")
-                    
+    init_state('message_queues', dict())
+    if caller_id in st.session_state['message_queues']:
+        for msg,lvl in st.session_state['message_queues'][caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        st.session_state['message_queues'][caller_id] = []
+            
 
-def display_pcr_common_components(dna_pids=None, pcr_pids=None, amplicon_pids=None):
+def display_pcr_common_components(selected_pids):
     """
     Expander widget that shows the PCR plate information for both PCR reactions
     Args:
-        dna_pids: DNA plate IDs included in the reaction
-        pcr_pids: User supplied PCR plate IDs chosen to include in the reaction
-        amplicon_pids: User supplied amplicon plate IDs
+        selected_pids (dict): '
     """
     exp = st.session_state['experiment']
     PCR_PLATE_WELLS = 384
+    dna_pids = selected_pids['dna']
+    pcr_pids = selected_pids['pcr']
+    amplicon_pids = selected_pids['amplicon']
     if dna_pids:
         dna_pids = [util.guard_pbc(dp, silent=True) for dp in dna_pids]
     else:
@@ -373,28 +417,32 @@ def display_pcr_common_components(dna_pids=None, pcr_pids=None, amplicon_pids=No
     pcr_cols[3].markdown(amplicon_pid_txt)
     
     #Adding white space
-    i=0
-    while i < 3:
-        pcr_cols[2].write('')
-        pcr_cols[3].write('')
-        i+=1
+    #i=0
+    #while i < 3:
+    #    pcr_cols[2].write('')
+    #    pcr_cols[3].write('')
+    #    i+=1
 
-    for i in range(4):
-        pcr_cols[i].write('')
+    #for i in range(4):
+    #    pcr_cols[i].write('')
 
 
 
-def display_pcr1_components(dna_pids=None, pcr_pids=None, taqwater_pids=None):
+def display_pcr1_components(selected_pids):
     """
     Display panel that shows the required componenents for each PCR reaction, 
     including wells, PCR plates, taq+water plates
     Args:
-        dna_pids: DNA plate IDs provided by user
+        selected_pids (dict): 'dna','pcr','taqwater1'
     """
     exp = st.session_state['experiment']
     ul_conv = 1000
     pcr_stage = 1
     
+    dna_pids = selected_pids['dna']
+    pcr_pids = selected_pids['pcr']
+    taqwater1_pids = selected_pids['taqwater1']
+
     #Page set up
     pcr_comps_area = st.container()
     col_size = [6, 4, 6, 4]
@@ -451,49 +499,43 @@ def display_pcr1_components(dna_pids=None, pcr_pids=None, taqwater_pids=None):
     pcr_cols[3].write(avail_taq_vol_str, unsafe_allow_html=True)
 
 
-def display_pcr2_components(dna_pids=None, pcr_pids=None, amplicon_pids=None, taqwater_pids=None, index_pids=None):
+def display_pcr2_components(selected_pids):
     """
     Expander widget that shows the required componenents for PCR 2 reaction (index).
     Args:
+        selected_pids (dict): 'dna','pcr','amplicon','taqwater2','index'
         pcr_stage (1, 2): 1 = Echo Primer stage, 2 = Echo Indexing
-        dna_pids:
-        pcr_pids: 
-        amplicon_pids:
-        taqwater_pids
-        index_pids
     """
     #Need to add info about taq water
     exp = st.session_state['experiment']
     ul_conv = 1000
     pcr_stage = 2
+    dna_pids = selected_pids['dna']
+    pcr_pids = selected_pids['pcr']
+    amplicon_pids = selected_pids['amplicon']
+    taqwater2_pids = selected_pids['taqwater2']
+    index_pids = selected_pids['index']
 
-    #Index
-    fwd_idx, rev_idx = exp.get_index_avail()
     assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
-    #num reactions:
     num_reactions = exp.get_num_reactions(primer_usage, pcr_pids, amplicon_pids)
-    print(f'{num_reactions=}')
 
-    # num_reactions = sum([primer_usage[p] for p in primer_usage])
-    #index_fwd, index_rev = exp.get_index_avail()
-    index_max = len(exp.get_index_pairs_avail())
+    index_max = len(exp.get_index_pairs_avail(index_pids))
     index_remain = index_max - num_reactions
-    #index_remain, index_max = exp.get_index_reactions(primer_usage, fwd_idx, rev_idx)
 
     #Taq/water (based on pcr stage)
     index_taq_vol, index_water_vol = exp.get_taqwater_req_vols_index(num_reactions)
     
     #user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
     #                                    for p in exp.get_taqwater_avail(pcr_stage=pcr_stage)[2]])
-    if taqwater_pids is None:
+    if taqwater2_pids is None:
         user_supplied_taqwater = ''
     else:
         user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
-                for p in taqwater_pids])    
+                for p in taqwater2_pids])    
 
     num_supplied_taqwater = len(user_supplied_taqwater)
     
-    taq_avail, water_avail, pids = exp.get_taqwater_avail(taqwater_bcs=taqwater_pids)
+    taq_avail, water_avail, pids = exp.get_taqwater_avail(taqwater_bcs=taqwater2_pids)
     taq_avail_vol = taq_avail/ul_conv
     water_avail_vol = water_avail/ul_conv  
     required_water_vol_str = str(index_water_vol/ul_conv)+ ' μl'
@@ -543,8 +585,6 @@ def display_pcr2_components(dna_pids=None, pcr_pids=None, amplicon_pids=None, ta
     pcr2_col[0].markdown('**Index Pairs Remaining**')
     pcr2_col[1].markdown(index_pairs_remain, unsafe_allow_html=True)
     
-
-
 
 def st_directory_picker(label='Selected directory:', initial_path=Path(),\
             searched_file_types=['fastq','fastq.gz','fq','fq.gz']):
@@ -763,6 +803,7 @@ def display_files(key, file_usage, height=250):
     Give info on name, any plates they contain, whether they are required so far, etc
     """
     exp = st.session_state['experiment']
+    caller_id = 'display_files'
     file_df = pd.DataFrame.from_dict(file_usage, orient='index')
     if file_df is None or not isinstance(file_df, pd.DataFrame):
         st.write('No plates loaded')
@@ -786,11 +827,17 @@ def display_files(key, file_usage, height=250):
                 delbox = st.container()
                 del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
                 del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                del_col2.button("Yes",on_click=manage_delete,
-                        args=(delbox,'file',fns), key="delete " + str(key), help=f"Delete {fns}")
+                del_col2.button("Yes",on_click=manage_delete_cb,
+                        args=(caller_id,'file',fns), key="delete " + str(key), help=f"Delete {fns}")
                 del_col3.button("No", on_click=cancel_delete,
                         args=('file',fns), key="keep " + str(key), help=f"Keep {fns}")
                 selection = None
+    init_state('message_queues', dict())
+    if caller_id in st.session_state['message_queues']:
+        for msg,lvl in st.session_state['message_queues'][caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        st.session_state['message_queues'][caller_id] = []
 
 
 def display_primers(key, dna_pids=None, primer_pids=None, height=350):
@@ -1130,75 +1177,24 @@ def show_info_viewer(selection, height, groupkey):
                 info_viewer(selection[i], str(groupkey)+selection[i]+str(i), view_height=height)
 
 
-def plate_checklist_pcr1(exp):
+def display_plate_checklist(widget_key, inc_dna=False, inc_pcr=False, inc_taqwater1=False, 
+        inc_taqwater2=False, inc_amplicon=False, inc_primer=False, inc_index=False):
     """
-    Allows the selection/deselection all plates involved in the PCR1 (primer) reaction stage
-    DNA plates, PCR plates, taq/water plates, primer plates
-    Returns tuples of PIDs
-    """
-    pcr_stage = 1
-    checklist_col = st.columns(4)
-    included_DNA_pids = set()
-    included_PCR_pids = set()
-    included_taqwater_pids = set()
-    
-    pcr_plate_title = "PCR Plates"
-    taqwater_plate_title = "Taq/Water Plates"
-    dna_plate_title = "DNA Plates"
-    
-    #nimbus fp, echo fp, barcodes not in echo
-    nfs, efs, xbcs = exp.get_nimbus_filepaths()
-
-    #print(f'{efs=}')
-
-    #missing_nims = ['Echo_384_COC_0001_'+xbc+'_01.csv' for xbc in xbcs]
-    #available_nimbus = ['Echo_384_COC_0001_'+ef+'_01.csv' for ef in efs]
-   
-    checklist_col[0].markdown(f'**{dna_plate_title}**')
-    for nim in efs:
-        echo_filename=Path(nim).stem
-        #print(echo_filename)
-        inc_dna = checklist_col[0].checkbox(echo_filename, value=True, key='chk_box_dna_'+nim)
-        if inc_dna:
-            included_DNA_pids.add(util.guard_pbc(echo_filename.split('_')[-2], silent=True))
-    
-    checklist_col[1].markdown(f'**{pcr_plate_title}**')
-    for pcr_pid in exp.get_pcr_pids():
-        inc_pcr = checklist_col[1].checkbox(util.unguard_pbc(pcr_pid, silent=True),\
-                        value=True, key='chk_box_pcr_'+pcr_pid)
-        if inc_pcr:
-            included_PCR_pids.add(util.guard_pbc(pcr_pid, silent=True))
-
-    checklist_col[2].markdown(f'**{taqwater_plate_title}**')
-    for taqwater_pid in exp.get_taqwater_pids(pcr_stage):
-        inc_taqwater = checklist_col[2].checkbox(util.unguard_pbc(taqwater_pid, silent=True), 
-                    value=True, key='chk_box_taqwater_'+taqwater_pid)
-        if inc_taqwater:
-            included_taqwater_pids.add(util.guard_pbc(taqwater_pid, silent=True))
-    
-    #print(included_DNA_plates)
-        
-    return tuple(included_DNA_pids), tuple(included_PCR_pids), tuple(included_taqwater_pids)
-
-
-def display_plate_checklist(widget_key, inc_dna=False, inc_pcr=False, inc_taqwater=False, 
-        inc_amplicon=False, inc_primer=False, inc_index=False):
-    """
-    Display a plate checklist with each included category getting its own column
+    Display a plate checklist, with each included category getting its own column
     Returns a list of all checkbox keys for later lookup
+    By choosing which types to select we can customise this for PCR1 or PCR2
     """
     exp = st.session_state['experiment']
     checkbox_keys = []
-    included_categories = [ic for ic in [inc_dna, inc_pcr, inc_taqwater, inc_amplicon, inc_primer, inc_index] if ic]
+    included_categories = [ic for ic in [inc_dna, inc_pcr, inc_taqwater1, inc_taqwater2, inc_amplicon, inc_primer, inc_index] if ic]
     checklist_cols = st.columns(len(included_categories))
     i = 0
     if inc_dna:
         checklist_cols[i].markdown('**DNA Plates**')
-        for dp in exp.get_dna_pids():
+        for dp in exp.get_dna_pids(echo_ready=True):
             cb_name = f'{str(widget_key)}_plate_checkbox_dna_{dp}'
             val = checklist_cols[i].checkbox(util.unguard_pbc(dp, silent=True), 
                     key=cb_name, value=True)
-            #st.session_state[cb_name] = val
             checkbox_keys.append(cb_name)
         i += 1
     if inc_pcr:
@@ -1207,16 +1203,22 @@ def display_plate_checklist(widget_key, inc_dna=False, inc_pcr=False, inc_taqwat
             cb_name = f'{str(widget_key)}_plate_checkbox_pcr_{pp}'
             val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True), 
                     key=cb_name, value=True)
-            #st.session_state[cb_name] = val
             checkbox_keys.append(cb_name)
         i += 1
-    if inc_taqwater:
-        checklist_cols[i].markdown('**Taq/Water Plates**')
-        for tp in exp.get_taqwater_pids():
-            cb_name = f'{str(widget_key)}_plate_checkbox_taqwater_{tp}'
+    if inc_taqwater1:
+        checklist_cols[i].markdown('**Taq/Water Plates (PCR 1)**')
+        for tp in exp.get_taqwater_pids(pcr_stage=1):
+            cb_name = f'{str(widget_key)}_plate_checkbox_taqwater1_{tp}'
             val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True), 
                     key=cb_name, value=True)
-            #st.session_state[cb_name] = val
+            checkbox_keys.append(cb_name)
+        i += 1
+    if inc_taqwater2:
+        checklist_cols[i].markdown('**Taq/Water Plates (PCR 2)**')
+        for tp in exp.get_taqwater_pids(pcr_stage=2):
+            cb_name = f'{str(widget_key)}_plate_checkbox_taqwater2_{tp}'
+            val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True), 
+                    key=cb_name, value=True)
             checkbox_keys.append(cb_name)
         i += 1
     if inc_amplicon:
@@ -1225,7 +1227,6 @@ def display_plate_checklist(widget_key, inc_dna=False, inc_pcr=False, inc_taqwat
             cb_name = f'{str(widget_key)}_plate_checkbox_amplicon_{ap}'
             val = checklist_cols[i].checkbox(util.unguard_pbc(ap, silent=True), 
                     key=cb_name, value=True)
-            #st.session_state[cb_name] = val
             checkbox_keys.append(cb_name)
         i += 1
     if inc_primer:
@@ -1234,7 +1235,6 @@ def display_plate_checklist(widget_key, inc_dna=False, inc_pcr=False, inc_taqwat
             cb_name = f'{str(widget_key)}_plate_checkbox_primer_{pp}'
             val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True), 
                     key=cb_name, value=True)
-            #st.session_state[cb_name] = val
             checkbox_keys.append(cb_name)
         i += 1
     if inc_index:
@@ -1243,17 +1243,18 @@ def display_plate_checklist(widget_key, inc_dna=False, inc_pcr=False, inc_taqwat
             cb_name = f'{str(widget_key)}_plate_checkbox_index_{ip}'
             val = checklist_cols[i].checkbox(util.unguard_pbc(ip, silent=True), 
                     key=cb_name, value=True)
-            #st.session_state[cb_name] = val
             checkbox_keys.append(cb_name)
         i += 1
     return checkbox_keys
     
 
-def collect_checklists(checkbox_keys):
+def collect_plate_checklist(checkbox_keys):
     """
     Return all PIDs that have been selected by the given checkboxes
+    args:
+        checkbox_keys (list[str])
     """
-    selected_pids = {'dna':[],'pcr':[],'taqwater':[],'amplicon':[],'primer':[],'index':[]}
+    selected_pids = {'dna':[],'pcr':[],'taqwater1':[], 'taqwater2':[],'amplicon':[],'primer':[],'index':[]}
     for cb in checkbox_keys:
         if st.session_state[cb]:
             key_parts = cb.split('_')
@@ -1261,8 +1262,10 @@ def collect_checklists(checkbox_keys):
                 selected_pids['dna'].append(key_parts[-1])
             elif key_parts[-2] == 'pcr':
                 selected_pids['pcr'].append(key_parts[-1])
-            elif key_parts[-2] == 'taqwater':
-                selected_pids['taqwater'].append(key_parts[-1])
+            elif key_parts[-2] == 'taqwater1':
+                selected_pids['taqwater1'].append(key_parts[-1])
+            elif key_parts[-2] == 'taqwater2':
+                selected_pids['taqwater2'].append(key_parts[-1])
             elif key_parts[-2] == 'amplicon':
                 selected_pids['amplicon'].append(key_parts[-1])
             elif key_parts[-2] == 'primer':
@@ -1272,58 +1275,6 @@ def collect_checklists(checkbox_keys):
             else:
                 add_pm(f'Plate selection checkbox key {cb} of unknown type', level='error')
     return selected_pids
-
-
-# Need to replace this with display_checklist_pcr2() and collect_checklist_pcr2()
-def plate_checklist_pcr2(exp):
-    """
-    Allows the selection/deselection all plates involved in the PCR2 (indexing) reaction stage
-    DNA plates, PCR plates, taq/water plates, primer plates
-    Return tuples of PIDs
-    """
-    pcr_stage = 2
-    checklist_col = st.columns(4)
-    included_PCR_pids = set()
-    included_index_pids = set()
-    included_taqwater_pids = set()
-    included_amplicon_pids = set()
-    #could make a for loop
-
-    index_plate_title = "Index Plates"
-    amplicon_plate_title = "Amplicon Plates"
-    pcr_plate_title = "PCR Plates"
-    taqwater_plate_title = "Taq/Water Plates"
-
-    checklist_col[0].markdown(f'**{pcr_plate_title}**')
-    for pcr_pid in exp.get_pcr_pids():
-        inc_pcr = checklist_col[0].checkbox(util.unguard_pbc(pcr_pid, silent=True),
-                value=True, key='chk_box_pcr_'+pcr_pid)
-        if inc_pcr:
-            included_PCR_pids.add(pcr_pid)
-
-    checklist_col[1].markdown(f'**{taqwater_plate_title}**')
-    for taqwater_pid in exp.get_taqwater_pids(pcr_stage):
-        inc_taqwater = checklist_col[1].checkbox(util.unguard_pbc(taqwater_pid, silent=True), 
-                value=True, key='chk_box_taqwater_'+taqwater_pid)
-        if inc_taqwater:
-            included_taqwater_pids.add(taqwater_pid)
-
-    checklist_col[2].markdown(f'**{index_plate_title}**')
-    for index_pid in exp.get_index_pids():
-        inc_index = checklist_col[2].checkbox(util.unguard_pbc(index_pid, silent=True),
-                                            value=True, key='chk_box_index_'+index_pid)
-        if inc_index:
-            included_index_pids.add(index_pid)
-        
-    checklist_col[3].markdown(f'**{amplicon_plate_title}**')
-    for amplicon_pid in exp.get_amplicon_pids():
-        amplicon_index = checklist_col[3].checkbox(util.unguard_pbc(amplicon_pid, silent=True), 
-                value=True, key='chk_box_amplicon_'+amplicon_pid)
-        if amplicon_index:
-            included_amplicon_pids.add(amplicon_pid)
-
-    return tuple(included_PCR_pids), tuple(included_taqwater_pids), tuple(included_index_pids),\
-            tuple(included_amplicon_pids)
  
 
 def create_tabs(tab_data):
@@ -1388,9 +1339,9 @@ def set_nimbus_title(exp, efs, nfs):
             title = f'For {str(yet_to_run)} 96-well plate set(s)'
             colour = '#83b3c9'
     
-    
-    m(title, css=True, size='h5', color=colour, align='left')
+    m(title, dest=('css',), size='h5', color=colour, align='left')
         
+
 def get_echo_download_buttons(nfs):
     """
     *Stage 2: Nimbus*
@@ -1399,8 +1350,6 @@ def get_echo_download_buttons(nfs):
         nfs (str): nimbus file paths
     """
 
-    
-    
     print(f"{len(nfs)=}")
     if len(nfs) < 5:
         _,dl_col1,dl_col2,_= st.columns([6,3,2,6])

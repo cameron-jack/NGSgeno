@@ -61,40 +61,47 @@ def add_pm(message, level=None):
     st.session_state['messages_persist'].append((message, level))
 
 
-def m(message, level=None, log=False, persist=False, toast=False, css=False, mkdn=False, console=False, debug=False, noscreen=False,
+def m(message, level=None, dest=None, caller_id=None,
         size='p', color='black', align="center", style="normal", padding='0px'):
     """
     Standardised message interface. Removes the need for multiple function calls for the same message.
     Args:
         message (str): message text
         level (None/'info'/'warning'/'error'): evokes particular display code
-        log (bool): if True, send to exp.log()
-        persist (bool): if True, make this a persistent message AS WELL as an immediate message
-        css (bool): if True, apply css stylings and display as markdown
-        mkdn (bool): True to show that messsage text is already markdown
-        console (bool): if True, write to stdout as well
-        debug (bool): if True, write to stderr and flush
-        noscreen (bool): if True, do not write to the screen
-    The following args are passed to custom_text():
-        size (str): style size, either h1-6 or p
-        color (str): can use hex # for a specific colour
-        text (str): string to display
+        dest (None/tuple('log','persist','toast','css','mkdn','console','debug','noGUI')): display in these streams
+        style (None/{'size':'p', 'color':'black', 'align':'center','style':'normal','padding':'0px'}):
+            A dictionary of css stylings that will be applied if the css is a destination
+        caller_id (str): if provided, store this message for later display
+    #     log (bool): if True, send to exp.log()
+    #     persist (bool): if True, make this a persistent message AS WELL as an immediate message
+    #     css (bool): if True, apply css stylings and display as markdown
+    #     mkdn (bool): True to show that messsage text is already markdown
+    #     console (bool): if True, write to stdout as well
+    #     debug (bool): if True, write to stderr and flush
+    #     noscreen (bool): if True, do not write to the screen
+    # The following args are passed to custom_text():
+    #     size (str): style size, either h1-6 or p
+    #     color (str): can use hex # for a specific colour
+    #     text (str): string to display
     """
-    if console:
+    if dest is None:
+        dest = {}
+    if 'console' in dest:
         print(message)
-    if debug:
+    if 'debug' in dest:
         print(message, file=sys.stderr, flush=True)
         
     if 'experiment' not in st.session_state or not st.session_state['experiment']:
-        if log:
+        if 'log' in dest:
             st.error('Experiment not yet loaded, cannot log messages!')
             
     # Most widgets will not handle markdown
-    if level and (css or mkdn):
+    if level and ('css' in dest or 'mkdn' in dest):
         st.warning('Streamlit level displays are not compatible with markdown or css stylings')
+        print('Streamlit level displays are not compatible with markdown or css stylings', file=sys.stderr)
     
-    if log:
-        if mkdn:
+    if 'log' in dest:
+        if 'mkdn' in dest:
             st.warning('Log cannot render markdown')
         if 'experiment' in st.session_state and st.session_state['experiment']:
             exp = st.session_state['experiment']
@@ -102,24 +109,46 @@ def m(message, level=None, log=False, persist=False, toast=False, css=False, mkd
                 level = 'info'
             exp.log(message, level=level)
             
-    if css:
-        message = custom_text(size, color, message, align=align, style=style, padding=padding, display = False)    
-
-
-    if persist:
-        add_pm(message, level=level)
-
-    if toast and not (css or mkdn):
+    if 'toast' in dest:
         st.toast(message)
+            
+    if 'css' in dest:
+        # if style is None:
+        #     style = {}
+        # if 'size' not in style:
+        #     style['size'] = 'p'
+        # if 'color' not in style:
+        #     style['color'] = 'black'
+        # if 'align' not in style:
+        #     style['align'] = 'center'
+        # if 'style' not in style:
+        #     style['style'] = 'normal'
+        # if 'padding' not in style:
+        #     style['padding'] = '0px'
+        
+        style = {}
+        style['size'] = size
+        style['color'] = color
+        style['align'] = align
+        style['style'] = style
+        style['padding'] = padding
+        message = custom_text(style['size'], style['color'], message, align=style['align'], style=style['style'], padding=style['padding'], display = False)    
+        
+    if caller_id:
+        init_state('message_queues', dict())
+        if caller_id not in st.session_state['message_queues']:
+            st.session_state['message_queues'][caller_id] = []
+        st.session_state['message_queues'][caller_id].append((message, level))
         return
 
-    #m(title, css=True, size='h5', color=colour, align='left')
+    if 'persist' in dest:
+        add_pm(message, level=level)
 
-    if css or mkdn:
+    if 'css' in dest or 'mkdn' in dest:
         st.markdown(message, unsafe_allow_html=True)
         return
     
-    if noscreen:
+    if 'noGUI' in dest:
         return
     
     if message.lower().startswith('critical:') or message.lower().startswith('failure:'):
@@ -139,7 +168,7 @@ def m(message, level=None, log=False, persist=False, toast=False, css=False, mkd
         st.error(message)
     else:
         st.write(message)
-    sleep(0.5)
+    sleep(0.3)
             
 
 def add_vertical_space(num_lines: int):
@@ -150,6 +179,7 @@ def add_vertical_space(num_lines: int):
   """
   for line in range(num_lines):
     st.write("")
+    
 
 def hline():
    """

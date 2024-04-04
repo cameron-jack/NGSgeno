@@ -133,7 +133,6 @@ def upload(exp, streams, purpose, overwrite=False):
             s = process_upload(exp, final_fp, purpose)
             if s is False:
                 success = False
-    exp.save()
     print(f'upload failure {success=}', flush=True)
     return success
 
@@ -185,7 +184,6 @@ def accept_pending_upload(exp, fn):
     exp.log(f'Success: {final_fn} uploaded. Parsing...')
     
     success = process_upload(exp, final_fn, purpose, overwrite=True)
-    exp.save()
     return success
 
 
@@ -233,7 +231,6 @@ def process_upload(exp, filepath, purpose, overwrite=False):
     else:
         exp.log(f'Failure: could not parse {filepath} for {purpose}')
         exp.del_file_record(filepath)
-    exp.save()
     return success
 
 
@@ -600,7 +597,6 @@ def parse_primer_layout(exp, fp, user_gpid=None):
         exp.plate_location_sample[gPID][well]['primer'] = well_records[gPID][well]['primer']
                     
     exp.log(f"Success: added primer layout from {fp}")
-    exp.save()
     return True, [gPID]
 
 
@@ -665,7 +661,6 @@ def parse_primer_volume(exp, fp, user_gpid=None):
         exp.plate_location_sample[gPID][well]['volume'] = well_records[gPID][well]['volume']
                     
     exp.log(f"Success: added primer volumes from {fp}")
-    exp.save()
     return True, [gPID]
 
  
@@ -726,7 +721,6 @@ def parse_index_layout(exp, fp, user_gpid=None):
         exp.plate_location_sample[gPID][well]['oligo'] = well_records[gPID][well]['oligo']
 
     exp.log(f"Success: added index plate layouts from {fp}")        
-    exp.save()
     return True, [gPID]
     
 
@@ -810,7 +804,6 @@ def parse_index_volume(exp, fp, user_gpid=None):
             exp.plate_location_sample[gPID][well] = {}
         exp.plate_location_sample[gPID][well]['volume'] = well_records[gPID][well]['volume']
     
-    exp.save()
     return True, [gPID]
 
 
@@ -889,7 +882,6 @@ def parse_assay_primer_map(exp, fp):
         exp.primer_assayfam[primer] = local_primer_assayfam[primer]
     
     exp.log(f'Success: added assay/assayfam/primer mapping from {fp}')
-    exp.save()
     return True
 
 
