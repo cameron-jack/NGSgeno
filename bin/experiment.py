@@ -230,14 +230,16 @@ class Experiment():
             PIDs = []
 
         file_md5 = util.get_md5(file_name)
+        ft = os.path.getmtime(file_name)
+        ft = datetime.datetime.fromtimestamp(ft).strftime('%Y/%m/%d %H:%M:%S')
         self.uploaded_files[file_name] = {'plates': [util.guard_pbc(PID, silent=True) for PID in PIDs], 
-                'purpose': purpose, 'md5':file_md5}
+                'purpose': purpose, 'md5':file_md5, 'date modified':ft}
         return True
 
 
     def mod_file_record(self, existing_name, new_name=None, new_purpose=None, extra_PIDs=None, PID_name_updates=None):
         """
-        Modify and existing file record (self.uploaded_files)
+        Modify an existing file record (self.uploaded_files)
         Mostly used to change a pending file to normal file path, or to modify the list of plates
         new_name (str)
         new_purpose (str)
@@ -293,7 +295,7 @@ class Experiment():
 
     def get_plate(self, pid):
         """ 
-        Cannot cache this function due to the nature of plates and experiment as dicts
+        Return the actual plate as a nested dictionary object.
         """
         return transaction.get_plate(self, pid)
     
@@ -1214,17 +1216,27 @@ class Experiment():
 
 
     def get_file_usage(self):
+        """
+        Gather file records for display
+        """
         file_usage = {}
         for filename in self.uploaded_files:
-            file_usage[filename] = {'plates' :[], 'purpose':None}
+            file_usage[filename] = {'date modified':None, 'purpose':None}
             if 'purpose' in self.uploaded_files[filename]:
                 file_usage[filename]['purpose'] = self.uploaded_files[filename]['purpose']
-            if 'plates' in self.uploaded_files[filename]:
-                for pid in self.uploaded_files[filename]['plates']:
-                    if util.is_guarded(pid):
-                        pid = util.unguard_pbc(pid)
-                    file_usage[filename]['plates'].append(pid)
-            file_usage[filename]['plates'] = ', '.join(file_usage[filename]['plates'])
+            if 'date modified' in self.uploaded_files[filename]:
+                file_usage[filename]['date modified'] = self.uploaded_files[filename]['date modified']
+            else:
+                ft = os.path.getmtime(filename)
+                file_usage[filename]['date modified'] =\
+                        datetime.datetime.fromtimestamp(ft).strftime('%Y/%m/%d %H:%M:%S')
+                self.uploaded_files[filename]['date modified'] = file_usage[filename]['date modified']
+            #if 'plates' in self.uploaded_files[filename]:
+            #    for pid in self.uploaded_files[filename]['plates']:
+            #        if util.is_guarded(pid):
+            #            pid = util.unguard_pbc(pid)
+            #        file_usage[filename]['plates'].append(pid)
+            #file_usage[filename]['plates'] = ', '.join(file_usage[filename]['plates'])
         return file_usage
     
 

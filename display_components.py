@@ -19,6 +19,7 @@ import inspect
 from tabnanny import check
 import jsonpickle
 from time import sleep
+import datetime
 
 import pandas as pd
 
@@ -810,13 +811,13 @@ def display_files(key, file_usage, height=250):
         return
    
     file_df.reset_index(inplace=True)
-    file_df = file_df.rename(columns = {'index':'File', 'plates':'Plates', 'purpose':'Purpose'})
+    #file_df = file_df.rename(columns = {'index':'File', 'plates':'Plates', 'purpose':'Purpose'})
+    file_df = file_df.rename(columns = {'index':'File', 'date modified':'Date modified', 'purpose':'Purpose'})
     selection = aggrid_interactive_table(file_df, grid_height=height, key=str(key)+'file_aggrid')
     if selection and 'selected_rows' in selection:
         fns = [row['File'] for row in selection['selected_rows']]
         fns = [fn for fn in fns if fn in exp.uploaded_files]
         if fns:
-            #print(f'{fns=}')
             if 'previous_file_delete_selection' not in st.session_state:
                 st.session_state['previous_file_delete_selection'] = None
             if st.session_state['previous_file_delete_selection'] == fns:
