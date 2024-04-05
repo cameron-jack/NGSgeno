@@ -522,7 +522,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
       -> Add any remaining entries to the miss cache
 
     Match cache ["ATC..."]="ATC..." <- a sequence in seq_ids and id_seq
-    Miss cache
+    Writes back result (seqCount,seqName,Efficiency,otherCount,otherName) to result thread
     """
     PID = os.getpid()
     lrecs = [] # log records, lock and write on exit/return
@@ -750,13 +750,19 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 for name in seq_ids[ref_seq]:
                     otherCounts.append(count)
                     otherNames.append(name+'//'+anno)
+    # calculate efficiency of PCR as the sum(seqCounts)/wr['mergeCount']
     try:
-        res2 = [';'.join(map(str,seqCounts)), ';'.join(map(str,seqNames)), 
+        efficiency = sum(map(int,seqCounts))/mergeCount
+    except Exception as exc:
+        wdb(f"Error: calculating efficiency {seqCounts=} {mergeCount=} {exc=}", rundir, debug, lock_d)
+        effiency = -1.0
+    # combine outputs
+    try:
+        res2 = [';'.join(map(str,seqCounts)), ';'.join(map(str,seqNames)), f'{round(efficiency,3)}', 
                 ';'.join(map(str,otherCounts)), ';'.join(map(str,otherNames))]
     except Exception as exc:
         wdb(f"Error: joining names and counts {exc=}", rundir, debug, lock_d)
-        print(wdb, flush=True)
-        res2 = ['','','','']
+        res2 = ['','','','','']
     retval = [str(wr[x]) for x in wr] + res1 + res2
     sn = None
     try:
@@ -766,8 +772,8 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
         print(msg, flush=True)
         wdb(msg, rundir, debug, lock_d)
     if sn:    
+        wdb(f'{retval=}', rundir, debug, lock_d)    
         with lock_r:
-            #print(f'{retval=}', flush=True)
             reps[sn] = retval
     wdb(f'{retval=}', rundir, debug, lock_d)
     with lock_l:
@@ -881,6 +887,7 @@ def parse_primer_assayfams(rundir, paf):
         msg = f'Critical: failed to open {pmr_fn} for primer assay family info {exc=}'
         print(msg)
     return primer_assayfam, assayfam_primers
+
 
 def parse_primer_file(paf):
     """
@@ -1115,7 +1122,7 @@ def main(args):
         #    print(f"Opening {args.outfn} for results", file=sys.stderr)
             dst = csv.writer(dstfd, dialect="unix", quoting=csv.QUOTE_ALL)
             hdrres1 = ("readCount", "cleanCount", "mergeCount")
-            hdrres2 = ("seqCount", "seqName", "otherCount", "otherName")
+            hdrres2 = ("seqCount", "seqName", "efficieny", "otherCount", "otherName")
             complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))
             primer_col = [i for i,col in enumerate(complete_row_hdr) if col=='primer'][0]
             dst.writerow(complete_row_hdr)

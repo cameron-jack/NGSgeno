@@ -1220,7 +1220,11 @@ class Experiment():
         Gather file records for display
         """
         file_usage = {}
-        for filename in self.uploaded_files:
+        for filename in self.uploaded_files.keys():
+            if not Path.exists(Path(filename)):
+                self.log(f'Error: {filename} does not exist! Removing file record')
+                self.del_file_record(filename)
+                continue
             file_usage[filename] = {'date modified':None, 'purpose':None}
             if 'purpose' in self.uploaded_files[filename]:
                 file_usage[filename]['purpose'] = self.uploaded_files[filename]['purpose']
@@ -1228,9 +1232,10 @@ class Experiment():
                 file_usage[filename]['date modified'] = self.uploaded_files[filename]['date modified']
             else:
                 ft = os.path.getmtime(filename)
-                file_usage[filename]['date modified'] =\
-                        datetime.datetime.fromtimestamp(ft).strftime('%Y/%m/%d %H:%M:%S')
-                self.uploaded_files[filename]['date modified'] = file_usage[filename]['date modified']
+                ft = datetime.datetime.fromtimestamp(ft).strftime('%Y/%m/%d %H:%M:%S')    
+                file_usage[filename]['date modified'] = ft
+                self.uploaded_files[filename]['date modified'] = ft
+                
             #if 'plates' in self.uploaded_files[filename]:
             #    for pid in self.uploaded_files[filename]['plates']:
             #        if util.is_guarded(pid):
