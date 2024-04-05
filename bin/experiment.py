@@ -1222,7 +1222,7 @@ class Experiment():
         file_usage = {}
         all_files = self.uploaded_files.keys()
         for fn in all_files:
-            if not Path.exists(fn):
+            if not Path.exists(Path(fn)):
                 self.log(f'Error: {fn} does not exist! Removing file record')
                 self.del_file_record(fn)
                 
