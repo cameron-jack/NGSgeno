@@ -1220,11 +1220,13 @@ class Experiment():
         Gather file records for display
         """
         file_usage = {}
-        for filename in self.uploaded_files.keys():
-            if not Path.exists(Path(filename)):
-                self.log(f'Error: {filename} does not exist! Removing file record')
-                self.del_file_record(filename)
-                continue
+        all_files = self.uploaded_files.keys()
+        for fn in all_files:
+            if not Path.exists(fn):
+                self.log(f'Error: {fn} does not exist! Removing file record')
+                self.del_file_record(fn)
+                
+        for filename in self.uploaded_files:
             file_usage[filename] = {'date modified':None, 'purpose':None}
             if 'purpose' in self.uploaded_files[filename]:
                 file_usage[filename]['purpose'] = self.uploaded_files[filename]['purpose']
