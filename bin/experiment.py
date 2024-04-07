@@ -1221,10 +1221,13 @@ class Experiment():
         """
         file_usage = {}
         all_files = self.uploaded_files.keys()
+        del_files = []
         for fn in all_files:
             if not Path.exists(Path(fn)):
-                self.log(f'Error: {fn} does not exist! Removing file record')
-                self.del_file_record(fn)
+                del_files.append(fn)
+        for fn in del_files:
+            self.log(f'Error: {fn} does not exist! Removing file record')
+            self.del_file_record(fn)
                 
         for filename in self.uploaded_files:
             file_usage[filename] = {'date modified':None, 'purpose':None}
