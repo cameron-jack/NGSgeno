@@ -814,7 +814,9 @@ def display_files(key, file_usage, height=250):
     file_df.reset_index(inplace=True)
     #file_df = file_df.rename(columns = {'index':'File', 'plates':'Plates', 'purpose':'Purpose'})
     file_df = file_df.rename(columns = {'index':'File', 'date modified':'Date modified', 'purpose':'Purpose'})
-    file_df.sort_values(by='Date modified', inplace=True, ascending=False)
+    if not file_df.empty:
+        file_df.sort_values(by='Date modified', inplace=True, ascending=False)
+
     selection = aggrid_interactive_table(file_df, grid_height=height, key=str(key)+'file_aggrid')
     if selection and 'selected_rows' in selection:
         fns = [row['File'] for row in selection['selected_rows']]
