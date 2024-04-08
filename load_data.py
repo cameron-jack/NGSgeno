@@ -125,8 +125,8 @@ def do_pending_cb(combined_pending, caller_id):
                 m(f'Failure: Could not overwrite existing file {pending}', dest=('log','debug'),
                         caller_id=caller_id)
         else:
-            m(f'Keeping the old version of the file {pending}', level='info', dest=('log','console','toast'),
-                    caller_id=caller_id)
+            # m(f'Keeping the old version of the file {pending}', level='info', dest=('log','console','toast'),
+            #         caller_id=caller_id)
             if pending in exp.pending_uploads:
                 exp.pending_uploads.remove(pending)
                 if pending in exp.uploaded_files:
@@ -311,7 +311,7 @@ def upload_pcr1_files(key):
                 upv_pids = ''.join(upv.name.split('_')[0] for upv in uploaded_primer_volumes)
                 success = parse.upload(exp, uploaded_primer_volumes, purpose='primer_volume')
                 if success and not trans.is_pending(exp):
-                    m(f'Added primer volumes for plates {",".join(upv_pids)}', 
+                    m(f'Added primer volumes for plates {upv_pids}', 
                             level='success', dest=('log','console'))
                 elif not success:
                     m(f'Failed to write at least one set of primer volumes, please see the log',
@@ -830,10 +830,9 @@ def load_custom_manifests(key):
                         #st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
                         sample_pids = [pid for pid in [p1,p2,p3,p4] 
                                 if pid != util.guard_pbc('None', silent=True) and pid is not None]
-
                         success = exp.build_dna_plate_entry(sample_pids, dest_pid, source='custom')
                         if success:
-                            m(f'Assigned custom plates to {dest_pid}', level='success', dest=('log','console'))
+                            m(f'Assigned custom plates to {util.unguard_pbc(dest_pid)}', level='success', dest=('log','console'))
                         else:
                             m('Failed to assign custom plates', level='failure', dest=('log','debug'))
     init_state('message_queues', dict())
