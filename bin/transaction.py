@@ -250,7 +250,7 @@ def clashing_pending_transactions(exp):
     
 def clashing_pending_transaction(exp, file_upload):
     clashes = clashing_pending_transactions()
-    file_path = exp.get_input_fn(file_upload.name, transaction=False)
+    file_path = exp.get_exp_fn(file_upload.name, trans=False)
     if file_path in clashes:
         return file_path
     return False
@@ -260,7 +260,7 @@ def clear_pending_transaction(exp, file_upload):
     if exp.pending_steps is None:
         return True
     try:
-        pf = exp.get_input_fn(file_upload, transaction=True)
+        pf = exp.get_exp_fn(file_upload, trans=True)
         if pf not in exp.pending_steps:
             return False
         if Path(pf).exists():
@@ -284,7 +284,8 @@ def clear_pending_transactions(exp):
             if Path(transaction).exists():
                 os.remove(transaction)
         exp.pending_steps = None
-        pending_files_hanging = Path(exp.get_exp_dn(subdir='uploads')).glob('pending_*')
+        pending_files_hanging = Path(exp.get_exp_dn()).glob('pending_*')+\
+                Path(exp.get_exp_dn(subdir='uploads')).glob('pending_*')
         for p in pending_files_hanging:
             os.remove(p)
             #print(f'removing pending file {p}', file=sys.stderr)
@@ -298,7 +299,7 @@ def accept_pending_transaction(exp, file_name):
     Replace the existing file with the one that is pending
     """
     print(file_name)
-    pending_file = exp.get_exp_fn(filename=file_name, transaction=True)
+    pending_file = exp.get_exp_fn(filename=file_name, trans=True)
     print(pending_file)
     if not Path(pending_file).exits():
         exp.log(f"Error: pending file {pending_file} does not exist, reverting to original")
@@ -439,13 +440,14 @@ def accept_pending_transactions(exp):
         if exp.pending_steps[ps]:
             exp.uploaded_files[op] = {'plates':exp.pending_steps[ps].keys()}
         else:
-            exp.uploaded_files[op] = {}
+            exp.uploaded_files[op] = {'plates':[]}
     exp.reproducible_steps.append(this_step)
     for fn in this_step:
         if fn in exp.pending_steps:
             exp.pending_steps.remove(fn)
     exp.save()
     return True
+
 
 def enforce_file_consistency(exp):
     """ 

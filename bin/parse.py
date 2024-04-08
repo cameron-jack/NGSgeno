@@ -133,7 +133,7 @@ def upload(exp, streams, purpose, overwrite=False):
             s = process_upload(exp, final_fp, purpose)
             if s is False:
                 success = False
-    print(f'upload failure {success=}', flush=True)
+    print(f'Upload succeeded? {success=}', flush=True)
     return success
 
 
@@ -569,7 +569,11 @@ def parse_primer_layout(exp, fp, user_gpid=None):
                 continue  # header
             if row == '' or row[0] == '' or row[1] == '':
                 continue
-            well = util.unpadwell(row[0])
+            try:
+                well = util.unpadwell(row[0])
+            except UnboundLocalError as exc:
+                exp.log(f'Error: You likely tried to upload volumes instead of layout! Using file {fp}')
+                return False, []
             if well in well_records[gPID]:
                 exp.log(f'Warning: skipping duplicate well entry {well} in {fp}')
                 continue 
@@ -684,7 +688,11 @@ def parse_index_layout(exp, fp, user_gpid=None):
         for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_MINIMAL)):
             if i == 0 or row == '':
                 continue  # header or blank
-            well = util.unpadwell(row[0])
+            try:
+                well = util.unpadwell(row[0])
+            except UnboundLocalError as exc:
+                exp.log(f'Did you upload a volume file by mistake? {exc}')
+                return False, []
             if well in well_records[gPID]:
                 exp.log(f'Warning: skipping duplicate well entry {well} in {fp}')
                 continue

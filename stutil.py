@@ -12,11 +12,15 @@ Utility functions for streamlit
 import streamlit as st
 import sys
 from time import sleep
+from collections import defaultdict
 
 upper_info = "upper_info_viewer"
 upper_height = "upper_info_height"
 lower_info = "lower_info_viewer"
 lower_height = "lower_info_height"
+
+# universal message queue. Use this rather than st.session_state['message_queues']
+mq = defaultdict(list)
 
 def init_state(key, value):
     """
@@ -27,8 +31,6 @@ def init_state(key, value):
     """
     if key not in st.session_state:
         st.session_state[key] = value
-
-
         
 
 def do_tm(message, level=None):
@@ -135,10 +137,12 @@ def m(message, level=None, dest=None, caller_id=None,
         message = custom_text(style['size'], style['color'], message, align=style['align'], style=style['style'], padding=style['padding'], display = False)    
         
     if caller_id:
-        init_state('message_queues', dict())
-        if caller_id not in st.session_state['message_queues']:
-            st.session_state['message_queues'][caller_id] = []
-        st.session_state['message_queues'][caller_id].append((message, level))
+        # init_state('message_queues', dict())
+        # if caller_id not in st.session_state['message_queues']:
+        #     st.session_state['message_queues'][caller_id] = []
+        # st.session_state['message_queues'][caller_id].append((message, level))
+        # return
+        mq[caller_id].append((message,level))
         return
 
     if 'persist' in dest:
@@ -164,7 +168,7 @@ def m(message, level=None, dest=None, caller_id=None,
         st.info(message)
     elif level.lower() == 'warning':
         st.warning(message)
-    elif level.lower() in set(['error', 'critical']):
+    elif level.lower() in set(['error', 'critical','failure']):
         st.error(message)
     else:
         st.write(message)

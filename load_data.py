@@ -29,7 +29,7 @@ import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
-from stutil import custom_text, add_vertical_space, m, init_state
+from stutil import custom_text, add_vertical_space, m, init_state, mq
 #try:
 #    from bin.experiment import Experiment, EXP_FN, load_experiment
 #except ModuleNotFoundError:
@@ -84,9 +84,6 @@ def do_pending_cb(combined_pending, caller_id):
     Action the pending_file_widget
     """
     exp = st.session_state['experiment']
-    init_state('message_queues', dict())
-    if caller_id not in st.session_state['message_queues']:
-        st.session_state['message_queues'][caller_id] = []
     expected_keys = ['pending_file_checkbox_'+str(pending) for pending in combined_pending]
     pending_checked = []
     # test all the checkboxes to see if they were ticked
@@ -114,7 +111,7 @@ def do_pending_cb(combined_pending, caller_id):
             elif pending in exp.pending_steps:
                 success = trans.accept_pending_transaction(exp, pending)
             if success:
-                m(f'Success: overwrote existing file {pending}', dest=('log','console'), caller_id=caller_id)
+                m(f'Success: overwrote existing file {pending}', level='success', dest=('log','console'), caller_id=caller_id)
                 if clashing_filenames:
                     m(f'{", ".join(clashing_filenames)} potentially affected by change', 
                             level='warning', dest=('console','log'), caller_id=caller_id)
@@ -122,22 +119,18 @@ def do_pending_cb(combined_pending, caller_id):
                     m(f'{", ".join(clashing_pids)} potentially affected by change', dest=('log','console'), 
                             level='warning', caller_id=caller_id)
             else:
-                m(f'Failure: Could not overwrite existing file {pending}', dest=('log','debug'),
+                m(f'Failure: Could not overwrite existing file {pending}', level='failure', dest=('log','debug'),
                         caller_id=caller_id)
         else:
             # m(f'Keeping the old version of the file {pending}', level='info', dest=('log','console','toast'),
             #         caller_id=caller_id)
-            if pending in exp.pending_uploads:
-                exp.pending_uploads.remove(pending)
-                if pending in exp.uploaded_files:
-                    success = exp.del_file_record(pending)
-            elif pending in exp.pending_steps:
-                success = trans.clear_pending_transaction(exp, pending)
+            success = exp.del_file_record(pending)
             if success:
-                m(f'Success: pending file or transaction {pending} cleared', dest=('log'), caller_id=caller_id)
+                trans.clear_pending_transaction(exp, pending)
+                m(f'Success: pending file or transaction {pending} cleared', level='failure', dest=('log'), caller_id=caller_id)
             else:
-                m(f'Failure: pending file or transaction {pending} could not be removed', dest=('log','debug'),
-                        caller_id=caller_id)
+                m(f'Failure: pending file or transaction {pending} could not be removed', level='failure', dest=('log','debug'),
+                    caller_id=caller_id)
 
 
 def pending_file_widget(key, caller_id):
@@ -148,7 +141,6 @@ def pending_file_widget(key, caller_id):
         key (str): a unique identifier for this widget
         caller_id (str): a unique identifier for the calling widget, for message passing
     """
-    message_container = st.session_state['message_container']
     exp = st.session_state['experiment']
     combined_pending = []  # both pending_uploads and pending_steps
     
@@ -260,12 +252,11 @@ def upload_echo_inputs(key):
         pending_file_widget(key, caller_id)
         st.session_state['upload_option'] = ''
         
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
                        
 
 def upload_pcr1_files(key):
@@ -318,17 +309,15 @@ def upload_pcr1_files(key):
                             level='error', dest=('debug',))
     
     #manage transactions:
-    #with st.session_state['message_container']:
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr1':
         pending_file_widget(key, caller_id)
         st.session_state['upload_option'] = ''
-        
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
     
 
 def load_amplicons(key):
@@ -339,6 +328,7 @@ def load_amplicons(key):
     caller_id = 'load_amplicons'
     add_vertical_space(2)
     m('**Upload Amplicon Plate Files**', dest=('mkdn',))
+    m('You may add extra 384-well plates of pre-prepared amplicons. These will be incorporated at the indexing stage', level='info')
     with st.form('index plate upload'+key, clear_on_submit=True): 
         uploaded_amplicon_plates = st.file_uploader(
                     'Upload Extra Amplicon Plates - CSV or XLSX.'+
@@ -382,12 +372,11 @@ def load_amplicons(key):
         pending_file_widget(key, caller_id)
         st.session_state['upload_option'] = ''           
     
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
         
 
 def upload_pcr2_files(key):
@@ -484,13 +473,51 @@ def upload_pcr2_files(key):
         pending_file_widget(key, caller_id)
         st.session_state['upload_option'] = ''
 
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
         
+
+def upload_assaylist(key):
+    """
+    Upload just the assay list (assay-primer mapping) file. Return True on success, False on failure
+    """
+    m('**Upload Assay List file (assay-primer mapping)**', dest=('mkdn',))
+    exp = st.session_state['experiment']
+    caller_id = ('upload_assaylist')
+    upload_form = st.form('Consumables upload'+key, clear_on_submit=True)
+    
+    col1, col2 = upload_form.columns(2)
+    uploaded_assaylists = col1.file_uploader('Upload Assay Lists', key='assaylist_uploader'+key, 
+            type=['txt','csv'], accept_multiple_files=True)
+
+    upload_button = upload_form.form_submit_button("Upload Files")
+    if upload_button:
+        if uploaded_assaylists:
+            success = parse.upload(exp, uploaded_assaylists, 'assay_primer_map')
+            assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
+            if success and not trans.is_pending(exp):
+                m(f'Added assay/primer lists from files {assaylist_names}',
+                        level='success', dest=('log','console'))
+            elif not success:
+                m(f'Failed to upload at least one assay/primer list file, please see the log',
+                        level='error', dest=('debug',))
+   
+    #manage transactions:
+    if trans.is_pending(exp) and st.session_state['upload_option'] == 'consumables':
+        #with st.session_state['message_container']:
+        pending_file_widget(key, caller_id)
+        st.session_state['upload_option'] = ''
+    
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
+    return success
+    
 
 def upload_extra_consumables(key):
     """
@@ -546,13 +573,12 @@ def upload_extra_consumables(key):
         #with st.session_state['message_container']:
         pending_file_widget(key, caller_id)
         st.session_state['upload_option'] = ''
-        
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
 
 
 def check_assay_file(exp):
@@ -608,12 +634,11 @@ def custom_volumes(exp):
         else:
             m("Volume could not be modified. Please use integers only", level='error', dest=('debug',))
 
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
 
 
 def upload_reference_sequences(key):
@@ -646,13 +671,12 @@ def upload_reference_sequences(key):
         pending_file_widget(key)
         st.session_state['upload_option'] = ''
         
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
-        
+        mq[caller_id] = []
+    
 
 def load_rodentity_data(key):
     """
@@ -663,6 +687,9 @@ def load_rodentity_data(key):
     st.session_state['upload_option'] = ''  # do we display pending files here
     plates_to_clear = [False, False, False, False]
     with st.expander('Add data from Rodentity JSON files',expanded=True):
+        m('Add up to four Rodentity JSON ear-punch plate (96-well) files at a time and click on **Submit**. '+\
+                'This will move the plate identifiers into the four slots below (P1-4). ', level='info')
+        
         with st.form('rodentity_upload_form', clear_on_submit=True):
             epps_col1, _ = st.columns([1,1])
             rodentity_epps = epps_col1.file_uploader(
@@ -712,7 +739,8 @@ def load_rodentity_data(key):
                         continue
                     exp.unassigned_plates[plate_key] = rod_pid
                     break
-        
+        m('Then assign a DNA plate (384-well) barcode identifier for plate combining with the '+\
+                'Hamilton Nimbus, and click on **Accept**',level='info')
         # this is so ugly. Never use this form style again!
         for plate_key in [1,2,3,4]:
             if exp.unassigned_plates[plate_key] not in exp.plate_location_sample:
@@ -763,13 +791,12 @@ def load_rodentity_data(key):
                                level='success', dest=('log','console'))
                         exp.unassigned_plates = {1:'',2:'',3:'',4:''}
                         sleep(2)
-                        st.experimental_rerun()
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+                        #st.experimental_rerun()
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
                         
                    
 def load_custom_manifests(key):
@@ -780,6 +807,8 @@ def load_custom_manifests(key):
     if 'custom' not in exp.unassigned_plates or not exp.unassigned_plates['custom']:
         exp.unassigned_plates['custom'] = {'None':{}}
     with st.expander('Upload custom manifests', expanded=True):
+        m('For non-Rodentity samples in 96-well plates, you can add these here. '+\
+                'Upload them first and then choose the layout you want.', level='info')
         with st.form(key='manifest_upload_form', clear_on_submit=True):
             col1, _ = st.columns([1,1])
             with col1:
@@ -798,7 +827,9 @@ def load_custom_manifests(key):
             #with st.form(f'clash form {key}', clear_on_submit=True):
             pending_file_widget(key, caller_id)
             st.session_state['upload_option'] = ''
-       
+        m('Choose the desired layout for the 384-well DNA plate (made with the Hamilton Nimbus). '+\
+                'Then provide the DNA plate name and press **Accept**', level='info')
+        
         with st.form(key='selection_form', clear_on_submit=True):
             m('Select up to four 96-well sample plate IDs (barcodes) to combine into a 384-well DNA plate', level='normal')
             col1, col2, _, col3, _ = st.columns([2,2,1,2,2])
@@ -835,19 +866,19 @@ def load_custom_manifests(key):
                             m(f'Assigned custom plates to {util.unguard_pbc(dest_pid)}', level='success', dest=('log','console'))
                         else:
                             m('Failed to assign custom plates', level='failure', dest=('log','debug'))
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
         
 
 def provide_barcodes(key, pcr_stage):
     """
     :param key: unique key for the input widgets
     """
-    add_vertical_space(2)
+    caller_id = 'provide_barcodes'
+    #add_vertical_space(2)
     m('**Add plate barcodes**', dest=('mkdn',))
     exp = st.session_state['experiment']
     pcr_col, taqwater_col = st.columns(2)
@@ -861,14 +892,16 @@ def provide_barcodes(key, pcr_stage):
             if guarded_pcr_plate_barcode not in exp.plate_location_sample:
                 success = exp.add_pcr_plates([guarded_pcr_plate_barcode])
                 if success:
-                    m(f'Added PCR plate barcode {pcr_plate_barcode}', level='success', dest=('log','console'))
+                    m(f'Added PCR plate barcode {pcr_plate_barcode}', level='success', 
+                            dest=('log','console'), caller_id=caller_id)
                     sleep(1.5)
                     st.experimental_rerun()
                 else:
                     m(f'Could not add PCR plate barcode {pcr_plate_barcode}, please see the log',
-                            level='error', dest=('debug',))
+                            level='error', dest=('debug','log'), caller_id=caller_id)
             else:
-                st.write(f'This plate barcode {pcr_plate_barcode} appears to already be in use')
+                m(f'This plate barcode {pcr_plate_barcode} appears to already be in use', 
+                        level='error', dest=('debug','log'), caller_id=caller_id)
 
     with taqwater_col.form('Add taq+water plate barcode', clear_on_submit=True):
         taqwater_plate_barcode = st.text_input('Taq and Water Plate Barcode', \
@@ -880,15 +913,21 @@ def provide_barcodes(key, pcr_stage):
             if guarded_taqwater_plate_barcode not in exp.plate_location_sample:
                 success = exp.add_standard_taqwater_plates([taqwater_plate_barcode], pcr_stage)
                 if success:
-                    m(f'Added taq+water plate {taqwater_plate_barcode}', level='success', dest=('log','console'))
+                    m(f'Added taq+water plate {taqwater_plate_barcode}', level='success', 
+                            dest=('log','console'), caller_id=caller_id)
                     sleep(1.5)
                     st.experimental_rerun()
                 else:
                     m(f'Could not add taq+water plate barcode {taqwater_plate_barcode}, please see the log',
-                            level='error', dest=('debug',))
+                            level='error', dest=('debug',), caller_id=caller_id)
             else:
                 m(f'This plate barcode {taqwater_plate_barcode} appears to already be in use',
-                        level='error', dest=('log',))
+                        level='error', dest=('log','debug'), caller_id=caller_id)
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
 
 
 def upload_miseq_fastqs():
@@ -919,12 +958,12 @@ def upload_miseq_fastqs():
         if not exp.locked:
             exp.lock()
             m(f'Experiment {exp.name} is now locked from changes to plate layouts', level='info', dest=('log',))
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
 
 
 

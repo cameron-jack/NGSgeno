@@ -148,6 +148,25 @@ def primer_plating(exp, table, pmr_pids, rotate=True):
         pmr_pos_list.append(tuple([pid, well]))
     return pmr_pos_list
 
+
+def check_assays_known(exp, sample_pid):
+    """
+    For a given sample plate ID (96-well ear punch plate or custom plate) find which assays are known
+    and which are not. Return Counters for known and unknown.
+    """
+    known_assays = Counter()
+    unknown_assays = Counter()
+    
+    pid = util.unguard_pbc(sample_pid, silent=True)
+    for well in exp.plate_location_sample[pid]['wells']:
+        for assay in exp.plate_location_sample[pid][well]['ngs_assays']:
+            if assay in exp.assay_assayfam:
+                known_assays[assay] += 1
+            else:
+                unknown_assays[assay] += 1
+    return known_assays, unknown_assays
+
+
 def nimbus_gen(exp):
     """
     Standardised Nimbus input generator, produces a workfile for the BRF's Nimbus robot.

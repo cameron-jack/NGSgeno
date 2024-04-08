@@ -30,10 +30,6 @@ from collections import defaultdict
 
 import pandas as pd
 
-## Ugly hack to find things in ../bin
-#from pathlib import Path
-#file = Path(__file__).resolve()
-#sys.path.append(os.path.join(file.parents[1],'bin'))
 try:
     import bin.db_io as db_io
 except ModuleNotFoundError:
@@ -55,6 +51,7 @@ try:
 except ModuleNotFoundError:
     import transaction
 
+from stutil import m, mq 
 
 EXP_FN = 'experiment.json'      
 
@@ -287,8 +284,15 @@ class Experiment():
             del self.uploaded_files[file_name]
             self.log(f'Success: removed file record of {file_name}')
             return True
+        elif file_name in self.pending_uploads:
+            self.pending_uploads.discard(file_name)
+            self.log(f'Info: pending upload discarded {file_name}')
+            return True
         else:
-            self.log(f'Error: {file_name} not present in file records')
+            if Path(file_name).exists():
+                self.log(f'Warning: No file record exists, but file found! Please manually inspect')
+            else:
+                self.log(f'Error: {file_name} not present in file records')
             return False
 
     ### Plate related operations
@@ -975,28 +979,33 @@ class Experiment():
         return True
 
 
-    def check_plate_presence(self, pids, purpose):
+    def check_plate_presence(self, pids, purpose, caller_id):
         """ 
         Check given plate for presence in self.plate_location_sample and compare purpose
         return success (and messages by reference)
         Required by exp.check_ready_pcr1() and exp.check_ready_pcr2()
         """
-        success = True  
+        if not pids:
+            m(f'Warning: no plate IDs given for {purpose}', level='warning', 
+                    caller_id=caller_id)
+            return False
+        
+        success = True
         for pid in pids:
             if pid in self.plate_location_sample:
                 if self.plate_location_sample[pid]['purpose'] != purpose:
-                    msg = f"Error: plate already exists with PID {pid} with purpose "+\
-                            f"{self.plate_location_sample[pid]['purpose']}, expected {purpose}"
-                    self.log(msg)
+                    m(f"Error: plate already exists with PID {pid} with purpose "+\
+                            f"{self.plate_location_sample[pid]['purpose']}, expected {purpose}", 
+                            level='error', dest=('debug','log'), caller_id=caller_id)
                     success = False
             else:
-                msg = f"Critical: No plate exists with barcode {pid}"
-                self.log(msg)
+                m(f"Critical: No plate exists with barcode {pid}", level='critical', 
+                        dest=('debug','log'), caller_id=caller_id)
                 success = False
         return success
     
 
-    def check_ready_pcr1(self, selected_pids):
+    def check_ready_pcr1(self, selected_pids, caller_id):
         """
         Check that everything required to successfully generate PCR1 picklists is available
         TODO: Check that volumes and wells are sufficient!
@@ -1007,24 +1016,24 @@ class Experiment():
         pcr_pids = selected_pids['pcr']
         taqwater1_pids = selected_pids['taqwater1']
         if not dna_pids or not pcr_pids or not taqwater1_pids:
-            success = False
+            m('DNA plates, PCR plates, and taq+water plates are all required for primer PCR')
 
-        dna_success = self.check_plate_presence(dna_pids, 'dna')
+        dna_success = self.check_plate_presence(dna_pids, 'dna', caller_id)
         if not dna_success:
             success = False
 
-        pcr_success = self.check_plate_presence(pcr_pids, 'pcr')
+        pcr_success = self.check_plate_presence(pcr_pids, 'pcr', caller_id)
         if not pcr_success:
             success = False
 
-        taq_success = self.check_plate_presence(taqwater1_pids, 'taq_water')
+        taq_success = self.check_plate_presence(taqwater1_pids, 'taq_water', caller_id)
         if not taq_success:
             success = False
       
         return success
 
 
-    def check_ready_pcr2(self, selected_pids, amplicon_only=False):
+    def check_ready_pcr2(self, selected_pids, caller_id, amplicon_only=False):
         """
         Check the everything required to successfully generate PCR2 picklists is available
         TODO: Check that volumes and wells are sufficient!
@@ -1041,25 +1050,29 @@ class Experiment():
         
         if amplicon_only:
             if not amplicon_pids or not taqwater2_pids or not index_pids:
+                m('Amplicon plates, taq+water plates, and index plates are all required for indexing',
+                        level='error', caller_id=caller_id)
                 return False
         else:
             if not pcr_pids or not taqwater2_pids or not index_pids:
+                m('PCR plates, taq+water plates, and index plates all required for indexing', 
+                        level='error', caller_id=caller_id)
                 return False
 
         if not amplicon_only:
-            pcr_success = self.check_plate_presence(pcr_pids, 'pcr')
+            pcr_success = self.check_plate_presence(pcr_pids, 'pcr', caller_id)
             if not pcr_success:
                 success = False
         else:
-            amplicon_success = self.check_plate_presence(amplicon_pids, 'amplicon')
+            amplicon_success = self.check_plate_presence(amplicon_pids, 'amplicon', caller_id)
             if not amplicon_success:
                 success = False
                 
-        taq_success = self.check_plate_presence(taqwater2_pids, 'taq_water')
+        taq_success = self.check_plate_presence(taqwater2_pids, 'taq_water', caller_id)
         if not taq_success:
             success = False
 
-        index_success = self.check_plate_presence(index_pids, 'index')
+        index_success = self.check_plate_presence(index_pids, 'index', caller_id)
         if not index_success:
             success = False
 

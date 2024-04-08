@@ -32,7 +32,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from stutil import add_vertical_space, custom_text, hline, init_state, \
-        upper_info, upper_height, lower_info, lower_height, m
+        upper_info, upper_height, lower_info, lower_height, m, mq
 
 from bin.experiment import Experiment, EXP_FN, load_experiment
 try:
@@ -392,15 +392,13 @@ def main():
                 if unlocked(exp):
                     init_state('upload stage', None)
                     with main_body_container:
-                        st.subheader('Custom Volumes')
-                        ld.custom_volumes(exp)
-                        add_vertical_space(1)
-
                         st.subheader('Upload Consumables')
                         ld.upload_extra_consumables('consumables_load2')
                         ld.upload_pcr1_files('pcr1_load2')
                         ld.upload_pcr2_files('pcr2_load2')
-
+                        add_vertical_space(1)
+                        st.subheader('Custom Volumes')
+                        ld.custom_volumes(exp)
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_consumables', default_view1='Consumables', 
                         default_view2='Samples')
@@ -415,11 +413,6 @@ def main():
                 init_state('nimbus_tab', 1)
                 nimbus_tab = st.session_state['nimbus_tab']
 
-            # why? We don't need the assay file at this stage
-            #if not ld.check_assay_file(exp):
-            #    with message_container:
-            #        m("Upload assay list file before generating Echo files", level='warning')
-
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
 
             #------------------------------------ Nimbus ~ TAB 1: Download Nimbus --------------------------------------
@@ -427,29 +420,31 @@ def main():
                 st.session_state['nimbus_tab'] = 1
                 if unlocked(exp):
                     with main_body_container:
-                        _, header_col, _ = st.columns([2,2,1])
-                        with header_col:
-                            st.subheader('Generate Echo Files')
+                        st.subheader('Generate Echo Files')
+                        dc.set_nimbus_title(exp, nfs, efs)
+                        add_vertical_space(2)
+                        if not ld.check_assay_file(exp):
+                            m('Assay list file (assay to primer mapping) is required to proceed. '+\
+                                    'Please upload this to continue', level='Error')
+                            success = ld.upload_assaylist('nimbus1_assaylist')
+                            if success:
+                                st.experimental_rerun()
+                        else:
+                            #Generate files button
+                            _, btn_col,_ = st.columns([2,2,1])
+                            if st.session_state['experiment'].dest_sample_plates:
+                                with btn_col:
+                                    run_gen_nimbus = st.button('Generate Nimbus input files', type="primary")
 
-                            #Subtitle
-                            dc.set_nimbus_title(exp, nfs, efs)
-                            add_vertical_space(2)
-
-                        #Generate files button
-                        _, btn_col,_ = st.columns([2,2,1])
-                        if st.session_state['experiment'].dest_sample_plates:
-                            with btn_col:
-                                run_gen_nimbus = st.button('Generate Nimbus input files', type="primary")
-
-                            #Generate files
-                            if run_gen_nimbus:
-                                success = run_generate(exp, exp.generate_nimbus_inputs)    
-                                if not success:
-                                    m('Failed to generate the Nimbus files. See the log for details', 
-                                            level='error', dest=('debug',))
-                                else:
-                                    add_vertical_space(2)
-                                    nfs, efs, xbcs = exp.get_nimbus_filepaths()
+                                #Generate files
+                                if run_gen_nimbus:
+                                    success = run_generate(exp, exp.generate_nimbus_inputs)    
+                                    if not success:
+                                        m('Failed to generate the Nimbus files. See the log for details', 
+                                                level='error', dest=('debug',))
+                                    else:
+                                        add_vertical_space(2)
+                                        nfs, efs, xbcs = exp.get_nimbus_filepaths()
                     
                         add_vertical_space(3)
                         dc.get_echo_download_buttons(nfs)
@@ -531,6 +526,7 @@ def main():
                 st.session_state['primer_tab'] = 2
                 if unlocked:
                     with main_body_container:
+                        caller_id = 'pcr1 generate'
                         st.subheader('Generate Primer (PCR 1) Echo Picklists')
                         st.info('Select the resources you wish to include for primer PCR and then click on the '+\
                                 '**Generate Echo Picklists** button below, to create Echo picklist files')
@@ -543,9 +539,7 @@ def main():
                         hline()
                         
                         if selected_pids['dna']:
-                            if not exp.check_ready_pcr1(selected_pids):
-                                m('Cannot create PCR1 picklists, please see the log for details', level='warning')
-                            else:
+                            if exp.check_ready_pcr1(selected_pids, caller_id):
                                 _,button_col,_ = st.columns([2, 2, 1])
                                 echo_picklist_go = button_col.button('Generate Echo Picklists',
                                             key='echo_pcr1_go_button',
@@ -555,6 +549,9 @@ def main():
                                             selected_pids)
                                     if not success:
                                         st.error('Picklist generation failed. Please see the log')
+                        for msg,lvl in mq[caller_id]:
+                            m(msg, lvl)
+                        mq[caller_id] = []
 
                         if generate.pcr1_picklists_exist(exp):
                             dc.get_echo1_download_btns()
@@ -616,6 +613,7 @@ def main():
                 st.session_state['index_tab'] = 2 
                 if unlocked(exp):
                     with main_body_container:
+                        caller_id = 'pcr2 generate'
                         st.subheader('Generate Index (PCR 2) Echo Picklists')
                         st.info('Select the resources you wish to include for indexing PCR and then click on the '+\
                                 '**Generate Echo Picklists** button below, to create Echo picklist files')
@@ -629,19 +627,17 @@ def main():
                         add_vertical_space(1)
                 
                         if selected_pids['pcr']:  # standard run
-                            if not exp.check_ready_pcr2(selected_pids):
-                                m('Cannot generate PCR2 picklists, please see the log for details', 
-                                        level='warning')
-                            else:
+                            if exp.check_ready_pcr2(selected_pids, caller_id):
                                 do_generate = True
                         else:
                             if selected_pids['amplicon'] and not selected_pids['pcr']:
-                                if not exp.check_ready_pcr2(selected_pids, amplicon_only=True):
-                                    m('Cannot generate PCR2 picklists, please see the log for details',
-                                            level='warning')
-                                else:
+                                if exp.check_ready_pcr2(selected_pids, caller_id, amplicon_only=True):
                                     do_generate = True
                                     
+                        for msg,lvl in mq[caller_id]:
+                            m(msg, lvl)
+                        mq[caller_id] = []
+
                         if do_generate:
                             show_generate = False
                             if selected_pids['pcr']:

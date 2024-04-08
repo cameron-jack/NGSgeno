@@ -29,7 +29,7 @@ import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
-from stutil import custom_text, add_vertical_space, add_pm, m, init_state
+from stutil import custom_text, add_vertical_space, add_pm, m, init_state, mq
 try:
     from bin.experiment import Experiment, EXP_FN, load_experiment
 except ModuleNotFoundError:
@@ -261,6 +261,13 @@ def display_samples(key, height=250):
                     del_col3.button("No",on_click=cancel_delete, args=('group',rows), 
                             key="keep " + str(key), help=f"Keep {lines}")
     selection = None
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
+
     init_state('message_queues', dict())
     if caller_id in st.session_state['message_queues']:
         for msg,lvl in st.session_state['message_queues'][caller_id]:
@@ -278,6 +285,7 @@ def display_consumables(key, height=300):
                 'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
     """
     exp = st.session_state['experiment']
+    caller_id = 'display_consumables'
     # display all the required files whether they are, or are not present
     # Plates: primer, index, taq/water, PCR, references, primer/assaylist, 
     headers = ['Purpose','Barcode/ID','Wells','Type','Entries']
@@ -304,6 +312,12 @@ def display_consumables(key, height=300):
         m('No plates loaded')
     else:
         selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'consumables_aggrid')
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
 
 
 def display_plates(key, plate_usage, height=300): 
@@ -333,13 +347,13 @@ def display_plates(key, plate_usage, height=300):
                             args=(caller_id,'plate',pids), key="delete " + str(key), help=f"Delete {pids}")
                     del_col3.button("No", on_click=cancel_delete,
                             args=('plate',pids), key="keep " + str(key), help=f"Keep {pids}")
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
-            
+        mq[caller_id] = []
+
 
 def display_pcr_common_components(selected_pids):
     """
@@ -348,6 +362,7 @@ def display_pcr_common_components(selected_pids):
         selected_pids (dict): '
     """
     exp = st.session_state['experiment']
+    caller_id = 'display_pcr_common_components'
     PCR_PLATE_WELLS = 384
     dna_pids = selected_pids['dna']
     pcr_pids = selected_pids['pcr']
@@ -393,8 +408,6 @@ def display_pcr_common_components(selected_pids):
         amplicon_pid_txt = ', '.join([util.unguard_pbc(p, silent=True)\
                 for p in amplicon_pids])
     
-
-
     req_PCR_text = '**Number of required PCR plates**'
     req_PCR_num = str(required_pcr_plates)
     if num_supplied_pcr < required_pcr_plates:
@@ -418,16 +431,12 @@ def display_pcr_common_components(selected_pids):
     pcr_cols[2].markdown('**User supplied amplicon plates**')
     pcr_cols[3].markdown(amplicon_pid_txt)
     
-    #Adding white space
-    #i=0
-    #while i < 3:
-    #    pcr_cols[2].write('')
-    #    pcr_cols[3].write('')
-    #    i+=1
-
-    #for i in range(4):
-    #    pcr_cols[i].write('')
-
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
 
 
 def display_pcr1_components(selected_pids):
@@ -438,6 +447,7 @@ def display_pcr1_components(selected_pids):
         selected_pids (dict): 'dna','pcr','taqwater1'
     """
     exp = st.session_state['experiment']
+    caller_id = 'display_pcr1_components'
     ul_conv = 1000
     pcr_stage = 1
     
@@ -457,7 +467,7 @@ def display_pcr1_components(selected_pids):
     #Required taq/water
     primer_taq_vol, primer_water_vol = exp.get_taqwater_volumes_primer(num_reactions)
 
-    taq_avail, water_avail, pids = exp.get_taqwater_avail(pcr_stage=pcr_stage)
+    taq_avail, water_avail, pids = exp.get_taqwater_avail(taqwater_bcs=taqwater1_pids)
     taq_avail_vol = taq_avail/ul_conv
     water_avail_vol = water_avail/ul_conv            
 
@@ -470,7 +480,7 @@ def display_pcr1_components(selected_pids):
     num_req_taq_water_plates = util.num_req_taq_water_plates(primer_taq_vol, primer_water_vol)
 
     user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True) \
-                            for p in exp.get_taqwater_avail(pcr_stage=pcr_stage)[2]])
+                            for p in taqwater1_pids])
     
     num_supplied_taqwater = len(user_supplied_taqwater)
     user_taqwater_text = user_supplied_taqwater if user_supplied_taqwater else '<p style="color:#FF0000">None</p>'
@@ -499,6 +509,12 @@ def display_pcr1_components(selected_pids):
     pcr_cols[1].markdown(required_taq_vol_str, unsafe_allow_html=True)
     pcr_cols[2].markdown('**Available taq volume**')
     pcr_cols[3].write(avail_taq_vol_str, unsafe_allow_html=True)
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
 
 
 def display_pcr2_components(selected_pids):
@@ -510,6 +526,7 @@ def display_pcr2_components(selected_pids):
     """
     #Need to add info about taq water
     exp = st.session_state['experiment']
+    caller_id = 'display_pcr2_components'
     ul_conv = 1000
     pcr_stage = 2
     dna_pids = selected_pids['dna']
@@ -586,6 +603,12 @@ def display_pcr2_components(selected_pids):
     pcr2_col[1].write(str(index_max))
     pcr2_col[0].markdown('**Index Pairs Remaining**')
     pcr2_col[1].markdown(index_pairs_remain, unsafe_allow_html=True)
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
     
 
 def st_directory_picker(label='Selected directory:', initial_path=Path(),\
@@ -595,6 +618,7 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
     Initial code by Aidin Jungo here: https://github.com/aidanjungo/StreamlitDirectoryPicker
     Cannot be used inside an st.column as it produces its own columns.
     """
+    caller_id = 'st_directory_picker'
     if "path" not in st.session_state:
         st.session_state['path'] = initial_path.absolute()
 
@@ -628,8 +652,15 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
     st.markdown(\
             f'<h5 style="color:#000000">Contains {len(contains_files)} files of type {",".join(searched_file_types)}</h5>',\
                     unsafe_allow_html=True)
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
 
     return st.session_state['path']
+
 
 def handle_picklist_download(picklist_type, picklist_paths, error_msgs, file_col, btn_col):
     if not picklist_paths:
@@ -662,6 +693,7 @@ def get_echo1_download_btns():
     if error_msgs:
         for msg in error_msgs:
             custom_text('p', '#ff0000', msg, 'center', padding='5px', display=True)
+            
 
 def get_echo2_download_btns():
     exp = st.session_state['experiment']
@@ -682,6 +714,7 @@ def get_echo2_download_btns():
 
 def show_echo1_outputs():
     exp = st.session_state['experiment']
+    caller_id = 'show_echo1_outputs'
     picklist_file_col, picklist_btn_col = st.columns(2)
     dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR1_picklist_filepaths()
     error_msgs = []
@@ -723,10 +756,17 @@ def show_echo1_outputs():
         for msg in error_msgs:
             picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
                     unsafe_allow_html=True)
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
 
 
 def show_echo2_outputs():
     exp = st.session_state['experiment']
+    caller_id = 'show_echo2_outputs'
     picklist_file_col, picklist_btn_col = st.columns(2)
     index_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
     
@@ -758,6 +798,12 @@ def show_echo2_outputs():
         for msg in error_msgs:
             picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
                     unsafe_allow_html=True)
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
 
     
 def display_status(key, height=300):
@@ -837,12 +883,12 @@ def display_files(key, file_usage, height=250):
                 del_col3.button("No", on_click=cancel_delete,
                         args=('file',fns), key="keep " + str(key), help=f"Keep {fns}")
                 selection = None
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
+    # display any messages for this widget
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
         sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
+        mq[caller_id] = []
 
 
 def display_primers(key, dna_pids=None, primer_pids=None, height=350):
