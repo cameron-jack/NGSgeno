@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 
-VER="v0.25.002"
+VER="v0.26.001"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: index and taq/water calculations for amplicon runs
+* New GUI
+* File timestamps
+* New pervasive messaging
+* Efficiency score in results
+* Performance improvements
 EOM
 
 mv changelog.txt changelog_old.txt
