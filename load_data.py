@@ -613,7 +613,7 @@ def custom_volumes(exp):
                                           'PRIMER_WATER_VOL':util.PRIMER_WATER_VOL, 
                                           'INDEX_VOL':util.INDEX_VOL, 
                                           'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
-                                          'INDEX_WATER_VOL':util.INDEX_WATER_VOL})
+                                          'INDEX_WATER_VOL':util.INDEX_WATER_VOL}, caller_id)
         if success:
             m('Transfer volumes reset', level='info', dest=('log',))
             sleep(1.5)
@@ -626,7 +626,7 @@ def custom_volumes(exp):
     if st.session_state['volume_df']['edited_rows']:
         for vol in list(volumes_dict.keys()):
             volumes_dict[vol] = float(custom_vol_editor[vol]['Volume'])
-        success = exp.add_custom_volumes(volumes_dict)
+        success = exp.add_custom_volumes(volumes_dict, caller_id)
         if success:
             m(f'Modified transfer volumes {volumes_dict}', level='success', dest=('log','console'))
             sleep(1.5)
@@ -934,8 +934,9 @@ def upload_miseq_fastqs():
     exp = st.session_state['experiment']
     caller_id = 'upload_miseq_fastqs'
     if not exp.locked:
-        st.warning('Uploading sequence files will lock previous stages'+
-                'of the pipeline, preventing changes to plate layouts')
+        pass
+        #st.warning('Uploading sequence files will lock previous stages '+
+        #        'of the pipeline, preventing changes to plate layouts')
     st.markdown('<h4 style="color:#000000">Add Miseq FASTQ files to experiment</h4>', 
             unsafe_allow_html=True)
     fastq_path = dc.st_directory_picker("Select location of Miseq FASTQ files")
@@ -955,9 +956,9 @@ def upload_miseq_fastqs():
             copy2(fp, exp.get_exp_dn('raw'))
         file_field.markdown('<h5>Done</h5>', unsafe_allow_html=True)
         copy_progress.progress(100)
-        if not exp.locked:
-            exp.lock()
-            m(f'Experiment {exp.name} is now locked from changes to plate layouts', level='info', dest=('log',))
+        #if not exp.locked:
+        #    exp.lock()
+        #    m(f'Experiment {exp.name} is now locked from changes to plate layouts', level='info', dest=('log',))
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:

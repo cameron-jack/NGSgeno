@@ -751,18 +751,15 @@ def main():
                 st.session_state['allele_tab'] = 1
                 with main_body_container:
                     rundir = exp.get_exp_dn()
-                    seq_ready_messages = []
-                    call_ready_messages = []
-                    ld.upload_reference_sequences('reference_allele1')
-                    if not exp.check_sequence_upload_ready(seq_ready_messages):
-                        for msg in seq_ready_messages:
-                            st.error(msg)
-                        st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
-
-                    elif not exp.check_allele_calling_ready(call_ready_messages):
-                        for msg in call_ready_messages:
-                            st.error(msg)
-                        st.warning('These resources are required before allele calling can proceed')
+                    caller_id = 'pre-execute-analysis'    
+                    success = exp.check_sequence_upload_ready(caller_id)
+                    for msg,lvl in mq[caller_id]:
+                        m(msg, level=lvl)
+                    mq[caller_id] = []
+                    if not success:
+                        st.warning('Resources are required for allele calling and must be present before FASTQs can be uploaded')
+                        st.subheader('Upload reference sequences')
+                        ld.upload_reference_sequences('reference_allele1')
                         ld.upload_miseq_fastqs()
                     else:
                         ld.upload_miseq_fastqs()

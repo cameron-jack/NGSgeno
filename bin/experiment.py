@@ -1376,7 +1376,7 @@ class Experiment():
         return miseq_fps  
 
 
-    def check_sequence_upload_ready(self, messages):
+    def check_sequence_upload_ready(self, caller_id):
         """
         Prevent users from uploading sequence files without references being loaded, or without generating Stage3 or MiSeq files
         Requires a list of messages for the GUI which can be appended to (pass by reference)
@@ -1389,22 +1389,18 @@ class Experiment():
         for fn in fns:
             if not Path(fn).exists():
                 success = False
-                msg = f"Error: {fn} not present"
-                self.log(msg)
-                messages.append(msg)
+                m(f"Error: {fn} not present", level='error', dest=('log','debug'), caller_id=caller_id)
 
         # check that at least one reference sequence has been uploaded
         if len(self.reference_sequences) == 0:
             success = False
-            msg = 'No reference sequences have been uploaded yet, please add these'
-            self.log(msg)
-            messages.append(msg)
+            m('No reference sequences have been uploaded yet, please add these', level='error', 
+                    dest=('log','debug'), caller_id=caller_id)
 
-        self.save()
         return success
 
  
-    def check_allele_calling_ready(self, messages):
+    def check_allele_calling_ready(self, caller_id:str):
         """ 
         Return True if everything needed for allele calling is present
             - Stage3.csv is present - done in self.check_sequence_upload_ready()
@@ -1412,23 +1408,20 @@ class Experiment():
             - check that reference sequences are uploaded - done in self.check_sequence_upload_ready()
             - the raw directory is present (can be empty)
 
-        Requires a list "messages" to be given for returning feedback to the GUI
+        Requires a caller_id to be given for returning feedback to the GUI
         """
-        success = self.check_sequence_upload_ready(messages)
+        success = self.check_sequence_upload_ready(caller_id)
 
         # check whether the raw directory for FASTQs exists yet - implies at least one FASTQ has been uploaded        
         dn = self.get_exp_fn(f'raw')
         if not Path(dn).exists() or not Path(dn).is_dir():
             success = False
-            msg = f"Error: {dn} does not exist"
-            self.log(msg)
-            messages.append(msg)
+            m(f"Error: {dn} does not exist", level='error', dest=('log','debug'), caller_id=caller_id)
 
-        self.save()
         return success
 
 
-    def add_custom_volumes(self, custom_volumes:dict) -> bool:
+    def add_custom_volumes(self, custom_volumes:dict, caller_id:str) -> bool:
         """
         Modify transfer volume info
         """
@@ -1436,11 +1429,10 @@ class Experiment():
             for value in list(custom_volumes.values()):
                 value = int(value)
             self.transfer_volumes = custom_volumes.copy()
-            self.log(f'Success: Custom volumes added')
-            self.save()
+            m(f'Success: Custom volumes set', level='success', dest=('log','console'), caller_id=caller_id)
             return True
         except (TypeError, ValueError) as e:
-            self.log(f'Error: {e}')
+            m(f'Error: during volume setting {e}', level='failure', dest=('log','debug'), caller_id=caller_id)
             return False
     
      

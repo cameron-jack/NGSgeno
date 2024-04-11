@@ -314,9 +314,9 @@ def accept_pending_transaction(exp, file_name):
     elif pending_file in exp.pending_steps:
         #print(f'Pending steps: {exp.pending_steps}, reproducible steps: {exp.reproducible_steps}', 
             #       file=sys.stderr)
-        clashes = exp.clashing_pending_transactions()
+        clashes = clashing_pending_transactions()
         #print(f'Clashes seen: {clashes}', file=sys.stderr)
-        final_path = exp.convert_pending_to_final(pending_file)
+        final_path = convert_pending_to_final(pending_file)
         #print(f'File name: {final_path}', file=sys.stderr)
 
         #if file already exists, remove original from files and reproducible_steps

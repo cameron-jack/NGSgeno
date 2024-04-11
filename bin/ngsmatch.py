@@ -1203,8 +1203,10 @@ if __name__=="__main__":
                 report_progress(args.rundir, 0, 0)  # set this up asap
                 main(args)
                 os.remove(lock_path)
-        except:
+                print('Completed regular execution')
+        except Exception as exc:
             os.remove(lock_path)
+            print(f'Completed with exception {exc}', flush=True)
     else:
         print("Analysis already running", file=sys.stderr)
         exit(2)
