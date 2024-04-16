@@ -1,3 +1,8 @@
+v0.26.002
+Date: Wed Apr 17 09:39:29 AEST 2024
+* Fixed: index checkbox not affecting display
+* Fixed: buttons replaced for index file generation
+
 v0.26.001
 Date: Thu Apr 11 15:38:08 AEST 2024
 * New GUI

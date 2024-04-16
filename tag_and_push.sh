@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 
-VER="v0.26.001"
+VER="v0.26.002"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* New GUI
-* File timestamps
-* New pervasive messaging
-* Efficiency score in results
-* Performance improvements
+* Fixed: index checkbox not affecting display
+* Fixed: buttons replaced for index file generation
 EOM
 
 mv changelog.txt changelog_old.txt
