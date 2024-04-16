@@ -712,19 +712,18 @@ class Experiment():
         return assay_primers
 
 
-    def get_assay_primer_usage(self, dna_pids=None):
+    def get_assay_primer_usage(self, dna_pids):
         """
         For a given set of DNA plates, return the number of times each assay and primer is needed
-        If an dna_pids is None, use all available dna plates
         """
         assay_usage = defaultdict(int)
         primer_usage = defaultdict(int)
-        if dna_pids:
-            dpids = [pid for pid in dna_pids if pid in self.plate_location_sample \
-                    and self.plate_location_sample[pid]['purpose'] == 'dna']
-        else:
-            dpids = [pid for pid in self.plate_location_sample if pid in self.plate_location_sample \
-                    and self.plate_location_sample[pid]['purpose'] == 'dna']
+        if not dna_pids:
+            return assay_usage, primer_usage
+        
+        dpids = [pid for pid in dna_pids if util.guard_pbc(pid, silent=True) in self.plate_location_sample \
+                and self.plate_location_sample[pid]['purpose'] == 'dna']
+        
         if not dpids:
             self.log(f'Error: no DNA plates found matching DNA plate IDs: {dna_pids}')
             return assay_usage, primer_usage
@@ -741,19 +740,16 @@ class Experiment():
         return assay_usage, primer_usage
 
 
-    def get_index_avail(self, index_pids=None):
+    def get_index_avail(self, index_pids):
         """
-        Use all index plates available and return dictionaries of fwd and rev indexes
+        Provided a list of index PIDs and return dictionaries of fwd and rev indexes
         Returns:
             [fwd_index]={'well_count':int, 'avail_transfers':int, 'avail_vol':nl}
             [rev_index]={'well_count':int, 'avail_transfers':int, 'avail_vol':nl}
         """
-        
+        idx_pids = [util.guard_pbc(ip, silent=True) for ip in index_pids]
         if index_pids:
-            index_pids = [pid for pid in index_pids if self.plate_location_sample[pid]['purpose'] == 'index']
-        else:
-            index_pids = [pid for pid in self.plate_location_sample \
-                    if self.plate_location_sample[pid]['purpose'] == 'index']
+            index_pids = [pid for pid in idx_pids if self.plate_location_sample[pid]['purpose'] == 'index']
                 
         fwd_idx = {}
         rev_idx = {}
@@ -789,8 +785,10 @@ class Experiment():
         return fwd_idx, rev_idx
 
 
-    def get_index_pairs_avail(self, index_pids=None):
+    def get_index_pairs_avail(self, index_pids):
         """ returns all available pairings of barcode ends """
+        if not index_pids:
+            return []
         fwd_idx, rev_idx = self.get_index_avail(index_pids)
         fwd_idx_names = list(fwd_idx.keys())
         rev_idx_names = list(rev_idx.keys())
@@ -1015,7 +1013,8 @@ class Experiment():
         dna_pids = selected_pids['dna']
         pcr_pids = selected_pids['pcr']
         taqwater1_pids = selected_pids['taqwater1']
-        if not dna_pids or not pcr_pids or not taqwater1_pids:
+        primer_pids = selected_pids['primer']
+        if not dna_pids or not pcr_pids or not taqwater1_pids or not primer_pids:
             m('DNA plates, PCR plates, and taq+water plates are all required for primer PCR')
 
         dna_success = self.check_plate_presence(dna_pids, 'dna', caller_id)

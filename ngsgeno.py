@@ -32,7 +32,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from stutil import add_vertical_space, custom_text, hline, init_state, \
-        upper_info, upper_height, lower_info, lower_height, m, mq
+        upper_info, upper_height, lower_info, lower_height, m, mq, set_state
 
 from bin.experiment import Experiment, EXP_FN, load_experiment
 try:
@@ -345,7 +345,7 @@ def main():
         init_state('lower_panel_height', 350)
         
         # standard upper info viewer code for each tab
-        def upper_info_viewer_code(tab_col3, tab_col2, widget_key, default_view1='None', default_view2='None', checked=True):
+        def upper_info_viewer_code(tab_col3, tab_col2, widget_key, default_view1='None', default_view2='None', checked=False):
             with tab_col3:
                 add_vertical_space(2)
                 dc.show_upper_info_viewer_checkbox(widget_key, value=checked)
@@ -377,8 +377,13 @@ def main():
                     init_state('run queue', [])
                     with main_body_container:
                         st.subheader('Upload Sample Files')
+                        m('**Upload Rodentity plate files, custom manifests, or amplicon plate definition files '+\
+                                'then move to the next tab to upload pipeline consumables and other important files**',
+                                dest=('mkdn',))
                         ld.load_rodentity_data('rodentity_load1')
+                        hline()
                         ld.load_custom_manifests('custom_load1')
+                        hline()
                         ld.load_amplicons('amp_load1')
 
                 # ** Info viewer **
@@ -497,7 +502,7 @@ def main():
                         else:
                             st.error('Load Echo input files (output from Nimbus) to enable PCR1')
                         checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
-                                inc_dna=True, inc_pcr=True, inc_taqwater1=True)
+                                ['dna','pcr','taqwater1','primer'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         hline()    
                         dc.display_pcr_common_components(selected_pids)
@@ -531,7 +536,7 @@ def main():
                         st.info('Select the resources you wish to include for primer PCR and then click on the '+\
                                 '**Generate Echo Picklists** button below, to create Echo picklist files')
                         checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
-                                inc_dna=True, inc_pcr=True, inc_taqwater1=True)
+                                ['dna','pcr','taqwater1','primer'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         hline()    
                         dc.display_pcr_common_components(selected_pids)
@@ -581,8 +586,8 @@ def main():
                         st.subheader('Indexing (PCR 2) Components')
                         st.info('Provide the resources needed to perform a sufficient number of indexing reactions '+\
                                 'for your experiment, then move to the *Generate Picklists* tab')
-                        checkbox_keys = dc.display_plate_checklist('idx_checklist1', inc_pcr=True, 
-                                    inc_taqwater2=True, inc_amplicon=True, inc_index=True)
+                        checkbox_keys = dc.display_plate_checklist('idx_checklist1',
+                                ['pcr','taqwater2','amplicon','index'])
                         hline()
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         dc.display_pcr_common_components(selected_pids)
@@ -611,6 +616,7 @@ def main():
             #--------------------------------- Index ~ TAB 2: Generate PCR 2 picklists ---------------------------------
             if index_tab == 2:                
                 st.session_state['index_tab'] = 2 
+                init_state('run_index', False)
                 if unlocked(exp):
                     with main_body_container:
                         caller_id = 'pcr2 generate'
@@ -618,56 +624,51 @@ def main():
                         st.info('Select the resources you wish to include for indexing PCR and then click on the '+\
                                 '**Generate Echo Picklists** button below, to create Echo picklist files')
                         do_generate = False
-                        checkbox_keys = dc.display_plate_checklist('idx_checklist2', inc_pcr=True, 
-                                inc_taqwater2=True, inc_amplicon=True, inc_index=True)
+                        checkbox_keys = dc.display_plate_checklist('idx_checklist2', 
+                                ['pcr','taqwater2','amplicon','index'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                        hline()
                         dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr2_components(selected_pids)
                         hline()
                         add_vertical_space(1)
-                
-                        if selected_pids['pcr']:  # standard run
-                            if exp.check_ready_pcr2(selected_pids, caller_id):
+                                                
+                        if selected_pids['pcr']:
+                            success = exp.check_ready_pcr2(selected_pids, caller_id)
+                            if success:
+                                do_generate = True
+                        elif selected_pids['amplicon']:
+                            success = exp.check_ready_pcr2(selected_pids, caller_id, amplicon_only=True)
+                            if success:
                                 do_generate = True
                         else:
-                            if selected_pids['amplicon'] and not selected_pids['pcr']:
-                                if exp.check_ready_pcr2(selected_pids, caller_id, amplicon_only=True):
-                                    do_generate = True
+                            m('Either PCR plates or Amplicon plates must exist for indexing to begin')
                                     
                         for msg,lvl in mq[caller_id]:
                             m(msg, lvl)
                         mq[caller_id] = []
 
                         if do_generate:
-                            show_generate = False
-                            if selected_pids['pcr']:
-                                show_generate = True
-                            elif selected_pids['amplicon'] and not selected_pids['pcr']:
-                                _, amp1, amp2, amp3, _ = st.columns([3, 3, 1, 1, 3])
-                                amp1.warning('Create picklists with only amplicons?')
-                                yes_amplicon = amp2.button('Yes')
-                                no_amplicon = amp3.button('No')
-
-                                if yes_amplicon:
-                                    show_generate = True
-                                elif no_amplicon:
-                                    show_generate = False
-                    
-                            if show_generate:
-                                _,picklist_button_col,_ = st.columns([2, 2, 1])
-
-                                echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
-                                            key='echo_pcr2_go_button')
-
-                                picklist_button_col.write('')
-
-                                if echo_picklist_go:
-                                    st.session_state['idx_picklist'] = True
+                            _,picklist_button_col,_ = st.columns([2, 2, 1])
+                            echo_picklist_go = picklist_button_col.button('Generate Echo Picklists',\
+                                    key='echo_pcr2_go_button')
+                            picklist_button_col.write('')
+                            if echo_picklist_go:
+                                if selected_pids['pcr']:
+                                    st.session_state['run_index'] = True
+                                elif selected_pids['amplicon'] and not selected_pids['pcr']:
+                                    _, amp1, amp2, amp3, _ = st.columns([3, 3, 1, 1, 3])
+                                    amp1.warning('Create picklists with only amplicons?')
+                                    amp2.button('Yes', on_click=set_state, args=('run_index', True))
+                                    amp3.button('No', on_click=set_state, args=('run_index', False))
                         
-                                    success = run_generate(exp, exp.generate_echo_PCR2_picklists,
-                                            selected_pids)
-                                    if not success:
-                                        m('Picklist generation failed. Please see the log')
+                        if st.session_state['run_index']:
+                            success = run_generate(exp, exp.generate_echo_PCR2_picklists,
+                                    selected_pids)
+                            set_state('run_index', False)
+                            if not success:
+                                m('Picklist generation failed. Please see the log')
+                                    
                         if generate.pcr2_picklists_exist(exp):
                             dc.show_echo2_outputs() 
                 

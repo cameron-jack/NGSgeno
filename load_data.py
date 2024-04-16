@@ -328,7 +328,7 @@ def load_amplicons(key):
     caller_id = 'load_amplicons'
     add_vertical_space(2)
     m('**Upload Amplicon Plate Files**', dest=('mkdn',))
-    m('You may add extra 384-well plates of pre-prepared amplicons. These will be incorporated at the indexing stage', level='info')
+    m('You may add extra 384-well plates of pre-prepared amplicons. These will be incorporated during indexing (stage 4)', level='info')
     with st.form('index plate upload'+key, clear_on_submit=True): 
         uploaded_amplicon_plates = st.file_uploader(
                     'Upload Extra Amplicon Plates - CSV or XLSX.'+

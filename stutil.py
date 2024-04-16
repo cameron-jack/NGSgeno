@@ -31,6 +31,10 @@ def init_state(key, value):
     """
     if key not in st.session_state:
         st.session_state[key] = value
+
+
+def set_state(key, value):
+    st.session_state[key] = value
         
 
 def do_tm(message, level=None):

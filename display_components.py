@@ -367,17 +367,15 @@ def display_pcr_common_components(selected_pids):
     dna_pids = selected_pids['dna']
     pcr_pids = selected_pids['pcr']
     amplicon_pids = selected_pids['amplicon']
+    index_pids = selected_pids['index']
 
     if dna_pids:
         dna_pids = [util.guard_pbc(dp, silent=True) for dp in dna_pids]
     else:
         dna_pids = []
         
-    source_pids = []
     if pcr_pids:
         pcr_pids = [util.guard_pbc(pp, silent=True) for pp in pcr_pids]
-        source_pids = [s for pp in pcr_pids for s in exp.plate_location_sample[pp]['source']\
-                if s in exp.plate_location_sample]
     else:
         pcr_pids = []
         
@@ -386,12 +384,8 @@ def display_pcr_common_components(selected_pids):
     else:
         amplicon_pids = []
     
-    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=source_pids+\
-            [d for d in dna_pids if d not in source_pids])
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
     dna_reactions = sum([primer_usage[p] for p in primer_usage])
-    #req_pcr_indexes = sum([len(exp.plate_location_source[pp]['wells'] for pp in pcr_pids)])
-    #req_amplicon_indexes = sum([len(exp.plate_location_source[ap]['wells'] for ap in amplicon_pids)])
-    #total_req_indexes = dna_num_reactions + req_pcr_indexes + req_amplicon_indexes
     
     #PCR
     required_pcr_plates = ceil(dna_reactions/PCR_PLATE_WELLS)
@@ -461,7 +455,7 @@ def display_pcr1_components(selected_pids):
     req_cols = pcr_comps_area.columns(col_size)
     pcr_cols = pcr_comps_area.columns(col_size)
 
-    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
     num_reactions = sum([primer_usage[p] for p in primer_usage])
     
     #Required taq/water
@@ -535,7 +529,7 @@ def display_pcr2_components(selected_pids):
     taqwater2_pids = selected_pids['taqwater2']
     index_pids = selected_pids['index']
 
-    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
     num_reactions = exp.get_num_reactions(primer_usage, pcr_pids, amplicon_pids)
 
     index_max = len(exp.get_index_pairs_avail(index_pids))
@@ -898,7 +892,7 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350):
     """
     exp = st.session_state['experiment']
     ul_conv = 1000
-    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
     primer_avail_vols_doses = exp.get_available_primer_vols_doses(pmr_pids=primer_pids)
     primer_info_array = []
     for primer in exp.primer_assayfam:
@@ -921,7 +915,7 @@ def display_indexes(key, dna_pids=None, height=350):
     Display info for all indexes that have been uploaded into the experiment
     """
     exp = st.session_state['experiment']
-    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids=dna_pids)
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
     fwd_idx, rev_idx = exp.get_index_avail()
     indexes = {**fwd_idx, **rev_idx}
 
@@ -1228,74 +1222,71 @@ def show_info_viewer(selection, height, groupkey):
                 info_viewer(selection[i], str(groupkey)+selection[i]+str(i), view_height=height)
 
 
-def display_plate_checklist(widget_key, inc_dna=False, inc_pcr=False, inc_taqwater1=False, 
-        inc_taqwater2=False, inc_amplicon=False, inc_primer=False, inc_index=False):
+def display_plate_checklist(widget_key:str, inc_plate_types:list) -> list:
     """
     Display a plate checklist, with each included category getting its own column
     Returns a list of all checkbox keys for later lookup
     By choosing which types to select we can customise this for PCR1 or PCR2
+    args:
+        widget_key (str): a unique id for this widget
+        inc_plate_types (list[str]): a list of plate types to include ['dna','pcr','primer',
+                'index','taqwater1','taqwater2','amplicon']
+    return:
+        a list of checkbox ID strings
     """
     exp = st.session_state['experiment']
     checkbox_keys = []
-    included_categories = [ic for ic in [inc_dna, inc_pcr, inc_taqwater1, inc_taqwater2, inc_amplicon, inc_primer, inc_index] if ic]
-    checklist_cols = st.columns(len(included_categories))
-    i = 0
-    if inc_dna:
-        checklist_cols[i].markdown('**DNA Plates**')
-        for dp in exp.get_dna_pids(echo_ready=True):
-            cb_name = f'{str(widget_key)}_plate_checkbox_dna_{dp}'
-            val = checklist_cols[i].checkbox(util.unguard_pbc(dp, silent=True), 
-                    key=cb_name, value=True)
-            checkbox_keys.append(cb_name)
-        i += 1
-    if inc_pcr:
-        checklist_cols[i].markdown('**PCR Plates**')
-        for pp in exp.get_pcr_pids():
-            cb_name = f'{str(widget_key)}_plate_checkbox_pcr_{pp}'
-            val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True), 
-                    key=cb_name, value=True)
-            checkbox_keys.append(cb_name)
-        i += 1
-    if inc_taqwater1:
-        checklist_cols[i].markdown('**Taq/Water Plates (PCR 1)**')
-        for tp in exp.get_taqwater_pids(pcr_stage=1):
-            cb_name = f'{str(widget_key)}_plate_checkbox_taqwater1_{tp}'
-            val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True), 
-                    key=cb_name, value=True)
-            checkbox_keys.append(cb_name)
-        i += 1
-    if inc_taqwater2:
-        checklist_cols[i].markdown('**Taq/Water Plates (PCR 2)**')
-        for tp in exp.get_taqwater_pids(pcr_stage=2):
-            cb_name = f'{str(widget_key)}_plate_checkbox_taqwater2_{tp}'
-            val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True), 
-                    key=cb_name, value=True)
-            checkbox_keys.append(cb_name)
-        i += 1
-    if inc_amplicon:
-        checklist_cols[i].markdown('**Amplicon Plates**')
-        for ap in exp.get_amplicon_pids():
-            cb_name = f'{str(widget_key)}_plate_checkbox_amplicon_{ap}'
-            val = checklist_cols[i].checkbox(util.unguard_pbc(ap, silent=True), 
-                    key=cb_name, value=True)
-            checkbox_keys.append(cb_name)
-        i += 1
-    if inc_primer:
-        checklist_cols[i].markdown('**Primer Plates**')
-        for pp in exp.get_primer_pids():
-            cb_name = f'{str(widget_key)}_plate_checkbox_primer_{pp}'
-            val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True), 
-                    key=cb_name, value=True)
-            checkbox_keys.append(cb_name)
-        i += 1
-    if inc_index:
-        checklist_cols[i].markdown('**Index Plates**')
-        for ip in exp.get_index_pids():
-            cb_name = f'{str(widget_key)}_plate_checkbox_index_{ip}'
-            val = checklist_cols[i].checkbox(util.unguard_pbc(ip, silent=True), 
-                    key=cb_name, value=True)
-            checkbox_keys.append(cb_name)
-        i += 1
+    checklist_cols = st.columns(len(inc_plate_types))
+    for i, ipt in enumerate(inc_plate_types): 
+        if ipt == 'dna':
+            checklist_cols[i].markdown('**DNA Plates**')
+            for dp in exp.get_dna_pids(echo_ready=True):
+                cb_name = f'{str(widget_key)}_plate_checkbox_dna_{dp}'
+                val = checklist_cols[i].checkbox(util.unguard_pbc(dp, silent=True), 
+                        key=cb_name, value=True)
+                checkbox_keys.append(cb_name)
+        if ipt == 'pcr':
+            checklist_cols[i].markdown('**PCR Plates**')
+            for pp in exp.get_pcr_pids():
+                cb_name = f'{str(widget_key)}_plate_checkbox_pcr_{pp}'
+                val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True), 
+                        key=cb_name, value=True)
+                checkbox_keys.append(cb_name)
+        if ipt == 'taqwater1':
+            checklist_cols[i].markdown('**Taq/Water Plates (PCR 1)**')
+            for tp in exp.get_taqwater_pids(pcr_stage=1):
+                cb_name = f'{str(widget_key)}_plate_checkbox_taqwater1_{tp}'
+                val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True), 
+                        key=cb_name, value=True)
+                checkbox_keys.append(cb_name)
+        if ipt == 'taqwater2':
+            checklist_cols[i].markdown('**Taq/Water Plates (PCR 2)**')
+            for tp in exp.get_taqwater_pids(pcr_stage=2):
+                cb_name = f'{str(widget_key)}_plate_checkbox_taqwater2_{tp}'
+                val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True), 
+                        key=cb_name, value=True)
+                checkbox_keys.append(cb_name)
+        if ipt == 'amplicon':
+            checklist_cols[i].markdown('**Amplicon Plates**')
+            for ap in exp.get_amplicon_pids():
+                cb_name = f'{str(widget_key)}_plate_checkbox_amplicon_{ap}'
+                val = checklist_cols[i].checkbox(util.unguard_pbc(ap, silent=True), 
+                        key=cb_name, value=True)
+                checkbox_keys.append(cb_name)
+        if ipt == 'primer':
+            checklist_cols[i].markdown('**Primer Plates**')
+            for pp in exp.get_primer_pids():
+                cb_name = f'{str(widget_key)}_plate_checkbox_primer_{pp}'
+                val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True), 
+                        key=cb_name, value=True)
+                checkbox_keys.append(cb_name)
+        if ipt == 'index':
+            checklist_cols[i].markdown('**Index Plates**')
+            for ip in exp.get_index_pids():
+                cb_name = f'{str(widget_key)}_plate_checkbox_index_{ip}'
+                val = checklist_cols[i].checkbox(util.unguard_pbc(ip, silent=True), 
+                        key=cb_name, value=True)
+                checkbox_keys.append(cb_name)
     return checkbox_keys
     
 
