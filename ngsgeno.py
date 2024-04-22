@@ -504,6 +504,8 @@ def main():
                         checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
                                 ['dna','pcr','taqwater1','primer'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
+                            m('No PCR or amplicon plates selected!', dest=('css',), color='red',size='')
                         hline()    
                         dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr1_components(selected_pids)
@@ -538,6 +540,8 @@ def main():
                         checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
                                 ['dna','pcr','taqwater1','primer'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
+                            m('No PCR or amplicon plates selected!', dest=('css',), color='red',size='')
                         hline()    
                         dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr1_components(selected_pids)
@@ -588,6 +592,8 @@ def main():
                                 'for your experiment, then move to the *Generate Picklists* tab')
                         checkbox_keys = dc.display_plate_checklist('idx_checklist1',
                                 ['pcr','taqwater2','amplicon','index'])
+                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
+                            m('No PCR or amplicon plates selected!', dest=('css',), color='red',size='')
                         hline()
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         dc.display_pcr_common_components(selected_pids)
@@ -627,6 +633,8 @@ def main():
                         checkbox_keys = dc.display_plate_checklist('idx_checklist2', 
                                 ['pcr','taqwater2','amplicon','index'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
+                            m('No PCR or amplicon plates selected!', dest=('css',), color='red',size='')
                         hline()
                         dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr2_components(selected_pids)

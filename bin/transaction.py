@@ -235,16 +235,16 @@ def clashing_pending_transactions(exp):
         #print('Pending and final paths: ', str(transaction), str(final_path), file=sys.stderr)
         if Path(final_path).exists():
             clashes.append(final_path)
-            exp.log(f'Warning: file path {final_path} already' +
-                    'exists and will be overwritten if pending changes are accepted')
+            #exp.log(f'Warning: file path {final_path} already ' +
+            #        'exists and will be overwritten if pending changes are accepted')
         else:
             for step in exp.reproducible_steps:
                 if step is None or len(step) == 0:
                     continue
                 # each step is dict['filenames'] = {PID: {well:change}}
                 if final_path in step:
-                    exp.log(f'Warning: file path {final_path} already' +
-                            'exists and will be overwritten if pending changes are accepted')
+                    #exp.log(f'Warning: file path {final_path} already ' +
+                    #        'exists and will be overwritten if pending changes are accepted')
                     clashes.append(final_path)                  
     return clashes
     
@@ -284,8 +284,8 @@ def clear_pending_transactions(exp):
             if Path(transaction).exists():
                 os.remove(transaction)
         exp.pending_steps = None
-        pending_files_hanging = Path(exp.get_exp_dn()).glob('pending_*')+\
-                Path(exp.get_exp_dn(subdir='uploads')).glob('pending_*')
+        pending_files_hanging = list(Path(exp.get_exp_dn()).glob('pending_*'))+\
+                list(Path(exp.get_exp_dn(subdir='uploads')).glob('pending_*'))
         for p in pending_files_hanging:
             os.remove(p)
             #print(f'removing pending file {p}', file=sys.stderr)
@@ -293,6 +293,7 @@ def clear_pending_transactions(exp):
         exp.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
         return False
     return True
+
     
 def accept_pending_transaction(exp, file_name):
     """

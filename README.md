@@ -61,3 +61,10 @@ Other - reported by ngsmatch.py, this is a collective name for all other unique 
 The NGS Genotyping Pipeline and NGSXplorer are the creations of The ANU Bioinformatics Consultancy (ABC), The Biomolecular Resource Facility (BRF), The John Curtin School of Medical Research (JCSMR), and The Australian National University (ANU).
 The project was initiated at the end of 2018 by the BRF and the construction was undertaken by the ABC - primarily Bob Buckley assisted by Cameron Jack, and later Cameron Jack assisted by Gabi (Gabrielle) Ryan. 
 Some additional components were built by the Informatics Team at the Australian Phenomics Facility (led by Philip Wu). Laboratory processes were constructed by the BRF Genotyping team, initially led by Sorelle Bowman, and later by Simone Kuelzer and Peter Milburn.
+
+## TODO
+* Check file and plate uploads for duplicates, and look for key terms in file and plate names to check for possible incorrect uploads.
+* Ability to delete a file and plate together - warning if they are in use
+* Atomic generates
+* Check interfaces for consistency
+* Shift some operations out of Experiment.py

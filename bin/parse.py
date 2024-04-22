@@ -102,6 +102,7 @@ def upload(exp, streams, purpose, overwrite=False):
                 success = False
                 continue
 
+        # check whether this file has been seen in another context
         # this is essential for retaining the purpose of this file
         exp.add_file_record(fp, purpose=purpose)
         #print(f'upload: {fp=}')

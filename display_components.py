@@ -1315,7 +1315,7 @@ def collect_plate_checklist(checkbox_keys):
             elif key_parts[-2] == 'index':
                 selected_pids['index'].append(key_parts[-1])
             else:
-                add_pm(f'Plate selection checkbox key {cb} of unknown type', level='error')
+                m(f'Plate selection checkbox key {cb} of unknown type', level='critical', dest=('log','debug','noGUI'))
     return selected_pids
  
 
