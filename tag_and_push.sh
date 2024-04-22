@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.26.002"
+VER="v0.26.003"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: index checkbox not affecting display
-* Fixed: buttons replaced for index file generation
+* Fixed: generator + generator bug in clear_transactions
 EOM
 
 mv changelog.txt changelog_old.txt

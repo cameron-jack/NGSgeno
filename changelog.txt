@@ -1,3 +1,7 @@
+v0.26.003
+Date: Mon Apr 22 11:50:49 AEST 2024
+* Fixed: generator + generator bug in clear_transactions
+
 v0.26.002
 Date: Wed Apr 17 09:39:29 AEST 2024
 * Fixed: index checkbox not affecting display
