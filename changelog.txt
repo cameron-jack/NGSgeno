@@ -1,4 +1,8 @@
 v0.26.003
+Date: Mon Apr 29 14:41:44 AEST 2024
+* Fixed: generator + generator bug in clear_transactions
+
+v0.26.003
 Date: Mon Apr 22 11:50:49 AEST 2024
 * Fixed: generator + generator bug in clear_transactions
 

@@ -425,8 +425,10 @@ def main():
                 st.session_state['nimbus_tab'] = 1
                 if unlocked(exp):
                     with main_body_container:
-                        st.subheader('Generate Echo Files')
-                        dc.set_nimbus_title(exp, nfs, efs)
+                        _, header_col, _ = st.columns([2,2,1])
+                        with header_col:
+                            header_col.subheader('Generate Echo Files')
+                            dc.set_nimbus_title(exp, nfs, efs)
                         add_vertical_space(2)
                         if not ld.check_assay_file(exp):
                             m('Assay list file (assay to primer mapping) is required to proceed. '+\
@@ -505,16 +507,21 @@ def main():
                                 ['dna','pcr','taqwater1','primer'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected!', dest=('css',), color='red',size='')
+                            m('No PCR or amplicon plates selected/added yet', dest=('css',), color='red',size='p')
                         hline()    
-                        dc.display_pcr_common_components(selected_pids)
+                        #dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr1_components(selected_pids)
                         hline()
                         
                         #barcodes for PCR and taq and water, upload files for primer, adjust volumes
                         add_vertical_space(1)
                         st.subheader('Add Barcodes', help='Add barcodes for plates')
-                        ld.provide_barcodes('barcodes_tab1', pcr_stage=pcr_stage)
+                        pcr_col, taqwater_col = st.columns(2)
+                        #TODO: test
+                        with pcr_col:
+                            ld.add_pcr_barcodes(key='pcr_bc_tab1', dna_pids=selected_pids['dna'])
+                        with taqwater_col:
+                            ld.add_taqwater_barcodes(key='tw_bc_tab1', pcr_stage=pcr_stage)
                         add_vertical_space(1)
 
                         st.subheader('Upload Files')
@@ -541,9 +548,9 @@ def main():
                                 ['dna','pcr','taqwater1','primer'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected!', dest=('css',), color='red',size='')
+                            m('No PCR or amplicon plates selected/added yet', dest=('css',), color='red',size='p')
                         hline()    
-                        dc.display_pcr_common_components(selected_pids)
+                        #dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr1_components(selected_pids)
                         hline()
                         
@@ -558,6 +565,9 @@ def main():
                                             selected_pids)
                                     if not success:
                                         st.error('Picklist generation failed. Please see the log')
+                                    else:
+                                        exp.add_pcr_wells(exp, selected_pids['pcr'], selected_pids['dna'])
+                                        
                         for msg,lvl in mq[caller_id]:
                             m(msg, lvl)
                         mq[caller_id] = []
@@ -592,11 +602,11 @@ def main():
                                 'for your experiment, then move to the *Generate Picklists* tab')
                         checkbox_keys = dc.display_plate_checklist('idx_checklist1',
                                 ['pcr','taqwater2','amplicon','index'])
-                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected!', dest=('css',), color='red',size='')
                         hline()
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
-                        dc.display_pcr_common_components(selected_pids)
+                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
+                            m('No PCR or amplicon plates selected', dest=('css',), color='red',size='p')
+                        #dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr2_components(selected_pids)
                         hline()
                         add_vertical_space(1)
@@ -605,7 +615,13 @@ def main():
 
                         #provide barcodes for pcr & taq/water, upload index files, adjust volumes
                         st.subheader('Add Barcodes', help='Add barcodes for plates')
-                        ld.provide_barcodes('index_barcodes', 2)
+                        
+                        pcr_col, taqwater_col = st.columns(2)
+                        #TODO: test
+                        with pcr_col:
+                            ld.add_pcr_barcodes(key='pcr_bc_tab2', dna_pids=selected_pids['dna'])
+                        with taqwater_col:
+                            ld.add_taqwater_barcodes(key='tw_bc_tab2', pcr_stage=pcr_stage)
                         add_vertical_space(1)
 
                         st.subheader('Upload Files')
@@ -634,9 +650,9 @@ def main():
                                 ['pcr','taqwater2','amplicon','index'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected!', dest=('css',), color='red',size='')
+                            m('No PCR or amplicon plates selected', dest=('css',), color='red',size='')
                         hline()
-                        dc.display_pcr_common_components(selected_pids)
+                        #dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr2_components(selected_pids)
                         hline()
                         add_vertical_space(1)

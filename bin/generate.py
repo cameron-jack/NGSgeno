@@ -672,7 +672,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
 
         dna_records = sorted([d for d in dna_records if d['dnaPlate'] and d['primerPlate']], 
                 key=lambda x: (x['samplePlate'],util.padwell(x['sampleWell'])))
-        
+                
         # allocate PCR plate wells
         wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"]
         pcrWells = [(p, w) for p in sorted(pcr_bcs) for w in wells]
@@ -1082,13 +1082,13 @@ def match_nimbus_to_echo_files(exp):
     try:
         nimbus_files = list(Path(exp.get_exp_dn()).glob('Nimbus-*.csv'))
         echo_files = list(Path(exp.get_exp_dn('uploads')).glob('Echo_384_COC_00??_*_0.csv'))
-        print(f'{nimbus_files=}')
-        print(f'{echo_files=}')
+        #print(f'{nimbus_files=}')
+        #print(f'{echo_files=}')
         # cleave off the path and file name junk to just get the barcodes
         nbc = frozenset(fp.name.replace('Nimbus-','').replace('.csv','') for fp in nimbus_files)
         ebc = frozenset(fp.name.replace('.csv','').split('_',5)[4] for fp in echo_files)
-        print('{nbc=}')
-        print('{ebc=}')
+        #print(f'{nbc=}')
+        #print(f'{ebc=}')
         xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
         return [str(fp) for fp in nimbus_files], [str(fp) for fp in echo_files], xbc
     except Exception as exc:

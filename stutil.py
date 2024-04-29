@@ -68,7 +68,7 @@ def add_pm(message, level=None):
 
 
 def m(message, level=None, dest=None, caller_id=None,
-        size='p', color='black', align="center", style="normal", padding='0px'):
+        size='p', color='black', align="center", font_style="normal", padding='0px'):
     """
     Standardised message interface. Removes the need for multiple function calls for the same message.
     Args:
@@ -136,7 +136,7 @@ def m(message, level=None, dest=None, caller_id=None,
         style['size'] = size
         style['color'] = color
         style['align'] = align
-        style['style'] = style
+        style['style'] = font_style
         style['padding'] = padding
         message = custom_text(style['size'], style['color'], message, align=style['align'], style=style['style'], padding=style['padding'], display = False)    
         

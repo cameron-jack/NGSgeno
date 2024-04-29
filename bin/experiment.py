@@ -631,11 +631,13 @@ class Experiment():
             if p in self.plate_location_sample:
                 self.log(f'Error: {p} already in use, skipping')
                 continue
-            self.plate_location_sample[p] = {'purpose':'pcr', 'wells':set(), 'source':'user', 
-                    'plate_type':util.PLATE_TYPES['PCR384'], 'barcode':p}
+            self.plate_location_sample[p] = {'purpose':'pcr', 
+                                             'wells':set(), 
+                                             'source':'user', 
+                                            'plate_type':util.PLATE_TYPES['PCR384'], 
+                                            'barcode':p}
         self.save()
         return True
-
 
     def get_pcr_pids(self):
         """ return a list of available PCR plate ids """
@@ -929,12 +931,12 @@ class Experiment():
         return num_wells
     
 
-    def get_num_reactions(self, primer_usage, pcr_pids, amplicon_pids):
+    def get_num_reactions(self, pcr_pids=None, amplicon_pids=None):
         num_reactions = 0
         if amplicon_pids:
             num_reactions += self.get_num_amplicon_wells(amplicon_pids)
         if pcr_pids:
-            num_reactions += sum([primer_usage[p] for p in primer_usage])
+            num_reactions += self.get_num_pcr_wells(pcr_pids)
         return num_reactions
 
 
@@ -1225,7 +1227,41 @@ class Experiment():
                 cols = line.split(',')
                 stage2_pcr_plates.add(cols[8].strip())
         return stage2_pcr_plates
+    
 
+    def add_pcr_wells(self, exp, pcr_pids, dna_pids):
+        """
+        get the PCR wells based on the Stage2.csv
+        """
+        dna_records = self.get_dna_records(dna_pids)
+        success = generate.allocate_primers_to_dna(exp, dna_records=dna_records)
+        dna_records = sorted([d for d in dna_records if d['dnaPlate'] and d['primerPlate']], 
+                key=lambda x: (x['samplePlate'],util.padwell(x['sampleWell'])))
+        
+        # allocate PCR plate wells
+        wells = [r+str(c+1) for c in range(24) for r in"ABCDEFGHIJKLMNOP"]
+        pcrWells = [(p, w) for p in sorted(pcr_pids) for w in wells]
+
+        for i, (dr, pcrw) in enumerate(zip(dna_records, pcrWells)):
+            self.plate_location_sample[pcrw[0]]['wells'].add(pcrw[1])
+            if pcrw[1] not in self.plate_location_sample[pcrw[0]]:
+                self.plate_location_sample[pcrw[0]][pcrw[1]] = dr   
+
+        self.save() 
+
+    def get_num_pcr_wells(self, pcr_pids=None)->int:
+        """ 
+        Return the number of wells in the PCR plates. If pcr_pids is None, get number of wells for
+        all PCR plates in experiment
+        """
+        if pcr_pids:
+            num_wells = sum(len(self.plate_location_sample[pid]['wells']) \
+                            for pid in self.plate_location_sample if pid in pcr_pids)
+        else:
+            num_wells = sum(len(plate['wells']) for plate in self.plate_location_sample.values() \
+                             if plate['purpose'] == 'pcr')
+        
+        return num_wells
 
     def get_file_usage(self):
         """
@@ -1235,6 +1271,7 @@ class Experiment():
         all_files = self.uploaded_files.keys()
         del_files = []
         for fn in all_files:
+
             if not Path.exists(Path(fn)):
                 del_files.append(fn)
         for fn in del_files:

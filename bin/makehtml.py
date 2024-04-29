@@ -67,7 +67,9 @@ def generate_heatmap_html(jsonpickle_plate, pid, scaling=0.5):
     
     elif purpose == 'pcr':
         #384-well plates
-        purpose = 'PCR'
+        #purpose = 'PCR'
+        well_fields = ['sampleBarcode', 'sex', 'strain', 'assays', 'primer']
+        tool_text = '{y}{x}:\\nsample ID: {sampleBarcode}\\nStrain: {strain}\\nAssays: {assays}\\nPrimer: {primer}\\nSex: {sex}';
 
     elif purpose == 'taq_water':
         #taq/water plate: 6 wells
@@ -102,7 +104,7 @@ def generate_heatmap_html(jsonpickle_plate, pid, scaling=0.5):
             sample_data = plate[well]
             for field in well_fields:
                 if field in sample_data:
-                    if field in ['assays','gts']:
+                    if field in ['gts']:
                         field_data = '; '.join(sample_data[field])
                     elif field in ['volume']:
                         field_data = sample_data[field]/1000

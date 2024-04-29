@@ -265,6 +265,9 @@ def upload_pcr1_files(key):
     and manages transactions
     """  
     m('**Upload Primer Files (PCR round 1)**', dest=('mkdn',))
+    m('Ensure the first prefix of the file name is the same for layouts and volumes (e.g. P1_layout.csv, P1_volume.csv)', 
+      level = 'info')
+    
     exp = st.session_state['experiment']
     caller_id = 'upload_pcr1_files'
     st.session_state['upload_option'] = ''  # do we display pending files here
@@ -272,14 +275,12 @@ def upload_pcr1_files(key):
     with primer_form:
         col1, col2 = st.columns(2)
         uploaded_primer_layouts = col1.file_uploader(
-                'Upload Primer Plate Layouts - the barcode must be the first' +
-                'part of the filename e.g. 123_primer_layout.csv', \
+                'Upload Primer Plate Layouts', \
                 key='primer_layout_uploader'+key,
                 type='csv',
                 accept_multiple_files=True) 
         uploaded_primer_volumes = col2.file_uploader(
-                'Upload Primer Plate Volumes - the barcode must be the first part' +
-                'of the filename e.g. 123_primer_volume.csv', \
+                'Upload Primer Plate Volumes', \
                 key='primer_vol_uploader'+key, 
                 type='csv', 
                 accept_multiple_files=True)
@@ -873,7 +874,71 @@ def load_custom_manifests(key):
         mq[caller_id] = []
         
 
-def provide_barcodes(key, pcr_stage):
+def add_pcr_barcodes(key, dna_pids):
+    caller_id = 'add_pcr_barcodes'
+    exp = st.session_state['experiment']
+
+    with st.form('Add PCR plate barcode', clear_on_submit=True):
+        pcr_plate_barcode = st.text_input('PCR Plate Barcode', \
+                    placeholder='Type in the barcode for PCR plate', key='pcr_plate_barcode' + key)
+        
+        pcr_plate_entered = st.form_submit_button('Add')
+
+        if pcr_plate_entered and pcr_plate_barcode: 
+            guarded_pcr_plate_barcode = util.guard_pbc(pcr_plate_barcode, silent=True)
+            if guarded_pcr_plate_barcode not in exp.plate_location_sample:
+                success = exp.add_pcr_plates([guarded_pcr_plate_barcode])
+                if success:
+                    m(f'Added PCR plate barcode {pcr_plate_barcode}', level='success', 
+                            dest=('log','console'), caller_id=caller_id)
+                    sleep(1.5)
+                    st.experimental_rerun()
+                else:
+                    m(f'Could not add PCR plate barcode {pcr_plate_barcode}, please see the log',
+                            level='error', dest=('debug','log'), caller_id=caller_id)
+            else:
+                m(f'This plate barcode {pcr_plate_barcode} appears to already be in use', 
+                        level='error', dest=('debug','log'), caller_id=caller_id)
+    
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
+
+
+def add_taqwater_barcodes(key, pcr_stage):
+    exp = st.session_state['experiment']
+    caller_id = 'add_taqwater_barcodes'
+    with st.form('Add taq+water plate barcode', clear_on_submit=True):
+        taqwater_plate_barcode = st.text_input('Taq and Water Plate Barcode', \
+                placeholder='Type in the barcode for taq+water plate', key='taq_water_barcode' + key)
+        taqwater_plate_entered = st.form_submit_button('Add')
+
+        if taqwater_plate_entered and taqwater_plate_barcode:
+            guarded_taqwater_plate_barcode = util.guard_pbc(taqwater_plate_barcode, silent=True)
+            if guarded_taqwater_plate_barcode not in exp.plate_location_sample:
+                success = exp.add_standard_taqwater_plates([taqwater_plate_barcode], pcr_stage)
+                if success:
+                    m(f'Added taq+water plate {taqwater_plate_barcode}', level='success', 
+                            dest=('log','console'), caller_id=caller_id)
+                    sleep(1.5)
+                    st.experimental_rerun()
+                else:
+                    m(f'Could not add taq+water plate barcode {taqwater_plate_barcode}, please see the log',
+                            level='error', dest=('debug',), caller_id=caller_id)
+            else:
+                m(f'This plate barcode {taqwater_plate_barcode} appears to already be in use',
+                        level='error', dest=('log','debug'), caller_id=caller_id)
+                
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl)
+        sleep(0.3)
+        mq[caller_id] = []
+
+
+def provide_barcodes(key, pcr_stage, dna_pids):
     """
     :param key: unique key for the input widgets
     """
