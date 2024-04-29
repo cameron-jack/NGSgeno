@@ -650,7 +650,7 @@ def main():
                                 ['pcr','taqwater2','amplicon','index'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected', dest=('css',), color='red',size='')
+                            m('No PCR or amplicon plates selected', dest=('css',), color='red',size='p')
                         hline()
                         #dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr2_components(selected_pids)

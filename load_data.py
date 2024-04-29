@@ -495,6 +495,7 @@ def upload_assaylist(key):
             type=['txt','csv'], accept_multiple_files=True)
 
     upload_button = upload_form.form_submit_button("Upload Files")
+    success = False
     if upload_button:
         if uploaded_assaylists:
             success = parse.upload(exp, uploaded_assaylists, 'assay_primer_map')

@@ -742,16 +742,18 @@ class Experiment():
         return assay_usage, primer_usage
 
 
-    def get_index_avail(self, index_pids):
+    def get_index_avail(self, index_pids=None):
         """
         Provided a list of index PIDs and return dictionaries of fwd and rev indexes
         Returns:
             [fwd_index]={'well_count':int, 'avail_transfers':int, 'avail_vol':nl}
             [rev_index]={'well_count':int, 'avail_transfers':int, 'avail_vol':nl}
         """
-        idx_pids = [util.guard_pbc(ip, silent=True) for ip in index_pids]
         if index_pids:
+            idx_pids = [util.guard_pbc(ip, silent=True) for ip in index_pids]
             index_pids = [pid for pid in idx_pids if self.plate_location_sample[pid]['purpose'] == 'index']
+        else:
+            index_pids = [pid for pid in self.plate_location_sample if self.plate_location_sample[pid]['purpose'] == 'index']
                 
         fwd_idx = {}
         rev_idx = {}
@@ -1271,7 +1273,6 @@ class Experiment():
         all_files = self.uploaded_files.keys()
         del_files = []
         for fn in all_files:
-
             if not Path.exists(Path(fn)):
                 del_files.append(fn)
         for fn in del_files:

@@ -1,3 +1,19 @@
+v0.26.005
+Date: Mon Apr 29 17:23:59 AEST 2024
+* Fixed: Index display and upload_assaylists error
+
+v0.26.005
+Date: Mon Apr 29 17:22:22 AEST 2024
+* Fixed: Index display and upload_assaylists error
+
+v0.26.005
+Date: Mon Apr 29 17:00:12 AEST 2024
+* Fixed: Index display and upload_assaylists error
+
+v0.26.004
+Date: Mon Apr 29 17:00:03 AEST 2024
+* Fixed: index PCR components display and PCR wells
+
 v0.26.004
 Date: Mon Apr 29 14:41:53 AEST 2024
 * Fixed: index PCR components display and PCR wells

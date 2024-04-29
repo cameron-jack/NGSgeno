@@ -899,6 +899,8 @@ def view_plates(key, height=500):
     if plate_selectbox:
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
+            if exp.plate_location_sample[plate_id]['purpose'] == 'amplicon':
+                print(f'DEBUG: {exp.get_plate(plate_id)=}')
             jsonpickle_plate = jsonpickle.encode(exp.get_plate(plate_id), keys=True)
             heatmap_str = generate_heatmap_html(jsonpickle_plate, plate_id, scaling=0.9)
             with open("makehtml.html", 'wt', encoding="utf-8") as outf:
@@ -992,7 +994,10 @@ def display_indexes(key, dna_pids=None, height=350):
 
     index_df = pd.DataFrame.from_dict(indexes,  orient='index')
     index_df.reset_index(inplace=True)
-    index_df = index_df.rename(columns = {'index':'Index', 'well_count':'Wells', 'avail_transfers':'Available transfers', 'avail_vol':'Available Volume (μL)'})
+    index_df = index_df.rename(columns = {'index':'Index', 
+                                          'well_count':'Wells', 
+                                          'avail_transfers':'Available transfers', 
+                                          'avail_vol':'Available Volume (μL)'})
     index_table = aggrid_interactive_table(index_df,grid_height=height,key=str(key)+'index_display')
 
 

@@ -89,7 +89,11 @@ def generate_heatmap_html(jsonpickle_plate, pid, scaling=0.5):
         #384-well plates
         well_fields = ['idt_name', 'index', 'bc_name', 'oligo', 'volume']
         tool_text = '{y}{x}: Index Name: {idt_name}\\nIndex: {index}\\nBarcode Name: {bc_name}\\nVolume: {volume} μL';
-        
+    
+    elif purpose == 'amplicon':
+        #384-well plates
+        well_fields = ['sampleNumber', 'sampleBarcode']
+        tool_text = '{y}{x}:\\nSample Barcode: {sampleBarcode}\\nNumber: {sampleNumber}';
 
     for well in plate_order:
         entry_str = f'"y" : "{well[0].upper()}", "x" : "{well[1:]}"'

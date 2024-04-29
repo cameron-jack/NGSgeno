@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.26.004"
+VER="v0.26.005"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: index PCR components display and PCR wells
+* Fixed: Index display and upload_assaylists error
 EOM
 
 mv changelog.txt changelog_old.txt
