@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.26.003"
+VER="v0.26.004"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: generator + generator bug in clear_transactions
+* Fixed: index PCR components display and PCR wells
 EOM
 
 mv changelog.txt changelog_old.txt

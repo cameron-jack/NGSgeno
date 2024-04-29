@@ -1,3 +1,7 @@
+v0.26.004
+Date: Mon Apr 29 14:41:53 AEST 2024
+* Fixed: index PCR components display and PCR wells
+
 v0.26.003
 Date: Mon Apr 29 14:41:44 AEST 2024
 * Fixed: generator + generator bug in clear_transactions
