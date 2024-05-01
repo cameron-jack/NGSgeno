@@ -29,7 +29,7 @@ import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
-from stutil import custom_text, add_vertical_space, m, init_state, mq
+from stutil import custom_text, add_vertical_space, m, init_state, set_state, flip_state, mq
 #try:
 #    from bin.experiment import Experiment, EXP_FN, load_experiment
 #except ModuleNotFoundError:
@@ -259,6 +259,32 @@ def upload_echo_inputs(key):
         mq[caller_id] = []
                        
 
+def do_upload_primer_layout(upl, caller_id):
+    """ helper method for clean deferred uploads of primer layouts """
+    exp = st.session_state['experiment']
+    upl_pid = upl.name.split('_')[0]
+    success = parse.upload(exp, [upl], purpose='primer_layout')
+    if success and not trans.is_pending(exp):
+        m(f'Added primer layouts for plate {upl_pid} from file {upl.name}',
+                level='success', dest=('log','console'), caller_id=caller_id)
+    elif not success:
+        m(f'Failed to read primer plate layout from {upl.name}, please see the log',
+                level='error', dest=('debug',), caller_id=caller_id)
+
+
+def do_upload_primer_volume(upv, caller_id):
+    """ helper method for clean deferred uploads of primer volumes """
+    exp = st.session_state['experiment']
+    upv_pid = upv.name.split('_')[0]
+    success = parse.upload(exp, [upv], purpose='primer_volume')
+    if success and not trans.is_pending(exp):
+        m(f'Added primer volumes for plate {upv_pid} from file {upv.name}',
+                level='success', dest=('log','console'), caller_id=caller_id)
+    elif not success:
+        m(f'Failed to read primer plate volumes from {upv.name}, please see the log',
+                level='error', dest=('debug',), caller_id=caller_id)
+
+
 def upload_pcr1_files(key):
     """
     Upload form for primer layout and volumes. Copies input files into the directory 
@@ -272,6 +298,8 @@ def upload_pcr1_files(key):
     caller_id = 'upload_pcr1_files'
     st.session_state['upload_option'] = ''  # do we display pending files here
     primer_form = st.form('primer plate upload'+key, clear_on_submit=True)
+    init_state('deferred_primer_layout_upload_list', [])
+    init_state('deferred_primer_volume_upload_list', [])
     with primer_form:
         col1, col2 = st.columns(2)
         uploaded_primer_layouts = col1.file_uploader(
@@ -286,29 +314,68 @@ def upload_pcr1_files(key):
                 accept_multiple_files=True)
 
         upload_button = st.form_submit_button("Upload Files")
-
+        
+        # check whether the files are potentially incorrect based on file names
         if upload_button:
             st.session_state['upload_option'] = 'pcr1'
-            if uploaded_primer_layouts:                          
-                upl_pids = ''.join(upl.name.split('_')[0] for upl in uploaded_primer_layouts)
-                success = parse.upload(exp, uploaded_primer_layouts, purpose='primer_layout')
-                if success and not trans.is_pending(exp):
-                    m(f'Added primer layouts for plates {upl_pids}',
-                            level='success', dest=('log','console'))
-                elif not success:
-                    m(f'Failed to write at least one primer layout, please see the log',
-                            level='error', dest=('debug',))
-                     
+            if uploaded_primer_layouts:
+                for upl in uploaded_primer_layouts:
+                    if 'index' in upl.name.lower() or 'vol' in upl.name.lower():
+                        st.session_state['deferred_primer_layout_upload_list'].append(upl)
+                    else:
+                        do_upload_primer_layout(upl, caller_id)
+                 
             if uploaded_primer_volumes:
-                upv_pids = ''.join(upv.name.split('_')[0] for upv in uploaded_primer_volumes)
-                success = parse.upload(exp, uploaded_primer_volumes, purpose='primer_volume')
-                if success and not trans.is_pending(exp):
-                    m(f'Added primer volumes for plates {upv_pids}', 
-                            level='success', dest=('log','console'))
-                elif not success:
-                    m(f'Failed to write at least one set of primer volumes, please see the log',
-                            level='error', dest=('debug',))
-    
+                for upv in uploaded_primer_volumes:   
+                    if 'index' in upv.name.lower() or 'layout' in upv.name.lower():
+                        st.session_state['deferred_primer_volume_upload_list'].append(upv)
+                    else:
+                        do_upload_primer_volume(upv, caller_id)
+
+    init_state('confirm_primer_upload_button', False)
+    primer_confirmation_window = st.container()
+    if st.session_state.get('confirm_primer_upload_button', False):
+        for dl in st.session_state['deferred_primer_layout_upload_list']:
+            if st.session_state.get(key+'checkbox_confirm_'+dl.name, False):
+                do_upload_primer_layout(dl, caller_id)
+            else:
+                m(f'Skipping upload of {dl.name}')
+        for dv in st.session_state['deferred_primer_volume_upload_list']:
+            if st.session_state.get(key+'checkbox_confirm_'+dv.name, False):
+                do_upload_primer_volume(dv, caller_id)
+            else:
+                m(f'Skipping upload of {dv.name}')
+        st.session_state['deferred_primer_layout_upload_list'] = []
+        st.session_state['deferred_primer_volume_upload_list'] = []
+        st.session_state['confirm_primer_upload_button'] = False
+        
+    with primer_confirmation_window:
+        make_button = False
+        if st.session_state['deferred_primer_layout_upload_list']:
+            make_button = True
+            col1, col2 = st.columns(2)
+            for dl in st.session_state['deferred_primer_layout_upload_list']:
+                col1.checkbox(f'Upload {dl.name}', key=key+'checkbox_confirm_'+dl.name)
+                if 'index' in dl.name.lower(): 
+                    col2.write(f'Might be an index file, rather than primer layout')
+                elif 'vol' in dl.name.lower():
+                    col2.write(f'Might be a volume file, rather than primer layout')
+                else:
+                    col2.write(f'File flagged as potentially other purpose than primer layout')
+        if st.session_state['deferred_primer_volume_upload_list']:
+            make_button = True
+            col1, col2 = st.columns(2)
+            for dv in st.session_state['deferred_primer_volume_upload_list']:
+                col1.checkbox(f'Upload {dv.name}', key=key+'checkbox_confirm_'+dv.name)
+                if 'index' in dv.name.lower():
+                    col2.write(f'Might be an index file, rather than primer volume')
+                elif 'layout' in dv.name.lower():
+                    col2.write(f'Might be a layout file, rather than primer volume')
+                else:
+                    col2.write(f'File flagged as potentially other purpose than primer volume')
+        if make_button:
+            st.button('Confirm', key='deferred_primer_list_confirm'+key, on_click=set_state, args=['confirm_primer_upload_button', True])
+            
     #manage transactions:
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr1':
         pending_file_widget(key, caller_id)
@@ -380,6 +447,32 @@ def load_amplicons(key):
         mq[caller_id] = []
         
 
+def do_upload_index_layout(uil, caller_id):
+    """ helper method for clean deferred uploads of index layouts """
+    exp = st.session_state['experiment']
+    uil_pid = uil.name.split('_')[0]
+    success = parse.upload(exp, [uil], purpose='index_layout')
+    if success and not trans.is_pending(exp):
+        m(f'Added index layouts for plate {uil_pid} from file {uil.name}',
+                level='success', dest=('log','console'), caller_id=caller_id)
+    elif not success:
+        m(f'Failed to read index plate layout from {uil.name}, please see the log',
+                level='error', dest=('debug',), caller_id=caller_id)
+
+
+def do_upload_index_volume(uiv, caller_id):
+    """ helper method for clean deferred uploads of index volumes """
+    exp = st.session_state['experiment']
+    uiv_pid = uiv.name.split('_')[0]
+    success = parse.upload(exp, [uiv], purpose='index_volume')
+    if success and not trans.is_pending(exp):
+        m(f'Added index volumes for plate {uiv_pid} from file {uiv.name}',
+                level='success', dest=('log','console'), caller_id=caller_id)
+    elif not success:
+        m(f'Failed to read index plate volumes from {uiv.name}, please see the log',
+                level='error', dest=('debug',), caller_id=caller_id)
+        
+
 def upload_pcr2_files(key):
     """
     Upload inputs for indexing layout and volume. Extra option for amplicon plate upload.
@@ -389,6 +482,8 @@ def upload_pcr2_files(key):
     exp = st.session_state['experiment']
     caller_id = 'upload_pcr2_files'
     st.session_state['upload_option'] = ''  # do we display pending files here
+    init_state('deferred_index_layout_upload_list', [])
+    init_state('deferred_index_volume_upload_list', [])
     with st.form('index plate upload'+key, clear_on_submit=True):
         col1, col2 = st.columns(2)
         uploaded_index_layouts = col1.file_uploader(
@@ -417,24 +512,18 @@ def upload_pcr2_files(key):
         if upload_button:
             st.session_state['upload_option'] = 'pcr2'
             if uploaded_index_layouts:
-                uil_pids = ''.join(uil.name for uil in uploaded_index_layouts)
-                success = parse.upload(exp, uploaded_index_layouts, purpose='index_layout')
-                if success and not trans.is_pending(exp):
-                    m(f'Added index layouts for plates {uil_pids}', 
-                            level='success', dest=('log','console'))
-                elif not success:
-                    m(f'Failed to write at least one index layout, please see the log', 
-                            level='error', dest=('debug',))    
+                for uil in uploaded_index_layouts:
+                    if 'primer' in uil.name.lower() or 'vol' in uil.name.lower():
+                        st.session_state['deferred_index_layout_upload_list'].append(uil)
+                    else:
+                        do_upload_index_layout(uil, caller_id)
 
             if uploaded_index_volumes:
-                uiv_pids = ''.join(uiv.name for uiv in uploaded_index_volumes)
-                success = parse.upload(exp, uploaded_index_volumes, purpose='index_volume')
-                if success and not trans.is_pending(exp):
-                    m(f'Added index volumes for plates {uiv_pids}', 
-                            level='success', dest=('log','console'))
-                elif not success:
-                    m(f'Failed to write at least one set of index volumes, please see the log',
-                            level='error', dest=('debug',))   
+                for uiv in uploaded_index_volumes:
+                    if 'primer' in uiv.name.lower() or 'layout' in uiv.name.lower():
+                        st.session_state['deferred_index_volume_upload_list'].append(uiv)
+                    else:
+                        do_upload_index_volume(uiv, caller_id)
 
             if uploaded_amplicon_plates:
                 # Try to remove obsolete files
@@ -442,7 +531,6 @@ def upload_pcr2_files(key):
                 if Path(miseq_fn).exists():
                     success = exp.del_file_record(miseq_fn)
                     if success:
-                        exp.log(f'Info: removed obsolete file {miseq_fn}')
                         m(f'Removed obsolete file {miseq_fn}', level='success', dest=('log','console'))
                     else:
                         m(f'Could not remove obsolete file {miseq_fn}', 
@@ -466,8 +554,52 @@ def upload_pcr2_files(key):
                 else:
                     m(f'Failed to upload at least one amplicon manifest, please see the log',
                             level='error', dest=('debug',))
-                
-    
+      
+    # handle deferred index file uploads
+    init_state('confirm_index_upload_button', False)
+    index_confirmation_window = st.container()
+    if st.session_state.get('confirm_index_upload_button', False):
+        for dl in st.session_state['deferred_index_layout_upload_list']:
+            if st.session_state.get(key+'checkbox_confirm_'+dl.name, False):
+                do_upload_index_layout(dl, caller_id)
+            else:
+                m(f'Skipping upload of {dl.name}')
+        for dv in st.session_state['deferred_index_volume_upload_list']:
+            if st.session_state.get(key+'checkbox_confirm_'+dv.name, False):
+                do_upload_index_volume(dv, caller_id)
+            else:
+                m(f'Skipping upload of {dv.name}')
+        st.session_state['deferred_index_layout_upload_list'] = []
+        st.session_state['deferred_index_volume_upload_list'] = []
+        st.session_state['confirm_index_upload_button'] = False
+        
+    with index_confirmation_window:
+        make_button = False
+        if st.session_state['deferred_index_layout_upload_list']:
+            make_button = True
+            col1, col2 = st.columns(2)
+            for dl in st.session_state['deferred_index_layout_upload_list']:
+                col1.checkbox(f'Upload {dl.name}', key=key+'checkbox_confirm_'+dl.name)
+                if 'primer' in dl.name.lower(): 
+                    col2.write(f'Might be a primer file, rather than index layout')
+                elif 'vol' in dl.name.lower():
+                    col2.write(f'Might be a volume file, rather than index layout')
+                else:
+                    col2.write(f'File flagged as potentially other purpose than index layout')
+        if st.session_state['deferred_index_volume_upload_list']:
+            make_button = True
+            col1, col2 = st.columns(2)
+            for dv in st.session_state['deferred_index_volume_upload_list']:
+                col1.checkbox(f'Upload {dv.name}', key=key+'checkbox_confirm_'+dv.name)
+                if 'primer' in dv.name.lower():
+                    col2.write(f'Might be a primer file, rather than index volume')
+                elif 'layout' in dv.name.lower():
+                    col2.write(f'Might be a layout file, rather than index volume')
+                else:
+                    col2.write(f'File flagged as potentially other purpose than primer volume')
+        if make_button:
+            st.button('Confirm', key='deferred_index_list_confirm'+key, on_click=set_state, args=['confirm_index_upload_button', True])
+
     # manage transactions
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr2':
         #with st.session_state['message_container']:

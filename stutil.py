@@ -35,6 +35,17 @@ def init_state(key, value):
 
 def set_state(key, value):
     st.session_state[key] = value
+
+
+def flip_state(key):
+    """ Use for dynamic checkboxes """
+    if key in st.session_state:
+        if st.session_state[key]:
+            st.session_state[key] = False
+        else:
+            st.session_state[key] = True
+    else:
+        st.session_state[key] = True
         
 
 def do_tm(message, level=None):
@@ -102,9 +113,9 @@ def m(message, level=None, dest=None, caller_id=None,
             st.error('Experiment not yet loaded, cannot log messages!')
             
     # Most widgets will not handle markdown
-    if level and ('css' in dest or 'mkdn' in dest):
-        st.warning('Streamlit level displays are not compatible with markdown or css stylings')
-        print('Streamlit level displays are not compatible with markdown or css stylings', file=sys.stderr)
+    if level and 'css' in dest:
+        st.warning('Streamlit level displays are not compatible with css stylings')
+        print('Streamlit level displays are not compatible with css stylings', file=sys.stderr)
     
     if 'log' in dest:
         if 'mkdn' in dest:
@@ -152,8 +163,12 @@ def m(message, level=None, dest=None, caller_id=None,
     if 'persist' in dest:
         add_pm(message, level=level)
 
-    if 'css' in dest or 'mkdn' in dest:
+    if 'css' in dest:
         st.markdown(message, unsafe_allow_html=True)
+        return
+    
+    if 'mkdn' in dest and not level:
+        st.markdown(message)
         return
     
     if 'noGUI' in dest:

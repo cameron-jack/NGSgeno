@@ -272,7 +272,7 @@ class Experiment():
     
     def del_file_record(self, file_name):
         """
-        Remove a file record, and the actual file permanently
+        Remove a file record, and its plate definitions (to deleted_plates), and the actual file permanently
         """
         if file_name in self.uploaded_files:
             if Path(file_name).exists():
@@ -281,6 +281,13 @@ class Experiment():
                 except Exception as exc:
                     self.log(f'Error: could not delete file {file_name} {exc}')
                     return False
+            for pid in self.uploaded_files[file_name]['plates']:
+                if pid in self.plate_location_sample:
+                    success = self.delete_plate(pid)
+                    if success:
+                        self.log(f'Removed plate entry {pid} from deleted file {file_name}')
+                    else:
+                        self.log(f'Failed to remove plate entry {pid} from deleted file {file_name}')
             del self.uploaded_files[file_name]
             self.log(f'Success: removed file record of {file_name}')
             return True
