@@ -1,3 +1,8 @@
+v0.26.006
+Date: Thu May  2 06:36:34 AEST 2024
+* New: primer and index file uploads now protect against incorrect file upload
+* Fixed: When files are deleted, associated plates are soft deleted too
+
 v0.26.005
 Date: Mon Apr 29 17:23:59 AEST 2024
 * Fixed: Index display and upload_assaylists error

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
-VER="v0.26.005"
+VER="v0.26.006"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: Index display and upload_assaylists error
+* New: primer and index file uploads now protect against incorrect file upload
+* Fixed: When files are deleted, associated plates are soft deleted too
 EOM
 
 mv changelog.txt changelog_old.txt
