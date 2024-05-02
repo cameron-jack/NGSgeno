@@ -145,13 +145,11 @@ class Experiment():
         self.log('Info: Locking/unlocking of experiment is currently disabled')
         #self.log('Info: Locking experiment. No modification allowed to plates while lock remains')
         #self.locked = True
-        #self.save()
 
     def unlock(self):
         self.log('Info: Locking/unlocking of experiment is currently disabled')
         #self.log('Info: Unlocking experiment. Modification is now possible. There should be good reason for this!')
         #self.locked = False
-        #self.save()
 
 
     ### functions for returning locally held file paths
@@ -557,7 +555,6 @@ class Experiment():
             self.log(f'Error: could not upload Hamilton Nimbus output files, {exc}')
             return False
         transaction.add_pending_transactions(self, transactions)
-        self.save()
         return True
 
 
@@ -643,7 +640,6 @@ class Experiment():
                                              'source':'user', 
                                             'plate_type':util.PLATE_TYPES['PCR384'], 
                                             'barcode':p}
-        self.save()
         return True
 
     def get_pcr_pids(self):
@@ -981,7 +977,6 @@ class Experiment():
                         print(outline, file=fout)
         except Exception as exc:
             self.log(f'Failure: could not write primer survey {exc}')
-            self.save()
             return False
         transaction.add_pending_transactions(self,transactions)
         self.log(f"Success: written Echo primer survey to {primer_survey_fn}")
@@ -1256,7 +1251,6 @@ class Experiment():
             if pcrw[1] not in self.plate_location_sample[pcrw[0]]:
                 self.plate_location_sample[pcrw[0]][pcrw[1]] = dr   
 
-        self.save() 
 
     def get_num_pcr_wells(self, pcr_pids=None)->int:
         """ 
@@ -1269,8 +1263,8 @@ class Experiment():
         else:
             num_wells = sum(len(plate['wells']) for plate in self.plate_location_sample.values() \
                              if plate['purpose'] == 'pcr')
-        
         return num_wells
+
 
     def get_file_usage(self):
         """
@@ -1410,7 +1404,6 @@ class Experiment():
         except Exception as exc:
             self.log(f"Error: adding taq+water plate barcode failed {plate_barcodes=} {exc}")
             return False
-        self.save()
         return True
 
 
@@ -1555,8 +1548,8 @@ class Experiment():
         #if level == '':
         #    level = 'Debug'
         self.log_entries.append([t, func, func_line, caller, caller_line, level, message])
-        if (now - self.log_time).seconds > 10 or level in ['Error','Critical','Failure','End']:
-            self.save()
+        #if (now - self.log_time).seconds > 10 or level in ['Error','Critical','Failure','End']:
+        #    self.save()
 
 
     def get_log_header(self):
@@ -1575,7 +1568,6 @@ class Experiment():
         if message_type is not None:
             if message_type not in ['Debug','Info','Warning','Error','Critical','Begin','End','Success','Failure']:
                 self.log_entries.append(f"Error: didn't recognise message type {message_type}")
-                self.save()
                 return
         clean_log = []
         if message_type is not None:
@@ -1583,7 +1575,6 @@ class Experiment():
                 if entry[-2] != message_type:
                     clean_log.append(entry)
         self.log_entries = clean_log
-        self.save()
 
 
 def load_experiment(exp_path):

@@ -837,7 +837,6 @@ def main():
                                 if debug_mode:
                                     cmd_str += ' --debug'
                                 exp.log(f'Info: {cmd_str}')
-                                #print(f"{cmd_str=}", file=sys.stderr)
                                 subprocess.Popen(cmd_str.split(' '))
                                 st.write(f'Calling {cmd_str}')
                                 sleep(1.0)
@@ -874,8 +873,6 @@ def main():
                         for i, line in enumerate(rfn):
                             l = line.replace('"','')
                             cols = [c.strip() for c in l.split(',')]
-                            #if len(cols) != 30:
-                            #    print(cols)
                             if i == 0:
                                 hdr = cols
                             else:
@@ -887,10 +884,6 @@ def main():
                                     rodentity_results.append(cols)
                                 else:
                                     other_results.append(cols)
-
-                    #print(hdr)
-                    #print(custom_results[0:3])
-
                     m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', dest=('css',))
                     rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
                     with rodentity_view:

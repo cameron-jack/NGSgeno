@@ -109,7 +109,7 @@ def do_pending_cb(combined_pending, caller_id):
             if pending in exp.pending_uploads:
                 success = parse.accept_pending_upload(exp, pending)
             elif pending in exp.pending_steps:
-                success = trans.accept_pending_transaction(exp, pending)
+                success = trans.accept_pending_transactions(exp, pending)
             if success:
                 m(f'Success: overwrote existing file {pending}', level='success', dest=('log','console'), caller_id=caller_id)
                 if clashing_filenames:

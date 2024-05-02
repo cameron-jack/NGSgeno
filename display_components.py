@@ -60,10 +60,8 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
     options = GridOptionsBuilder.from_dataframe(
         df, enableRowGroup=True, enableValue=True, enablePivot=True
     )
-    #print('aggrid1', st.session_state['experiment'].name)
     
     options.configure_side_bar()
-    #st.write(df)
 
     options.configure_selection("multiple", use_checkbox=False, \
                 rowMultiSelectWithClick=False, suppressRowDeselection=False)
@@ -84,7 +82,6 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
         selection_mode='multiple',
         rowMultiSelectWithClick=True,
     )
-    #print(f'{selection=}', flush=True)
     return selection
 
 
@@ -900,7 +897,7 @@ def view_plates(key, height=500):
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
             if exp.plate_location_sample[plate_id]['purpose'] == 'amplicon':
-                print(f'DEBUG: {exp.get_plate(plate_id)=}')
+                exp.log(f'DEBUG: {exp.get_plate(plate_id)=}')
             jsonpickle_plate = jsonpickle.encode(exp.get_plate(plate_id), keys=True)
             heatmap_str = generate_heatmap_html(jsonpickle_plate, plate_id, scaling=0.9)
             with open("makehtml.html", 'wt', encoding="utf-8") as outf:
@@ -1019,10 +1016,6 @@ def display_log(key, height=250):
     Display the log
     """
     exp = st.session_state['experiment']
-    #func = sys._getframe(1).f_code.co_name
-    #func_line = inspect.getframeinfo(sys._getframe(1)).lineno
-    #print("Function", func, type(func_line))
-    # display the experiment log and let the user filter the view in a number of ways
     log_entries = st.session_state['experiment'].get_log(100)
     if len(log_entries) == 0:
         st.write('No entries currently in the log')
@@ -1035,8 +1028,6 @@ def display_log(key, height=250):
 #     DEPRECATED - retain for potential future projects
 #     Required support function for info_bar()
 #     """
-#     print(f'{screen_name=}')
-#     print(f'{st.session_state["screens_open"]=}')
 #     if screen_name in st.session_state['screens_open']:
 #         st.session_state['screens_open'].remove(screen_name)
 #     else:
@@ -1468,7 +1459,6 @@ def get_echo_download_buttons(nfs):
         nfs (str): nimbus file paths
     """
 
-    print(f"{len(nfs)=}")
     if len(nfs) < 5:
         _,dl_col1,dl_col2,_= st.columns([6,3,2,6])
         for i, nf in enumerate(nfs):

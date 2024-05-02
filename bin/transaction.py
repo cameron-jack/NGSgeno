@@ -295,159 +295,98 @@ def clear_pending_transactions(exp):
     return True
 
     
-def accept_pending_transaction(exp, file_name):
-    """
-    Replace the existing file with the one that is pending
-    """
-    print(file_name)
-    pending_file = exp.get_exp_fn(filename=file_name, trans=True)
-    print(pending_file)
-    if not Path(pending_file).exits():
-        exp.log(f"Error: pending file {pending_file} does not exist, reverting to original")
-        if pending_file in exp.pending_uploads:
-            exp.pending_uploads.remove(pending_file)
-        if pending_file in exp.pending_steps:
-            del exp.pending_steps[pending_file]
-        return False
-    if not exp.pending_steps:
-        exp.log("Warning: there are no pending transactions to record")
-        return True  # It didn't actually fail
-    elif pending_file in exp.pending_steps:
-        #print(f'Pending steps: {exp.pending_steps}, reproducible steps: {exp.reproducible_steps}', 
-            #       file=sys.stderr)
-        clashes = clashing_pending_transactions()
-        #print(f'Clashes seen: {clashes}', file=sys.stderr)
-        final_path = convert_pending_to_final(pending_file)
-        #print(f'File name: {final_path}', file=sys.stderr)
-
-        #if file already exists, remove original from files and reproducible_steps
-        if final_path in clashes:
-            if Path(final_path).exists():
-                print(f"Removing the old file: {str(final_path)}", file=sys.stderr)
-                os.remove(final_path)
-
-            #Need to remove entries from reproducible steps that contain the same plate id?
-            for i, step in enumerate(exp.reproducible_steps):
-                if final_path in step:
-                    del exp.reproducible_steps[i]
-
-        p = Path(pending_file)
-        if not p.exists():
-            exp.log('Warning: file does not exist')
-            return False
-        os.rename(pending_file, final_path)
-        print(f'Accepted file: {final_path}', file=sys.stderr)
-
-        this_step = {}
-        record = exp.pending_steps[pending_file]
-        this_step[final_path] = record
-        #print(f'{this_step}', file=sys.stderr)
-        exp.reproducible_steps.append(this_step)
-        exp.pending_steps.pop(pending_file)
-
-    return True
-
-def accept_pending_transactions(exp):
+def accept_pending_transactions(exp, file_name=None):
     """ 
     Look up the keys from exp.pending_steps in exp.reproducible_steps then
         remove all entries matching and following this then
         append the pending steps, rename files, and clear pending steps
-
+    If file_name then use only this key and ignore others
+        
     Returns True on success
     """
-    print(f"accept_pending_transactions for {exp.pending_steps.keys()=}", file=sys.stderr)
+    #print(f"accept_pending_transactions for {exp.pending_steps.keys()=}", file=sys.stderr)
     if not exp.pending_steps:
         exp.log("Warning: there are no pending transactions to record")
         return True  # It didn't actually fail
-    ps_keys = exp.pending_steps.copy()
-    for ps in ps_keys:
-        if not Path(ps).exists():
-            exp.log(f"Error: pending file {ps} does not exist, reverting to original")
-            if ps in exp.pending_uploads:
-                exp.pending_uploads.remove(ps)
-            if ps in exp.pending_steps:
-                del exp.pending_steps[ps]
-            if ps in exp.uploaded_files:
-                exp.del_file_record(ps)
-
-    if len(exp.pending_steps.keys()) == 0:
+    ps_keys = exp.pending_steps.keys()
+    if file_name:
+        ps_keys = [ps for ps in ps_keys if file_name == ps_keys]
+    if not ps_keys:
+        exp.log(f'Error: expected {file_name} in {exp.pending_steps.keys()}')
+        return False
+    MAX_STAGES=len(exp.reproducible_steps)
+    clashing_index = MAX_STAGES
+    saw_a_clash = False
+    #print(f"{exp.reproducible_steps=}", file=sys.stderr)
+    for i,step in enumerate(exp.reproducible_steps):
+        for dest in step:
+            dp = convert_final_to_pending(exp,dest)
+            print(f"{dp=} {ps_keys=}", flush=True, file=sys.stderr)
+            if dp in ps_keys:
+                if i < clashing_index:
+                    clashing_index = i
+                    saw_a_clash = True
+                    break
+    if not saw_a_clash: # maybe no entries in reproducible_steps yet, but files exist for some reason
+        exp.reproducible_steps.append({})
+        for ps in ps_keys:
+            exp.reproducible_steps[-1][ps] = exp.pending_steps[ps].copy()
+            fs = convert_pending_to_final(exp, ps)
+            # check if a file already exists with this name
+            if os.path.exists(fs):
+                try:
+                    os.remove(fs)
+                except Exception as exc:
+                    exp.log(f'Error: Could not remove existing file {fs}, {exc}')
+                exp.log(f'Info: removed existing file {fs}')
+            try:
+                os.rename(ps, fs)
+            except Exception as exc:
+                exp.log(f'Error: Failed to rename pending file {ps} to {fs}, {exc}')
+                return False
+            exp.log(f'Success: Renamed pending file {ps} to {fs}')
+        exp.pending_steps = {}
         return True
-
-    clashes = clashing_pending_transactions(exp)
-    #print(f"Clashes seen {clashes=}", file=sys.stderr)
-    if len(clashes) == 0:
-        for transaction in exp.pending_steps:
-            p = Path(transaction)
-            if not p.exists():
-                exp.log(f'Warning: {str(p)} not found')
-                continue
-            final_path = convert_pending_to_final(exp,transaction)
-            os.rename(p, final_path)
-            #print(f"No clash {str(p)=} {str(final_path)=}", file=sys.stderr)
     else:
-        MAX_STAGES=99999
-        clashing_index = MAX_STAGES
-        #print(f"{exp.reproducible_steps=}", file=sys.stderr)
-        for i,step in enumerate(exp.reproducible_steps):
-            for dest in step:
-                dp = convert_final_to_pending(exp,dest)
-                #print(f"{dp=}", file=sys.stderr)
-                if dp in exp.pending_steps:
-                    if i < clashing_index:
-                        clashing_index = i
-                        break
-        #print(f"{clashing_index=}", file=sys.stderr)
-        if clashing_index == MAX_STAGES:  # this should NEVER happen
-            exp.log(
-                    'Critical: pipeline detects clashing' +
-                    f'transaction {clashing_index=} for {exp.pending_steps=}') 
-            return False
-
-        # keep everything prior to the clash, then add on the pending steps
-        remove_these_steps = exp.reproducible_steps[clashing_index:]
-        #print(f"{remove_these_steps=}", file=sys.stderr)
-        for step in remove_these_steps:
-            for fp in step:
-                if fp in exp.uploaded_files:
-                    del exp.uploaded_files[fp]
-                if Path(fp).exists():
-                    #print(f"removing the original file: {str(fp)}", file=sys.stderr)
-                    os.remove(fp)
-        # rename pending filepaths
-        for transaction in exp.pending_steps:
-            p = Path(transaction)
-            if not p.exists():
-                exp.log(f'Warning: {str(p)} not found')
-                continue
-            final_path = convert_pending_to_final(exp,transaction)
-            #print(f"Renaming {str(p)=} to {str(final_path)=}", file=sys.stderr)
-            os.rename(p, final_path)
-            op = str(p)
-            if op in exp.uploaded_files:
-                exp.uploaded_files[final_path] = exp.uploaded_file[op].copy()
-                del exp.uploaded_file[op]
-        exp.reproducible_steps = exp.reproducible_steps[0:clashing_index]
-    if exp.pending_steps is None:
-        exp.save()
+        # find the clashing location, nuke everything from that index and add the pending_steps instead
+        affected_files = set()
+        affected_pids = set()  # currently we're leaving this, but if plates are generated then they need to be removed too
+        for step in exp.reproducible_steps[clashing_index:]:
+            for fn in step.keys():
+                affected_files.add(fn)
+                for pid in step[fn]:
+                    affected_pids.add(pid)
+        for af in affected_files:
+            success = exp.del_file_record(af)
+            if success:
+                exp.log(f'Info: Obsolete tracked pipeline file {af} removed')
+            else:
+                try:
+                    os.remove(af)
+                except Exception as exc:
+                    exp.log(f'Error: Could not delete obsolete file {af}, {exc}')
+                    return False
+                exp.log(f'Info: Obsolete tracked pipeline file {af} removed')
+        # Shouldn't just delete all plates
+        #for ap in affected_pids:
+            # soft delete
+            #success = exp.delete_plate(ap)
+            #if success:
+            #    exp.log('Info: Obsolete plate')
+            
+        exp.reproducible_steps = exp.reproducible_steps[:clashing_index]
+        exp.reproducible_steps.append({})
+        for ps in ps_keys:
+            exp.reproducible_steps[-1][ps] = exp.pending_steps[ps].copy()
+            fs = convert_pending_to_final(exp, ps)
+            try:
+                os.rename(ps, fs)
+            except Exception as exc:
+                exp.log(f'Error: Failed to rename pending file {ps} to {fs}, {exc}')
+                return False
+            exp.log(f'Success: Renamed pending file {ps} to {fs}')
+        exp.pending_steps = {}
         return True
-    this_step = {}
-    for ps in exp.pending_steps:
-        if ps is None:
-            continue
-        final_name = convert_pending_to_final(exp,ps)
-        record = exp.pending_steps[ps]
-        this_step[final_name] = record
-        op = str(final_name).split('/')[-1]
-        if exp.pending_steps[ps]:
-            exp.uploaded_files[op] = {'plates':exp.pending_steps[ps].keys()}
-        else:
-            exp.uploaded_files[op] = {'plates':[]}
-    exp.reproducible_steps.append(this_step)
-    for fn in this_step:
-        if fn in exp.pending_steps:
-            exp.pending_steps.remove(fn)
-    exp.save()
-    return True
 
 
 def enforce_file_consistency(exp):

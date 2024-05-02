@@ -673,7 +673,7 @@ def parse_index_layout(exp, fp, user_gpid=None):
     """ 
     Add index plates with well and index columns 
     Inputs: experiment, fp - filepath usually containing the PID, user_gpid is an override for the filepath
-    Non-sample plates can be loaded straight into experiment.plate_location_sample - save exp when done
+    Non-sample plates can be loaded straight into experiment.plate_location_sample
     Returns True on success
     """
     if user_gpid:
@@ -740,7 +740,7 @@ def parse_index_volume(exp, fp, user_gpid=None):
     Format 2: column layout (generated through Echo main interface)
         
     Inputs: experiment, fp - filepath usually containing the PID, user_gpid is an override for the filepath
-    Non-sample plates can be loaded straight into experiment.plate_location_sample - save exp when done
+    Non-sample plates can be loaded straight into experiment.plate_location_sample
     Returns True on success
     """
     if user_gpid:
@@ -835,6 +835,8 @@ def parse_assay_primer_map(exp, fp):
     local_primer_assayfam = {} 
     with open(fp, 'rt', errors='ignore') as data:
         for i, row in enumerate(csv.reader(data, delimiter=',', quoting=csv.QUOTE_ALL)):
+            if len(row) < 2:
+                continue  # empty row
             if i == 0:
                 continue  # header
             if row == '' or row[0] == '' or row[1] == '':
@@ -877,7 +879,6 @@ def parse_assay_primer_map(exp, fp):
                         msg = f'Warning: primer {primer} has multiple assayfams: '+\
                                 f'{local_primer_assayfam[primer]} and {assay_fam}'
                         exp.log(msg)
-                        print(msg)
                         continue
                 local_primer_assayfam[primer] = assay_fam
 
