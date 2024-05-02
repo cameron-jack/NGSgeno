@@ -1,3 +1,9 @@
+v0.26.007
+Date: Thu May  2 12:58:02 AEST 2024
+* Fixed: transaction handling
+* Fixed: Slowdowns from prints and saves
+* Fixed: robustness of assay list uploads
+
 v0.26.006
 Date: Thu May  2 06:36:34 AEST 2024
 * New: primer and index file uploads now protect against incorrect file upload

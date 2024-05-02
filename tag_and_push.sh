@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-VER="v0.26.006"
+VER="v0.26.007"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* New: primer and index file uploads now protect against incorrect file upload
-* Fixed: When files are deleted, associated plates are soft deleted too
+* Fixed: transaction handling
+* Fixed: Slowdowns from prints and saves
+* Fixed: robustness of assay list uploads
 EOM
 
 mv changelog.txt changelog_old.txt
