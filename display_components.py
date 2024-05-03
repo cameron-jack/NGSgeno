@@ -26,7 +26,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 import extra_streamlit_components as stx
-from st_aggrid import AgGrid, GridOptionsBuilder
+from st_aggrid import AgGrid, GridOptionsBuilder, ColumnsAutoSizeMode
 from st_aggrid.shared import GridUpdateMode
 
 from stutil import custom_text, add_vertical_space, add_pm, m, init_state, mq
@@ -58,8 +58,14 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
         dict: The selected row
     """
     options = GridOptionsBuilder.from_dataframe(
-        df, enableRowGroup=True, enableValue=True, enablePivot=True
+        df, enableRowGroup=True, enableValue=True, enablePivot=True,
     )
+
+    if 'Message' in df.columns:
+        options.configure_column(field = 'Message', width = 800)
+    
+    if 'Func line' in df.columns:
+        options.configure_column(field = 'Func line', width = 70)
     
     options.configure_side_bar()
 
@@ -81,6 +87,7 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
         rowSelection='multiple',
         selection_mode='multiple',
         rowMultiSelectWithClick=True,
+        fit_columns_on_grid_load=True
     )
     return selection
 
@@ -1021,6 +1028,7 @@ def display_log(key, height=250):
         st.write('No entries currently in the log')
     else:
         df = pd.DataFrame(log_entries, columns=exp.get_log_header())
+        df = df.drop(['Calling function', 'Call line'], axis = 1)
         aggrid_interactive_table(df, grid_height=height, key=str(key)+'logs')
 
 # def change_screens_open(screen_name):

@@ -359,7 +359,7 @@ def main():
         # info panel displays are updated at the bottom of the script, so that they reflect any changes
         with lower_container:
             success = dc.info_selection("bottom_viewer", 'info_panel3', 'info_panel4', 
-                    'lower_panel_height', default_view1='Files', default_view2='Log', 
+                    'lower_panel_height', default_view1='Log', default_view2='None', 
                     default_height=st.session_state.get('lower_panel_height',350))
             
         #============================================== STAGE 1: Load data =============================================

@@ -1,3 +1,17 @@
+v0.26.008
+Date: Fri May  3 10:50:18 AEST 2024
+* Fixed: Log display message size for info viewer
+
+v0.26.008
+Date: Fri May  3 10:49:22 AEST 2024
+* Fixed: Log display messages for info viewer
+
+v0.26.007
+Date: Fri May  3 10:49:16 AEST 2024
+* Fixed: transaction handling
+* Fixed: Slowdowns from prints and saves
+* Fixed: robustness of assay list uploads
+
 v0.26.007
 Date: Thu May  2 12:58:02 AEST 2024
 * Fixed: transaction handling

@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.26.007"
+VER="v0.26.008"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: transaction handling
-* Fixed: Slowdowns from prints and saves
-* Fixed: robustness of assay list uploads
+* Fixed: Log display message size for info viewer 
 EOM
 
 mv changelog.txt changelog_old.txt
