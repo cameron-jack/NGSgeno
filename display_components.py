@@ -26,7 +26,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 import extra_streamlit_components as stx
-from st_aggrid import AgGrid, GridOptionsBuilder, ColumnsAutoSizeMode
+from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
 from stutil import custom_text, add_vertical_space, add_pm, m, init_state, mq

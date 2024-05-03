@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.26.008"
+VER="v0.26.009"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: Log display message size for info viewer 
+* Fixed: Removed AgGrid module that is not available
 EOM
 
 mv changelog.txt changelog_old.txt

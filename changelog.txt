@@ -1,3 +1,7 @@
+v0.26.009
+Date: Fri May  3 11:08:41 AEST 2024
+* Fixed: Removed AgGrid module that is not available
+
 v0.26.008
 Date: Fri May  3 10:50:18 AEST 2024
 * Fixed: Log display message size for info viewer
