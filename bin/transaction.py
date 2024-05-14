@@ -460,3 +460,40 @@ def get_plate(exp, PID, transactions=None):
                     if 'volume' in mod_plate[well]:
                         mod_plate[well] += transactions[t][PID][well]
     return mod_plate
+
+
+### Manage file to plate and plate to file mappings
+
+def find_affected(exp, files, plates):
+    """
+    Recurse through files and plates, catching all that rely on each other
+    If a plate needs a file, then the file to plate mapping should reflect this and vice versa
+    This should be a better way of handling transactions than simply winding back all files 
+    produced so far, but removes the idea of a truly linear pipeline
+    files and plates are sets with elements found in:
+    exp.denied_assays[0] is for files
+    exp.denied_primers[0] is for plates
+    """
+    mapped_files = exp.denied_assays[0]
+    mapped_plates = exp.denied_plates[0]
+    extra_files = set()
+    extra_plates = set()
+    for f in files:
+        if f in mapped_files:
+            for p in mapped_files[f]:
+                if p not in plates:
+                    extra_plates.add(p)
+                    plates.add(p)
+    for p in plates:
+        if p in mapped_plates:
+            for f in mapped_plates[p]:
+                if f not in files:
+                    extra_files.add(f)
+                    files.add(f)
+    if extra_files or extra_plates:
+        returned_files, returned_plates = find_affected(exp, extra_files, extra_plates)
+        for rf in returned_files:
+            files.add(rf)
+        for rp in returned_plates:
+            plates.add(rp)
+    return files, plates

@@ -102,8 +102,8 @@ class Experiment():
         # Standardised: "assays": [str], rodentity allele[assay[name]]
         # The specific import function should be responsisble for creating the "assays" field
         ###
-        self.denied_assays = []
-        self.denied_primers = []
+        self.denied_assays = []  # file to plate mapping
+        self.denied_primers = []  # plate to file mapping
         self.assay_synonyms = {}  # {source:{reference:alternative}}
         self.primer_assayfam = {}  # {mapping of primer to assayfam} for reverse lookups
         self.assayfam_primers = {}  # {mapping of assay families to list of primers}
@@ -140,6 +140,11 @@ class Experiment():
 
     def __repr__(self) -> str:
         return str(self.__dict__)
+
+    def __del__(self):
+        print(f'Saving experiment {self.name}', flush=True)
+        self.save()
+ 
 
     def lock(self):
         self.log('Info: Locking/unlocking of experiment is currently disabled')
@@ -302,9 +307,33 @@ class Experiment():
 
     ### Plate related operations
 
+    def add_plate(self, pid, dependent_files):
+        """
+        Standardise the interface for a plate record. Useful due to the complexity of plates
+        All plate records go in:
+                self.plate_location_sample = {}  # pid:{well:sample_dict}  # use this for everything!
+        It's important that we record a bunch of plate properties:
+            'barcode' (str) plate ID
+            'plate_type' an entry from util.PLATE_TYPE
+            'wells' set()  # either occupied wells, or the set of all possible wells
+            'timestamp'  # when this entity came into existence
+            'purpose' [''pcr',')
+            'source' ['user','custom','rodentity']
+            'dependent_files' set(str)  # the collection of files created from this plate record, can't be set at creation
+            [well] = {} the actual data about what's in a well. Don't set this here, but know that it exists!
+            purpose ['sample','dna','pcr','primer','index',''] 
+                                             'wells':set(), 
+                                             'source':'user', 
+                                            'plate_type':util.PLATE_TYPES['PCR384'], 
+                                            'barcode':p}
+        """
+        pass
+
     def get_plate(self, pid):
         """ 
         Return the actual plate as a nested dictionary object.
+        This is required because plates may have had things added or removed from them
+        This function uses transactions to build a record of an up-to-date plate dictionary
         """
         return transaction.get_plate(self, pid)
     
@@ -1482,7 +1511,7 @@ class Experiment():
             with open(os.path.join('run_'+self.name, EXP_FN), 'wt') as f:
                 print(exp, file=f)
         except Exception as exc:
-            print(f"Error saving {self.name=} {exc}", file=sys.stderr)
+            print(f"Error saving {self.name=} {exc}", flush=True, file=sys.stderr)
             return False
         return True
 

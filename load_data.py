@@ -751,7 +751,7 @@ def custom_volumes(exp):
         if success:
             m('Transfer volumes reset', level='info', dest=('log',))
             sleep(1.5)
-            st.experimental_rerun()
+            st.rerun()
         else:
             m('Transfer volumes were not reset. Check the log for more information', 
                     level='error', dest=('debug',))
@@ -764,7 +764,7 @@ def custom_volumes(exp):
         if success:
             m(f'Modified transfer volumes {volumes_dict}', level='success', dest=('log','console'))
             sleep(1.5)
-            st.experimental_rerun()
+            st.rerun()
         else:
             m("Volume could not be modified. Please use integers only", level='error', dest=('debug',))
 
@@ -894,7 +894,7 @@ def load_rodentity_data(key):
                     if plate and exp.unassigned_plates[i+1]:
                         exp.unassigned_plates[i+1] = ''
                         plates_to_clear[i] = False
-                st.experimental_rerun()
+                st.rerun()
                 
 
         with rod_col2.form('rod_destination_form', clear_on_submit=True):
@@ -925,7 +925,7 @@ def load_rodentity_data(key):
                                level='success', dest=('log','console'))
                         exp.unassigned_plates = {1:'',2:'',3:'',4:''}
                         sleep(2)
-                        #st.experimental_rerun()
+                        #st.rerun()
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl)
@@ -1025,7 +1025,7 @@ def add_pcr_barcodes(key, dna_pids):
                     m(f'Added PCR plate barcode {pcr_plate_barcode}', level='success', 
                             dest=('log','console'), caller_id=caller_id)
                     sleep(1.5)
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     m(f'Could not add PCR plate barcode {pcr_plate_barcode}, please see the log',
                             level='error', dest=('debug','log'), caller_id=caller_id)
@@ -1056,7 +1056,7 @@ def add_taqwater_barcodes(key, pcr_stage):
                     m(f'Added taq+water plate {taqwater_plate_barcode}', level='success', 
                             dest=('log','console'), caller_id=caller_id)
                     sleep(1.5)
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     m(f'Could not add taq+water plate barcode {taqwater_plate_barcode}, please see the log',
                             level='error', dest=('debug',), caller_id=caller_id)
@@ -1093,7 +1093,7 @@ def provide_barcodes(key, pcr_stage, dna_pids):
                     m(f'Added PCR plate barcode {pcr_plate_barcode}', level='success', 
                             dest=('log','console'), caller_id=caller_id)
                     sleep(1.5)
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     m(f'Could not add PCR plate barcode {pcr_plate_barcode}, please see the log',
                             level='error', dest=('debug','log'), caller_id=caller_id)
@@ -1114,7 +1114,7 @@ def provide_barcodes(key, pcr_stage, dna_pids):
                     m(f'Added taq+water plate {taqwater_plate_barcode}', level='success', 
                             dest=('log','console'), caller_id=caller_id)
                     sleep(1.5)
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     m(f'Could not add taq+water plate barcode {taqwater_plate_barcode}, please see the log',
                             level='error', dest=('debug',), caller_id=caller_id)

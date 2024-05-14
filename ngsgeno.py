@@ -12,6 +12,7 @@ Needs load_data.py for GUI functions that are responsible for incorporating data
 experiment, and display_components.py for functions dedicated to the presentation of GUI
 elements
 """
+from re import S
 import select
 from telnetlib import theNULL
 import jsonpickle
@@ -24,7 +25,6 @@ from subprocess import check_output, CalledProcessError, STDOUT
 import subprocess
 import queue
 import threading
-import atexit
 
 import pandas as pd
 
@@ -63,6 +63,12 @@ import load_data as ld
 import asyncio
 from time import sleep
 
+global unsaved_exp
+if 'experiment' in st.session_state and st.session_state['experiment']:
+    unsaved_exp = st.session_state['experiment']
+else:
+    unsaved_exp = None
+    
 def get_status_output(cmd):
     """ calls a process and returns the run status and any output """
     try:
@@ -97,7 +103,7 @@ def create_run_folder(newpath):
     print('Generating experiment: ', newpath)
     if 'experiment' in st.session_state and st.session_state['experiment']:
         st.session_state['experiment'].save()
-    exp = Experiment(name=newpath.lstrip('run_'))
+    exp = Experiment(name=newpath[4:])  # chop off 'run_'
     return exp, ''
 
 
@@ -155,6 +161,7 @@ def load_experiment_screen():
     """
     Landing screen
     """
+    global unsaved_exp
     experiment_title = 'Current Experiment: None'
     logo_col, ver_col,_, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,2,2,2,1,2,1])
     current_status, current_ver = get_status_output("git describe")
@@ -185,9 +192,9 @@ def load_experiment_screen():
         exp, msg = create_run_folder(add_run_folder_str)
         if exp:
             print(f'Saving experiment {exp.name}', file=sys.stderr, flush=True)
-            exp.save()                                                                      
+            exp.save()
             st.session_state['experiment'] = exp
-            st.experimental_rerun()
+            st.rerun()
         else:
             if 'already exists' in msg:
                 error_msg = "Folder name already exists"
@@ -213,7 +220,7 @@ def load_experiment_screen():
                     st.session_state['index_tab'] = 1
                     st.session_state['miseq_tab'] = 1
                     st.session_state['allele_tab'] = 1
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     error_msg = "Invalid experiment file in: " + ch_run_path
     new_folder_col.markdown(f'<p style="color:#FF0000; text-align:center">{error_msg}</p>',\
@@ -238,7 +245,7 @@ def display_pipeline_header(exp):
         if 'experiment' in st.session_state and st.session_state['experiment']:
             st.session_state['experiment'].save()
         st.session_state['experiment'] = None
-        st.experimental_rerun()
+        st.rerun()
 
     if 'stage' not in st.session_state:
         st.session_state['stage'] = None
@@ -266,19 +273,6 @@ def unlocked(exp):
     return True
 
 
-def last_rites(exp_list):
-    """
-    Save experiments before the application closes
-    """
-    for exp in exp_list:
-        try:
-            print(f'Saving experiment {exp.name}', file=sys.stderr, flush=True) 
-            exp.save()
-        except Exception as exc:
-            print(f'Saving experiment failed! {exc}', file=sys.stderr, flush=True)
-    print('Closing application, goodbye.', file=sys.stderr, flush=True)
-
-
 def main():
     """
     The NGSgeno "Xplorer" application. Allows full control of all sections of the pipeline,
@@ -293,11 +287,6 @@ def main():
     dc.add_css()
 
     init_state('experiment', None)
-    init_state('last_rites', False)  # lock to ensure we only register this function once
-    init_state('save_list', [])  # a list of experiments that need to be saved at closing time
-    if not st.session_state['last_rites']:
-        atexit.register(last_rites, st.session_state['save_list'])
-        st.session_state['last_rites'] = True
 
     if 'experiment' not in st.session_state or st.session_state['experiment'] is None:
         load_experiment_screen()
@@ -305,8 +294,8 @@ def main():
     #================================================ START EXPERIMENT =================================================
     else:  # main program
         exp = st.session_state['experiment']
-        pipeline_stage = display_pipeline_header(exp)
         
+        pipeline_stage = display_pipeline_header(exp)
         if pipeline_stage:
             st.session_state['info_expand'] = False
 
@@ -435,7 +424,7 @@ def main():
                                     'Please upload this to continue', level='Error')
                             success = ld.upload_assaylist('nimbus1_assaylist')
                             if success:
-                                st.experimental_rerun()
+                                st.rerun()
                         else:
                             #Generate files button
                             _, btn_col,_ = st.columns([2,2,1])

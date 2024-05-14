@@ -685,7 +685,6 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
     """
     Streamlit being JS/AJAX has no ability to select a directory. This is for server paths only.
     Initial code by Aidin Jungo here: https://github.com/aidanjungo/StreamlitDirectoryPicker
-    Cannot be used inside an st.column as it produces its own columns.
     """
     caller_id = 'st_directory_picker'
     if "path" not in st.session_state:
@@ -703,7 +702,7 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
         st.markdown("Back")
         if st.button("←") and "path" in st.session_state:
             st.session_state['path'] = st.session_state['path'].parent
-            st.experimental_rerun()
+            st.rerun()
 
     with col2:   
         if subdirectories:
@@ -717,7 +716,7 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
             st.markdown("Select")
             if st.button("→") and "path" in st.session_state:
                 st.session_state['path'] = Path(st.session_state['path'], st.session_state['new_dir'])
-                st.experimental_rerun()
+                st.rerun()
     st.markdown(\
             f'<h5 style="color:#000000">Contains {len(contains_files)} files of type {",".join(searched_file_types)}</h5>',\
                     unsafe_allow_html=True)
