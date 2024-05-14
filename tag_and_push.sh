@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.26.009"
+VER="v0.26.010"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: Removed AgGrid module that is not available
+* Fixed: Replaced atexit with destructor for saving experiment
 EOM
 
 mv changelog.txt changelog_old.txt
