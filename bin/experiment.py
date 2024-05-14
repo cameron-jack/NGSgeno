@@ -23,6 +23,7 @@ from shutil import copyfileobj
 import json
 from Bio import SeqIO
 from copy import deepcopy
+import weakref
 from math import ceil, floor
 from pathlib import Path
 import inspect  
@@ -128,6 +129,7 @@ class Experiment():
         self.transfer_volumes = {'DNA_VOL':util.DNA_VOL, 'PRIMER_VOL':util.PRIMER_VOL, 'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
                 'PRIMER_WATER_VOL':util.PRIMER_WATER_VOL, 'INDEX_VOL':util.INDEX_VOL, 'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
                 'INDEX_WATER_VOL':util.INDEX_WATER_VOL}  # load the defaults from util.py
+        self._finalizer = weakref.finalize(self, self.save)
         
 
     def __setstate__(self, state):
@@ -140,11 +142,6 @@ class Experiment():
 
     def __repr__(self) -> str:
         return str(self.__dict__)
-
-    def __del__(self):
-        print(f'Saving experiment {self.name}', flush=True)
-        self.save()
- 
 
     def lock(self):
         self.log('Info: Locking/unlocking of experiment is currently disabled')
@@ -505,7 +502,10 @@ class Experiment():
 
             if plate['purpose'] == 'taq_water':
                 #Separate taq water PCR 1
-                if plate['pcr_stage'] == 1:
+                if 'pcr_stage' not in plate:
+                    # legacy experiments only
+                    continue
+                elif plate['pcr_stage'] == 1:
                     d['taqwater_pids_pcr1'].append(pid)
                     for well in util.TAQ_WELLS:
                         if well in plate and 'volume' in plate[well]:
@@ -1505,11 +1505,14 @@ class Experiment():
     def save(self):
         """ save experiment details to self.name/experiment.json, returns True on success and False on fail. Assumes the correct working directory """
         try:
-            exp = jsonpickle.encode(self, indent=4, keys=True, warn=True)
+            self._finalizer.detach()
+            del self._finalizer
+            exp = jsonpickle.encode(self, indent=4, keys=True, warn=True, handle_readonly=True)
             if not self.name:
                 return False
             with open(os.path.join('run_'+self.name, EXP_FN), 'wt') as f:
                 print(exp, file=f)
+            print(f'Successfully saved experiment {self.name}', flush=True)
         except Exception as exc:
             print(f"Error saving {self.name=} {exc}", flush=True, file=sys.stderr)
             return False
@@ -1613,7 +1616,7 @@ def load_experiment(exp_path):
     print('Attempting to load from path:', exp_file_path)
     if os.path.exists(exp_file_path):
         with open(exp_file_path, 'rt') as f:
-            expt = jsonpickle.decode(f.read(), keys=True) # this seems totally flaky, but it must come down to what the contents are?
+            expt = jsonpickle.decode(f.read(), keys=True, handle_readonly=True) # this seems totally flaky, but it must come down to what the contents are?
         if isinstance(expt, Experiment):
             return expt
         elif isinstance(expt, str):

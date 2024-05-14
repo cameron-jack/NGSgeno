@@ -25,6 +25,8 @@ from subprocess import check_output, CalledProcessError, STDOUT
 import subprocess
 import queue
 import threading
+from copy import deepcopy
+import weakref
 
 import pandas as pd
 
@@ -69,6 +71,7 @@ if 'experiment' in st.session_state and st.session_state['experiment']:
 else:
     unsaved_exp = None
     
+   
 def get_status_output(cmd):
     """ calls a process and returns the run status and any output """
     try:
@@ -81,12 +84,17 @@ def get_status_output(cmd):
         data = data[:-1]
     return status, data
 
+
 def get_run_folders():
     """ return an alphabetically sorted list of run folders, without their run_ prefix """
         
     # get run folder names without 'run_'
-    run_folders = [''] + [d[4:] for d in os.listdir('.') if d.startswith('run_') and os.path.isdir(d)]
-    return sorted(run_folders)
+    run_folders = [d[4:] for d in os.listdir('.') if d.startswith('run_') and os.path.isdir(d)]
+    #sort by date modified
+    sorted_folders = sorted(run_folders, key=lambda d: os.path.getmtime(f'run_{d}'), reverse=True)
+    sorted_folders.insert(0, '')
+    return sorted_folders
+
 
 def create_run_folder(newpath):
     """ returns Experiment or None, and a message string. Requires a full path and generates a new experiment file """
@@ -227,6 +235,29 @@ def load_experiment_screen():
             unsafe_allow_html=True)
 
 
+def save_button(exp):
+    """
+    Save button for users
+    """
+    save = st.button('💾', type = 'primary', help = 'Save current experiment')
+    if save:
+        try:
+            print(f'Saving experiment {exp.name}', file=sys.stderr, flush=True)
+            exp.save()
+        except Exception as exc:
+            err_msg = f'Saving experiment failed! {exc}'
+            m(err_msg, level='error', dest=['log','debug'], caller_id=save_button)
+            
+
+def home_button(exp):
+    unload_button = st.button('🏠', type='primary', help='Go back and change experiment')
+    if unload_button:
+        if 'experiment' in st.session_state and st.session_state['experiment']:
+            st.session_state['experiment'].save()
+        st.session_state['experiment'] = None
+        st.rerun()
+        
+
 def display_pipeline_header(exp):
     """
     main pipeline header section (constant across pipeline stages)
@@ -236,16 +267,16 @@ def display_pipeline_header(exp):
     logo_col, info_col, pipe_col = st.columns([1,2,9])
     logo_col.image('ngsg_icon.png')
     current_status, current_ver = get_status_output("git describe")
+    
     info_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', 
             unsafe_allow_html=True)
     info_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {experiment_title}</p>', 
             unsafe_allow_html=True)
-    unload_button = info_col.button('🏠', type='primary', help='Go back and change experiment')
-    if unload_button:
-        if 'experiment' in st.session_state and st.session_state['experiment']:
-            st.session_state['experiment'].save()
-        st.session_state['experiment'] = None
-        st.rerun()
+    home_col, save_col = info_col.columns(2)
+    with home_col:
+        home_button(exp)
+    with save_col:
+        save_button(exp)
 
     if 'stage' not in st.session_state:
         st.session_state['stage'] = None
@@ -294,6 +325,8 @@ def main():
     #================================================ START EXPERIMENT =================================================
     else:  # main program
         exp = st.session_state['experiment']
+        if not hasattr(exp, '_finalizer'):
+            exp._finalizer = weakref.finalize(exp, exp.save)
         
         pipeline_stage = display_pipeline_header(exp)
         if pipeline_stage:
@@ -915,7 +948,7 @@ def main():
             dc.display_persistent_messages(key='main1')
 
 
-        ### End of main display ###
+            ### End of main display ###
 
 if __name__ == '__main__':
     main()

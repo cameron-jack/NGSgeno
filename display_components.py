@@ -246,24 +246,22 @@ def display_samples(key, height=250):
         m('**No 384-well DNA plate data loaded**', dest=('mkdn',))
     else:    
         selection = aggrid_interactive_table(df, key=key, grid_height=height)
-        if 'selected_rows' in selection and selection['selected_rows']:
-            rows = selection["selected_rows"]
-            rows = [r for r in rows if 'DNA/amplicon PID' in r and r['DNA/amplicon PID'] != 'Total']
-            if rows:
-                if 'previous_group_delete_selection' not in st.session_state:
-                    st.session_state['previous_group_delete_selection'] = None
-                if st.session_state['previous_group_delete_selection'] != rows:
-                    #st.session_state['previous_group_delete_selection'] = rows
-                    # only do the code below if this is a fresh selection
-                    lines = '\n'.join(['DNA/amplicon PID: '+r['DNA/amplicon PID'] for r in rows if r['DNA/amplicon PID'] != 'Total'])
-                    m(f"**You selected {lines}**", dest=('mkdn',))
-                    delbox = st.container()
-                    del_col1, del_col2, del_col3, _ = st.columns([2,1,1,4])
-                    del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                    del_col2.button("Yes",on_click=manage_delete_cb, 
-                            args=(caller_id, 'group',rows), key="delete " + str(key), help=f"Delete {lines}")
-                    del_col3.button("No",on_click=cancel_delete, args=('group',rows), 
-                            key="keep " + str(key), help=f"Keep {lines}")
+        if selection is not None:
+            if 'selected_rows' in selection and selection['selected_rows'] is not None:
+                rows = [r for r in selection["selected_rows"].get('DNA/amplicon PID') if r != 'Total']
+                if rows:
+                    if 'previous_group_delete_selection' not in st.session_state:
+                        st.session_state['previous_group_delete_selection'] = None
+                    if st.session_state['previous_group_delete_selection'] != rows:
+                        # only do the code below if this is a fresh selection
+                        lines = '\n'.join(['DNA/amplicon PID: '+r for r in rows])
+                        m(f"**You selected {lines}**", dest=('mkdn',))
+                        del_col1, del_col2, del_col3, _ = st.columns([2,1,1,4])
+                        del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
+                        del_col2.button("Yes",on_click=manage_delete_cb, 
+                                args=(caller_id, 'group',rows), key="delete " + str(key), help=f"Delete {lines}")
+                        del_col3.button("No",on_click=cancel_delete, args=('group',rows), 
+                                key="keep " + str(key), help=f"Keep {lines}")
     selection = None
     # display any messages for this widget
     if caller_id in mq:
@@ -332,25 +330,26 @@ def display_plates(key, plate_usage, height=300):
         m('No plates loaded')
     else:
         selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'plate_aggrid')
-        if selection and 'selected_rows' in selection:
-            pids = [row['Plates'] for row in selection['selected_rows']]
-            gids = [util.guard_pbc(pid, silent=True) for pid in pids]
-            gids = [gid for gid in gids if gid in exp.plate_location_sample]
-            if gids:
-                if 'previous_plate_delete_selection' not in st.session_state:
-                    st.session_state['previous_plate_delete_selection'] = None
-                if st.session_state['previous_plate_delete_selection'] == pids:
-                    st.session_state['previous_plate_delete_selection'] = None
-                else:
-                    if pids != st.session_state['previous_plate_delete_selection']:
-                        m(f"**You selected {pids}**", dest=('mkdn'))
-                    delbox = st.container() # doesn't work reliably in st1.26
-                    del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
-                    del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                    del_col2.button("Yes",on_click=manage_delete_cb,
-                            args=(caller_id,'plate',pids), key="delete " + str(key), help=f"Delete {pids}")
-                    del_col3.button("No", on_click=cancel_delete,
-                            args=('plate',pids), key="keep " + str(key), help=f"Keep {pids}")
+        if selection is not None and 'selected_rows' in selection:
+            if selection['selected_rows'] is not None:
+                pids = [pid for pid in selection['selected_rows'].get('Plates') if pid is not None]
+                gids = [util.guard_pbc(pid, silent=True) for pid in pids]
+                gids = [gid for gid in gids if gid in exp.plate_location_sample]
+                if gids:
+                    if 'previous_plate_delete_selection' not in st.session_state:
+                        st.session_state['previous_plate_delete_selection'] = None
+                    if st.session_state['previous_plate_delete_selection'] == pids:
+                        st.session_state['previous_plate_delete_selection'] = None
+                    else:
+                        if pids != st.session_state['previous_plate_delete_selection']:
+                            m(f"**You selected {pids}**", dest=('mkdn'))
+                        delbox = st.container() # doesn't work reliably in st1.26
+                        del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
+                        del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
+                        del_col2.button("Yes",on_click=manage_delete_cb,
+                                args=(caller_id,'plate',pids), key="delete " + str(key), help=f"Delete {pids}")
+                        del_col3.button("No", on_click=cancel_delete,
+                                args=('plate',pids), key="keep " + str(key), help=f"Keep {pids}")
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -899,7 +898,7 @@ def view_plates(key, height=500):
     #Let user choose which plate to view
     # _, col1, _ = st.columns([1,2,1])
     plate_selectbox = st.selectbox('Plate ID to view', plate_ids, key=str(key)+'plate_viewer')
-    if plate_selectbox:
+    if plate_selectbox is not None:
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
             if exp.plate_location_sample[plate_id]['purpose'] == 'amplicon':
@@ -934,25 +933,25 @@ def display_files(key, file_usage, height=250):
         file_df.sort_values(by='Date modified', inplace=True, ascending=False)
 
     selection = aggrid_interactive_table(file_df, grid_height=height, key=str(key)+'file_aggrid')
-    if selection and 'selected_rows' in selection:
-        fns = [row['File'] for row in selection['selected_rows']]
-        fns = [fn for fn in fns if fn in exp.uploaded_files]
-        if fns:
-            if 'previous_file_delete_selection' not in st.session_state:
-                st.session_state['previous_file_delete_selection'] = None
-            if st.session_state['previous_file_delete_selection'] == fns:
-                st.session_state['previous_file_delete_selection'] = None
-            else:
-                if fns != st.session_state['previous_file_delete_selection']:
-                    st.markdown(f"**You selected {fns}**")
-                delbox = st.container()
-                del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
-                del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                del_col2.button("Yes",on_click=manage_delete_cb,
-                        args=(caller_id,'file',fns), key="delete " + str(key), help=f"Delete {fns}")
-                del_col3.button("No", on_click=cancel_delete,
-                        args=('file',fns), key="keep " + str(key), help=f"Keep {fns}")
-                selection = None
+    if selection is not None:
+        if 'selected_rows' in selection and selection['selected_rows'] is not None:
+            fns = [fp for fp in selection['selected_rows'].get('File')]
+            if fns:
+                if 'previous_file_delete_selection' not in st.session_state:
+                    st.session_state['previous_file_delete_selection'] = None
+                if st.session_state['previous_file_delete_selection'] == fns:
+                    st.session_state['previous_file_delete_selection'] = None
+                else:
+                    if fns != st.session_state['previous_file_delete_selection']:
+                        st.markdown(f"**You selected {fns}**")
+                    delbox = st.container()
+                    del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
+                    del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
+                    del_col2.button("Yes",on_click=manage_delete_cb,
+                            args=(caller_id,'file',fns), key="delete " + str(key), help=f"Delete {fns}")
+                    del_col3.button("No", on_click=cancel_delete,
+                            args=('file',fns), key="keep " + str(key), help=f"Keep {fns}")
+                    selection = None
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
