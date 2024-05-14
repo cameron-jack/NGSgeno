@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
-VER="v0.26.010"
+VER="v0.26.011"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: Replaced atexit with destructor for saving experiment
+* Updated jsonpickle
+* Fixed plate, sample, and file display selections
+* Fixed experiment saving/loading.
 EOM
 
 mv changelog.txt changelog_old.txt
