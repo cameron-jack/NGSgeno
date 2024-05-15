@@ -525,26 +525,17 @@ def main():
                                     'upload primer layouts and volumes here, then move to the *Generate Picklists* tab')
                         else:
                             st.error('Load Echo input files (output from Nimbus) to enable PCR1')
-                        checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
-                                ['dna','pcr','taqwater1','primer'])
-                        selected_pids = dc.collect_plate_checklist(checkbox_keys)
-                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected/added yet', dest=('css',), color='red',size='p')
-                        hline()    
-                        #dc.display_pcr_common_components(selected_pids)
-                        dc.display_pcr1_components(selected_pids)
+                        
+                        checkbox_cont= st.container()
+                        hline()   
+                        add_vertical_space(1) 
+
+                        display_cont = st.container()
                         hline()
                         
-                        #barcodes for PCR and taq and water, upload files for primer, adjust volumes
                         add_vertical_space(1)
                         st.subheader('Add Barcodes', help='Add barcodes for plates')
                         pcr_col, taqwater_col = st.columns(2)
-                        #TODO: test
-                        with pcr_col:
-                            ld.add_pcr_barcodes(key='pcr_bc_tab1', dna_pids=selected_pids['dna'])
-                        with taqwater_col:
-                            ld.add_taqwater_barcodes(key='tw_bc_tab1', pcr_stage=pcr_stage)
-                        add_vertical_space(1)
 
                         st.subheader('Upload Files')
                         ld.upload_pcr1_files(key='pcr1_primer1')
@@ -552,6 +543,23 @@ def main():
 
                         st.subheader('Custom Volumes')
                         ld.custom_volumes(exp)
+
+                        with checkbox_cont:
+                            checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
+                                ['dna','pcr','taqwater1','primer'])
+                        
+                            selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                            if not selected_pids['pcr'] and not selected_pids['amplicon']:
+                                m('No PCR or amplicon plates selected/added yet', dest=('css',), color='red',size='p')
+                        
+                        with pcr_col:
+                            ld.add_pcr_barcodes(key='pcr_bc_tab1', dna_pids=selected_pids['dna'])
+                        with taqwater_col:
+                            ld.add_taqwater_barcodes(key='tw_bc_tab1', pcr_stage=pcr_stage)
+                        
+                        with display_cont:
+                            dc.display_pcr1_components(selected_pids)
+                        add_vertical_space(1)
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr1', default_view1='Primers', 
@@ -622,29 +630,20 @@ def main():
                         st.subheader('Indexing (PCR 2) Components')
                         st.info('Provide the resources needed to perform a sufficient number of indexing reactions '+\
                                 'for your experiment, then move to the *Generate Picklists* tab')
-                        checkbox_keys = dc.display_plate_checklist('idx_checklist1',
-                                ['pcr','taqwater2','amplicon','index'])
-                        hline()
-                        selected_pids = dc.collect_plate_checklist(checkbox_keys)
-                        if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected', dest=('css',), color='red',size='p')
-                        #dc.display_pcr_common_components(selected_pids)
-                        dc.display_pcr2_components(selected_pids)
+                        
+                        checkbox_cont = st.container()
                         hline()
                         add_vertical_space(1)
+
+                        display_cont = st.container()
+                        hline()
+                        add_vertical_space(1)
+
                         st.info('Indexing (PCR 2) requires index index plates, taq/water plates, '+\
                                 'and either Echo plates (prepared by the Nimbus) or amplicon plates')
-
-                        #provide barcodes for pcr & taq/water, upload index files, adjust volumes
-                        st.subheader('Add Barcodes', help='Add barcodes for plates')
                         
+                        st.subheader('Add Barcodes', help='Add barcodes for plates')
                         pcr_col, taqwater_col = st.columns(2)
-                        #TODO: test
-                        with pcr_col:
-                            ld.add_pcr_barcodes(key='pcr_bc_tab2', dna_pids=selected_pids['dna'])
-                        with taqwater_col:
-                            ld.add_taqwater_barcodes(key='tw_bc_tab2', pcr_stage=pcr_stage)
-                        add_vertical_space(1)
 
                         st.subheader('Upload Files')
                         ld.upload_pcr2_files(key='pcr2_index1')
@@ -652,6 +651,23 @@ def main():
 
                         st.subheader('Custom Volumes')
                         ld.custom_volumes(exp)
+
+                        with checkbox_cont:
+                            checkbox_keys = dc.display_plate_checklist('idx_checklist1',
+                                    ['pcr','taqwater2','amplicon','index'])
+                        
+                            selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                            if not selected_pids['pcr'] and not selected_pids['amplicon']:
+                                m('No PCR or amplicon plates selected', dest=('css',), color='red',size='p')
+                       
+                        with display_cont:
+                            dc.display_pcr2_components(selected_pids)
+
+                        with pcr_col:
+                            ld.add_pcr_barcodes(key='pcr_bc_tab2', dna_pids=selected_pids['dna'])
+                        with taqwater_col:
+                            ld.add_taqwater_barcodes(key='tw_bc_tab2', pcr_stage=pcr_stage)
+                        add_vertical_space(1)
                 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_index1', default_view1='Indexes', 

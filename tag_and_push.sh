@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.26.012"
+VER="v0.26.013"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: requirements file mistake
-* Fixed: primer and index live displays
+* Fixed: primer and index live displays (again)
 EOM
 
 mv changelog.txt changelog_old.txt

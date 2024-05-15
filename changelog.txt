@@ -1,3 +1,7 @@
+v0.26.013
+Date: Wed May 15 16:08:28 AEST 2024
+* Fixed: primer and index live displays (again)
+
 v0.26.012
 Date: Wed May 15 14:28:57 AEST 2024
 * Fixed: requirements file mistake
