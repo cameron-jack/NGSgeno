@@ -925,7 +925,9 @@ class Experiment():
         if pcr_stage:
             for p in self.plate_location_sample:
                 if self.plate_location_sample[p]['purpose'] == 'taq_water':
-                    if self.plate_location_sample[p]['pcr_stage'] == pcr_stage:
+                    if 'pcr_stage' not in self.plate_location_sample[p]:
+                        pids.append(p)  # legacy experiments only
+                    elif self.plate_location_sample[p]['pcr_stage'] == pcr_stage:
                         pids.append(p)       
         else:
             pids = [p for p in self.plate_location_sample

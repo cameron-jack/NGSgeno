@@ -89,23 +89,19 @@ TAQ_WELLS = ['B'+c for c in '123']
 GUARD_TYPES = set(['m','r','c','p', 'a'])
 
 
-@functools.lru_cache
 def usable_volume(vol, plate_type):
     return max(vol - DEAD_VOLS[PLATE_TYPES[plate_type]],0)
 
-@functools.lru_cache
 def num_doses(raw_vol, per_use_vol, plate_type):
     """ The number of available doses (dispenses) in a well """
     number_of_doses = usable_volume(raw_vol, plate_type) // per_use_vol
     return number_of_doses
                     
-@functools.lru_cache
 def num_req_wells(req_vol, plate_type='Echo384'):
     """ Save a bunch of boilerplate by doing the calculation for us """
     req_wells = ceil(req_vol / (CAP_VOLS[PLATE_TYPES[plate_type]] - DEAD_VOLS[PLATE_TYPES[plate_type]]))
     return req_wells
 
-@functools.lru_cache
 def num_req_taq_water_plates(req_taq_vol, req_water_vol):
     """ Save some boilerplate """
     per_plate_avail = 3*(CAP_VOLS[PLATE_TYPES['Echo6']] - DEAD_VOLS[PLATE_TYPES['Echo6']])

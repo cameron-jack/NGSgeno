@@ -358,85 +358,6 @@ def display_plates(key, plate_usage, height=300):
         mq[caller_id] = []
 
 
-def display_pcr_common_components(selected_pids):
-    """
-    Expander widget that shows the PCR plate information for both PCR reactions
-    Args:
-        selected_pids (dict): '
-    """
-    exp = st.session_state['experiment']
-    caller_id = 'display_pcr_common_components'
-    PCR_PLATE_WELLS = 384
-    dna_pids = selected_pids['dna']
-    pcr_pids = selected_pids['pcr']
-    amplicon_pids = selected_pids['amplicon']
-    index_pids = selected_pids['index']
-
-    if dna_pids:
-        dna_pids = [util.guard_pbc(dp, silent=True) for dp in dna_pids]
-    else:
-        dna_pids = []
-        
-    if pcr_pids:
-        pcr_pids = [util.guard_pbc(pp, silent=True) for pp in pcr_pids]
-    else:
-        pcr_pids = []
-        
-    if amplicon_pids:
-        amplicon_pids = [util.guard_pbc(ap, silent=True) for ap in amplicon_pids]
-    else:
-        amplicon_pids = []
-    
-    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
-    dna_reactions = sum([primer_usage[p] for p in primer_usage])
-    
-    #PCR
-    required_pcr_plates = ceil(dna_reactions/PCR_PLATE_WELLS)
-
-    num_supplied_pcr = 0
-    supplied_pcr_txt = '<p style="color:#FF0000">None</p>'
-    if len(pcr_pids) > 0:
-        supplied_pcr_txt = ', '.join([util.unguard_pbc(p, silent=True)\
-                for p in pcr_pids])
-        num_supplied_pcr = len(pcr_pids)
-        
-    # amplicons
-    amplicon_pid_txt = 'None'
-    if len(amplicon_pids) > 0:
-        amplicon_pid_txt = ', '.join([util.unguard_pbc(p, silent=True)\
-                for p in amplicon_pids])
-    
-    req_PCR_text = '**Number of required PCR plates**'
-    req_PCR_num = str(required_pcr_plates)
-    if num_supplied_pcr < required_pcr_plates:
-        req_PCR_text = '<p style="color:#FF0000"><b>Number of required PCR plates</b></p>'
-        req_PCR_num = f'<p style="color:#FF0000">{str(required_pcr_plates)}</p>'
-    
-    #Page set up
-    pcr_comps_area = st.container()
-    col_size = [6, 4, 6, 4]
-    pcr_cols = pcr_comps_area.columns(col_size)
-
-    pcr_cols[0].markdown(req_PCR_text, unsafe_allow_html=True)
-    pcr_cols[1].markdown(req_PCR_num, unsafe_allow_html=True)
-
-    pcr_cols[0].markdown('**Worst case required reaction wells**')
-    pcr_cols[1].write(str(dna_reactions), unsafe_allow_html=True)
-
-    pcr_cols[2].markdown('**User supplied PCR plates**')
-    pcr_cols[3].markdown(supplied_pcr_txt, unsafe_allow_html=True)
-    
-    pcr_cols[2].markdown('**User supplied amplicon plates**')
-    pcr_cols[3].markdown(amplicon_pid_txt)
-    
-    # display any messages for this widget
-    if caller_id in mq:
-        for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
-        sleep(0.3)
-        mq[caller_id] = []
-
-
 def display_pcr1_components(selected_pids):
     """
     Display panel that shows the required componenents for each PCR reaction, 
@@ -490,33 +411,36 @@ def display_pcr1_components(selected_pids):
     avail_taq_vol_str = str(taq_avail_vol)+' μl'
 
     num_req_taq_water_plates = util.num_req_taq_water_plates(primer_taq_vol, primer_water_vol)
+    st.write(f'{num_req_taq_water_plates=}')
 
     user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True) \
                             for p in taqwater1_pids])
     
     num_supplied_taqwater = len(user_supplied_taqwater)
-    user_taqwater_text = user_supplied_taqwater if user_supplied_taqwater else '<p style="color:#FF0000">None</p>'
+    user_taqwater_text = user_supplied_taqwater if user_supplied_taqwater else ':red[None]'
     
-    if num_supplied_taqwater < num_req_taq_water_plates:
-        req_taqwater_text = '<p style="color:#FF0000"><b>Number of required taq/water plates</b></p>'
-        req_taqwater_num = f'<p style="color:#FF0000">{str(num_req_taq_water_plates)}</p>'
+    taq_water_needed = max(num_req_taq_water_plates - num_supplied_taqwater, 0)
+    if taq_water_needed > 0:
+        req_taqwater_text = ':red[**Remaining taq/water plates needed**]'
+        req_taqwater_num = f':red[{str(taq_water_needed)}]'
     else:
-        req_taqwater_text = '**Number of required taq/water plates**'
-        req_taqwater_num = str(num_req_taq_water_plates)
+        req_taqwater_text = '**Remaining taq/water plates needed**'
+        req_taqwater_num = str(taq_water_needed)
 
 
     num_supplied_pcr = 0
-    supplied_pcr_txt = '<p style="color:#FF0000">None</p>'
+    supplied_pcr_txt = ':red[None]'
     if len(pcr_pids) > 0:
         supplied_pcr_txt = ', '.join([util.unguard_pbc(p, silent=True)\
                 for p in pcr_pids])
         num_supplied_pcr = len(pcr_pids)
 
-    req_PCR_text = '**Number of required PCR plates**'
-    req_PCR_num = str(required_pcr_plates)
-    if num_supplied_pcr < required_pcr_plates:
-        req_PCR_text = '<p style="color:#FF0000"><b>Number of required PCR plates</b></p>'
-        req_PCR_num = f'<p style="color:#FF0000">{str(required_pcr_plates)}</p>'
+    pcr_plates_needed = max(required_pcr_plates - num_supplied_pcr,0)
+    req_PCR_text = '**Required PCR plates needed**'
+    req_PCR_num = str(pcr_plates_needed)
+    if pcr_plates_needed:
+        req_PCR_text = 'Required PCR plates needed'
+        req_PCR_num = f':red[{pcr_plates_needed}]'
 
 
 
@@ -594,6 +518,7 @@ def display_pcr2_components(selected_pids):
     index_remain = index_max - num_reactions
 
     #Taq/water (based on pcr stage)
+    st.write(f'num reactions {num_reactions}')
     index_taq_vol, index_water_vol = exp.get_taqwater_req_vols_index(num_reactions)
     
     #user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
@@ -616,23 +541,25 @@ def display_pcr2_components(selected_pids):
 
     num_req_taq_water_plates = util.num_req_taq_water_plates(index_taq_vol, index_water_vol)
     
+    
     user_taqwater_text = user_supplied_taqwater
     if not user_supplied_taqwater:
-        user_taqwater_text = '<p style="color:#FF0000">None</p>'
+        user_taqwater_text = ':red[None]'
 
-    if num_supplied_taqwater < num_req_taq_water_plates:
-        req_taqwater_text = f'<p style="color:#FF0000"><b>Number of required taq/water plates (PCR {pcr_stage})</b></p>'
-        req_taqwater_num = f'<p style="color:#FF0000">{str(num_req_taq_water_plates)}</p>'
+    taq_water_needed = max(num_req_taq_water_plates - num_supplied_taqwater, 0)
+    if taq_water_needed > 0:
+        req_taqwater_text = f':red**[Required taq/water plates needed (PCR {pcr_stage})**]'
+        req_taqwater_num = f':red[{str(taq_water_needed)}]'
     else:
-        req_taqwater_text = f'**Number of required taq/water plates (PCR {pcr_stage})**'
-        req_taqwater_num = str(num_req_taq_water_plates)
+        req_taqwater_text = f'**Required taq/water plates needed (PCR {pcr_stage})**'
+        req_taqwater_num = str(taq_water_needed)
 
     if index_remain >= 0:
-        index_pairs_remain = '<p style="color:green">'+str(index_remain)+'</p>'     
+        index_pairs_remain = f':green[{str(index_remain)}]'     
     else:
-        index_pairs_remain = '<p style="color:red">'+str(index_remain)+'</p>'
+        index_pairs_remain = f':red[{str(index_remain)}]'
     
-    supplied_pcr_txt = '<p style="color:#FF0000">None</p>'
+    supplied_pcr_txt = ':red[None]'
     if len(pcr_pids) > 0:
         supplied_pcr_txt = ', '.join([util.unguard_pbc(p, silent=True)\
                 for p in pcr_pids])
@@ -645,18 +572,8 @@ def display_pcr2_components(selected_pids):
 
     #Page set up
     pcr_comps_area = st.container()
-    col_size = [6, 4, 6, 4]
+    col_size = [4, 2, 6, 6]
     pcr2_col = pcr_comps_area.columns(col_size)
-
-    pcr2_col[0].markdown('**User supplied PCR plates**')
-    pcr2_col[1].markdown(supplied_pcr_txt, unsafe_allow_html=True)
-    pcr2_col[2].markdown('**User supplied amplicon plates**')
-    pcr2_col[3].markdown(amplicon_pid_txt, unsafe_allow_html=True)
-
-    pcr2_col[0].markdown(req_taqwater_text, unsafe_allow_html=True)
-    pcr2_col[1].markdown(req_taqwater_num, unsafe_allow_html=True)
-    pcr2_col[2].markdown(f'**User supplied taq/water plates (PCR {pcr_stage})**',unsafe_allow_html=True)
-    pcr2_col[3].markdown(user_taqwater_text, unsafe_allow_html=True)
 
     pcr2_col[0].markdown('**Required water volume**')
     pcr2_col[1].write(required_water_vol_str)
@@ -670,7 +587,17 @@ def display_pcr2_components(selected_pids):
     pcr2_col[0].markdown('**Index Pairs Available**')
     pcr2_col[1].write(str(index_max))
     pcr2_col[0].markdown('**Index Pairs Remaining**')
-    pcr2_col[1].markdown(index_pairs_remain, unsafe_allow_html=True)
+    pcr2_col[1].markdown(index_pairs_remain)
+    
+    pcr2_col[2].markdown('**User supplied amplicon plates**')
+    pcr2_col[3].markdown(amplicon_pid_txt)
+    pcr2_col[0].markdown(req_taqwater_text)
+    pcr2_col[1].markdown(req_taqwater_num)
+    pcr2_col[2].markdown(f'**User supplied taq/water plates (PCR {pcr_stage})**')
+    pcr2_col[3].markdown(user_taqwater_text)
+    pcr2_col[2].markdown('**User supplied PCR plates**')
+    pcr2_col[3].markdown(supplied_pcr_txt)
+
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
