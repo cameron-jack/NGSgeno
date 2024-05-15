@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 
-VER="v0.26.011"
+VER="v0.26.012"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Updated jsonpickle
-* Fixed plate, sample, and file display selections
-* Fixed experiment saving/loading.
+* Fixed: requirements file mistake
+* Fixed: primer and index live displays
 EOM
 
 mv changelog.txt changelog_old.txt
