@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.26.013"
+VER="v0.26.014"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Fixed: primer and index live displays (again)
+* Fixed: Run file missing 'false' parameter
 EOM
 
 mv changelog.txt changelog_old.txt
