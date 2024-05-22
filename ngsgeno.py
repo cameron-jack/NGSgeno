@@ -14,7 +14,7 @@ elements
 """
 from re import S
 import select
-from telnetlib import theNULL
+#from telnetlib import theNULL
 import jsonpickle
 import os
 #from ssl import SSLSession  # We may want this for secure logins in future
@@ -235,11 +235,11 @@ def load_experiment_screen():
             unsafe_allow_html=True)
 
 
-def save_button(exp):
+def save_button(exp, key):
     """
     Save button for users
     """
-    save = st.button('💾', type = 'primary', help = 'Save current experiment')
+    save = st.button('💾', type = 'primary', help = 'Save current experiment', key = key)
     if save:
         try:
             print(f'Saving experiment {exp.name}', file=sys.stderr, flush=True)
@@ -256,7 +256,12 @@ def home_button(exp):
             st.session_state['experiment'].save()
         st.session_state['experiment'] = None
         st.rerun()
-        
+
+def save_message(exp, key):
+    _, col1, col2 = st.columns([9, 3, 1])
+    col1.info('**Remember to save**')
+    with col2:
+        save_button(exp, key)
 
 def display_pipeline_header(exp):
     """
@@ -272,11 +277,12 @@ def display_pipeline_header(exp):
             unsafe_allow_html=True)
     info_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {experiment_title}</p>', 
             unsafe_allow_html=True)
-    home_col, save_col = info_col.columns(2)
+    
+    home_col, save_col, _ = info_col.columns(3)
     with home_col:
         home_button(exp)
     with save_col:
-        save_button(exp)
+        save_button(exp, key = 'logo')
 
     if 'stage' not in st.session_state:
         st.session_state['stage'] = None
@@ -286,6 +292,7 @@ def display_pipeline_header(exp):
     pipe_stage = None
     with pipe_col:
         pipe_stage = stx.stepper_bar(steps=pipeline_stages, lock_sequence=False)
+
     return pipe_stage
 
 
@@ -345,9 +352,11 @@ def main():
         upper_container = st.container()
         message_container = st.container()
         main_body_container = st.container()
+        add_vertical_space(4)
+        save_container = st.container()
         add_vertical_space(2)
-        hline()
-        lower_container = st.container()
+        #hline()
+        lower_container = st.container(border = True)
         
         # required for interactive content
         st.session_state['message_container'] = message_container
@@ -378,6 +387,9 @@ def main():
                             default_height=st.session_state.get('upper_panel_height',250))
 
 
+        with save_container:
+            save_message(exp, key = 'save1')
+
         # info panel displays are updated at the bottom of the script, so that they reflect any changes
         with lower_container:
             success = dc.info_selection("bottom_viewer", 'info_panel3', 'info_panel4', 
@@ -385,7 +397,8 @@ def main():
                     default_height=st.session_state.get('lower_panel_height',350))
             
         #============================================== STAGE 1: Load data =============================================
-        if pipeline_stage == 0:          
+        if pipeline_stage == 0:
+                    
             tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
             with tab_col1:
                 load_data_tab = dc.create_tabs([("Load Samples", ""),("Load Consumables", "")])   
@@ -407,6 +420,7 @@ def main():
                         ld.load_custom_manifests('custom_load1')
                         hline()
                         ld.load_amplicons('amp_load1')
+                        hline()
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_load', default_view1='Samples', 
@@ -415,7 +429,6 @@ def main():
             #------------------------------------ Load ~ TAB 2: Load consumables ---------------------------------------
             if load_data_tab == 2:
                 st.session_state['load_tab'] = 2
-
                 if unlocked(exp):
                     init_state('upload stage', None)
                     with main_body_container:
@@ -433,7 +446,7 @@ def main():
         #=============================================== STAGE 2: Nimbus ===============================================
         if pipeline_stage == 1:
             tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
-
+              
             with tab_col1:
                 nimbus_tab = dc.create_tabs([("Download", "Nimbus input files"),("Upload", "Echo input files")])
             if not nimbus_tab:

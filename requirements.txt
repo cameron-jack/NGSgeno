@@ -1,8 +1,7 @@
-openpyxl
+openpyxl==3.1.2
 biopython==1.81
-requests
 jsonpickle==3.0.4
 streamlit==1.34
-streamlit_aggrid
-pandas
-extra_streamlit_components
+streamlit_aggrid==1.0.5
+pandas==2.2.2
+extra_streamlit_components==0.1.71
