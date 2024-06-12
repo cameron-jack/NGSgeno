@@ -69,7 +69,7 @@ Behaves like a C++ "friend" of the Experiment class - very tightly coupled.
 
 ### Universal upload interface
 
-def upload(exp, streams, purpose, overwrite=False):
+def upload(exp, streams, purpose, overwrite=True):
     """
     All file stream uploads go through this function. 
     - Each file is uploaded with a pending_ prefix and
@@ -78,6 +78,7 @@ def upload(exp, streams, purpose, overwrite=False):
     - it is added to exp.pending_uploads if required,
     - or is sent to process_upload(exp, file, purpose)
     Return True if all uploaded streams are correctly saved and parsed, else False
+    By default all entries are overwritten rather than protected - this is a practical issue for NGS Genotyping
     """
     if exp.locked and purpose not in {'primer_assay_map','reference_sequences'}:
         exp.log('Error: Cannot add manifest while lock is active')
@@ -188,7 +189,7 @@ def accept_pending_upload(exp, fn):
     return success
 
 
-def process_upload(exp, filepath, purpose, overwrite=False):
+def process_upload(exp, filepath, purpose, overwrite=True):
     """
     Called by upload() or accept_pending_upload()
     - Clears the file of its pending status (rename)
@@ -201,7 +202,7 @@ def process_upload(exp, filepath, purpose, overwrite=False):
     if purpose == 'amplicon':
         success, pids = parse_amplicon_manifest(exp, filepath, overwrite=overwrite)
     elif purpose == 'DNA' or purpose == 'dna':
-        success, pids = load_dna_plate(exp, filepath, overwrite=True)
+        success, pids = load_dna_plate(exp, filepath, overwrite=overwrite)
     elif purpose == 'rodentity_sample':  # becomes purpose=sample source=rodentity
         success, pids = parse_rodentity_json(exp, filepath, overwrite=overwrite)
     elif purpose == 'custom_sample':  # becomes purpose=sample source=custom
@@ -254,13 +255,13 @@ def load_json(fp):
     """ JSON data loader that is cached for fast reading """
     with open(fp, 'rt', errors='ignore') as src:
         info = json.load(src) 
+        
 
-def parse_rodentity_json(exp, fp, overwrite=False):
+def parse_rodentity_json(exp, fp, overwrite=True):
     """
     Read a JSON file containing one or more Rodentity plate definitions 
     Write a standardised datastructure into exp.plate_location_sample
     Update entry in exp.uploaded_files to include plate ids
-    By default, overwriting plate IDs is not allowed for samples - users must delete the plate ID first
     """
     exp.log(f'Begin: parsing {fp}')
     well_records = {}  # [gpid][pos]
@@ -327,13 +328,15 @@ def parse_rodentity_json(exp, fp, overwrite=False):
             elif exp.plate_location_sample[gpid]['purpose'] != 'sample':
                 exp.log(f'Error: plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}')
                 continue
+            else:
+                exp.plate_location_sample[gpid] = {}  # wipe the existing entry
         exp.plate_location_sample[gpid] = well_records[gpid].copy()
 
     exp.log(f'End: parsing {fp} with plates: {list(well_records.keys())}')
     return True, list(well_records.keys())
             
 
-def parse_custom_manifest(exp, fp, overwrite=False):
+def parse_custom_manifest(exp, fp, overwrite=True):
     """
     Parse a custom manifest files and store them in self.unassigned_plates['custom'] =\
             {plateBarcode={Assay=[],...}}
@@ -342,7 +345,6 @@ def parse_custom_manifest(exp, fp, overwrite=False):
     sampleNum	plateBarcode	well	sampleBarcode	assay	assay	clientName	sampleName 	alleleSymbol
     Required columns: [plateBarcode, well, sampleBarcode, assay*, clientName] *Duplicates allowed
     Optional columns: [sampleNo, sampleName, alleleSymbol] and anything else
-    By default existing plate entries cannot be overwritten
     """
     exp.log(f'Begin: parsing {fp}')
     if fp.lower().endswith('xlsx'):
@@ -381,9 +383,7 @@ def parse_custom_manifest(exp, fp, overwrite=False):
         pid = cols[plate_barcode_col]
         gpid = util.guard_pbc(pid, silent=True)
         
-        if gpid not in well_records:
-            # create plate_location_sample entries here
-            well_records[gpid] = {'purpose':'sample','source':'custom', 'wells':set(), 'plate_type':'96'}  
+        well_records[gpid] = {'purpose':'sample','source':'custom', 'wells':set(), 'plate_type':'96'}  
         assays = [] 
         # do a first pass to set up recording a sample in a well
         for k,c in enumerate(cols):
@@ -441,13 +441,15 @@ def parse_custom_manifest(exp, fp, overwrite=False):
             elif exp.plate_location_sample[gpid]['purpose'] != 'sample':
                 exp.log(f'Error: plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}')
                 continue
+            else:
+                exp.plate_location_sample[gpid] = {}  # create empty entry
         exp.plate_location_sample[gpid] = well_records[gpid].copy()
 
     exp.log(f'End: parsing {fp} with plates: {list(well_records.keys())}')
     return True, list(well_records.keys())
 
 
-def parse_amplicon_manifest(exp, fp, overwrite=False):
+def parse_amplicon_manifest(exp, fp, overwrite=True):
     """
     Amplicon plate layouts (containing pre-amplified sequences) are parsed here from manifest files.
     Only column layout (comma separate) is supported. col1: plate barcode; col2: well position; col3: sample barcode; col4 (optional): volume.
@@ -455,8 +457,6 @@ def parse_amplicon_manifest(exp, fp, overwrite=False):
     plateBarcode, well, sampleBarcode, amplicon* (*multiple columns with this name are allowed)
     Adding this will result in changing the Miseq and Stage3 output files, so needs to be wrapped as a transaction
     Needs to check whether there are sufficient indexes
-
-    By default existing plate ID records cannot be overwritten and should be first deleted by users
     """
     exp.log(f'Begin: parsing {fp}')
     if fp.lower().endswith('xlsx'):
