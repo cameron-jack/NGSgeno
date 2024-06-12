@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.26.015"
+VER="v0.26.016"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* Added: Update_modules.bat for updating tools automatically.
-* Added: Save message at the bottom of each page.
-* Added: Pinned all tools to a version.
+* CHANGED: parsers now overwrite existing plate entries by default unless they have different purpose
 EOM
 
 mv changelog.txt changelog_old.txt
