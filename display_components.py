@@ -26,10 +26,10 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 import extra_streamlit_components as stx
-from st_aggrid import AgGrid, GridOptionsBuilder
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from st_aggrid.shared import GridUpdateMode
 
-from stutil import custom_text, add_vertical_space, add_pm, m, init_state, mq
+from stutil import custom_text, add_vertical_space, m, init_state, mq
 try:
     from bin.experiment import Experiment, EXP_FN, load_experiment
 except ModuleNotFoundError:
@@ -56,10 +56,36 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
 
     Returns:
         dict: The selected row
+        
+    Special behaviour for log tables to colour significant events and set better column ordering
     """
+    cols = df.columns.tolist()
+    if 'Level' in cols:
+        print(cols, flush=True)
+        cols = [cols[0], cols[3], cols[4], cols[1], cols[2]]
+        df = df[cols]
+
     options = GridOptionsBuilder.from_dataframe(
-        df, enableRowGroup=True, enableValue=True, enablePivot=True,
-    )
+        df, enableRowGroup=True, enableValue=True, enablePivot=True)
+    
+    if 'Level' in cols:    
+        cell_js = JsCode(""" 
+            function(params) {
+            // different styles for each row
+                if (params.value === 'Error') {
+                    //mark Error cells as red
+                    return {'color': 'white', 'backgroundColor': 'red'}
+                } else if (params.value === 'Critical') {
+                    //mark Critical cells as purple
+                    return {'color': 'white', 'backgroundColor': 'purple'}
+                } else if (params.value === 'Warning') {
+                    //mark Warning cells as yellow
+                    return {'color': 'black', 'backgroundColor': 'yellow'}
+                } else {
+                    return {'color': 'black', 'backgroundColor': 'white'}         
+                }
+            };""")
+        options.configure_column('Level', cellStyle=cell_js)
 
     if 'Message' in df.columns:
         options.configure_column(field = 'Message', width = 800)
@@ -71,6 +97,7 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
 
     options.configure_selection("multiple", use_checkbox=False, \
                 rowMultiSelectWithClick=False, suppressRowDeselection=False)
+    
     selection = None
     selection = AgGrid(
         df,
@@ -114,10 +141,10 @@ def manage_delete_cb(caller_id, category, ids):
             success = exp.del_file_record(id)     
             if success:
                 successful_ids.append(id)
-                m(f'{id} removed', level='info', dest=('log','console'))
+                m(f'{id} removed', level='info')
             else:
                 failed_ids.append(id)
-                m(f'{id} could not be removed', level='warning', dest=('log','console'))
+                m(f'{id} could not be removed', level='warning')
             st.session_state['previous_file_delete_selection'] = ids
     elif category == 'plate':
         for pid in ids:
@@ -141,8 +168,7 @@ def manage_delete_cb(caller_id, category, ids):
                 else:
                     failed_ids.append(dest_pid)
             elif dest_pid not in exp.dest_sample_plates:
-                m(f"{dest_pid=} doesn't actually exist in the experiment!",
-                        level='error', dest=('log','toast','debug'))
+                m(f"{dest_pid=} doesn't actually exist in the experiment!", level='error')
                 failed_ids.append(dest_pid)
             else:
                 sample_pids = exp.dest_sample_plates[dest_pid]
@@ -156,11 +182,9 @@ def manage_delete_cb(caller_id, category, ids):
         st.session_state['previous_group_delete_selection'] = ids
     # set up messages
     for sid in successful_ids:
-        m(f'{sid} removed', level='info', dest=('log','console','noGUI'))
-        st.session_state['message_queues'][caller_id].append((f'{sid}','success'))
+        m(f'{sid} removed', level='success', caller_id=caller_id)
     for fid in failed_ids:
-        m(f'{id} could not be removed', level='failure', dest=('log','console'))
-        st.session_state['message_queues'][caller_id].append((f'{fid}','failure'))
+        m(f'{sid} could not be removed', level='error', caller_id=caller_id)
     return True
 
 
@@ -208,7 +232,7 @@ def display_persistent_messages(key):
     """
     if st.session_state['messages_persist']:
         with st.form(key):
-            m('**System messages**', dest=('mkdn',))
+            st.markdown('**System messages**')
             check_col, message_col = st.columns([1,10])
             for message, level in st.session_state['messages_persist']:
                 with check_col:
@@ -236,14 +260,14 @@ def display_persistent_messages(key):
             st.session_state['messages_persist'] = kept_messages              
     
 
-def display_samples(key, height=250):
+def display_samples(key, height=250, caller_id=None):
     """ display a summary of all loaded DNA, amplicon, and sample plates """
     exp = st.session_state['experiment']
     caller_id = 'display_samples'
     selection = []
     df = exp.inputs_as_dataframe()
     if df is None or not isinstance(df, pd.DataFrame):
-        m('**No 384-well DNA plate data loaded**', dest=('mkdn',))
+        st.markdown('**No 384-well DNA plate data loaded**')
     else:    
         selection = aggrid_interactive_table(df, key=key, grid_height=height)
         if selection is not None:
@@ -255,7 +279,7 @@ def display_samples(key, height=250):
                     if st.session_state['previous_group_delete_selection'] != rows:
                         # only do the code below if this is a fresh selection
                         lines = '\n'.join(['DNA/amplicon PID: '+r for r in rows])
-                        m(f"**You selected {lines}**", dest=('mkdn',))
+                        st.markdown(f"**You selected {lines}**")
                         del_col1, del_col2, del_col3, _ = st.columns([2,1,1,4])
                         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
                         del_col2.button("Yes",on_click=manage_delete_cb, 
@@ -266,19 +290,12 @@ def display_samples(key, height=250):
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
-    init_state('message_queues', dict())
-    if caller_id in st.session_state['message_queues']:
-        for msg,lvl in st.session_state['message_queues'][caller_id]:
-            m(msg, level=lvl)
-        sleep(0.3)
-        st.session_state['message_queues'][caller_id] = []
-        
 
-def display_consumables(key, height=300):
+def display_consumables(key, height=300, caller_id=None):
     """
     summarise_consumables():
         d = {'taqwater_pids_pcr1':[], 'taqwater_pids_pcr2':[], 'taq_vol_pcr1':0, 'taq_vol_pcr2':0,'water_vol_pcr1':0, 
@@ -311,23 +328,23 @@ def display_consumables(key, height=300):
             data_rows.append(['assay-primer mappings', f, 0, 'File', consumables['assay_primer_mappings']])
     plate_df = pd.DataFrame(data_rows, columns=headers)
     if plate_df is None or not isinstance(plate_df, pd.DataFrame):
-        m('No plates loaded')
+        st.write('No plates loaded')
     else:
         selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'consumables_aggrid')
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
 
-def display_plates(key, plate_usage, height=300): 
+def display_plates(key, plate_usage, height=300, caller_id=None): 
     exp = st.session_state['experiment']
     caller_id = 'display_plates'
     plate_df = pd.DataFrame(plate_usage, columns=['Plates', 'Num Wells', 'Purpose'])
     if plate_df is None or not isinstance(plate_df, pd.DataFrame):
-        m('No plates loaded')
+        st.write('No plates loaded')
     else:
         selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'plate_aggrid')
         if selection is not None and 'selected_rows' in selection:
@@ -342,7 +359,7 @@ def display_plates(key, plate_usage, height=300):
                         st.session_state['previous_plate_delete_selection'] = None
                     else:
                         if pids != st.session_state['previous_plate_delete_selection']:
-                            m(f"**You selected {pids}**", dest=('mkdn'))
+                            st.markdown(f"**You selected {pids}**")
                         delbox = st.container() # doesn't work reliably in st1.26
                         del_col1, del_col2, del_col3, _ = delbox.columns([2,1,1,4])
                         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
@@ -353,12 +370,12 @@ def display_plates(key, plate_usage, height=300):
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
 
-def display_pcr1_components(selected_pids):
+def display_pcr1_components(selected_pids, caller_id=None):
     """
     Display panel that shows the required componenents for each PCR reaction, 
     including wells, PCR plates, taq+water plates
@@ -391,7 +408,7 @@ def display_pcr1_components(selected_pids):
     req_cols = pcr_comps_area.columns(col_size)
     pcr_cols = pcr_comps_area.columns(col_size)
 
-    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids, caller_id=caller_id)
     num_reactions = sum([primer_usage[p] for p in primer_usage])
 
      #PCR
@@ -441,11 +458,8 @@ def display_pcr1_components(selected_pids):
         req_PCR_text = ':red[**Remaining PCR plates needed**]'
         req_PCR_num = f':red[{pcr_plates_needed}]'
 
-
-
     for i in range(4):
         req_cols[i].write('')
-
 
     req_cols[0].markdown(req_PCR_text, unsafe_allow_html=True)
     req_cols[1].markdown(req_PCR_num, unsafe_allow_html=True)
@@ -478,12 +492,12 @@ def display_pcr1_components(selected_pids):
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
 
-def display_pcr2_components(selected_pids):
+def display_pcr2_components(selected_pids, caller_id=None):
     """
     Expander widget that shows the required componenents for PCR 2 reaction (index).
     Args:
@@ -608,13 +622,13 @@ def display_pcr2_components(selected_pids):
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
     
 
 def st_directory_picker(label='Selected directory:', initial_path=Path(),\
-            searched_file_types=['fastq','fastq.gz','fq','fq.gz']):
+            searched_file_types=['fastq','fastq.gz','fq','fq.gz'], caller_id=None):
     """
     Streamlit being JS/AJAX has no ability to select a directory. This is for server paths only.
     Initial code by Aidin Jungo here: https://github.com/aidanjungo/StreamlitDirectoryPicker
@@ -656,14 +670,14 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
     return st.session_state['path']
 
 
-def handle_picklist_download(picklist_type, picklist_paths, error_msgs, file_col, btn_col):
+def handle_picklist_download(picklist_type, picklist_paths, error_msgs, file_col, btn_col, caller_id=None):
     if not picklist_paths:
         error_msgs.append(f"No {picklist_type} picklist available")
     else:
@@ -679,7 +693,7 @@ def handle_picklist_download(picklist_type, picklist_paths, error_msgs, file_col
                                    key=f'{picklist_type}_download_'+ppp_fn)
 
 
-def get_echo1_download_btns():
+def get_echo1_download_btns(caller_id=None):
     exp = st.session_state['experiment']
     picklist_file_col, picklist_btn_col = st.columns(2)
     error_msgs = []
@@ -696,7 +710,7 @@ def get_echo1_download_btns():
             custom_text('p', '#ff0000', msg, 'center', padding='5px', display=True)
             
 
-def get_echo2_download_btns():
+def get_echo2_download_btns(caller_id=None):
     exp = st.session_state['experiment']
     picklist_file_col, picklist_btn_col = st.columns(2)    
     error_msgs = []
@@ -713,7 +727,7 @@ def get_echo2_download_btns():
             custom_text('p', '#ff0000', msg, 'center', padding='5px', display=True)
 
 
-def show_echo1_outputs():
+def show_echo1_outputs(caller_id=None):
     exp = st.session_state['experiment']
     caller_id = 'show_echo1_outputs'
     picklist_file_col, picklist_btn_col = st.columns(2)
@@ -760,12 +774,12 @@ def show_echo1_outputs():
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
 
-def show_echo2_outputs():
+def show_echo2_outputs(caller_id=None):
     exp = st.session_state['experiment']
     caller_id = 'show_echo2_outputs'
     picklist_file_col, picklist_btn_col = st.columns(2)
@@ -802,12 +816,12 @@ def show_echo2_outputs():
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
     
-def display_status(key, height=300):
+def display_status(key, height=300, caller_id=None):
     """
     Display the progress in the pipeline for this experiment
     Should use aggrid to display the stages and the changes at each stage
@@ -820,7 +834,7 @@ def display_status(key, height=300):
     status_df = aggrid_interactive_table(status_df, grid_height=height, key=str(key)+'status_aggrid')
 
 
-def view_plates(key, height=500):
+def view_plates(key, height=500, caller_id=None):
     """
     Visual view of the plates in the experument
     """
@@ -836,7 +850,7 @@ def view_plates(key, height=500):
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
             if exp.plate_location_sample[plate_id]['purpose'] == 'amplicon':
-                exp.log(f'DEBUG: {exp.get_plate(plate_id)=}')
+                m(f'{exp.get_plate(plate_id)=}', level='debug', caller_id=caller_id)
             jsonpickle_plate = jsonpickle.encode(exp.get_plate(plate_id), keys=True)
             heatmap_str = generate_heatmap_html(jsonpickle_plate, plate_id, scaling=0.9)
             with open("makehtml.html", 'wt', encoding="utf-8") as outf:
@@ -848,7 +862,7 @@ def view_plates(key, height=500):
                         unsafe_allow_html=True)
 
 
-def display_files(key, file_usage, height=250):
+def display_files(key, file_usage, height=250, caller_id=None):
     """
     Display info for all files that have so far been uploaded into the experiment
     Give info on name, any plates they contain, whether they are required so far, etc
@@ -889,12 +903,12 @@ def display_files(key, file_usage, height=250):
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
 
-def display_primers(key, dna_pids=None, primer_pids=None, height=350):
+def display_primers(key, dna_pids=None, primer_pids=None, height=350, caller_id=None):
     """
     Alternative display_primer_components using aggrid
     Designed as a component for a generic display widget
@@ -919,7 +933,7 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350):
     primer_table = aggrid_interactive_table(primer_df, grid_height=height, key=str(key)+'primer_display')
 
         
-def display_indexes(key, dna_pids=None, height=350):
+def display_indexes(key, dna_pids=None, height=350, caller_id=None):
     """
     Display info for all indexes that have been uploaded into the experiment
     """
@@ -937,7 +951,7 @@ def display_indexes(key, dna_pids=None, height=350):
     index_table = aggrid_interactive_table(index_df,grid_height=height,key=str(key)+'index_display')
 
 
-def display_references(key, height=350):
+def display_references(key, height=350, caller_id=None):
     """
     Show the amplicon targets/reference sequences that are loaded
     """
@@ -950,7 +964,7 @@ def display_references(key, height=350):
         aggrid_interactive_table(ref_df, key=str(key)+'seqs'+group, grid_height=height)
 
 
-def display_log(key, height=250):
+def display_log(key, height=250, caller_id=None):
     """
     Display the log
     """
@@ -1133,37 +1147,37 @@ def display_log(key, height=250):
 
 def info_viewer(selection, key, dna_pids=None, view_height=350):
     exp = st.session_state['experiment']
-
+    caller_id = 'info_viewer_'+str(key)
     if selection == 'Samples':
-        display_samples(key=key+selection, height=view_height)
+        display_samples(key=key+selection, height=view_height, caller_id=caller_id)
     
     if selection == 'Consumables':
-        display_consumables(key=key+selection, height=view_height)
+        display_consumables(key=key+selection, height=view_height, caller_id=caller_id)
 
     if selection == "Status":
         # Status tab should tell us where we are up to in the pipeline and what's happened so far
-            display_status(key=key+selection, height=view_height)
+            display_status(key=key+selection, height=view_height, caller_id=caller_id)
                 
     if selection == "Files":
         file_usage = exp.get_file_usage()
-        display_files(key+selection, file_usage, height=view_height)
+        display_files(key+selection, file_usage, height=view_height, caller_id=caller_id)
 
     if selection == "Plates":
         plate_usage = exp.get_plate_usage()
-        display_plates(key+selection, plate_usage, height=view_height)
+        display_plates(key+selection, plate_usage, height=view_height, caller_id=caller_id)
 
     if selection == "Plate Viewer":
         view_height = 500
-        view_plates(key+selection, height=view_height)
+        view_plates(key+selection, height=view_height, caller_id=caller_id)
 
     if selection == "Primers":
-        display_primers(key+selection, dna_pids=dna_pids, height=view_height)
+        display_primers(key+selection, dna_pids=dna_pids, height=view_height, caller_id=caller_id)
         
     if selection == "Indexes":
-        display_indexes(key+selection, dna_pids=dna_pids, height=view_height)
+        display_indexes(key+selection, dna_pids=dna_pids, height=view_height, caller_id=caller_id)
 
     if selection == "Log":
-        display_log(key+selection, height=view_height)
+        display_log(key+selection, height=view_height, caller_id=caller_id)
     
 
 def set_state(key, value):

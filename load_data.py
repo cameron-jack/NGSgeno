@@ -21,6 +21,7 @@ from time import sleep
 from unittest import expectedFailure
 
 import pandas as pd
+from pandas.core.arrays.period import raise_on_incompatible
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -90,47 +91,32 @@ def do_pending_cb(combined_pending, caller_id):
     for key in expected_keys:
         if key in st.session_state:
             if st.session_state[key]:
-                 pending_checked.append(True)
-            else:
-                pending_checked.append(False)
-        else:
-             pending_checked.append(False)
-    # reset all the checkbox keys in case they are used again
-    for key in expected_keys:
-        if key in st.session_state:
-            st.session_state[key] = False
+                 pending_checked.append(key[len('pending_file_checkbox_'):])
+        if key not in st.session_state or not st.session_state[key]:
+            fp = key[len('pending_file_checkbox_'):]
+            if fp in exp.pending_steps:
+                exp.pending_steps.remove(fp)
+            if fp in exp.pending_uploads:
+                exp.pending_uploads.remove(fp)
 
     # go through each pending item to see if it is kept or discarded
-    for pending, pc in zip(combined_pending, pending_checked):
-        if pc:
-            clashing_filenames, clashing_pids = trans.check_for_clashing_transactions(exp, filenames=pending)
-            #m(f'Overwriting the previous version of {str(pending)} with the new file', 
-            #        level='info', dest=('log','console','toast'), caller_id=caller_id)
-            if pending in exp.pending_uploads:
-                success = parse.accept_pending_upload(exp, pending)
-            elif pending in exp.pending_steps:
-                success = trans.accept_pending_transactions(exp, pending)
-            if success:
-                m(f'Success: overwrote existing file {pending}', level='success', dest=('log','console'), caller_id=caller_id)
-                if clashing_filenames:
-                    m(f'{", ".join(clashing_filenames)} potentially affected by change', 
-                            level='warning', dest=('console','log'), caller_id=caller_id)
-                if clashing_pids:
-                    m(f'{", ".join(clashing_pids)} potentially affected by change', dest=('log','console'), 
-                            level='warning', caller_id=caller_id)
-            else:
-                m(f'Failure: Could not overwrite existing file {pending}', level='failure', dest=('log','debug'),
-                        caller_id=caller_id)
+    for pending in pending_checked:
+        clashing_filenames, clashing_pids = trans.check_for_clashing_transactions(exp, filenames=pending)
+        if pending in exp.pending_uploads:
+            success = parse.accept_pending_upload(exp, pending, caller_id=caller_id)
+        elif pending in exp.pending_steps:
+            success = trans.accept_pending_transactions(exp, pending, caller_id=caller_id)
+        if success:
+            m(f'overwrote existing file {pending}', level='success', caller_id=caller_id)
+            if clashing_filenames:
+                m(f'{", ".join(clashing_filenames)} potentially affected by change', 
+                        level='warning', caller_id=caller_id)
+            if clashing_pids:
+                m(f'{", ".join(clashing_pids)} potentially affected by change', 
+                        level='warning', caller_id=caller_id)
         else:
-            # m(f'Keeping the old version of the file {pending}', level='info', dest=('log','console','toast'),
-            #         caller_id=caller_id)
-            success = exp.del_file_record(pending)
-            if success:
-                trans.clear_pending_transaction(exp, pending)
-                m(f'Success: pending file or transaction {pending} cleared', level='failure', dest=('log'), caller_id=caller_id)
-            else:
-                m(f'Failure: pending file or transaction {pending} could not be removed', level='failure', dest=('log','debug'),
-                    caller_id=caller_id)
+            m(f'could not overwrite existing file {pending}', level='error',
+                      caller_id=caller_id)
 
 
 def pending_file_widget(key, caller_id):
@@ -173,8 +159,7 @@ def pending_file_widget(key, caller_id):
     if not pending_uploads and not pending_steps:
         return
     
-    m('The following files have been uploaded previously. Select the ones you want to overwrite and submit', 
-            level = 'warning')
+    st.warning('The following files have been uploaded previously. Select the ones you want to overwrite and submit')
     
     with st.form('message_container_'+key, clear_on_submit=True):
         for pending_upload in pending_uploads:
@@ -198,7 +183,7 @@ def upload_echo_inputs(key):
     exp = st.session_state['experiment']
     caller_id = 'upload_echo_inputs'
     if exp.locked:
-        m(f'Experiment {exp.name} locked from further modification', level='warning')
+        st.warning(f'Experiment {exp.name} locked from further modification')
     else:
         title_area = st.container()
         title_area.write('')
@@ -215,10 +200,10 @@ def upload_echo_inputs(key):
                     submitted = st.form_submit_button("Upload files")
 
                 if submitted and nim_outputs is not None:
-                    success = parse.upload(exp, nim_outputs, purpose='dna', overwrite=True)  
+                    success = parse.upload(exp, nim_outputs, purpose='dna', overwrite_plates=True)  
                     nim_names = ', '.join(nim.name for nim in nim_outputs)
                     if success:
-                        m(f'{nim_names} successfully uploaded', level='info', dest=('log',))
+                        m(f'{nim_names} successfully uploaded', level='info')
 
         nfs, efs, xbcs = exp.get_nimbus_filepaths()
 
@@ -231,7 +216,7 @@ def upload_echo_inputs(key):
             title_colour = '#83b3c9'
             uploaded_nims = '</br>'.join([Path(ef).name for ef in efs])
             with expect_col:
-                m(uploaded_nims, dest=('css',), size='p', color='green')         
+                m(uploaded_nims, level='display', dest=('css',), size='p', color='green')         
         if xbcs:
             title = 'Echo inputs/Nimbus outputs are expected'
             title_colour = '#83b3c9'
@@ -239,12 +224,12 @@ def upload_echo_inputs(key):
             missing_nims = '</br>'.join(['Echo_384_COC_0001_'+xbc+'_0.csv' for xbc in xbcs])
             with expect_col:
                 if len(efs) > 0:
-                    m('Uploaded: ', dest=('css',))
-                    m(uploaded_nims, dest=('css',), size='p', color='green')
-                m('Upload the following Echo input files (from the Nimbus):', dest=('css',))
-                m(missing_nims, dest=('css',), color='#cf3276')
+                    m('Uploaded: ', level='display', dest=('css',))
+                    m(uploaded_nims, level='display', dest=('css',), size='p', color='green')
+                m('Upload the following Echo input files (from the Nimbus):', level='display', dest=('css',))
+                m(missing_nims, level='display', dest=('css',), color='#cf3276')
         with title_area:
-            m(title, dest=('css',), size='h5', color=title_colour)
+            m(title, level='display', dest=('css',), size='h5', color=title_colour)
             add_vertical_space(1)
             
     # manage file transactions
@@ -254,7 +239,7 @@ def upload_echo_inputs(key):
         
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
                        
@@ -266,10 +251,10 @@ def do_upload_primer_layout(upl, caller_id):
     success = parse.upload(exp, [upl], purpose='primer_layout')
     if success and not trans.is_pending(exp):
         m(f'Added primer layouts for plate {upl_pid} from file {upl.name}',
-                level='success', dest=('log','console'), caller_id=caller_id)
+                level='success', caller_id=caller_id)
     elif not success:
         m(f'Failed to read primer plate layout from {upl.name}, please see the log',
-                level='error', dest=('debug',), caller_id=caller_id)
+                level='error', caller_id=caller_id)
 
 
 def do_upload_primer_volume(upv, caller_id):
@@ -279,10 +264,10 @@ def do_upload_primer_volume(upv, caller_id):
     success = parse.upload(exp, [upv], purpose='primer_volume')
     if success and not trans.is_pending(exp):
         m(f'Added primer volumes for plate {upv_pid} from file {upv.name}',
-                level='success', dest=('log','console'), caller_id=caller_id)
+                level='success', caller_id=caller_id)
     elif not success:
         m(f'Failed to read primer plate volumes from {upv.name}, please see the log',
-                level='error', dest=('debug',), caller_id=caller_id)
+                level='error', caller_id=caller_id)
 
 
 def upload_pcr1_files(key):
@@ -290,9 +275,8 @@ def upload_pcr1_files(key):
     Upload form for primer layout and volumes. Copies input files into the directory 
     and manages transactions
     """  
-    m('**Upload Primer Files (PCR round 1)**', dest=('mkdn',))
-    m('Ensure the first prefix of the file name is the same for layouts and volumes (e.g. P1_layout.csv, P1_volume.csv)', 
-      level = 'info')
+    st.markdown('**Upload Primer Files (PCR round 1)**')
+    st.info('Ensure the first prefix of the file name is the same for layouts and volumes (e.g. P1_layout.csv, P1_volume.csv)')
     
     exp = st.session_state['experiment']
     caller_id = 'upload_pcr1_files'
@@ -339,12 +323,12 @@ def upload_pcr1_files(key):
             if st.session_state.get(key+'checkbox_confirm_'+dl.name, False):
                 do_upload_primer_layout(dl, caller_id)
             else:
-                m(f'Skipping upload of {dl.name}')
+                m(f'Skipping upload of {dl.name}', level='info')
         for dv in st.session_state['deferred_primer_volume_upload_list']:
             if st.session_state.get(key+'checkbox_confirm_'+dv.name, False):
                 do_upload_primer_volume(dv, caller_id)
             else:
-                m(f'Skipping upload of {dv.name}')
+                m(f'Skipping upload of {dv.name}', level='info')
         st.session_state['deferred_primer_layout_upload_list'] = []
         st.session_state['deferred_primer_volume_upload_list'] = []
         st.session_state['confirm_primer_upload_button'] = False
@@ -383,7 +367,7 @@ def upload_pcr1_files(key):
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
     
@@ -395,8 +379,8 @@ def load_amplicons(key):
     exp = st.session_state['experiment']
     caller_id = 'load_amplicons'
     add_vertical_space(2)
-    m('**Upload Amplicon Plate Files**', dest=('mkdn',))
-    m('You may add extra 384-well plates of pre-prepared amplicons. These will be incorporated during indexing (stage 4)', level='info')
+    st.markdown('**Upload Amplicon Plate Files**')
+    st.info('You may add extra 384-well plates of pre-prepared amplicons. These will be incorporated during indexing (stage 4)')
     with st.form('index plate upload'+key, clear_on_submit=True): 
         uploaded_amplicon_plates = st.file_uploader(
                     'Upload Extra Amplicon Plates - CSV or XLSX.'+
@@ -415,26 +399,24 @@ def load_amplicons(key):
                 if Path(miseq_fn).exists():
                     success = exp.del_file_record(miseq_fn)
                     if success:
-                        m(f'Removed existing file {miseq_fn}', level='info', dest=('log','console'))
+                        m(f'Removed existing file {miseq_fn}', level='info')
                     else:
-                        m(f'Could not remove obsolete file {miseq_fn}', level='warning', dest=('log','debug'))
+                        m(f'Could not remove obsolete file {miseq_fn}', level='warning')
                 stage3_fn = exp.get_exp_fn('Stage3.csv')
                 if Path(stage3_fn).exists():
                     success = exp.del_file_record(stage3_fn)
                     if success:
-                        m(f'Removed obsolete file {stage3_fn}', level='info', dest=('log','console'))
+                        m(f'Removed obsolete file {stage3_fn}', level='info')
                     else:
-                        m(f'Could not remove obsolete file {stage3_fn}', level='warning', 
-                                dest=('log','debug'))
+                        m(f'Could not remove obsolete file {stage3_fn}', level='warning')
                 success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
                 uap_ids = ','.join(uap.name for uap in uploaded_amplicon_plates)
                 if success:
                     if not trans.is_pending(exp):
-                        m(f'Added amplicon manifests from {uap_ids}', level='success', 
-                                dest=('log','console'))
+                        m(f'Added amplicon manifests from {uap_ids}', level='success') 
                 else:
                     m(f'Failed to upload at least one amplicon manifest, please see the log', 
-                            level='error', dest=('debug',))
+                            level='error')
     # manage transactions
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'amplicons':
         pending_file_widget(key, caller_id)
@@ -442,7 +424,7 @@ def load_amplicons(key):
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
         
@@ -454,10 +436,10 @@ def do_upload_index_layout(uil, caller_id):
     success = parse.upload(exp, [uil], purpose='index_layout')
     if success and not trans.is_pending(exp):
         m(f'Added index layouts for plate {uil_pid} from file {uil.name}',
-                level='success', dest=('log','console'), caller_id=caller_id)
+                level='success', caller_id=caller_id)
     elif not success:
         m(f'Failed to read index plate layout from {uil.name}, please see the log',
-                level='error', dest=('debug',), caller_id=caller_id)
+                level='error', caller_id=caller_id)
 
 
 def do_upload_index_volume(uiv, caller_id):
@@ -467,10 +449,10 @@ def do_upload_index_volume(uiv, caller_id):
     success = parse.upload(exp, [uiv], purpose='index_volume')
     if success and not trans.is_pending(exp):
         m(f'Added index volumes for plate {uiv_pid} from file {uiv.name}',
-                level='success', dest=('log','console'), caller_id=caller_id)
+                level='success', caller_id=caller_id)
     elif not success:
         m(f'Failed to read index plate volumes from {uiv.name}, please see the log',
-                level='error', dest=('debug',), caller_id=caller_id)
+                level='error', caller_id=caller_id)
         
 
 def upload_pcr2_files(key):
@@ -478,7 +460,7 @@ def upload_pcr2_files(key):
     Upload inputs for indexing layout and volume. Extra option for amplicon plate upload.
     Copy uploaded files into the run folder and manage subsequent transactions
     """
-    m('**Upload Index Files (PCR round 2)**', dest=('mkdn',))
+    st.markdown('**Upload Index Files (PCR round 2)**')
     exp = st.session_state['experiment']
     caller_id = 'upload_pcr2_files'
     st.session_state['upload_option'] = ''  # do we display pending files here
@@ -531,29 +513,29 @@ def upload_pcr2_files(key):
                 if Path(miseq_fn).exists():
                     success = exp.del_file_record(miseq_fn)
                     if success:
-                        m(f'Removed obsolete file {miseq_fn}', level='success', dest=('log','console'))
+                        m(f'Removed obsolete file {miseq_fn}', level='success')
                     else:
                         m(f'Could not remove obsolete file {miseq_fn}', 
-                                level='warning', dest=('log','debug'))
+                                level='warning')
                     
                 stage3_fn = exp.get_exp_fn('Stage3.csv')
                 if Path(stage3_fn).exists():
                     success = exp.del_file_record(stage3_fn)
                     if success:
-                        m(f'Removed obsolete file {stage3_fn}', level='success', dest=('log','console'))
+                        m(f'Removed obsolete file {stage3_fn}', level='success')
                     else:
                         m(f'Could not remove obsolete file {stage3_fn}',
-                                level='warning', dest=('log','debug'))
+                                level='warning')
 
                 success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
                 uap_ids = ','.join(uap.name for uap in uploaded_amplicon_plates)
                 if success:
                     if not trans.is_pending(exp):
                         m(f'Added amplicon manifests from {uap_ids}',
-                                level='success', dest=('log','console'))
+                                level='success')
                 else:
                     m(f'Failed to upload at least one amplicon manifest, please see the log',
-                            level='error', dest=('debug',))
+                            level='error')
       
     # handle deferred index file uploads
     init_state('confirm_index_upload_button', False)
@@ -563,12 +545,12 @@ def upload_pcr2_files(key):
             if st.session_state.get(key+'checkbox_confirm_'+dl.name, False):
                 do_upload_index_layout(dl, caller_id)
             else:
-                m(f'Skipping upload of {dl.name}')
+                m(f'Skipping upload of {dl.name}', level='warning')
         for dv in st.session_state['deferred_index_volume_upload_list']:
             if st.session_state.get(key+'checkbox_confirm_'+dv.name, False):
                 do_upload_index_volume(dv, caller_id)
             else:
-                m(f'Skipping upload of {dv.name}')
+                m(f'Skipping upload of {dv.name}', level='warning')
         st.session_state['deferred_index_layout_upload_list'] = []
         st.session_state['deferred_index_volume_upload_list'] = []
         st.session_state['confirm_index_upload_button'] = False
@@ -608,7 +590,7 @@ def upload_pcr2_files(key):
 
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
         
@@ -617,7 +599,7 @@ def upload_assaylist(key):
     """
     Upload just the assay list (assay-primer mapping) file. Return True on success, False on failure
     """
-    m('**Upload Assay List file (assay-primer mapping)**', dest=('mkdn',))
+    st.markdown('**Upload Assay List file (assay-primer mapping)**')
     exp = st.session_state['experiment']
     caller_id = ('upload_assaylist')
     upload_form = st.form('Consumables upload'+key, clear_on_submit=True)
@@ -634,10 +616,10 @@ def upload_assaylist(key):
             assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
             if success and not trans.is_pending(exp):
                 m(f'Added assay/primer lists from files {assaylist_names}',
-                        level='success', dest=('log','console'))
+                        level='success')
             elif not success:
                 m(f'Failed to upload at least one assay/primer list file, please see the log',
-                        level='error', dest=('debug',))
+                        level='error')
    
     #manage transactions:
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'consumables':
@@ -647,7 +629,7 @@ def upload_assaylist(key):
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
     return success
@@ -658,7 +640,7 @@ def upload_extra_consumables(key):
     Uploads for extra files such as custom references, assay lists, and taq/water plates.
     Copy the uploaded files into the run folder and deal with subsequent transactions.
     """
-    m('**Upload Custom Reference / Assay Lists**', dest=('mkdn',))
+    st.markdown('**Upload Custom Reference / Assay Lists**')
     exp = st.session_state['experiment']
     caller_id = 'upload_extra_consumables'
     st.session_state['upload_option'] = ''  # do we display pending files here
@@ -683,10 +665,10 @@ def upload_extra_consumables(key):
             ref_names = ', '.join(ur.name for ur in uploaded_references)
             if success and not trans.is_pending(exp):
                 m(f'Added reference sequences from files {ref_names}', 
-                        level='success', dest=('log','console'))
+                        level='success')
             elif not success:
                 m(f'Failed to upload at least one reference sequence file, please see the log', 
-                        level='error', dest=('debug',))
+                        level='error')
         if uploaded_assaylists:
             #success = parse.upload(exp, uploaded_assaylists, 'primer_assay_map')
             # Genotyping team use the assay->primer direction
@@ -694,10 +676,10 @@ def upload_extra_consumables(key):
             assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
             if success and not trans.is_pending(exp):
                 m(f'Added assay/primer lists from files {assaylist_names}',
-                        level='success', dest=('log','console'))
+                        level='success')
             elif not success:
                 m(f'Failed to upload at least one assay/primer list file, please see the log',
-                        level='error', dest=('debug',))
+                        level='error')
         # TODO: add the ability to add a custom taq+water plate, perhaps?
         #if uploaded_taqwater_plates:
         #    success = exp.add_taqwater_layout_volume
@@ -710,7 +692,7 @@ def upload_extra_consumables(key):
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
@@ -722,7 +704,7 @@ def check_assay_file(exp):
 def custom_volumes(exp):
     volumes_dict = exp.transfer_volumes.copy()
     caller_id = 'custom_volumes'
-    m('**Volumes for DNA and Primers**', dest=('mkdn',))
+    st.markdown('**Volumes for DNA and Primers**')
     col1, col2, col3,_ = st.columns([1,1,1,4])
     col1.write(f'Current volumes (nL):')
     allow_edit = col2.checkbox('Edit current volumes')
@@ -737,24 +719,23 @@ def custom_volumes(exp):
                                                     key="volume_df", 
                                                     disabled=not allow_edit)
     if allow_edit:
-        m('To change the volume, click or double click on the cell, type in the new value and hit Enter', 
-                level='info')
+        st.info('To change the volume, click or double click on the cell, type in the new value and hit Enter')
     
     if reset_vols:
         success = exp.add_custom_volumes({'DNA_VOL':util.DNA_VOL, 
-                                          'PRIMER_VOL':util.PRIMER_VOL, 
-                                          'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
-                                          'PRIMER_WATER_VOL':util.PRIMER_WATER_VOL, 
-                                          'INDEX_VOL':util.INDEX_VOL, 
-                                          'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
-                                          'INDEX_WATER_VOL':util.INDEX_WATER_VOL}, caller_id)
+                'PRIMER_VOL':util.PRIMER_VOL, 
+                'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
+                'PRIMER_WATER_VOL':util.PRIMER_WATER_VOL, 
+                'INDEX_VOL':util.INDEX_VOL, 
+                'INDEX_TAQ_VOL':util.INDEX_TAQ_VOL,
+                'INDEX_WATER_VOL':util.INDEX_WATER_VOL}, 
+                caller_id=caller_id)
         if success:
-            m('Transfer volumes reset', level='info', dest=('log',))
+            st.info('Transfer volumes reset')
             sleep(1.5)
             st.rerun()
         else:
-            m('Transfer volumes were not reset. Check the log for more information', 
-                    level='error', dest=('debug',))
+            st.error('Transfer volumes were not reset. Check the log for more information')
 
     #if edit is made to dataframe
     if st.session_state['volume_df']['edited_rows']:
@@ -762,15 +743,15 @@ def custom_volumes(exp):
             volumes_dict[vol] = float(custom_vol_editor[vol]['Volume'])
         success = exp.add_custom_volumes(volumes_dict, caller_id)
         if success:
-            m(f'Modified transfer volumes {volumes_dict}', level='success', dest=('log','console'))
+            m(f'Modified transfer volumes {volumes_dict}', level='success')
             sleep(1.5)
             st.rerun()
         else:
-            m("Volume could not be modified. Please use integers only", level='error', dest=('debug',))
+            m("Volume could not be modified. Please use integers only", level='error')
 
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
@@ -794,11 +775,9 @@ def upload_reference_sequences(key):
         ur_names = [ur.name for ur in uploaded_references] 
         if success:
             if not trans.is_pending(exp):
-                m(f'Added rodentity plate data from files {ur_names}', 
-                        level='success', dest=('log','console'))
+                st.success(f'Added rodentity plate data from files {ur_names}')
         else:
-            m(f'Could not upload at least one rodentity plate file, please see the log',
-                    level='error', dest=('debug',))
+            st.error(f'Could not upload at least one rodentity plate file, please see the log')
     #manage transactions:
     if trans.is_pending(exp) and st.session_state['upload_option'] == 'consumables':
         #with st.session_state['message_container']:
@@ -807,7 +786,7 @@ def upload_reference_sequences(key):
         
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
     
@@ -821,8 +800,8 @@ def load_rodentity_data(key):
     st.session_state['upload_option'] = ''  # do we display pending files here
     plates_to_clear = [False, False, False, False]
     with st.expander('Add data from Rodentity JSON files',expanded=True):
-        m('Add up to four Rodentity JSON ear-punch plate (96-well) files at a time and click on **Submit**. '+\
-                'This will move the plate identifiers into the four slots below (P1-4). ', level='info')
+        st.info('Add up to four Rodentity JSON ear-punch plate (96-well) files at a time and click on **Submit**. '+\
+                'This will move the plate identifiers into the four slots below (P1-4). ')
         
         with st.form('rodentity_upload_form', clear_on_submit=True):
             epps_col1, _ = st.columns([1,1])
@@ -834,14 +813,14 @@ def load_rodentity_data(key):
 
         if rod_upload_submit_button and rodentity_epps:
             st.session_state['upload_option'] = 'rodentity'
-            success = parse.upload(exp, rodentity_epps, 'rodentity_sample')
+            success = parse.upload(exp, rodentity_epps, 'rodentity_sample', caller_id=caller_id)
             rod_names = ', '.join(rod.name for rod in rodentity_epps)
             if success:
                 m(f'Added rodentity plate data from files {rod_names}', 
-                        level='success', dest=('log','console'))
+                        level='success')
             else:
                 m(f'Failed to upload at least one rodentity plate file, please see the log',
-                        level='error', dest=('debug',))
+                        level='error')
                
             if trans.is_pending(exp) and st.session_state['upload_option'] == 'rodentity':
                 #with message_container:
@@ -852,19 +831,19 @@ def load_rodentity_data(key):
                 rod_pid = util.guard_pbc(rod_epp.name.rstrip('.json'), silent=True)
                 if all([exp.unassigned_plates[slot] != '' for slot in [1,2,3,4]]):
                     m(f'Ran out of free slots for {util.unguard_pbc(rod_pid, silent=True)}',
-                            level='warning', dest=('log',))
+                            level='warning')
                     continue
                 if rod_pid in exp.dest_sample_plates or \
                         rod_pid in exp.unassigned_plates[1] or rod_pid in exp.unassigned_plates[2] or \
                         rod_pid in exp.unassigned_plates[3] or rod_pid in exp.unassigned_plates[4]:
-                    m('Warning: Rodentity plate barcode already used at least once'
-                            , level='warning', dest=('log',))
+                    m('Rodentity plate barcode already used at least once'
+                            , level='warning')
 
                 if rod_pid in exp.unassigned_plates['custom'] or \
                         (rod_pid in exp.plate_location_sample and  
                         exp.plate_location_sample[rod_pid]['purpose'] != 'sample'):
-                    m('Error: Rodentity plate barcode already in use for a different purpose', 
-                            level='warning', dest=('log',))
+                    m('Rodentity plate barcode already in use for a different purpose', 
+                            level='warning')
                     continue                     
                 for plate_key in [1,2,3,4]:
                     if exp.unassigned_plates[plate_key] not in exp.plate_location_sample:
@@ -873,8 +852,8 @@ def load_rodentity_data(key):
                         continue
                     exp.unassigned_plates[plate_key] = rod_pid
                     break
-        m('Then assign a DNA plate (384-well) barcode identifier for plate combining with the '+\
-                'Hamilton Nimbus, and click on **Accept**',level='info')
+        st.info('Then assign a DNA plate (384-well) barcode identifier for plate combining with the '+\
+                'Hamilton Nimbus, and click on **Accept**')
         # this is so ugly. Never use this form style again!
         for plate_key in [1,2,3,4]:
             if exp.unassigned_plates[plate_key] not in exp.plate_location_sample:
@@ -911,24 +890,24 @@ def load_rodentity_data(key):
                         rod_dp in exp.unassigned_plates[3] or rod_dp in exp.unassigned_plates[4] or \
                         rod_dp in exp.unassigned_plates['custom']:
                     m(f'Destination plate barcode already in use: {util.unguard_pbc(rod_dp, silent=True)}',
-                            level='warning', dest=('log',))
+                            level='warning')
                     sleep(1.5)
                 else:
                     sample_plate_ids = [exp.unassigned_plates[k] for k in [1,2,3,4] if exp.unassigned_plates[k]]
                     success = exp.build_dna_plate_entry(sample_plate_ids, rod_dp, source='rodentity')
                     if not success:
                         m('Failed to incorporate plate set. Please read the log', 
-                                level='error', dest=('debug',))
+                                level='error')
                         sleep(1.5)
                     else:
                         m(f'Added plate set for {util.unguard_pbc(rod_dp, silent=True)}',
-                               level='success', dest=('log','console'))
+                               level='success')
                         exp.unassigned_plates = {1:'',2:'',3:'',4:''}
                         sleep(2)
                         #st.rerun()
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
                         
@@ -941,8 +920,8 @@ def load_custom_manifests(key):
     if 'custom' not in exp.unassigned_plates or not exp.unassigned_plates['custom']:
         exp.unassigned_plates['custom'] = {'None':{}}
     with st.expander('Upload custom manifests', expanded=True):
-        m('For non-Rodentity samples in 96-well plates, you can add these here. '+\
-                'Upload them first and then choose the layout you want.', level='info')
+        st.info('For non-Rodentity samples in 96-well plates, you can add these here. '+\
+                'Upload them first and then choose the layout you want.')
         with st.form(key='manifest_upload_form', clear_on_submit=True):
             col1, _ = st.columns([1,1])
             with col1:
@@ -954,18 +933,18 @@ def load_custom_manifests(key):
                     if success:
                         m(f'Custom file uploaded', level='success')
                     else:
-                        m('Custom file upload failed, see log', level='error', dest=('debug',))
+                        m('Custom file upload failed, see log', level='error')
                     st.session_state['upload_option'] = 'custom'
 
         if trans.is_pending(exp) and st.session_state['upload_option'] == 'custom':
             #with st.form(f'clash form {key}', clear_on_submit=True):
             pending_file_widget(key, caller_id)
             st.session_state['upload_option'] = ''
-        m('Choose the desired layout for the 384-well DNA plate (made with the Hamilton Nimbus). '+\
-                'Then provide the DNA plate name and press **Accept**', level='info')
+        st.info('Choose the desired layout for the 384-well DNA plate (made with the Hamilton Nimbus). '+\
+                'Then provide the DNA plate name and press **Accept**')
         
         with st.form(key='selection_form', clear_on_submit=True):
-            m('Select up to four 96-well sample plate IDs (barcodes) to combine into a 384-well DNA plate', level='normal')
+            st.write('Select up to four 96-well sample plate IDs (barcodes) to combine into a 384-well DNA plate')
             col1, col2, _, col3, _ = st.columns([2,2,1,2,2])
             plate_options = [util.unguard_pbc(pid, silent=True) for pid in exp.plate_location_sample \
                     if exp.plate_location_sample[pid]['purpose'] == 'sample' \
@@ -989,20 +968,19 @@ def load_custom_manifests(key):
                             dest_pid in exp.unassigned_plates[1] or dest_pid in exp.unassigned_plates[2] or \
                             dest_pid in exp.unassigned_plates[3] or dest_pid in exp.unassigned_plates[4] or \
                             dest_pid in exp.unassigned_plates['custom']:
-                        m(f'Destination plate barcode already in use: {util.unguard_pbc(dest_pid, silent=True)}',
-                                level='warning', dest=('log','debug'))
+                        st.warning(f'Destination plate barcode already in use: {util.unguard_pbc(dest_pid, silent=True)}')
                     else:
                         #st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
                         sample_pids = [pid for pid in [p1,p2,p3,p4] 
                                 if pid != util.guard_pbc('None', silent=True) and pid is not None]
                         success = exp.build_dna_plate_entry(sample_pids, dest_pid, source='custom')
                         if success:
-                            m(f'Assigned custom plates to {util.unguard_pbc(dest_pid)}', level='success', dest=('log','console'))
+                            m(f'Assigned custom plates to {util.unguard_pbc(dest_pid)}', level='success')
                         else:
-                            m('Failed to assign custom plates', level='failure', dest=('log','debug'))
+                            m('Failed to assign custom plates', level='error')
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
         
@@ -1020,22 +998,21 @@ def add_pcr_barcodes(key, dna_pids):
         if pcr_plate_entered and pcr_plate_barcode: 
             guarded_pcr_plate_barcode = util.guard_pbc(pcr_plate_barcode, silent=True)
             if guarded_pcr_plate_barcode not in exp.plate_location_sample:
-                success = exp.add_pcr_plates([guarded_pcr_plate_barcode])
+                success = exp.add_pcr_plates([guarded_pcr_plate_barcode], caller_id=caller_id)
                 if success:
-                    m(f'Added PCR plate barcode {pcr_plate_barcode}', level='success', 
-                            dest=('log','console'), caller_id=caller_id)
+                    m(f'Added PCR plate barcode {pcr_plate_barcode}', level='success')
                     sleep(1.5)
                     st.rerun()
                 else:
                     m(f'Could not add PCR plate barcode {pcr_plate_barcode}, please see the log',
-                            level='error', dest=('debug','log'), caller_id=caller_id)
+                            level='error')
             else:
                 m(f'This plate barcode {pcr_plate_barcode} appears to already be in use', 
-                        level='error', dest=('debug','log'), caller_id=caller_id)
+                        level='error')
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
@@ -1053,20 +1030,19 @@ def add_taqwater_barcodes(key, pcr_stage):
             if guarded_taqwater_plate_barcode not in exp.plate_location_sample:
                 success = exp.add_standard_taqwater_plates([taqwater_plate_barcode], pcr_stage)
                 if success:
-                    m(f'Added taq+water plate {taqwater_plate_barcode}', level='success', 
-                            dest=('log','console'), caller_id=caller_id)
+                    m(f'Added taq+water plate {taqwater_plate_barcode}', level='success')
                     sleep(1.5)
                     st.rerun()
                 else:
                     m(f'Could not add taq+water plate barcode {taqwater_plate_barcode}, please see the log',
-                            level='error', dest=('debug',), caller_id=caller_id)
+                            level='error')
             else:
                 m(f'This plate barcode {taqwater_plate_barcode} appears to already be in use',
-                        level='error', dest=('log','debug'), caller_id=caller_id)
+                        level='error')
                 
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
@@ -1077,7 +1053,7 @@ def provide_barcodes(key, pcr_stage, dna_pids):
     """
     caller_id = 'provide_barcodes'
     #add_vertical_space(2)
-    m('**Add plate barcodes**', dest=('mkdn',))
+    st.markdown('**Add plate barcodes**')
     exp = st.session_state['experiment']
     pcr_col, taqwater_col = st.columns(2)
     with pcr_col.form('Add PCR plate barcode', clear_on_submit=True):
@@ -1091,15 +1067,15 @@ def provide_barcodes(key, pcr_stage, dna_pids):
                 success = exp.add_pcr_plates([guarded_pcr_plate_barcode])
                 if success:
                     m(f'Added PCR plate barcode {pcr_plate_barcode}', level='success', 
-                            dest=('log','console'), caller_id=caller_id)
+                            caller_id=caller_id)
                     sleep(1.5)
                     st.rerun()
                 else:
                     m(f'Could not add PCR plate barcode {pcr_plate_barcode}, please see the log',
-                            level='error', dest=('debug','log'), caller_id=caller_id)
+                            level='error', caller_id=caller_id)
             else:
                 m(f'This plate barcode {pcr_plate_barcode} appears to already be in use', 
-                        level='error', dest=('debug','log'), caller_id=caller_id)
+                        level='error', caller_id=caller_id)
 
     with taqwater_col.form('Add taq+water plate barcode', clear_on_submit=True):
         taqwater_plate_barcode = st.text_input('Taq and Water Plate Barcode', \
@@ -1112,18 +1088,18 @@ def provide_barcodes(key, pcr_stage, dna_pids):
                 success = exp.add_standard_taqwater_plates([taqwater_plate_barcode], pcr_stage)
                 if success:
                     m(f'Added taq+water plate {taqwater_plate_barcode}', level='success', 
-                            dest=('log','console'), caller_id=caller_id)
+                            caller_id=caller_id)
                     sleep(1.5)
                     st.rerun()
                 else:
                     m(f'Could not add taq+water plate barcode {taqwater_plate_barcode}, please see the log',
-                            level='error', dest=('debug',), caller_id=caller_id)
+                            level='error', caller_id=caller_id)
             else:
                 m(f'This plate barcode {taqwater_plate_barcode} appears to already be in use',
-                        level='error', dest=('log','debug'), caller_id=caller_id)
+                        level='error', caller_id=caller_id)
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 
@@ -1160,7 +1136,7 @@ def upload_miseq_fastqs():
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl)
+            m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
 

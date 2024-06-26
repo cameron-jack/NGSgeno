@@ -29,6 +29,8 @@ try:
     import bin.transaction as transaction
 except ModuleNotFoundError:
     import transaction
+    
+from stutil import m
 
 transact = transaction.transact
 untransact = transaction.untransact
@@ -167,7 +169,7 @@ def check_assays_known(exp, sample_pid):
     return known_assays, unknown_assays
 
 
-def nimbus_gen(exp):
+def nimbus_gen(exp, caller_id=None):
     """
     Standardised Nimbus input generator, produces a workfile for the BRF's Nimbus robot.
     
@@ -179,7 +181,7 @@ def nimbus_gen(exp):
     As a file generator() it needs to create a transaction (exp.reproducible_steps) entry
     """
     if len(exp.assay_assayfam) == 0:
-        exp.log('Error: assay/primer "assay list" must be loaded first')
+        m('assay/primer "assay list" must be loaded first', level='error', caller_id=caller_id)
         return False
     transactions = {}
     #try:
@@ -210,7 +212,7 @@ def nimbus_gen(exp):
                 for pbc in sorted(exp.dest_sample_plates[dna_BC]):
                     shx = exp.plate_location_sample.get(pbc,None)
                     if not shx:
-                        print('No plate data found for plate', pbc, file=sys.stdout)
+                        m(f'No plate data found for plate {pbc}', level='error', caller_id=caller_id)
                         continue
                     transactions[dna_fn][pbc] = {}
                     transactions[fnstg][pbc] = {}
@@ -258,8 +260,7 @@ def nimbus_gen(exp):
                             for assay in shx[pos]['ngs_assays']:
                                 if assay not in exp.assay_assayfam:
                                     msg = f'Warning: skipping assay {assay} in sample plate {util.unguard_pbc(dna_BC, silent=True)}'
-                                    exp.log(msg)
-                                    print(msg)
+                                    m(msg, level='warning', caller_id=caller_id)
                                     continue
                                 assayNames.append(assay)
                                 assayFamilies.append(exp.assay_assayfam[assay])
@@ -300,7 +301,7 @@ def nimbus_gen(exp):
     #    return False
     #print("Transactions in nimbus_gen()", transactions, file=sys.stderr)
     transaction.add_pending_transactions(exp, transactions)
-    exp.log(f'Success: Hamilton Nimbus plate definition files have been generated')
+    m(f'Success: Hamilton Nimbus plate definition files have been generated', level='success', caller_id=caller_id)
     return True
 
 
@@ -366,7 +367,7 @@ def grouper(xs, kf=lambda x:x[0]):
     return itertools.groupby(sorted(xs, key=kf), key=kf)
 
 
-def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
+def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False, caller_id=None):
     """ 
     Output an Echo picklist given the header and rows (transfer spec) 
     Inputs:
@@ -392,7 +393,7 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
             data = []
             for row in rows:
                 if len(row) != len(plhdr):
-                    exp.log(f"Warning: entry does not match expected header format: {row=} {plhdr=}")
+                    m(f"entry does not match expected header format: {row=} {plhdr=}", level='warning', caller_id=caller_id)
                     continue
                 src_plate_barcode = row[1]
                 src_plate_well = row[3]
@@ -419,11 +420,11 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False):
     #    transactions = None
     #    exp.save()
     #    return False
-    exp.log(f'Success: Wrote picklist to {fn}')
+    m(f'Wrote picklist to {fn}', level='success', caller_id=caller_id)
     return True
 
 
-def mk_mytaq_picklist(exp, fn, task_wells, pcrPlate_col, pcrWell_col, taqwater_bcs, taq_vol, water_vol, transactions):
+def mk_mytaq_picklist(exp, fn, task_wells, pcrPlate_col, pcrWell_col, taqwater_bcs, taq_vol, water_vol, transactions, caller_id=None):
     """ 
     Create a picklist for Mytaq & H2O transfers
     transactions are passed through to mk_picklist and modified there
@@ -478,8 +479,7 @@ def mk_mytaq_picklist(exp, fn, task_wells, pcrPlate_col, pcrWell_col, taqwater_b
             pid_ww_tw_list.append((water_pid,water_well,taq_well))
 
     if len(pid_ww_tw_list) < len(task_wells):
-        exp.log(f'Failure: Not enough taq or water available from plates {taqwater_bcs}')
-        print(f'Failure: Not enough taq or water available from plates {taqwater_bcs}', file=sys.stderr)
+        m(f'Not enough taq or water available from plates {taqwater_bcs}', level='failure', caller_id=caller_id)
         return False
 
     # now allocate to used wells
@@ -513,7 +513,7 @@ def mk_mytaq_picklist(exp, fn, task_wells, pcrPlate_col, pcrWell_col, taqwater_b
     return True
 
 
-def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True):
+def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True, caller_id=None):
     """
     dna_records is a list of dictionaries
     dna_fields=['samplePlate','sampleWell','sampleBarcode','strain','sex','alleleSymbol',
@@ -530,7 +530,7 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True):
         pmr = rec['primer']
         if pmr not in primer_plate_well_vol_doses:
             #print(f'{i=} {pmr=}') 
-            exp.log(f'Warning: primer {pmr} not available on primer plate(s)')
+            m(f'primer {pmr} not available on primer plate(s)', level='warning', caller_id=caller_id)
             dna_records[i]['primerPlate'] = None
             dna_records[i]['primerWell'] = None
             continue
@@ -539,7 +539,7 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True):
             while True:
                 if sum([doses for pid, well, vol, doses in primer_plate_well_vol_doses[pmr]]) == 0:
                     # all wells for this primer are empty
-                    exp.log(f'Warning: primer {pmr} has run out of available doses')
+                    m(f'primer {pmr} has run out of available doses', level='warning', caller_id=caller_id)
                     success = False
                     break
                 pid, well, vol, doses = primer_plate_well_vol_doses[pmr][offset]
@@ -559,7 +559,7 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True):
             while True:
                 if sum([doses for pid, well, vol, doses in primer_plate_well_vol_doses[pmr]]) == 0:
                     # all wells for this primer are empty
-                    exp.log(f'Warning: primer {pmr} has run out of available doses')
+                    m(f'primer {pmr} has run out of available doses', level='warning', caller_id=caller_id)
                     success = False
                     break
                 pid, well, vol, doses = primer_plate_well_vol_doses[pmr][offset]
@@ -575,7 +575,7 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True):
     return success
 
 
-def stage_write(exp, fn, header, data, output_plate_guards=False, ignore_missing_plate_info=False):
+def stage_write(exp, fn, header, data, output_plate_guards=False, ignore_missing_plate_info=False, caller_id=None):
     """ 
     Output stage files
     Check which columns contain plate barcodes, and enforce plate guards or their removal based on output_plate_guards
@@ -589,7 +589,7 @@ def stage_write(exp, fn, header, data, output_plate_guards=False, ignore_missing
                     failed_row = False
                     for i, (h,d) in enumerate(zip(header, row)):
                         if h in ['primerPlate','dnaPlate','sourcePlate','pcrPlate'] and not d:
-                            print(f'Failed row: col {i=} for {row=}')
+                            m(f'Failed to write row: col {i=} for {row=}', level='warning', caller_id=caller_id)
                             failed_row = True
                     if failed_row:
                         continue
@@ -603,18 +603,18 @@ def stage_write(exp, fn, header, data, output_plate_guards=False, ignore_missing
             wx.writerow(header)  
             wx.writerows(out_lines)
     except Exception as exc:
-        exp.log(f'Error: could not write to {fn}. {exc}')
+        m(f'could not write to {fn}. {exc}', level='error', caller_id=caller_id)
         return False
     return True
 
 
-def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs):
+def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs, caller_id=None):
     """
     Entry point. Takes an experiment instance plus plate barcodes for dna plates, PCR plates, primer plates, taq/water plates.
     """
     #try:
     if not exp.primer_assayfam:
-        exp.log('Error: assay list must be loaded before generating primer picklist')
+        m('assay list must be loaded before generating primer picklist', level='failure', caller_id=caller_id)
         return False
     if True:
         pcr_bcs = []
@@ -689,7 +689,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         success = stage_write(exp, stage2_fn, pcr1_fields, pcr_records, output_plate_guards=True)
         if not success:
             transactions[stage2_fn] = None
-            exp.log(f'Critical: failed to write {stage2_fn}')
+            m(f'failed to write {stage2_fn}', level='error', caller_id=caller_id)
             return False
         
         pcr_plate_col = pcr1_fields.index('pcrPlate')
@@ -755,11 +755,11 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
     #    exp.log(f"Failure: PCR1 Echo picklists could not be created {exc}")
     #    return False
     transaction.add_pending_transactions(exp, transactions)
-    exp.log(f'Success: PCR1 Echo picklists created')
+    m(f'PCR1 Echo picklists created', level='success', caller_id=caller_id)
     return True
 
 
-def i7i5alloc_rot(exp, vol, wellcount, index_survey_fn='index-svy.csv'):
+def i7i5alloc_rot(exp, vol, wellcount, index_survey_fn='index-svy.csv', caller_id=None):
     """ allocate vol to wellcount wells with unique index pairs - rotates barcode wells to avoid wells being drained """
     #try:
     if True:
@@ -782,16 +782,16 @@ def i7i5alloc_rot(exp, vol, wellcount, index_survey_fn='index-svy.csv'):
         used_index_pairs = set()
         combos = len(i7_idxs) * len(i5_idxs)
         if combos < wellcount:
-            exp.log(f"Error: Not enough barcode combos {combos} for wells requested {wellcount}")
+            m(f"Not enough barcode combos {combos} for wells requested {wellcount}", level='failure', caller_id=caller_id)
             return
         while len(index_info_pairs) < wellcount:     
             if len(i7s_empty) == len(i7s):
-                exp.log(f"Error: i7 wells contain insufficient volume for the number of experiment wells")
-                exp.log(f"Info: {i7s_empty=}, {i5s_empty=}, {len(used_index_pairs)=}")
+                m(f"i7 wells contain insufficient volume for the number of experiment wells", level='failure', caller_id=caller_id)
+                m(f"{i7s_empty=}, {i5s_empty=}, {len(used_index_pairs)=}", level='debug', caller_id=caller_id)
                 return
             elif len(i5s_empty) == len(i5s):
-                exp.log(f"Error: i5 wells contain insufficient volume for the number of experimental wells")
-                exp.log(f"Info: {i7s_empty=}, {i5s_empty=}, {len(used_index_pairs)=}")
+                m(f"i5 wells contain insufficient volume for the number of experimental wells", level='failure', caller_id=caller_id)
+                m(f"{i7s_empty=}, {i5s_empty=}, {len(used_index_pairs)=}", level='debug', caller_id=caller_id)
                 return
             i7 = next(i7gen)
             i5 = next(i5gen)
@@ -821,7 +821,7 @@ def i7i5alloc_rot(exp, vol, wellcount, index_survey_fn='index-svy.csv'):
     #    exp.log(f"Error: {exc}")
 
 
-def generate_miseq_samplesheet(exp, miseq_fn, s3tab,transactions):
+def generate_miseq_samplesheet(exp, miseq_fn, s3tab,transactions, caller_id=None):
     """ Now that we have all the required info, generate the Illumina Miseq samplesheet, which drives the sequencing """
     if miseq_fn not in transactions:
         transactions[miseq_fn] = {}
@@ -864,11 +864,11 @@ Adapter,,,,,,,,,,
     #    exp.save()
     #    return False
     #exp.add_pending_transactions(transactions)
-    exp.log(f'Success: Miseq samplesheet written to {miseq_fn}')
+    m(f'Miseq samplesheet written to {miseq_fn}', level='success', caller_id=caller_id)
     return True
 
     
-def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_bcs, amplicon_plate_bcs=None):
+def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_bcs, amplicon_plate_bcs=None, caller_id=None):
     """
     Replacement for main(). Called as a library only.
     User included PCR plates, index plates, taq/water plates, amplicon plates (optional) are user provided
@@ -881,23 +881,23 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         try:
             pcr_bcs = [util.guard_pbc(p,silent=True) for p in pcr_plate_bcs]
         except Exception as exc:
-            exp.log(f"Error: PCR plate barcode in error {pcr_plate_bcs=} {exc}")
+            m(f"PCR plate barcode in error {pcr_plate_bcs=} {exc}", level='error', caller_id=caller_id)
             pcr_bcs = []
         # user chosen index PIDs are already set in exp.generate_echo_index_survey()
         try:
             index_bcs = [util.guard_pbc(i, silent=True) for i in index_plate_bcs]
         except Exception as exc:
-            exp.log(f"Error: Index plate barcode in error {index_plate_bcs=} {exc}")
+            m(f"Index plate barcode in error {index_plate_bcs=} {exc}", level='error', caller_id=caller_id)
             index_bcs = []
         try:
             amplicon_bcs = [util.guard_pbc(d,silent=True) for d in amplicon_plate_bcs] 
         except Exception as exc:
-            exp.log(f"Error: Amplicon plate barcodes in error {amplicon_plate_bcs=} {exc}")
+            m(f"Amplicon plate barcodes in error {amplicon_plate_bcs=} {exc}", level='error', caller_id=caller_id)
             amplicon_bcs = []
         try:                          
             taq_bcs = [util.guard_pbc(t, silent=True) for t in taq_water_bcs]
         except Exception as exc:
-            exp.log(f"Error: Taq-water plate barcodes in error {taq_water_bcs=} {exc}")
+            m(f"Taq-water plate barcodes in error {taq_water_bcs=} {exc}", level='error', caller_id=caller_id)
             taq_bcs = []
         outfmt = f"PCR-picklist_{exp.name}.csv"
     
@@ -915,7 +915,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
             
                 s2tab = util.CSVTable('S2Rec', exp.get_exp_fn(fnstage2))
             except FileNotFoundError as fne:
-                exp.log(f"Error: Stage 2 file has not been generated from Primer stage. {fne}")
+                m(f"Stage 2 file has not been generated from Primer stage. {fne}", level='error', caller_id=caller_id)
                 return False
             
  
@@ -1004,7 +1004,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
         try:
             s3tab.csvwrite(fnstage3, output_plate_guards=True)
         except Exception as exc:
-            exp.log(f'Critical: could not write {fnstage3}')
+            m(f'could not write {fnstage3}. {exc}', level='error', caller_id=caller_id)
             transactions[fnstage3] = None
             return False
 
@@ -1073,7 +1073,7 @@ def read_html_template(html_fn):
     return htmlfmt
 
 
-def match_nimbus_to_echo_files(exp):
+def match_nimbus_to_echo_files(exp, caller_id=None):
     """ Make sure there is a 1-1 match of Nimbus to Echo-COC file.
         Assumes plate barcodes are guarded.
         Inputs: an Experiment instance
@@ -1092,12 +1092,12 @@ def match_nimbus_to_echo_files(exp):
         xbc  = nbc-ebc # any Nimbus plate files that are missing Nimbus run (output) files
         return [str(fp) for fp in nimbus_files], [str(fp) for fp in echo_files], xbc
     except Exception as exc:
-        exp.log(f'Error: Problem matching Nimbus to Echo files {exc}')
-        exp.log(f'Error: {traceback.print_exc(limit=2)=}')
+        m(f'Problem matching Nimbus to Echo files {exc}', level='error', caller_id=caller_id)
+        m(f'{traceback.print_exc(limit=2)=}', level='debug', caller_id=caller_id)
         return [], [], []
 
 
-def generate_targets(exp):
+def generate_targets(exp, caller_id=None):
     """ create target file based on loaded references """
     #transactions = {}
     #target_fn = exp.get_exp_fn('targets.fa', trans=True)
@@ -1112,15 +1112,15 @@ def generate_targets(exp):
                     print(f'{exp.reference_sequences[group][id]}', file=targetf)
                     counter += 1    
     except Exception as exc:
-        exp.log(f'Critical: could not write reference sequences to {target_fn} {exc}')
+        m(f'could not write reference sequences to {target_fn} {exc}', level='error', caller_id=caller_id)
         return False
     #transaction.add_pending_transactions(exp, transactions)
     #transaction.accept_pending_transactions(exp)
-    exp.log(f'Success: created reference sequences file {target_fn} containing {counter} sequences')
+    m(f'Screated reference sequences file {target_fn} containing {counter} sequences', level='success', caller_id=caller_id)
     return True
 
 
-def generate_primer_assayfams(exp):
+def generate_primer_assayfams(exp, caller_id=None):
     """ create a two column  csv file of primer and assayfamily """
     primer_fn = exp.get_exp_fn('primers.csv')
     try:
@@ -1129,9 +1129,9 @@ def generate_primer_assayfams(exp):
                 for pmr in exp.assayfam_primers[af]:
                     print(f'{pmr},{af}', file=primerf)
     except Exception as exc:
-        exp.log(f'Critical: count not write primer and assay families to {primer_fn} {exc}')
+        m(f'count not write primer and assay families to {primer_fn} {exc}', level='error', caller_id=caller_id)
         return False
-    exp.log(f'Success: created primer assay families file {primer_fn}')
+    m(f'created primer assay families file {primer_fn}', level='success', caller_id=caller_id)
     return True
 
 

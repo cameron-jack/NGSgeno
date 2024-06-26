@@ -28,6 +28,8 @@ try:
     import bin.transaction as transaction
 except ModuleNotFoundError:
     import transaction
+    
+from stutil import m
 
 transact = transaction.transact
 untransact = transaction.untransact
@@ -69,7 +71,7 @@ Behaves like a C++ "friend" of the Experiment class - very tightly coupled.
 
 ### Universal upload interface
 
-def upload(exp, streams, purpose, overwrite=True):
+def upload(exp, streams, purpose, caller_id=None, overwrite_plates=True, overwrite_files=False):
     """
     All file stream uploads go through this function. 
     - Each file is uploaded with a pending_ prefix and
@@ -77,119 +79,138 @@ def upload(exp, streams, purpose, overwrite=True):
     - A new exp.uploaded_files record is created and
     - it is added to exp.pending_uploads if required,
     - or is sent to process_upload(exp, file, purpose)
+    
+    Purpose is required for the upload, caller_id is the display unit associated with the upload
+    
     Return True if all uploaded streams are correctly saved and parsed, else False
     By default all entries are overwritten rather than protected - this is a practical issue for NGS Genotyping
     """
+    m('uploads starting', level='begin')
     if exp.locked and purpose not in {'primer_assay_map','reference_sequences'}:
-        exp.log('Error: Cannot add manifest while lock is active')
+        m(f'Cannot add manifest while lock is active', level='failure', caller_id=caller_id)
+        m('upload process finished', level='end')
         return False
+
     success = True
     for file_stream in streams:
-        fp = exp.get_exp_fn(file_stream.name, subdir='uploads', trans=True)
-        if Path(fp).exists():
-            try:
-                Path(fp).unlink()  # delete the existing pending file
-            except Exception as exc:
-                exp.log(f'Error: upload to {fp} blocked by existing file, {exc}')
-                success = False
+        pfp = exp.get_exp_fn(file_stream.name, subdir='uploads', trans=True)
+        if Path(pfp).exists():
+            success = util.delete_file(pfp, caller_id=caller_id)
+            if not success:
+                m(f'Unable to upload to file {pfp}', level='error', caller_id=caller_id)
                 continue
 
-        exp.log(f"Info: uploading {file_stream.name} to {fp}")
-        with open(fp, 'wb') as outf:
+        m(f"uploading {file_stream.name} to {pfp}", level='info', dest=('noGUI,'))
+        with open(pfp, 'wb') as outf:
             try:
                 copyfileobj(BytesIO(file_stream.getvalue()), outf)
             except Exception as exc:
-                exp.log(f'Could not copy stream {file_stream.name} to file {fp}, {exc}')
+                m(f'Could not copy stream {file_stream.name} to file {pfp}, {exc}', level='error', caller_id=caller_id)
                 success = False
                 continue
 
         # check whether this file has been seen in another context
         # this is essential for retaining the purpose of this file
-        exp.add_file_record(fp, purpose=purpose)
-        #print(f'upload: {fp=}')
-        final_fp = transaction.untransact(fp)
+        exp.add_file_record(pfp, purpose=purpose)
+       
+        final_fp = transaction.untransact(pfp)
+        
         if Path(final_fp).exists():
-            if overwrite:
-                try:
-                    Path(final_fp).unlink()
-                except Exception as exc:
-                    exp.log(f'Error: could not overwrite original file {final_fp}')
-                    exp.pending_uploads.add(fp)
+            if overwrite_files:
+                s = util.delete_file(final_fp)
+                if not s:
+                    m(f'could not overwrite original file {final_fp}', level='error', caller_id=caller_id)
+                    exp.pending_uploads.add(pfp)
                     success = False
                     continue
-                exp.log(f'Info: successfully deleted original file {final_fp}')
+                if final_fp in exp.uploaded_files:
+                    del exp.uploaded_files[final_fp]
+                s = exp.accept_pending_file_record(pfp, final_fp, caller_id=caller_id)
+                if not s:
+                    return False
+                s = process_upload(exp, final_fp, purpose, caller_id=caller_id)
+                if s is False:
+                    success = False
+                    exp.del_file_record(final_fp)
+                    m(f'could not upload file {final_fp}', level='error', caller_id=caller_id)
+                else:
+                    m(f'uploaded file {final_fp}', level='success', caller_id=caller_id)
             else:
                 # the user will decide later whether to overwrite what they have
-                exp.log(f'Info: adding {fp} to pending upload queue')
-                exp.pending_uploads.add(fp)
+                m(f'adding {pfp} to pending upload queue', level='info', dest=('noGUI',))
+                exp.pending_uploads.add(pfp)
                 continue
         else:
             try:
-                Path(fp).rename(final_fp)
+                Path(pfp).rename(final_fp)
             except Exception as exc:
-                exp.log(f'Error: failed to rename {fp} to {final_fp}, exc')
+                m(f'failed to rename {pfp} to {final_fp}, exc', level='error', caller_id=caller_id)
+                exp.del_file_record(pfp)
                 success = False
                 continue
-            exp.log(f'Success: {final_fp} uploaded. Parsing...')
-            exp.mod_file_record(fp, new_name=final_fp) # update file name in records
-            s = process_upload(exp, final_fp, purpose)
+            m(f'{final_fp} uploaded. Parsing...', level='info', caller_id=caller_id)
+            s = exp.mod_file_record(pfp, new_name=final_fp) # update file name in records
+            if not s:
+                m(f'could not update file record for {pfp}', level='error', caller_id=caller_id)
+                success = False
+            s = process_upload(exp, final_fp, purpose, caller_id=caller_id)
             if s is False:
                 success = False
-    print(f'Upload succeeded? {success=}', flush=True)
+                exp.del_file_record(final_fp)
+                m(f'could not upload file {final_fp}', level='error', caller_id=caller_id)
+            else:
+                m(f'uploaded file {final_fp}', level='success', caller_id=caller_id)
+    m(f'uploads finished. Success: {success}', level='end')
     return success
 
 
-def accept_pending_upload(exp, fn):
+def accept_pending_upload(exp, fn, caller_id=None):
     """
-    Take a pending upload file and rename it, overwriting the original.
+    Take a pending upload file, update the file record with exp.untransact_file_record() which will also replace the original file
     An exp.file_upload record must already exist with the file's purpose recorded
     """
     if exp.locked and purpose not in {'primer_assay_map','reference_sequences'}:
-        exp.log('Error: Cannot add manifest while lock is active')
+        m('Cannot add manifest while lock is active', level='failure', caller_id=caller_id)
         return False
 
     if fn not in exp.uploaded_files:
-        print('1')
+        m(f'{fn} missing from uploaded file records', level='critical', caller_id=caller_id)
         return False
+    
     if 'purpose' not in exp.uploaded_files[fn]:
-        print('2')
+        m(f'upload purpose not recorded in uploaded file info for {fn}', level='critical', caller_id=caller_id)
         return False
+    
     purpose = exp.uploaded_files[fn]['purpose']
     final_fn = transaction.untransact(fn)
-    if Path(final_fn).exists():
-        try:
-            Path(final_fn).unlink()  # delete the existing pending file
-        except Exception as exc:
-            exp.log(f'Error: upload to {final_fn} blocked by existing file, {exc}')
+    
+    if Path(final_fn).exists():  # it should
+        if final_fn in exp.uploaded_files:
+            success = exp.del_file_record(final_fn, soft=True, caller_id=caller_id)
+        else:
+            success = util.delete_file(final_fn, caller_id=caller_id)
+        if not success:
+            m(f'could not delete original file {final_fn}', level='error', caller_id=caller_id)
             return False
         
-    if final_fn in exp.uploaded_files:
-        success = exp.del_file_record(final_fn)
-        if success:
-            exp.log(f'Success: deleted original file record for {final_fn}')
-        else:
-            exp.log(f'Failure: to remove original file record for {final_fn}')
-
     try:
-        exp.pending_uploads.remove(fn)
+        Path(fn).rename(final_fn)
     except Exception as exc:
-        exp.log(f'Failed: removing {fn} {exc}')
-        return False
-
-    exp.log(f'Info: replacing existing file {final_fn}, meant for {purpose}')
-    try:
-        fn_renamed = Path(fn).rename(final_fn)
-    except Exception as exc:
-        exp.log(f'Error: failed to rename {fn} to {final_fn}, {exc}')
-        return False
-    exp.mod_file_record(fn, new_name=final_fn) # update file name in records
-    exp.log(f'Success: {final_fn} uploaded. Parsing...')
+        m(f'could not rename {fn} to {final_fn} upload failed {exc}', level='error', caller_id=caller_id)
+        exp.del_file_record(fn, soft=False, caller_id=caller_id)
     
-    success = process_upload(exp, final_fn, purpose, overwrite=True)
-    return success
+    exp.mod_file_record(fn, new_name=final_fn)
+    exp.pending_uploads.remove(fn)
+    
+    success = process_upload(exp, final_fn, purpose, caller_id=caller_id, overwrite_plates=True, overwrite_files=True)
+    if not success:
+        exp.del_file_record(final_fn)
+        return False
+    
+    return True
+        
 
-
-def process_upload(exp, filepath, purpose, overwrite=True):
+def process_upload(exp, filepath, purpose, caller_id=None, overwrite_plates=False, overwrite_files=False):
     """
     Called by upload() or accept_pending_upload()
     - Clears the file of its pending status (rename)
@@ -197,41 +218,43 @@ def process_upload(exp, filepath, purpose, overwrite=True):
     - invokes the appropriate parser for the provided purpose and file extension
     purposes: ['amplicon','DNA','pcr','rodentity_sample','custom_sample','primer_layout','primer_volume',
             'index_layout','index_volume','primer_assay_map','reference_sequences','taq_water']
+            
+    caller_id (str) is the name of the associated display unit for user messages
     """
     pids = None  # list of plateIDs associated with a file
     if purpose == 'amplicon':
-        success, pids = parse_amplicon_manifest(exp, filepath, overwrite=overwrite)
+        success, pids = parse_amplicon_manifest(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'DNA' or purpose == 'dna':
-        success, pids = load_dna_plate(exp, filepath, overwrite=overwrite)
+        success, pids = load_dna_plate(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'rodentity_sample':  # becomes purpose=sample source=rodentity
-        success, pids = parse_rodentity_json(exp, filepath, overwrite=overwrite)
+        success, pids = parse_rodentity_json(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'custom_sample':  # becomes purpose=sample source=custom
-        success, pids = parse_custom_manifest(exp, filepath, overwrite=overwrite)
+        success, pids = parse_custom_manifest(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'pcr':
-        exp.log('Critical: no parser implemented for PCR plate records')
+        m('no parser implemented for PCR plate records', level='critical', caller_id=caller_id)
         # parse_pcr_record(exp, filepath)
     elif purpose == 'primer_layout':
-        success, pids = parse_primer_layout(exp, filepath)
+        success, pids = parse_primer_layout(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'primer_volume':
-        success, pids = parse_primer_volume(exp, filepath)
+        success, pids = parse_primer_volume(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'index_layout':
-        success, pids = parse_index_layout(exp, filepath)
+        success, pids = parse_index_layout(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'index_volume':
-        success, pids = parse_index_volume(exp, filepath)
+        success, pids = parse_index_volume(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'assay_primer_map':
-        success = parse_assay_primer_map(exp, filepath)
+        success = parse_assay_primer_map(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'reference_sequences':
-        success = parse_reference_sequences(exp, filepath)
+        success = parse_reference_sequences(exp, filepath, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'taq_water':
-        exp.log('Critical: no parser implemented for taq_water plates')
+        m('no parser implemented for taq_water plates', level='critical', caller_id=caller_id)
     else:
-        exp.log(f'Critical: no parser implemented for {purpose=}')
+        m(f'no parser implemented for {purpose=}', level='critical', caller_id=caller_id)
 
     if success:
-        exp.log(f'Success: parsed {filepath} for {purpose}')
+        m(f'parsed {filepath} for {purpose}', level='success', caller_id=caller_id)
         exp.mod_file_record(filepath, extra_PIDs=pids)
     else:
-        exp.log(f'Failure: could not parse {filepath} for {purpose}')
+        m(f'could not parse {filepath} for {purpose}', level='error', caller_id=caller_id)
         exp.del_file_record(filepath)
     return success
 
@@ -250,20 +273,22 @@ def process_upload(exp, filepath, purpose, overwrite=True):
 # parse_index_volume
 # parse_amplicons
 
-@functools.lru_cache
-def load_json(fp):
-    """ JSON data loader that is cached for fast reading """
-    with open(fp, 'rt', errors='ignore') as src:
-        info = json.load(src) 
+#@functools.lru_cache
+#def load_json(fp):
+#    """ JSON data loader that is cached for fast reading """
+#    with open(fp, 'rt', errors='ignore') as src:
+#        info = json.load(src) 
         
 
-def parse_rodentity_json(exp, fp, overwrite=True):
+def parse_rodentity_json(exp, fp, caller_id=None, overwrite_plates=True):
     """
     Read a JSON file containing one or more Rodentity plate definitions 
     Write a standardised datastructure into exp.plate_location_sample
     Update entry in exp.uploaded_files to include plate ids
+    
+    caller_id (str) is the name of the associated display unit for user messages
     """
-    exp.log(f'Begin: parsing {fp}')
+    m(f'parsing Rodentity JSON file {fp}', level='begin')
     well_records = {}  # [gpid][pos]
     with open(fp, 'rt', errors='ignore') as src:
         info = json.load(src)  
@@ -277,7 +302,7 @@ def parse_rodentity_json(exp, fp, overwrite=True):
         pos = util.unpadwell(record['wellLocation'])
         if pos in well_records[gpid] and well_records[gpid][pos]['wells'] != {}:
             # duplicate entry for a given plate and well position
-            exp.log(f'Warning: skipping duplicate sample entry {pid} {pos} in {fp}')
+            m(f'skipping duplicate sample entry {pid} {pos} in {fp}', level='warning', caller_id=caller_id)
             continue
         well_records[gpid]['wells'].add(pos)
         well_records[gpid][pos] = {}
@@ -322,21 +347,22 @@ def parse_rodentity_json(exp, fp, overwrite=True):
     
     for gpid in well_records:
         if gpid in exp.plate_location_sample:
-            if not overwrite:
-                exp.log(f'Error: cannot overwrite existing plate entry {gpid}')
+            if not overwrite_plates:
+                m(f'overwriting disallowed for existing plate entry {gpid}', level='failure', caller_id=caller_id)
                 continue
             elif exp.plate_location_sample[gpid]['purpose'] != 'sample':
-                exp.log(f'Error: plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}')
+                m(f'plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}', 
+                        level='error', caller_id=caller_id)
                 continue
             else:
                 exp.plate_location_sample[gpid] = {}  # wipe the existing entry
         exp.plate_location_sample[gpid] = well_records[gpid].copy()
 
-    exp.log(f'End: parsing {fp} with plates: {list(well_records.keys())}')
+    m(f'parsing {fp} with plates: {list(well_records.keys())}', level='end')
     return True, list(well_records.keys())
             
 
-def parse_custom_manifest(exp, fp, overwrite=True):
+def parse_custom_manifest(exp, fp, caller_id=None, overwrite_plates=True):
     """
     Parse a custom manifest files and store them in self.unassigned_plates['custom'] =\
             {plateBarcode={Assay=[],...}}
@@ -345,8 +371,10 @@ def parse_custom_manifest(exp, fp, overwrite=True):
     sampleNum	plateBarcode	well	sampleBarcode	assay	assay	clientName	sampleName 	alleleSymbol
     Required columns: [plateBarcode, well, sampleBarcode, assay*, clientName] *Duplicates allowed
     Optional columns: [sampleNo, sampleName, alleleSymbol] and anything else
+    
+    caller_id (str) is the name of the associated display unit for user messages
     """
-    exp.log(f'Begin: parsing {fp}')
+    m(f'Parsing custom manifest {fp}', level='begin')
     if fp.lower().endswith('xlsx'):
         with open(fp, 'rb') as bytes:
             workbook = openpyxl.load_workbook(bytes)
@@ -369,7 +397,7 @@ def parse_custom_manifest(exp, fp, overwrite=True):
             #print(header_dict, file=sys.stderr)
             matching_cols = [col_name in cols_lower for col_name in required_cols]
             if not all(matching_cols):
-                exp.log(f'Error: manifest {fp} requires at least columns {required_cols}')
+                m(f'manifest {fp} requires at least columns {required_cols}', level='error', caller_id=caller_id)
                 return False, []
             
             for k in header_dict:
@@ -396,7 +424,7 @@ def parse_custom_manifest(exp, fp, overwrite=True):
                 well = util.unpadwell(c.upper())
                 #print(f'well: {well=} {k=} {c=}')
                 if well in well_records[gpid]['wells'] and well_records[gpid][well] != {}:
-                    exp.log(f"Warning: duplicate {c} in {pid}. Skipping row {i+2} {cols=}")
+                    m(f"duplicate {c} in {pid}. Skipping row {i+2} {cols=}", level='warning', caller_id=caller_id)
                     break
                 well_records[gpid]['wells'].add(well)
                 well_records[gpid][well] = {'sampleWell':well}
@@ -430,26 +458,29 @@ def parse_custom_manifest(exp, fp, overwrite=True):
                 try:
                     well_records[gpid][well][header_dict[k]] = str(c)
                 except:
-                    print(f'Failed to record well_record {gpid=} {well=} {header_dict[k]=} {c=}', file=sys.stderr)
+                    m(f'Failed to record well_record {gpid=} {well=} {header_dict[k]=} {c=}',
+                            level='critical', caller_id=caller_id)
         well_records[gpid][well]['ngs_assays'] = assays
 
     for gpid in well_records:
         if gpid in exp.plate_location_sample:
-            if not overwrite:
-                exp.log(f'Error: cannot overwrite existing plate entry {gpid}')
+            if not overwrite_plates:
+                m(f'Overwriting turned off, cannot overwrite existing plate entry {gpid}', 
+                        level='failure', caller_id=caller_id)
                 continue
             elif exp.plate_location_sample[gpid]['purpose'] != 'sample':
-                exp.log(f'Error: plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}')
+                m(f'plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}', 
+                        level='error', caller_id=caller_id)
                 continue
             else:
                 exp.plate_location_sample[gpid] = {}  # create empty entry
         exp.plate_location_sample[gpid] = well_records[gpid].copy()
 
-    exp.log(f'End: parsing {fp} with plates: {list(well_records.keys())}')
+    m(f'parsing {fp} with plates: {list(well_records.keys())}', level='end')
     return True, list(well_records.keys())
 
 
-def parse_amplicon_manifest(exp, fp, overwrite=True):
+def parse_amplicon_manifest(exp, fp, caller_id=None, overwrite_plates=True):
     """
     Amplicon plate layouts (containing pre-amplified sequences) are parsed here from manifest files.
     Only column layout (comma separate) is supported. col1: plate barcode; col2: well position; col3: sample barcode; col4 (optional): volume.
@@ -457,8 +488,10 @@ def parse_amplicon_manifest(exp, fp, overwrite=True):
     plateBarcode, well, sampleBarcode, amplicon* (*multiple columns with this name are allowed)
     Adding this will result in changing the Miseq and Stage3 output files, so needs to be wrapped as a transaction
     Needs to check whether there are sufficient indexes
+    
+    caller_id (str) is the name of the associated display unit for user messages
     """
-    exp.log(f'Begin: parsing {fp}')
+    m(f'parsing amplicon manifest {fp}', level='begin')
     if fp.lower().endswith('xlsx'):
         with open(fp, 'rb') as bytes:
             workbook = openpyxl.load_workbook(bytes)
@@ -480,7 +513,8 @@ def parse_amplicon_manifest(exp, fp, overwrite=True):
             header_dict = {k:c for k,c in enumerate(cols_lower)}
             matching_cols = [col_name in cols_lower for col_name in required_cols] 
             if not all(matching_cols):
-                exp.log(f'Error: amplicon manifest {fp} requires at least {required_cols} columns')
+                m(f'amplicon manifest {fp} requires at least {required_cols} columns', 
+                        level='error', caller_id=caller_id)
                 return False, []
             
             for k in header_dict:
@@ -503,7 +537,7 @@ def parse_amplicon_manifest(exp, fp, overwrite=True):
         # set up well
         pos = util.unpadwell(cols[well_col].upper())
         if pos in well_records[gpid]['wells'] and well_records[gpid][pos] != {}:
-            exp.log(f"Warning: duplicate {c} in {pid}. Skipping row {i+2} {cols=}")
+            m(f"duplicate {c} in {pid}. Skipping row {i+2} {cols=}", level='warning', caller_id=caller_id)
             continue
         well_records[gpid]['wells'].add(pos)
         well_records[gpid][pos] = {'sampleWell':pos}
@@ -539,21 +573,24 @@ def parse_amplicon_manifest(exp, fp, overwrite=True):
 
     for gpid in well_records:
         if gpid in exp.plate_location_sample:
-            if not overwrite:
-                exp.log(f'Error: cannot overwrite existing plate entry {gpid}')
+            if not overwrite_plates:
+                m(f'Overwriting plates disabled, cannot overwrite existing plate entry {gpid}', 
+                        level='failure', caller_id=caller_id)
                 continue
             elif exp.plate_location_sample[gpid]['purpose'] != 'amplicon':
-                exp.log(f'Error: plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}')
+                m(f'plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}', 
+                        level='error', caller_id=caller_id)
                 continue
         exp.plate_location_sample[gpid] = well_records[gpid].copy()
 
-    exp.log(f'End: parsing {fp} with plates: {list(well_records.keys())}')
+    m(f'parsing {fp} with plates: {list(well_records.keys())}', level='end')
     return True, list(well_records.keys())
 
 
-def parse_primer_layout(exp, fp, user_gpid=None):
+def parse_primer_layout(exp, fp, user_gpid=None, caller_id=None, overwrite_plates=True):
     """
     add primer plate definition with well and name columns
+    caller_id (str) is the name of the associated display unit for user messages
     """
     if user_gpid:
         PID = util.unguard_pbc(user_gpid, silent=True)
@@ -573,26 +610,26 @@ def parse_primer_layout(exp, fp, user_gpid=None):
             try:
                 well = util.unpadwell(row[0])
             except UnboundLocalError as exc:
-                exp.log(f'Error: You likely tried to upload volumes instead of layout! Using file {fp}')
+                m(f'You likely tried to upload volumes instead of layout! Using file {fp}',
+                        level='error', caller_id=caller_id)
                 return False, []
             if well in well_records[gPID]:
-                exp.log(f'Warning: skipping duplicate well entry {well} in {fp}')
+                m(f'skipping duplicate well entry {well} in {fp}', level='warning', caller_id=caller_id)
                 continue 
             well_records[gPID][well] = {'primer':row[1]}
     
     # check for a legitimate plate match
     if gPID in exp.plate_location_sample:
         if exp.plate_location_sample[gPID]['purpose'] == 'primer':
-            exp.log(f"Info: Primer plate {PID} already exists, adding data")
+            m(f"Primer plate {PID} already exists, replacing plate", level='warning', caller_id=caller_id)
         else:
-            exp.log(f"Error: Primer plate PID: {PID} matches "+\
-                    f"existing plate entry of different purpose "+\
-                    f"{exp.plate_location_sample[gPID]['purpose']}")
+            m(f"Primer plate PID: {PID} matches existing plate entry of different purpose "+\
+                    f"{exp.plate_location_sample[gPID]['purpose']}", level='error', caller_id=caller_id)
             return False, []
-    else:  # create new plate entry and set purpose
-        exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
-                'plate_type':util.PLATE_TYPES['Echo384']}
-        exp.log(f"Info: Creating new primer plate record for {PID}")
+    # create new plate entry and set purpose
+    exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+            'plate_type':util.PLATE_TYPES['Echo384']}
+    m(f"Creating new primer plate record for {PID}", level='info', caller_id=caller_id)
 
     # copy across data from the temporary plate records                           
     for well in well_records[gPID]:
@@ -601,13 +638,14 @@ def parse_primer_layout(exp, fp, user_gpid=None):
             exp.plate_location_sample[gPID][well] = {}
         exp.plate_location_sample[gPID][well]['primer'] = well_records[gPID][well]['primer']
                     
-    exp.log(f"Success: added primer layout from {fp}")
+    m(f"Done with primer layout from {fp}", level='end')
     return True, [gPID]
 
 
-def parse_primer_volume(exp, fp, user_gpid=None):
+def parse_primer_volume(exp, fp, user_gpid=None, caller_id=None, overwrite_plates=True):
     """
     add primer plate volumes from either plate layout or two-column layout
+    caller_id (str) is the name of the associated display unit for user messages
     """
     if user_gpid:
         PID = util.unguard_pbc(user_gpid, silent=True)
@@ -636,28 +674,33 @@ def parse_primer_volume(exp, fp, user_gpid=None):
                         continue  # row name cell
                     well = util.unpadwell(row[0] + str(j))
                     if well in well_records[gPID]:
-                        exp.log(f'Warning: skipping duplicate well entry {well} in {fp}')
+                        m(f'skipping duplicate well entry {well} in {fp}')
                         continue
                     well_records[gPID][well] = {'volume':float(col)*1000}
             else:  # columns
                 well = util.unpadwell(row[0])
                 if well in well_records[gPID]:
-                    exp.log(f'Warning: skipping duplicate well entry {well} in {fp}')
+                    m(f'skipping duplicate well entry {well} in {fp}')
                     continue
                 well_records[gPID][well] = {'volume':float(col)*1000}
 
     if gPID in exp.plate_location_sample:
         if exp.plate_location_sample[gPID]['purpose'] == 'primer':
-            exp.log(f"Info: Primer plate {PID} already exists, adding data")
+            if not overwrite_plates:
+                m(f'Primer plate already found in experiment, overwriting not allowed', 
+                        level='failure', caller_id=caller_id)
+                return False, []
+            else:
+                m(f"Primer plate {PID} already exists, replacing", 
+                        level='warning', caller_id=caller_id)
         else:
-            exp.log(f"Error: Primer plate PID: {PID} matches "+\
-                    f"existing plate entry of different purpose "+\
-                    f"{exp.plate_location_sample[gPID]['purpose']}")
+            m(f"Primer plate PID: {PID} matches existing plate entry of different purpose "+\
+                    f"{exp.plate_location_sample[gPID]['purpose']}", level='error', caller_id=caller_id)
             return False, []
-    else:  # create new plate entry and set purpose
-        exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
-                'plate_type':util.PLATE_TYPES['Echo384']}
-        exp.log(f"Info: Creating new primer plate record for {PID}")
+    # create new plate entry and set purpose
+    exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+            'plate_type':util.PLATE_TYPES['Echo384']}
+    m(f"Creating new primer plate record for {PID}", level='info', caller_id=caller_id)
 
     for well in well_records[gPID]:
         if well not in exp.plate_location_sample[gPID]:
@@ -665,16 +708,17 @@ def parse_primer_volume(exp, fp, user_gpid=None):
             exp.plate_location_sample[gPID][well] = {}
         exp.plate_location_sample[gPID][well]['volume'] = well_records[gPID][well]['volume']
                     
-    exp.log(f"Success: added primer volumes from {fp}")
+    m(f"added primer volumes from {fp}", level='end')
     return True, [gPID]
 
  
-def parse_index_layout(exp, fp, user_gpid=None):
+def parse_index_layout(exp, fp, user_gpid=None, caller_id=None, overwrite_plates=True):
     """ 
     Add index plates with well and index columns 
     Inputs: experiment, fp - filepath usually containing the PID, user_gpid is an override for the filepath
     Non-sample plates can be loaded straight into experiment.plate_location_sample
     Returns True on success
+    caller_id (str) is the name of the associated display unit for user messages
     """
     if user_gpid:
         PID = util.unguard_pbc(user_gpid, silent=True)
@@ -692,10 +736,10 @@ def parse_index_layout(exp, fp, user_gpid=None):
             try:
                 well = util.unpadwell(row[0])
             except UnboundLocalError as exc:
-                exp.log(f'Did you upload a volume file by mistake? {exc}')
+                m(f'Did you upload a volume file by mistake? {exc}', level='error', caller_id=caller_id)
                 return False, []
             if well in well_records[gPID]:
-                exp.log(f'Warning: skipping duplicate well entry {well} in {fp}')
+                m(f'skipping duplicate well entry {well} in {fp}', level='warning', caller_id=caller_id)
                 continue
             well_records[gPID][well] = {}
             idt_name = row[1]
@@ -709,16 +753,16 @@ def parse_index_layout(exp, fp, user_gpid=None):
 
     if gPID in exp.plate_location_sample:
         if exp.plate_location_sample[gPID]['purpose'] == 'index':
-            exp.log(f"Info: Index plate {PID} already exists, adding data")
+            m(f"Index plate {PID} already exists, overwriting plate", level='failure', caller_id=caller_id)
         else:
-            exp.log(f"Error: Index plate PID: {PID} matches "+\
+            m(f"Index plate PID: {PID} matches "+\
                     f"existing plate entry of different purpose "+\
-                    f"{exp.plate_location_sample[gPID]['purpose']}")
+                    f"{exp.plate_location_sample[gPID]['purpose']}", level='error', caller_id=caller_id)
             return False, []
-    else:  # create new plate entry and set purpose
-        exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
-                'plate_type':util.PLATE_TYPES['Echo384']}
-        exp.log(f"Info: Creating new index plate record for {PID}")
+    # create new plate entry and set purpose
+    exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
+            'plate_type':util.PLATE_TYPES['Echo384']}
+    m(f"Creating new index plate record for {PID}", level='info', caller_id=caller_id)
 
     for well in well_records[gPID]:
         if well not in exp.plate_location_sample[gPID]:
@@ -729,11 +773,11 @@ def parse_index_layout(exp, fp, user_gpid=None):
         exp.plate_location_sample[gPID][well]['bc_name'] = well_records[gPID][well]['bc_name']
         exp.plate_location_sample[gPID][well]['oligo'] = well_records[gPID][well]['oligo']
 
-    exp.log(f"Success: added index plate layouts from {fp}")        
+    m(f"added index plate layouts from {fp}", level='end')        
     return True, [gPID]
     
 
-def parse_index_volume(exp, fp, user_gpid=None):
+def parse_index_volume(exp, fp, user_gpid=None, caller_id=None, overwrite_plates=True):
     """ add volume information to a single barcode plate, with a matched, possibly-existing plate name.
     To make life fun there are two possible formats:
     Format 1: plate layout (generated through Echo test software)
@@ -742,6 +786,7 @@ def parse_index_volume(exp, fp, user_gpid=None):
     Inputs: experiment, fp - filepath usually containing the PID, user_gpid is an override for the filepath
     Non-sample plates can be loaded straight into experiment.plate_location_sample
     Returns True on success
+    caller_id (str) is the name of the associated display unit for user messages
     """
     if user_gpid:
         PID = util.unguard_pbc(user_gpid, silent=True)
@@ -777,7 +822,7 @@ def parse_index_volume(exp, fp, user_gpid=None):
                     if col > 0 and v.strip() != '':
                         well = plate_row+str(col)
                         if well in well_records[gPID]:
-                            exp.log(f'Warning: duplicate well entry {well} seen in plate {PID}, overwriting')
+                            m(f'duplicate well entry {well} seen in plate {PID}, overwriting', level='warning', caller_id=caller_id)
                         well_records[gPID][well] = {'volume': float(v)*1000}  
             else:                
                 #format 2 - one row per well - well ID in r[3], volume in r[5] or r[6]
@@ -793,33 +838,39 @@ def parse_index_volume(exp, fp, user_gpid=None):
                 # finally, the data    
                 well = util.unpadwell(row[3])
                 if well in well_records[gPID]:
-                    exp.log(f'Warning: duplicate well entry {well} seen in plate {PID}, overwriting')
+                    m(f'duplicate well entry {well} seen in plate {PID}, overwriting', level='warning', caller_id=caller_id)
                 well_records[gPID][well] = {'volume': int(float(row[5]))*1000}
 
     if gPID not in exp.plate_location_sample:
-        exp.log(f"Info: Adding index plate {PID}")
+        m(f"Adding index plate {PID}", level='info', caller_id=caller_id)
         exp.plate_location_sample[gPID] = {'purpose':'index', 'source':'user', 'wells':set(), 
                 'plate_type':util.PLATE_TYPES['Echo384']}
     else:
         if exp.plate_location_sample[gPID]['purpose'] != 'index':
-            exp.log(f"Error: {PID} plate purpose is "+\
-                    f"{exp.plate_location_sample[gPID]['purpose']}, expected 'index'")
+            m(f"{PID} plate purpose is {exp.plate_location_sample[gPID]['purpose']}, expected 'index'",
+                level='error', caller_id=caller_id)
             return False, []
-        exp.log(f"Info: {PID} exists, appending index volumes")
+        m(f"{PID} exists, overwriting all index volumes", level='warning', caller_id=caller_id)
+        # zero out any existing volumes
+        for well in exp.plate_location_sample[gPID].get('wells', []):
+            exp.plate_location_sample[gPID][well]['volume'] = 0
 
     for well in well_records[gPID]:
         if well not in exp.plate_location_sample[gPID]:
             exp.plate_location_sample[gPID]['wells'].add(well)
             exp.plate_location_sample[gPID][well] = {}
         exp.plate_location_sample[gPID][well]['volume'] = well_records[gPID][well]['volume']
+        
+    m(f'completed parsing index volumes {fp}', level='end')
     
     return True, [gPID]
 
 
-def parse_assay_primer_map(exp, fp):
+def parse_assay_primer_map(exp, fp, caller_id=None, overwrite_plates=True):
     """ mapping of assay name, assay family name, and primers
     The assaylist file has two fixed columns: primer and assay
         - every subsequent column is for an extra primer in that assay family
+    caller_id (str) is the name of the associated display unit for user messages
     In Experiment we maintain:
         self.assayfam_primer = {}  # mapping of assay families to list of primers
         self.assay_assayfam = {}  # mapping of assay to assay family
@@ -847,16 +898,17 @@ def parse_assay_primer_map(exp, fp):
                 continue  # just skip it
             assay_fam = row[1].strip()
             if not assay_fam:
-                exp.log(f'Warning: no assay family associated with {assay} in row {i+1}')
+                m(f'no assay family associated with {assay} in row {i+1}', level='warning', caller_id=caller_id)
                 continue
             primers = [p.strip() for p in row[2:] if p.strip() != '']
             if not primers:
-                exp.log(f'Warning: no primers associated with assay {assay} in row {i+1}')
+                m(f'no primers associated with assay {assay} in row {i+1}', level='warning', caller_id=caller_id)
                 continue
 
             # assay to assay family
             if assay in local_assay_assayfam:
-                exp.log(f'Warning: {assay} has duplicate entry {local_assay_assayfam[assay]} seen in row {i+1}')
+                m(f'{assay} has duplicate entry {local_assay_assayfam[assay]} seen in row {i+1}', 
+                        level='warning', caller_id=caller_id)
             local_assay_assayfam[assay] = assay_fam
 
             # assay family to assay
@@ -876,9 +928,9 @@ def parse_assay_primer_map(exp, fp):
             for primer in primers:
                 if primer in local_primer_assayfam:
                     if local_primer_assayfam[primer] != assay_fam:
-                        msg = f'Warning: primer {primer} has multiple assayfams: '+\
+                        msg = f'primer {primer} has multiple assayfams: '+\
                                 f'{local_primer_assayfam[primer]} and {assay_fam}'
-                        exp.log(msg)
+                        m(msg, level='warning', caller_id=caller_id)
                         continue
                 local_primer_assayfam[primer] = assay_fam
 
@@ -891,38 +943,43 @@ def parse_assay_primer_map(exp, fp):
     for primer in local_primer_assayfam:
         exp.primer_assayfam[primer] = local_primer_assayfam[primer]
     
-    exp.log(f'Success: added assay/assayfam/primer mapping from {fp}')
+    m(f'added assay/assayfam/primer mapping from {fp}', level='end')
     return True
 
 
-def parse_reference_sequences(exp, fp):
+def parse_reference_sequences(exp, fp, caller_id=None, overwrite_plates=True):
     """
     read in reference (target) IDs and sequences.
     May be added when pipeline is locked.
     Client allows only one reference file to be loaded at a time
+    caller_id (str) is the name of the associated display unit for user messages
     """
-    exp.log(f'Begin: parsing reference sequences {fp}')
+    m(f'parsing reference sequences {fp}', level='begin')
     ref_seq = {}
-    with open(fp, 'rt', errors='ignore') as data:
-        for ref_seq_pair in SimpleFastaParser(data):
-            ref_seq[ref_seq_pair[0]] = ref_seq_pair[1]
-
+    try:
+        with open(fp, 'rt', errors='ignore') as data:
+            for ref_seq_pair in SimpleFastaParser(data):
+                ref_seq[ref_seq_pair[0]] = ref_seq_pair[1]
+    except Exception as exc:
+        m(f'could not read reference seq file {fp} {exc}', level='error', caller_id=caller_id)
+        return False
     if fp in exp.reference_sequences:
-        msg = f'Warning: {fp} already uploaded. Overwriting records'
-        exp.log(msg)
+        m(f'{fp} already uploaded. Overwriting records', level='warning', caller_id=caller_id)
     exp.reference_sequences = {}  # Only one reference file allowed by client
     exp.reference_sequences[fp] = {}
     for ref in ref_seq:
         exp.reference_sequences[fp][ref] = ref_seq[ref]
 
-    exp.log(f'Success: {len(ref_seq)} reference sequences imported from {fp}')
+    m(f'{len(ref_seq)} reference sequences imported from {fp}', level='info', caller_id=caller_id)
     return True
   
 
-def load_dna_plate(exp, filepath, overwrite=True):
+def load_dna_plate(exp, filepath, caller_id=None, overwrite_plates=True):
     """
     Filepath should point to an Echo_384_COC file/Nimbus output/Echo input
+    caller_id (str) is the name of the associated display unit for user messages
     """
+    m(f'loading DNA plates {filepath}', level='begin')
     # "Echo_384_COC_0001_" + ug_dnaBC + "_0.csv"
     with open(filepath, 'rt') as f:
         #RecordId	TRackBC	TLabwareId	TPositionId	SRackBC	SLabwareId	SPositionId
@@ -952,12 +1009,14 @@ def load_dna_plate(exp, filepath, overwrite=True):
             dest_plate = util.guard_pbc(cols[dest_plate_bc_col], silent=True)
             dest_pos = util.unpadwell(cols[dest_well_col])
             if dest_plate != dbc:
-                exp.log(f"Error: {dbc} doesn't match {dest_plate} as declared in Echo_384_COC file: {filepath}")
+                m(f"{dbc} doesn't match {dest_plate} as declared in Echo_384_COC file: {filepath}",
+                        level='error', caller_id=caller_id)
                 return False, [dbc]         
             try:
                 exp.plate_location_sample[dbc][dest_pos] = exp.plate_location_sample[source_plate][source_pos]
             except:
-                exp.log(f"Critical: cannot locate {dbc=} {dest_pos=} {source_plate=} {source_pos=}")
+                m(f"cannot locate {dbc=} {dest_pos=} {source_plate=} {source_pos=}", 
+                        level='critical', caller_id=caller_id)
                 return False, [dbc]
             exp.plate_location_sample[dbc]['wells'].add(dest_pos)
             exp.plate_location_sample[dbc]['samplePlate'] = source_plate

@@ -52,7 +52,7 @@ try:
 except ModuleNotFoundError:
     import transaction
 
-from stutil import m, mq 
+from stutil import m 
 
 EXP_FN = 'experiment.json'      
 
@@ -156,7 +156,7 @@ class Experiment():
 
     ### functions for returning locally held file paths
     
-    def get_exp_dn(self, subdir=None):
+    def get_exp_dn(self, subdir=None, caller_id=None):
         """ 
         Return the experiment directory name
         If subdir is supplied return the path to this:    
@@ -175,14 +175,14 @@ class Experiment():
                 dp2.mkdir()
             else:
                 if not dp2.is_dir():
-                    self.log(f'Critical: failed to make directory {str(dp2)}, which already exists as a file')
+                    m(f'failed to make directory {str(dp2)}, which already exists as a file', level='critical', caller_id=caller_id)
             dirname = str(dp2)
             return str(dirname)
         else:                                                       
-            self.log(f'Critical: {subdir=} not in {allowed_subdirs=}')
+            m(f'{subdir=} not in {allowed_subdirs=}', level='critical', caller_id=caller_id)
 
 
-    def get_exp_fn(self, filename, subdir=None, trans=False):
+    def get_exp_fn(self, filename, subdir=None, trans=False, caller_id=None):
         """ 
         Return the expected experiment path to filename as a string
         If trans is True, check for an existing match and append "_pending" if required
@@ -198,7 +198,7 @@ class Experiment():
         return str(fp)
       
     
-    def get_raw_fastq_pairs(self):
+    def get_raw_fastq_pairs(self, caller_id=None):
         """ return a sorted list of tuple(R1_path, R2_path) to raw FASTQ files """
         valid_pairs = []
         rdp = self.get_raw_dirpath()
@@ -209,19 +209,19 @@ class Experiment():
                 valid_pairs.append((r1,r2))
             else:
                 if not r1.is_file():
-                    self.log(f'Warning: {r1} expected raw FASTQ file does not exist')
+                    m(f'{r1} expected raw FASTQ file does not exist', level='warning', caller_id=caller_id)
                 elif not r2.is_file():
-                    self.log(f'Warning: {r2} expected raw FASTQ file does not exist')
+                    m(f'{r2} expected raw FASTQ file does not exist', level='warning', caller_id=caller_id)
         return sorted(valid_pairs)
     
     ### functions for managing data file records
 
-    def add_file_record(self, file_name, PIDs=None, purpose=None):
+    def add_file_record(self, file_name, PIDs=None, purpose=None, caller_id=None):
         """
         Add an uploaded file to the experiment with associated plates and purpose
         """
         if file_name in self.uploaded_files:
-            self.log(f'Warning: file name {file_name} has already been uploaded, overwriting')
+            m(f'file name {file_name} has already been uploaded, overwriting', level='warning', caller_id=caller_id)
 
         if not PIDs:
             PIDs = []
@@ -234,7 +234,8 @@ class Experiment():
         return True
 
 
-    def mod_file_record(self, existing_name, new_name=None, new_purpose=None, extra_PIDs=None, PID_name_updates=None):
+    def mod_file_record(self, existing_name, new_name=None, new_purpose=None,
+            extra_PIDs=None, PID_name_updates=None, caller_id=None):
         """
         Modify an existing file record (self.uploaded_files)
         Mostly used to change a pending file to normal file path, or to modify the list of plates
@@ -244,7 +245,7 @@ class Experiment():
         PID_name_updates ([(str,str)]) - list of (from,to) tuples.
         """
         if existing_name not in self.uploaded_files:
-            self.log(f'Error: {existing_name} does not exist in uploaded file records')
+            m(f'{existing_name} does not exist in uploaded file records', level='critical', caller_id=caller_id)
             return False
 
         if new_purpose:
@@ -258,53 +259,58 @@ class Experiment():
             for pnu in PID_name_updates:
                 existing_pid, new_pid = pnu
                 if existing_pid not in self.uploaded_files[existing_name]['plates']:
-                    self.log(f'Error: {existing_pid} not present in uploaded_files')
+                    m(f'{existing_pid} not present in uploaded_files', level='critical', caller_id=caller_id)
                     return False
                 self.uploaded_files[existing_name]['plates'].remove(existing_pid)
                 self.uploaded_files[existing_name]['plates'].append(new_pid)
                                                                                     
         if new_name:
+            
             self.uploaded_files[new_name] = self.uploaded_files[existing_name].copy()
             del self.uploaded_files[existing_name]
         
         return True
     
-    
-    def del_file_record(self, file_name):
+
+    def del_file_record(self, file_name, soft=True, caller_id=None):
         """
-        Remove a file record, and its plate definitions (to deleted_plates), and the actual file permanently
+        Remove a file record, and its plate definitions (to deleted_plates)
+        If 'soft' then rename the file to Dyyyymmddhhmmss_filename
+        If not 'rename' then delete the file permanently
         """
         if file_name in self.uploaded_files:
+            # get rid of actual file
             if Path(file_name).exists():
-                try:
-                    Path(file_name).unlink()
-                except Exception as exc:
-                    self.log(f'Error: could not delete file {file_name} {exc}')
-                    return False
-            for pid in self.uploaded_files[file_name]['plates']:
+                util.delete_file(file_name, soft=soft, caller_id=caller_id)
+            
+            # clear any plates first
+            for pid in self.uploaded_files[file_name].get('plates', []):
                 if pid in self.plate_location_sample:
                     success = self.delete_plate(pid)
                     if success:
-                        self.log(f'Removed plate entry {pid} from deleted file {file_name}')
+                        m(f'Removed plate entry {pid} from deleted file {file_name}',
+                                level='info', caller_id=caller_id)
                     else:
-                        self.log(f'Failed to remove plate entry {pid} from deleted file {file_name}')
+                        m(f'Failed to remove plate entry {pid} from deleted file {file_name}', 
+                                level='error', caller_id=caller_id)
+                        
+            # now remove the actual entry
             del self.uploaded_files[file_name]
-            self.log(f'Success: removed file record of {file_name}')
+            m(f'removed file record of {file_name}, attempting to remove file', level='success', caller_id=caller_id)
             return True
-        elif file_name in self.pending_uploads:
-            self.pending_uploads.discard(file_name)
-            self.log(f'Info: pending upload discarded {file_name}')
+        
+        if Path(file_name).exists():
+            m(f'No file record exists, but file found. Attempting to remove file', 
+                    level='warning', caller_id=caller_id)
+            util.delete_file(file_name, soft=soft, caller_id=caller_id)
             return True
-        else:
-            if Path(file_name).exists():
-                self.log(f'Warning: No file record exists, but file found! Please manually inspect')
-            else:
-                self.log(f'Error: {file_name} not present in file records')
-            return False
+        m(f'{file_name} not present in file records, and file does not exist', level='warning', caller_id=caller_id)
+        return False
+    
 
     ### Plate related operations
 
-    def add_plate(self, pid, dependent_files):
+    def add_plate(self, pid, dependent_files, caller_id=None):
         """
         Standardise the interface for a plate record. Useful due to the complexity of plates
         All plate records go in:
@@ -326,7 +332,7 @@ class Experiment():
         """
         pass
 
-    def get_plate(self, pid):
+    def get_plate(self, pid, caller_id=None):
         """ 
         Return the actual plate as a nested dictionary object.
         This is required because plates may have had things added or removed from them
@@ -335,41 +341,41 @@ class Experiment():
         return transaction.get_plate(self, pid)
     
 
-    def build_dna_plate_entry(self, sample_plate_ids, dna_plate_id, source=None):
+    def build_dna_plate_entry(self, sample_plate_ids, dna_plate_id, source=None, caller_id=None):
         """
         Replaces the rodentity- and custom-specific code for combining 96-well sample plates into
         384-well DNA plates.
         """
         if self.locked:
-            self.log('Error: Cannot add DNA plate set while lock is turned on')
+            m('Cannot add DNA plate set while lock is turned on', level='failure', caller_id=caller_id)
             return False
         
         dna_plate_id = util.guard_pbc(dna_plate_id, silent=True)
 
         if dna_plate_id in self.plate_location_sample:
-            self.log(f'Error: plate {dna_plate_id} already exists! Please delete this plate before trying again')
+            m(f'plate {dna_plate_id} already exists! Please delete this plate before trying again', level='failure', caller_id=caller_id)
             return False
 
         sample_plate_ids = sorted([util.guard_pbc(spid, silent=True) for spid in sample_plate_ids if spid])
 
         if source == 'rodentity':
-            self.log(f'Begin: combining Rodentity plate set into 384-well DNA plate {dna_plate_id}')
+            m(f'combining Rodentity plate set into 384-well DNA plate {dna_plate_id}', level='info', caller_id=caller_id)
             for spid in sample_plate_ids:
                 purpose = self.plate_location_sample[spid]['purpose']
                 source = self.plate_location_sample[spid]['source']
                 if purpose != 'sample' or source != 'rodentity':
-                    self.log(f'Error: cannot combine {spid} with {purpose=} and {source=}')
+                    m(f'cannot combine {spid} with {purpose=} and {source=}', level='error', caller_id=caller_id)
                     return False
         elif source == 'custom':
-            self.log(f'Begin: combining custom plate set into 384-well DNA plate {dna_plate_id}')
+            m(f'combining custom plate set into 384-well DNA plate {dna_plate_id}', level='begin', caller_id=caller_id)
             for spid in sample_plate_ids:
                 purpose = self.plate_location_sample[spid]['purpose']
                 source = self.plate_location_sample[spid]['source']
                 if purpose != 'sample' or source != 'custom':
-                    self.log(f'Error: cannot combine {spid} with {purpose=} and {source=}')
+                    m(f'cannot combine {spid} with {purpose=} and {source=}', level='error', caller_id=caller_id)
                     return False
         else:
-            self.log('Error: must choose "rodentity" or "custom" as input source')
+            m('must choose "rodentity" or "custom" as input source', level='failure', caller_id=caller_id)
             return False
 
         self.dest_sample_plates[dna_plate_id] = sample_plate_ids
@@ -379,7 +385,7 @@ class Experiment():
         return True
 
 
-    def get_musterer_pids(self):
+    def get_musterer_pids(self, caller_id=None):
         """ return [pids] with samples that are sourced from Musterer. DEPRECATED """
         # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], 
         #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] } }
@@ -391,7 +397,7 @@ class Experiment():
         return musterer_pids
 
 
-    def get_rodentity_pids(self):
+    def get_rodentity_pids(self, caller_id=None):
         """ return [pids] with samples that are sourced from Rodentity """
         # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], 
         #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] } }
@@ -403,7 +409,7 @@ class Experiment():
         return rodentity_pids
 
     
-    def get_custom_pids(self):
+    def get_custom_pids(self, caller_id=None):
         """ return [pids] with samples that are sourced as custom - useful for mixed content plates """
         # Plate contents[barcode] : { well_location(row_col):{sample_barcode:str, strain:str, assays: [], possible_gts: [], 
         #   other_id: str, parents: [{barcode: str, sex: str, strain: str, assays = [], gts = []}] } }
@@ -415,7 +421,7 @@ class Experiment():
         return custom_pids
         
     
-    def summarise_inputs(self):
+    def summarise_inputs(self, caller_id=None):
         """ return a list of fields and a list of headers, summarising the contents of sample, amplicon, and DNA plate sets """
         plate_set_summary = []
         plate_set_headers = ['DNA/amplicon PID', 'Sample PID1', 'Sample PID2', 'Sample PID3', 'Sample PID4', 'Custom samples', 'Rodentity samples']
@@ -458,7 +464,7 @@ class Experiment():
                     total_unique_samples.add(self.plate_location_sample[sample_pid][well]['barcode'])
                 #print(f'{dna_pid=} {sample_pid=} {custom_wells=} {rodentity_wells=}')
                 pid_count += 1
-            for j in range(3-pid_count):
+            for j in range(4-pid_count):
                 plate_set_details.append('')
 
             plate_set_details.append(str(custom_wells))
@@ -472,7 +478,7 @@ class Experiment():
         return plate_set_summary, plate_set_headers
 
     
-    def inputs_as_dataframe(self):
+    def inputs_as_dataframe(self, caller_id=None):
         """ return the experiment contents as a pandas dataframe """
         rows, headers = self.summarise_inputs()
         if not rows:
@@ -480,7 +486,7 @@ class Experiment():
         return pd.DataFrame(rows, columns=headers)
 
 
-    def summarise_consumables(self):
+    def summarise_consumables(self, caller_id=None):
         """
         Return a dictionary of all consumables: primers, indexes, taq+water plates
         The descriptions we provide here will likely vary as we find new things to display
@@ -547,18 +553,18 @@ class Experiment():
         return d
 
 
-    def add_nimbus_outputs(self, nim_outputs):
+    def add_nimbus_outputs(self, nim_outputs, caller_id=None):
         """
         Copy Nimbus output files into the project folder
         """
         transactions={}
         #print(f'{type(nim_outputs)=} {len(nim_outputs)=}', file=sys.stderr)
         try:
-            print('Starting add_nimbus_outputs', file=sys.stderr)
+            m('Starting add_nimbus_outputs', level='begin', caller_id=caller_id)
             for nim_output in nim_outputs:
                 #print(f'{nim_output.name=}', file=sys.stderr) 
                 fp = self.get_exp_fn(nim_output.name, trans=True)
-                self.log(f"Info: copying {fp} to experiment folder")
+                m(f"copying {fp} to experiment folder", level='info', caller_id=caller_id)
                 plate_set = set()
                 with open(fp, 'wt') as outf:
                     #print(nim_output.getvalue().decode("utf-8"))
@@ -578,16 +584,16 @@ class Experiment():
                 transactions[fp] = {pid:{} for pid in plate_set}
                 final_fp = transaction.convert_pending_to_final(self,fp)
                 if final_fp in self.uploaded_files:
-                    self.log(f'Warning: {final_fp} already recorded as uploaded, overwriting')
+                    m(f'{final_fp} already recorded as uploaded, overwriting', level='warning', caller_id=caller_id)
                 self.uploaded_files[final_fp] = {'plates': list(plate_set), 'purpose':'DNA'} 
         except Exception as exc:
-            self.log(f'Error: could not upload Hamilton Nimbus output files, {exc}')
+            m(f'could not upload Hamilton Nimbus output files, {exc}', level='error', caller_id=caller_id)
             return False
         transaction.add_pending_transactions(self, transactions)
         return True
 
 
-    def get_dna_pids(self, dna_pids=None, echo_ready=False):
+    def get_dna_pids(self, dna_pids=None, echo_ready=False, caller_id=None):
         """ 
         Return a list of available DNA plate ids 
         If echo_ready then include only those with echo_coc files uploaded
@@ -606,19 +612,16 @@ class Experiment():
         return dpids
                     
 
-    def get_dna_records(self, dna_pids=None):
+    def get_dna_records(self, dna_pids=None, caller_id=None):
         """
         dna_fields=['samplePlate','sampleWell','sampleBarcode','strain','sex','alleleSymbol',
                  'alleleKey','assayKey','assays','assayFamilies','clientName','sampleName',
                  'dnaPlate','dnaWell','primer']
         """
-        #print(f'{dna_pids=}')
         dna_pids = self.get_dna_pids(dna_pids=dna_pids)
-        #print(f'{dna_pids=}')
         records = []
         for dna_bc in sorted(dna_pids):
             for well in self.plate_location_sample[dna_bc]['wells']:
-                #print(f'{dna_bc=} {well=} {self.plate_location_sample[dna_bc][well]=}')
                 if 'barcode' not in self.plate_location_sample[dna_bc][well]:
                     continue
                 if 'ngs_assays' not in self.plate_location_sample[dna_bc][well]:
@@ -655,14 +658,14 @@ class Experiment():
         return records    
 
         
-    def add_pcr_plates(self, pcr_plate_list=[]):
+    def add_pcr_plates(self, pcr_plate_list=[], caller_id=None):
         """
         Add one or more empty 384-well PCR plates to self.plate_location_sample
         """
         for pid in pcr_plate_list:
             p = util.guard_pbc(pid, silent=True)
             if p in self.plate_location_sample:
-                self.log(f'Error: {p} already in use, skipping')
+                m(f'barcode {p} already in use, skipping', level='failure', caller_id=caller_id)
                 continue
             self.plate_location_sample[p] = {'purpose':'pcr', 
                                              'wells':set(), 
@@ -671,12 +674,12 @@ class Experiment():
                                             'barcode':p}
         return True
 
-    def get_pcr_pids(self):
+    def get_pcr_pids(self, caller_id=None):
         """ return a list of available PCR plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'pcr']
 
 
-    def get_primer_pids(self, pmr_pids=None):
+    def get_primer_pids(self, pmr_pids=None, caller_id=None):
         """ return all primer pids, unless restricted by pmr_pids """
         if pmr_pids:
             primer_pids = [util.guard_pbc(ppid, silent=True) for ppid in pmr_pids \
@@ -687,7 +690,7 @@ class Experiment():
         return primer_pids
 
 
-    def get_available_primer_wells(self, pmr_pids=None):
+    def get_available_primer_wells(self, pmr_pids=None, caller_id=None):
         """
         returns dictionary {pmr:[[pid,well,vol,doses],...]
         doses are the number of times a well can be aspirated from
@@ -709,7 +712,7 @@ class Experiment():
         return primer_wells_vols_doses
 
 
-    def get_available_primer_vols_doses(self, pmr_pids=None):
+    def get_available_primer_vols_doses(self, pmr_pids=None, caller_id=None):
         """
         return a dictionary of primer names and total volumes and uses across all wells
         """
@@ -727,7 +730,7 @@ class Experiment():
         return primer_vols_doses
 
 
-    def get_primers_for_assays(self, assays):
+    def get_primers_for_assays(self, assays, caller_id=None):
         """
         For each assay in assays, find the matching assay family and the corresponding primers
         Return a dictionary[assay] = [primers]
@@ -746,7 +749,7 @@ class Experiment():
         return assay_primers
 
 
-    def get_assay_primer_usage(self, dna_pids):
+    def get_assay_primer_usage(self, dna_pids, caller_id=None):
         """
         For a given set of DNA plates, return the number of times each assay and primer is needed
         """
@@ -759,7 +762,7 @@ class Experiment():
                 and self.plate_location_sample[pid]['purpose'] == 'dna']
         
         if not dpids:
-            self.log(f'Error: no DNA plates found matching DNA plate IDs: {dna_pids}')
+            m(f'no DNA plates found matching DNA plate IDs: {dna_pids}', level='error', caller_id=caller_id)
             return assay_usage, primer_usage
 
         for dpid in dpids:        
@@ -774,7 +777,7 @@ class Experiment():
         return assay_usage, primer_usage
 
 
-    def get_index_avail(self, index_pids=None):
+    def get_index_avail(self, index_pids=None, caller_id=None):
         """
         Provided a list of index PIDs and return dictionaries of fwd and rev indexes
         Returns:
@@ -816,12 +819,12 @@ class Experiment():
                         rev_idx[name]['avail_vol'] += vol
                         rev_idx[name]['avail_transfers'] += doses
                 else:
-                    self.log(f'Warning: unexpected index name: {name}')
+                    m(f'unexpected index name: {name}', level='warning', caller_id=caller_id)
 
         return fwd_idx, rev_idx
 
 
-    def get_index_pairs_avail(self, index_pids):
+    def get_index_pairs_avail(self, index_pids, caller_id=None):
         """ returns all available pairings of barcode ends """
         if not index_pids:
             return []
@@ -850,7 +853,7 @@ class Experiment():
         return pairs_allocated
     
 
-    def get_taqwater_avail(self, taqwater_bcs=None, transactions=None, pcr_stage=None):
+    def get_taqwater_avail(self, taqwater_bcs=None, transactions=None, pcr_stage=None, caller_id=None):
         """ 
         Returns (int) taq and (int) water volumes (in nanolitres) loaded as available 
         Will work from a list of barcodes if provided, or will calculate for all available plates
@@ -892,7 +895,7 @@ class Experiment():
         return taq_avail, water_avail, pids
 
 
-    def get_taqwater_volumes_primer(self, num_reactions):
+    def get_taqwater_volumes_primer(self, num_reactions, caller_id=None):
         """
         Returns the taq and water volumes required for the primer stage in nl
         Args:
@@ -903,7 +906,7 @@ class Experiment():
         return taq_vol, water_vol
         
 
-    def get_taqwater_req_vols_index(self, num_reactions):
+    def get_taqwater_req_vols_index(self, num_reactions, caller_id=None):
         """
         Returns the taq and water volumes required for the index stages in nl
         Args:
@@ -914,7 +917,7 @@ class Experiment():
         return taq_vol, water_vol
     
 
-    def get_taqwater_pids(self, pcr_stage=None):
+    def get_taqwater_pids(self, pcr_stage=None, caller_id=None):
         """
         Return plate IDs for taq/water plates.
         If PCR stage is provided, return the taq/water plate for that stage. 
@@ -935,12 +938,12 @@ class Experiment():
         return pids
 
     
-    def generate_nimbus_inputs(self):
+    def generate_nimbus_inputs(self, caller_id=None):
         success = generate.nimbus_gen(self)
         return success
 
     
-    def get_nimbus_filepaths(self):
+    def get_nimbus_filepaths(self, caller_id=None):
         """ Return the lists of nimbus input files, echo input file (nimbus outputs), 
             and barcodes that are only seen in nimbus """
         #print("In get_nimbus_filepaths")
@@ -948,12 +951,12 @@ class Experiment():
         return nimbus_input_filepaths, echo_input_paths, xbc
 
     
-    def get_amplicon_pids(self):
+    def get_amplicon_pids(self, caller_id=None):
         """ return a list of user supplied amplicon plate ids """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'amplicon']
 
 
-    def get_num_amplicon_wells(self, amplicon_pids=None)->int:
+    def get_num_amplicon_wells(self, amplicon_pids=None, caller_id=None)->int:
         """ 
         Return the number of wells in the chosen amplicon plates. If amplicon_pids is None, get number of wells for
         all amplicons in experiment
@@ -967,7 +970,7 @@ class Experiment():
         return num_wells
     
 
-    def get_num_reactions(self, pcr_pids=None, amplicon_pids=None):
+    def get_num_reactions(self, pcr_pids=None, amplicon_pids=None, caller_id=None):
         num_reactions = 0
         if amplicon_pids:
             num_reactions += self.get_num_amplicon_wells(amplicon_pids)
@@ -976,13 +979,13 @@ class Experiment():
         return num_reactions
 
 
-    def generate_echo_primer_survey(self, primer_survey_filename='primer-svy.csv'):
+    def generate_echo_primer_survey(self, primer_survey_filename='primer-svy.csv', caller_id=None):
         """ 
         Generate a primer survey file for use by the Echo. Replaces echovolume.py
         Not strictly necessary, but the old code reads this file in making the picklists.
         """
         if self.locked:
-            self.log('Error: cannot generate primer survey file while lock is active.')
+            m('cannot generate primer survey file while lock is active.', level='failure', caller_id=caller_id)
             return False
         primer_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primer']
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
@@ -1007,21 +1010,21 @@ class Experiment():
                                 well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
                         print(outline, file=fout)
         except Exception as exc:
-            self.log(f'Failure: could not write primer survey {exc}')
+            m(f'could not write primer survey {exc}', level='error', caller_id=caller_id)
             return False
         transaction.add_pending_transactions(self,transactions)
-        self.log(f"Success: written Echo primer survey to {primer_survey_fn}")
+        m(f"written Echo primer survey to {primer_survey_fn}", level='success', caller_id=caller_id)
         return True
 
 
-    def check_plate_presence(self, pids, purpose, caller_id):
+    def check_plate_presence(self, pids, purpose, caller_id=None):
         """ 
         Check given plate for presence in self.plate_location_sample and compare purpose
         return success (and messages by reference)
         Required by exp.check_ready_pcr1() and exp.check_ready_pcr2()
         """
         if not pids:
-            m(f'Warning: no plate IDs given for {purpose}', level='warning', 
+            m(f'no plate IDs given for {purpose}', level='warning', 
                     caller_id=caller_id)
             return False
         
@@ -1029,18 +1032,17 @@ class Experiment():
         for pid in pids:
             if pid in self.plate_location_sample:
                 if self.plate_location_sample[pid]['purpose'] != purpose:
-                    m(f"Error: plate already exists with PID {pid} with purpose "+\
+                    m(f"plate already exists with PID {pid} with purpose "+\
                             f"{self.plate_location_sample[pid]['purpose']}, expected {purpose}", 
-                            level='error', dest=('debug','log'), caller_id=caller_id)
+                            level='error', caller_id=caller_id)
                     success = False
             else:
-                m(f"Critical: No plate exists with barcode {pid}", level='critical', 
-                        dest=('debug','log'), caller_id=caller_id)
+                m(f"No plate exists with barcode {pid}", level='critical', caller_id=caller_id)
                 success = False
         return success
     
 
-    def check_ready_pcr1(self, selected_pids, caller_id):
+    def check_ready_pcr1(self, selected_pids, caller_id=None):
         """
         Check that everything required to successfully generate PCR1 picklists is available
         TODO: Check that volumes and wells are sufficient!
@@ -1052,7 +1054,7 @@ class Experiment():
         taqwater1_pids = selected_pids['taqwater1']
         primer_pids = selected_pids['primer']
         if not dna_pids or not pcr_pids or not taqwater1_pids or not primer_pids:
-            m('DNA plates, PCR plates, and taq+water plates are all required for primer PCR')
+            m('DNA plates, PCR plates, and taq+water plates are all required for primer PCR', level='failure', caller_id=caller_id)
 
         dna_success = self.check_plate_presence(dna_pids, 'dna', caller_id)
         if not dna_success:
@@ -1069,7 +1071,7 @@ class Experiment():
         return success
 
 
-    def check_ready_pcr2(self, selected_pids, caller_id, amplicon_only=False):
+    def check_ready_pcr2(self, selected_pids, amplicon_only=False, caller_id=None):
         """
         Check the everything required to successfully generate PCR2 picklists is available
         TODO: Check that volumes and wells are sufficient!
@@ -1115,7 +1117,7 @@ class Experiment():
         return success
     
 
-    def generate_echo_PCR1_picklists(self, selected_pids):
+    def generate_echo_PCR1_picklists(self, selected_pids, caller_id=None):
         """
         Calls echo_primer.generate_echo_PCR1_picklist() to do the work, needs a set of accepted DNA_plates,
         the final assay list, and a set of destination PCR plate barcodes, taq+water plates, primer plates, primer volumes.
@@ -1127,13 +1129,13 @@ class Experiment():
         taqwater1_pids = selected_pids['taqwater1']
         success = generate.generate_echo_PCR1_picklist(self, dna_pids, pcr_pids, taqwater1_pids)
         if not success:
-            self.log('Failure: could not generate PCR1 picklists correctly')
+            m('could not generate PCR1 picklists correctly', level='error', caller_id=caller_id)
             return False
-        self.log('Success: generated PCR1 picklists')
+        self.log('generated PCR1 picklists', level=success, caller_id=caller_id)
         return True
 
 
-    def get_echo_PCR1_picklist_filepaths(self):
+    def get_echo_PCR1_picklist_filepaths(self, caller_id=None):
         """
         Return file paths for PCR1_dna-picklist_XXX.csv, PCR1_primer-picklist_XXX.csv, PCR1_taqwater-picklist_XXX.csv
         """
@@ -1151,7 +1153,7 @@ class Experiment():
         return dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths
 
 
-    def generate_echo_PCR2_picklists(self, selected_pids):
+    def generate_echo_PCR2_picklists(self, selected_pids, caller_id=None):
         """
         Calls echo_index.generate_echo_PCR2_picklist() to do the work, needs a set of destination PCR plate barcodes, 
         taq+water plates, index plates, index volumes, and optionally any amplicon plates (post-PCR).
@@ -1162,20 +1164,20 @@ class Experiment():
         taqwater2_pids = selected_pids['taqwater2']
         amplicon_pids = selected_pids['amplicon']
             
-        success = self.generate_echo_index_survey(index_pids)
+        success = self.generate_echo_index_survey(index_pids, caller_id=caller_id)
         if not success:
-            self.log('Failure: failed to generate index survey file')
+            m('failed to generate index survey file', level='error', caller_id=caller_id)
             return False
-        self.log('Success: generated index survey file')
+        m('generated index survey file', level='success', caller_id=caller_id)
         success = generate.generate_echo_PCR2_picklist(self, pcr_pids, index_pids, taqwater2_pids, amplicon_pids)
         if not success:
-            self.log('Failure: could not generate PCR2 (index) picklists correctly')
+            m('could not generate PCR2 (index) picklists correctly', level='error', caller_id=caller_id)
             return False
-        self.log('Success: generated PCR2 (index) picklists')
+        m('generated PCR2 (index) picklists', level='success', caller_id=caller_id)
         return success
 
 
-    def get_echo_PCR2_picklist_filepaths(self):
+    def get_echo_PCR2_picklist_filepaths(self, caller_id=None):
         """
         Return file paths for PCR2_index-picklist_XXX.csv, PCR2_taqwater-picklist_XXX.csv
         These picklists should include amplicon plate destinations if provided
@@ -1191,7 +1193,7 @@ class Experiment():
         return index_picklist_paths, taqwater_picklist_paths
 
 
-    def delete_plate(self, pid):
+    def delete_plate(self, pid, caller_id=None):
         """
         Soft-delete plate with the given pid. Note: should we check for matching files and delte those?
         """
@@ -1202,20 +1204,20 @@ class Experiment():
             self.deleted_plates[pid].append(deepcopy(self.plate_location_sample[pid]))
             # need to find this in reproducible steps and delete
             del self.plate_location_sample[pid]
-            self.log(f'Warning: moved {pid} to deleted plate bin')
+            m(f'moved plate {pid} to deleted plate bin', level='warning', caller_id=caller_id)
             if pid in self.dest_sample_plates:
                 del self.dest_sample_plates[pid]
-                self.log(f'Warning: removed 384-well DNA plate entry {pid}')
+                m(f'removed 384-well DNA plate entry {pid}', level='warning', caller_id=caller_id)
         elif pid in self.dest_sample_plates:
             del self.dest_sample_plates[pid]
-            self.log(f'Warning: removed 384-well DNA plate entry {pid}')
+            m(f'removed 384-well DNA plate entry {pid}', level='success', caller_id=caller_id)
         else:
-            self.log(f'Error: {pid} has no definition loaded')
+            m(f'{pid} has no definition loaded', level='error', caller_id=caller_id)
             success = False
         return success
     
 
-    def get_stages(self):
+    def get_stages(self, caller_id=None):
         """ get all information on reproducible steps and pending steps for display purposes """
         header = ['Stage order','Staged file', 'Affected plates', 'Status']
         stages = []
@@ -1246,7 +1248,7 @@ class Experiment():
         return stages, header
 
 
-    def get_stage2_pcr_plates(self):
+    def get_stage2_pcr_plates(self, caller_id=None):
         """
         Used by Indexing stage to find all the used PCR plate IDs
         """
@@ -1264,7 +1266,7 @@ class Experiment():
         return stage2_pcr_plates
     
 
-    def add_pcr_wells(self, exp, pcr_pids, dna_pids):
+    def add_pcr_wells(self, exp, pcr_pids, dna_pids, caller_id=None):
         """
         get the PCR wells based on the Stage2.csv
         """
@@ -1283,7 +1285,7 @@ class Experiment():
                 self.plate_location_sample[pcrw[0]][pcrw[1]] = dr   
 
 
-    def get_num_pcr_wells(self, pcr_pids=None)->int:
+    def get_num_pcr_wells(self, pcr_pids=None, caller_id=None)->int:
         """ 
         Return the number of wells in the PCR plates. If pcr_pids is None, get number of wells for
         all PCR plates in experiment
@@ -1297,7 +1299,7 @@ class Experiment():
         return num_wells
 
 
-    def get_file_usage(self):
+    def get_file_usage(self, caller_id=None):
         """
         Gather file records for display
         """
@@ -1308,8 +1310,8 @@ class Experiment():
             if not Path.exists(Path(fn)):
                 del_files.append(fn)
         for fn in del_files:
-            self.log(f'Error: {fn} does not exist! Removing file record')
-            self.del_file_record(fn)
+            m(f'{fn} does not exist! Removing file record', level='warning', caller_id=caller_id)
+            self.del_file_record(fn, caller_id=caller_id)
                 
         for filename in self.uploaded_files:
             file_usage[filename] = {'date modified':None, 'purpose':None}
@@ -1332,7 +1334,7 @@ class Experiment():
         return file_usage
     
 
-    def get_plate_usage(self):
+    def get_plate_usage(self, caller_id=None):
         """return list of plate information to display"""
         plate_usage = []
         for p in self.plate_location_sample:
@@ -1343,14 +1345,14 @@ class Experiment():
         return plate_usage
 
 
-    def get_index_pids(self):
+    def get_index_pids(self, caller_id=None):
         """
         Used by Indexing stage
         """
         return [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'index']
 
 
-    def generate_echo_index_survey(self, user_index_pids, index_survey_filename='index-svy.csv'):
+    def generate_echo_index_survey(self, user_index_pids, index_survey_filename='index-svy.csv', caller_id=None):
         """ 
         Generate an index survey file for use by the Echo. Replaces echovolume.py 
         Not strictly necessary, but the old code reads this file in making the picklists.
@@ -1358,14 +1360,14 @@ class Experiment():
         Requires the set of user chosen user_index_pids
         """
         if self.locked:
-            self.log('Error: cannot generate index survey while lock is active.')
+            m('cannot generate index survey while lock is active.', level='failure', caller_id=caller_id)
             return False
         index_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'index' and p in user_index_pids]
         header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'Source well', 
                 'Name for IDT ordering', 'index', 'Name', 'Oligo * -phosphothioate modif. against exonuclease', 'volume']
         fn = self.get_exp_fn(index_survey_filename)
         if os.path.exists(fn):
-            self.log(f'Warning: overwriting index survey file {fn}')
+            m(f'overwriting index survey file {fn}', level='warning', caller_id=caller_id)
         with open(fn, 'wt') as fout:
             print(','.join(header), file=fout)
             for i,pid in enumerate(index_pids):
@@ -1389,33 +1391,37 @@ class Experiment():
                         print(f"{plate[well]['index']=},{plate[well]['bc_name']=}"+\
                                 f"{plate[well]['oligo']=},{plate[well]['volume']=}")
                     print(outline, file=fout)
-        self.log(f'Success: index survey file written to {fn}')
+        m(f'index survey file written to {fn}', level='success', caller_id=caller_id)
         return True
 
 
-    def add_standard_taqwater_plates(self, plate_barcodes, pcr_stage):  # <- they're the same for primer and barcode stages
+    def add_standard_taqwater_plates(self, plate_barcodes, pcr_stage, caller_id=None):  # <- they're the same for primer and barcode stages
         """ These plates have a fixed layout with water in row A and taq in row B of a 6-well reservoir plate.
         See echo_primer.py or echo_barcode.py mytaq2()
         We may need to also store volumes at some stage, but for now that isn't necessary
         pcr_stage(int): which PCR experiment the plate comes from (1 or 2)
         """
         if self.locked:
-            self.log('Error: cannot add taq+water plates while lock is active.')
+            m('cannot add taq+water plates while lock is active.', level='failure', caller_id=caller_id)
             return False
         try:
             for plate_barcode in plate_barcodes:
                 pid = util.guard_pbc(plate_barcode, silent=True)
                 if pid in self.plate_location_sample:
                     if self.plate_location_sample[pid]['purpose'] != 'taq_water':
-                        self.log(f"Error: cannot add taq+water plate {util.unguard(pid)}. "+\
-                            f"A plate with this barcode already exists with purpose {self.plate_location_sample[pid]['purpose']}")
+                        m(f"cannot add taq+water plate {util.unguard(pid)}. "+\
+                                f"A plate with this barcode already exists with purpose "+\
+                                f"{self.plate_location_sample[pid]['purpose']}", 
+                                level='error', caller_id=caller_id)
                         return False
                     elif self.plate_location_sample['pcr_stage'] == pcr_stage:
-                        self.log(f"Error: cannot add taq+water plate {util.unguard(pid)}."+\
-                            f"A taq/waterplate with this barcode already exists with for PCR {pcr_stage}")
+                        m(f"cannot add taq+water plate {util.unguard(pid)}."+\
+                                f"A taq/waterplate with this barcode already exists with for PCR {pcr_stage}",
+                                level='error', caller_id=caller_id)
                         return False
                     else:
-                        self.log(f"Warning: overwriting existing taq/water plate entry with barcode {util.unguard(pid)}")
+                        m(f"overwriting existing taq/water plate entry with barcode {util.unguard(pid)}",
+                                level='warning', caller_id=caller_id)
                 else:
                     self.plate_location_sample[pid] = {}
                 self.plate_location_sample[pid]['purpose'] = 'taq_water'
@@ -1433,18 +1439,19 @@ class Experiment():
                 self.plate_location_sample[pid]['B2'] = {'name': 'taq', 'volume': util.CAP_VOLS[util.PLATE_TYPES['Echo6']]}
                 self.plate_location_sample[pid]['B3'] = {'name': 'taq', 'volume': util.CAP_VOLS[util.PLATE_TYPES['Echo6']]}
         except Exception as exc:
-            self.log(f"Error: adding taq+water plate barcode failed {plate_barcodes=} {exc}")
+            m(f"adding taq+water plate barcode failed {plate_barcodes=} {exc}",
+                    level='error', caller_id=caller_id)
             return False
         return True
 
 
-    def get_miseq_samplesheets(self):
+    def get_miseq_samplesheets(self, caller_id=None):
         """ return the MiSeq-XXX.csv samplesheet, if it exists """
         miseq_fps = list(Path(self.get_exp_dn()).glob('MiSeq_*.csv'))
         return miseq_fps  
 
 
-    def check_sequence_upload_ready(self, caller_id):
+    def check_sequence_upload_ready(self, caller_id=None):
         """
         Prevent users from uploading sequence files without references being loaded, or without generating Stage3 or MiSeq files
         Requires a list of messages for the GUI which can be appended to (pass by reference)
@@ -1457,18 +1464,18 @@ class Experiment():
         for fn in fns:
             if not Path(fn).exists():
                 success = False
-                m(f"Error: {fn} not present", level='error', dest=('log','debug'), caller_id=caller_id)
+                m(f"{fn} not present", level='error', caller_id=caller_id)
 
         # check that at least one reference sequence has been uploaded
         if len(self.reference_sequences) == 0:
             success = False
             m('No reference sequences have been uploaded yet, please add these', level='error', 
-                    dest=('log','debug'), caller_id=caller_id)
+                    caller_id=caller_id)
 
         return success
 
  
-    def check_allele_calling_ready(self, caller_id:str):
+    def check_allele_calling_ready(self, caller_id=None):
         """ 
         Return True if everything needed for allele calling is present
             - Stage3.csv is present - done in self.check_sequence_upload_ready()
@@ -1484,12 +1491,12 @@ class Experiment():
         dn = self.get_exp_fn(f'raw')
         if not Path(dn).exists() or not Path(dn).is_dir():
             success = False
-            m(f"Error: {dn} does not exist", level='error', dest=('log','debug'), caller_id=caller_id)
+            m(f"{dn} does not exist", level='error', caller_id=caller_id)
 
         return success
 
 
-    def add_custom_volumes(self, custom_volumes:dict, caller_id:str) -> bool:
+    def add_custom_volumes(self, custom_volumes:dict, caller_id=None) -> bool:
         """
         Modify transfer volume info
         """
@@ -1497,10 +1504,10 @@ class Experiment():
             for value in list(custom_volumes.values()):
                 value = int(value)
             self.transfer_volumes = custom_volumes.copy()
-            m(f'Success: Custom volumes set', level='success', dest=('log','console'), caller_id=caller_id)
+            m(f'Custom volumes set', level='success', caller_id=caller_id)
             return True
-        except (TypeError, ValueError) as e:
-            m(f'Error: during volume setting {e}', level='failure', dest=('log','debug'), caller_id=caller_id)
+        except (TypeError, ValueError) as exc:
+            m(f'during volume setting {exc}', level='error', caller_id=caller_id)
             return False
     
      
@@ -1521,67 +1528,34 @@ class Experiment():
         return True
 
 
-    def log(self, message, level=''):
-        """ Always add the date/time, function where the log was run and the caller function to the log """
+    def log(self, message, level, func=None, func_line=None, call_func=None, call_line=None):
+        """ 
+        Always add the date/time, function where the log was run and the caller function to the log
+        level is in {debug, info, warning, error, critical, begin, end, success, failure}
+        """
         now = datetime.datetime.now()
         t = f"{now:%Y-%m-%d %H:%M}"
-        func = sys._getframe(1).f_code.co_name
-        func_line = inspect.getframeinfo(sys._getframe(1)).lineno
-        caller = sys._getframe(2).f_code.co_name
-        caller_line = inspect.getframeinfo(sys._getframe(2)).lineno
-
-        # levels are: Debug/Info/Warning/Error/Critical/Success/Begin/End/Success/Failure
-        if not level:
-            if message.lower().startswith('d:') or message.lower().startswith('debug:'):
-                message = message.split(':',1)[1].strip()
-                level = 'Debug'
-            elif message.lower().startswith('i:') or message.lower().startswith('info:'):
-                message = message.split(':',1)[1].strip()
-                level = 'Info'
-            elif message.lower().startswith('w:') or message.lower().startswith('warning:'):
-                message = message.split(':',1)[1].strip()
-                level = 'Warning'
-            elif message.lower().startswith('e:') or message.lower().startswith('error:'):
-                message = message.split(':',1)[1].strip()
-                level = 'Error'
-            elif message.lower().startswith('c:') or message.lower().startswith('critical:'):
-                message = message.split(':',1)[1].strip()
-                level = 'Critical'
-            elif message.lower().startswith('b:') or message.lower().startswith('begin:'):
-                message = message.split(':',1)[1].strip()
-                level = 'Begin'
-            elif message.lower().startswith('n:') or message.lower().startswith('end:'):
-                message = message.split(':',1)[1].strip()
-                level = 'End'
-            elif message.lower().startswith('s:') or message.lower().startswith('success:'):
-                message = message.split(':',1)[1].strip()
-                level = 'Success'
-            elif message.lower().startswith('f:') or message.lower().startswith('failure:'):
-                message = message.split(':',1)[1].strip()
-                level = 'Failure'
-
-        if level.lower() == 'd':
-            level = 'Debug'
-        elif level.lower() == 'i':
-            level = 'Info'
-        elif level.lower() == 'w':
-            level = 'Warning'
-        elif level.lower() == 'e':
-            level = 'Error'
-        elif level.lower() == 'c':
-            level = 'Critical'
-        elif level.lower() == 'b':
-            level = 'Begin'
-        elif level.lower() == 'n':
-            level = 'End'
-        elif level.lower() == 's':
-            level = 'Success'
-        elif level.lower() == 'f':
-            level = 'Failure'
-
-        #if level == '':
-        #    level = 'Debug'
-        self.log_entries.append([t, func, func_line, caller, caller_line, level, message])
+        if func:
+            func=func
+        else:
+            func = sys._getframe(1).f_code.co_name
+            
+        if func_line:
+            func_line = func_line
+        else:
+            func_line = inspect.getframeinfo(sys._getframe(1)).lineno
+            
+        if call_func:
+            caller = call_func
+        else:
+            caller = sys._getframe(2).f_code.co_name
+            
+        if call_line:
+            caller_line = call_line
+        else:
+            caller_line = inspect.getframeinfo(sys._getframe(2)).lineno
+        
+        self.log_entries.append([t, func, func_line, caller, caller_line, level.capitalize(), message])
         #if (now - self.log_time).seconds > 10 or level in ['Error','Critical','Failure','End']:
         #    self.save()
 
@@ -1593,12 +1567,14 @@ class Experiment():
     def get_log(self, num_entries=100):
         """ return a chunk of the log. -1 gives everything """
         if num_entries == -1:
-            return self.log[::-1]
+            return self.log_entries[::-1]
         return self.log_entries[:-(num_entries+1):-1]
 
 
     def clear_log(self, message_type=None):
-        """ delete all the log entries with level='Debug' """
+        """ DEPRECATED: needs replacing with better functionality
+        delete all the log entries with level='Debug' 
+        """
         if message_type is not None:
             if message_type not in ['Debug','Info','Warning','Error','Critical','Begin','End','Success','Failure']:
                 self.log_entries.append(f"Error: didn't recognise message type {message_type}")

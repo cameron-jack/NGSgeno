@@ -13,6 +13,7 @@ import streamlit as st
 import sys
 from time import sleep
 from collections import defaultdict
+import inspect
 
 upper_info = "upper_info_viewer"
 upper_height = "upper_info_height"
@@ -78,14 +79,20 @@ def add_pm(message, level=None):
     st.session_state['messages_persist'].append((message, level))
 
 
-def m(message, level=None, dest=None, caller_id=None,
-        size='p', color='black', align="center", font_style="normal", padding='0px'):
+def m(message, level, dest=None, caller_id=None,
+        size='p', color='black', align="center", font_style="normal", padding='0px', log_debug=False, no_log=False,
+        call_func=None, call_line=None):
     """
     Standardised message interface. Removes the need for multiple function calls for the same message.
     Args:
         message (str): message text
-        level (None/'info'/'warning'/'error'): evokes particular display code
-        dest (None/tuple('log','persist','toast','css','mkdn','console','debug','noGUI')): display in these streams
+        level is required {display, debug, info, warning, error, critical, begin, end, success, failure}
+          display only goes to the screen
+          failure is for expected non-error failures (user is doing something wrong)
+        dest (None/tuple('log','persist','toast','css','mkdn','console','debug','noGUI','no_mkdn','silent','text')): display in these streams
+          no_mkdn: just print on screen in regular text
+          silent: no on-screen display
+          text: don't use fancy formatting or display
         style (None/{'size':'p', 'color':'black', 'align':'center','style':'normal','padding':'0px'}):
             A dictionary of css stylings that will be applied if the css is a destination
         caller_id (str): if provided, store this message for later display
@@ -100,32 +107,85 @@ def m(message, level=None, dest=None, caller_id=None,
     #     size (str): style size, either h1-6 or p
     #     color (str): can use hex # for a specific colour
     #     text (str): string to display
+        log_debug (False): don't log debug messages unless True
+        no_log (False): don't log if True. Used by queued display messages
+        call_func (str): name of calling function (used by queue)
+        call_line (str): integer line number
+    
+    'debug' level messages are not logged unless log_debug is True
+    'begin' and 'end' level message are not displayed to screen
+    Automatically add dests('log', 'toast' and 'debug') for any warning, failure, error or critical message! (No dest required)
     """
     if dest is None:
         dest = {}
+    dest = set([d.lower() for d in dest])
+    level = level.lower()
+    
+    # do not add debug to the log
+    if level == 'debug':
+        dest.add('debug')
+        if log_debug:
+            dest.add('log')
+    elif level == 'display':
+        pass
+    else:
+        dest.add('log')
+    
+    if level == 'begin' or level == 'end':
+        dest.add('noGUI')
+        
+    if level in set(['warning', 'error', 'critical', 'failure']):
+        if 'debug' not in dest: 
+            dest.add('debug')
+        if 'toast' not in dest:
+            dest.add('toast')
+            
+    try:
+        func = sys._getframe(1).f_code.co_name
+    except Exception as exc:
+        print(f'Critical: {exc}', file=sys.stderr, flush=True)
+    try:
+        func_line = inspect.getframeinfo(sys._getframe(1)).lineno
+    except Exception as exc:
+        print(f'Critical: {exc}', file=sys.stderr, flush=True)
+    try:
+        call_func = sys._getframe(2).f_code.co_name
+    except Exception as exc:
+        print(f'Critical: {exc}', file=sys.stderr, flush=True)
+    try:
+        call_line = inspect.getframeinfo(sys._getframe(2)).lineno
+    except Exception as exc:
+        print(f'Critical: {exc}', file=sys.stderr, flush=True)
+        
+    if level != 'display':
+        full_message = level.capitalize() + ': ' + message
+            
     if 'console' in dest:
-        print(message)
+        print(f'{func=} {func_line} {call_func=} {call_line} {full_message}')
     if 'debug' in dest:
-        print(message, file=sys.stderr, flush=True)
+        print(f'{func=} {func_line} {call_func=} {call_line} {full_message}', file=sys.stderr, flush=True)
         
     if 'experiment' not in st.session_state or not st.session_state['experiment']:
         if 'log' in dest:
             st.error('Experiment not yet loaded, cannot log messages!')
+            st.toast('Experiment not yet loaded, cannot log messages!')
+            return
             
     # Most widgets will not handle markdown
     if level and 'css' in dest:
         st.warning('Streamlit level displays are not compatible with css stylings')
         print('Streamlit level displays are not compatible with css stylings', file=sys.stderr)
     
-    if 'log' in dest:
+    if 'log' in dest and not no_log:  # we were duplicating log entries from queued messages
         if 'mkdn' in dest:
             st.warning('Log cannot render markdown')
         if 'experiment' in st.session_state and st.session_state['experiment']:
             exp = st.session_state['experiment']
             if not level:
                 level = 'info'
-            exp.log(message, level=level)
             
+            exp.log(message, level=level, func=func, func_line=func_line, call_func=call_func, call_line=call_line)
+
     if 'toast' in dest:
         st.toast(message)
             
@@ -156,7 +216,7 @@ def m(message, level=None, dest=None, caller_id=None,
         # if caller_id not in st.session_state['message_queues']:
         #     st.session_state['message_queues'][caller_id] = []
         # st.session_state['message_queues'][caller_id].append((message, level))
-        # return
+        # return        
         mq[caller_id].append((message,level))
         return
 
@@ -183,11 +243,11 @@ def m(message, level=None, dest=None, caller_id=None,
     if not level:
         level = 'info'
 
-    if level.lower() in set(['info', 'success', 'begin', 'end']):
+    if level.lower() in set(['info', 'success', 'begin', 'end']) and not 'no_mkdn' in dest:
         st.info(message)
-    elif level.lower() == 'warning':
+    elif level.lower() == 'warning' and not 'no_mkdn' in dest:
         st.warning(message)
-    elif level.lower() in set(['error', 'critical','failure']):
+    elif level.lower() in set(['error', 'critical','failure']) and not 'no_mkdn' in dest:
         st.error(message)
     else:
         st.write(message)

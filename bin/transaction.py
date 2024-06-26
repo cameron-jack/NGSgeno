@@ -8,6 +8,8 @@ import sys
 import functools
 import jsonpickle
 
+from stutil import m
+
 """
 @created: Nov 2021
 @author: Cameron Jack ANU Bioinformatics Consultancy, 2019-2021
@@ -448,8 +450,9 @@ def get_plate(exp, PID, transactions=None):
                 continue
             if PID in stage[fn]:
                 for well in stage[fn][PID]:
-                    if 'volume' in mod_plate[well]:
-                        mod_plate[well]['volume'] += stage[fn][PID][well]
+                    if well in mod_plate:
+                        if 'volume' in mod_plate[well]:
+                            mod_plate[well]['volume'] += stage[fn][PID][well]
                     #except:
                     #    print(f'{mod_plate[well]=} {stage[fn][PID][well]=} {fn=} {PID=} {well=}', file=sys.stderr)
                     #    exit()
@@ -457,8 +460,9 @@ def get_plate(exp, PID, transactions=None):
         for t in transactions:
             if PID in transactions[t]:
                 for well in transactions[t][PID]:
-                    if 'volume' in mod_plate[well]:
-                        mod_plate[well] += transactions[t][PID][well]
+                    if well in mod_plate:
+                        if 'volume' in mod_plate[well]:
+                            mod_plate[well] += transactions[t][PID][well]
     return mod_plate
 
 

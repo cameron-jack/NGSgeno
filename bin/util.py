@@ -9,17 +9,20 @@ A collection of code functions and definitions that are used throughout the pipe
 
 import sys
 import collections
-from pathlib import PurePath
+from pathlib import PurePath, Path, WindowsPath
 from collections import defaultdict
 import csv
 import hashlib
 from math import ceil
 import threading
 import queue
+import datetime
 
 import functools
 
 import itertools
+
+from stutil import m
 
 ### Create a non-blocking log writer?
 
@@ -502,7 +505,55 @@ def unguard(bc, silent=False):
 #    return sorted(glob.glob(os.path.join('..','library',"*_platesurvey_fluid_volume_I7I5PLATE.csv")), reverse=True)[0]
 
 
-         
+# File stuff
+
+def get_soft_delete_path(file_path):
+    """
+    When soft deleting a file rename it to /path/DEL_yyyymmdd_HHMMSS_filename.ext
+    """
+    t = datetime.datetime.now()
+    t = t.strftime("%y%m%d_%H%M%S_")
+    fn_orig = WindowsPath(file_path).name
+    fn_root = WindowsPath(file_path).parent
+    print(f'**** {file_path} {fn_orig} {fn_root} ****')
+    new_path = Path(fn_root)/('DEL_' + t + str(fn_orig))
+    return str(new_path)
+
+
+def delete_file(file_path, soft=True, caller_id=None):
+    """
+    By default use soft delete (renamimg)
+    """
+    file_path = WindowsPath(file_path)
+    if str(file_path.name).startswith('pending_'):
+        soft = False
+    if Path(file_path).exists():
+        do_delete = False
+        if soft:
+            del_path = get_soft_delete_path(file_path)
+            if Path(del_path).exists():
+                m(f'{del_path} already exists, cannot rename', level='warning', caller_id=caller_id)
+                do_delete = True
+            else:    
+                try:
+                    Path(file_path).rename(del_path)
+                except Exception as exc:
+                    m(f'failed to rename {file_path} to {del_path}, {exc}', level='error', caller_id=caller_id)
+                    do_delete = True    
+                if not do_delete:
+                    m(f'renamed {file_path} to {del_path}', level='info', dest=('noGUI',))
+                    return True
+                
+        if not soft or do_delete:
+            try:
+                Path(file_path).unlink()
+            except Exception as exc:
+                m(f'could not delete file {file_path} {exc}', level='error', caller_id=caller_id)
+            return False
+        
+        m(f'deleted file {file_path}', level='info', dest=('noGUI',))
+        return True
+
 
 # Item/attribute selection macros - used for Table selections
 def multipicker(idxs=None, restype=list):
@@ -548,7 +599,7 @@ def unpadwell(w):
 
 # Assays/Primers
 
-def choose_primerfam(exp, assayfam):
+def choose_primerfam(exp, assayfam, caller_id=None):
     """
     Return the primer family entry that best matches the provided assay family
     """
@@ -557,7 +608,7 @@ def choose_primerfam(exp, assayfam):
     if assayfam.lower() in exp.assay_primer:
         return exp.assay_primer[assayfam.lower()]
     
-    exp.log(f'Warning: Primer family not found to match assay {assayfam}')
+    m(f'Primer family not found to match assay {assayfam}', level='warning', caller_id=caller_id)
 
     return [assayfam]
    

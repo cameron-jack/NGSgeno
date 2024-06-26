@@ -98,17 +98,17 @@ def get_run_folders():
 
 def create_run_folder(newpath):
     """ returns Experiment or None, and a message string. Requires a full path and generates a new experiment file """
-    m(f'Attempting to create: {newpath}')
+    m(f'Attempting to create: {newpath}', level='begin')
     if not os.path.exists(newpath):
         try:
             os.mkdir(newpath)
         except Exception as exc:
-            m(f'Could not create new folder: {newpath} {exc}', dest=('debug'))
+            m(f'Could not create new folder: {newpath} {exc}', level='error')
             return None, 'Failed to create new folder: ' + newpath
     else:
         if os.path.exists(os.path.join(newpath, EXP_FN)):
             return None, f'Experiment already exists with this name: {newpath}'
-    print('Generating experiment: ', newpath)
+    print(f'Generating experiment: {newpath}')
     if 'experiment' in st.session_state and st.session_state['experiment']:
         st.session_state['experiment'].save()
     exp = Experiment(name=newpath[4:])  # chop off 'run_'
@@ -138,7 +138,7 @@ async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match
         match_prog.progress(match_progress)
 
         if launch_progress == 100 and match_progress == 100:
-            st.write('Analysis completed')
+            m('Analysis completed', level='info')
             st.session_state['match_running'] = False
             return
         await asyncio.sleep(1)
@@ -164,6 +164,7 @@ def run_generate(exp, target_func, *args, **kwargs):
             else:
                 trans.accept_pending_transactions(exp)
     return success
+
 
 def load_experiment_screen():
     """
@@ -245,8 +246,7 @@ def save_button(exp, key):
             print(f'Saving experiment {exp.name}', file=sys.stderr, flush=True)
             exp.save()
         except Exception as exc:
-            err_msg = f'Saving experiment failed! {exc}'
-            m(err_msg, level='error', dest=['log','debug'], caller_id=save_button)
+            m(f'Saving experiment failed! {exc}', level='error')
             
 
 def home_button(exp):
@@ -414,7 +414,7 @@ def main():
                         st.subheader('Upload Sample Files')
                         m('**Upload Rodentity plate files, custom manifests, or amplicon plate definition files '+\
                                 'then move to the next tab to upload pipeline consumables and other important files**',
-                                dest=('mkdn',))
+                                level='display', dest=('mkdn',))
                         ld.load_rodentity_data('rodentity_load1')
                         hline()
                         ld.load_custom_manifests('custom_load1')
@@ -467,7 +467,7 @@ def main():
                         add_vertical_space(2)
                         if not ld.check_assay_file(exp):
                             m('Assay list file (assay to primer mapping) is required to proceed. '+\
-                                    'Please upload this to continue', level='Error')
+                                    'Please upload this to continue', level='error')
                             success = ld.upload_assaylist('nimbus1_assaylist')
                             if success:
                                 st.rerun()
@@ -483,7 +483,7 @@ def main():
                                     success = run_generate(exp, exp.generate_nimbus_inputs)    
                                     if not success:
                                         m('Failed to generate the Nimbus files. See the log for details', 
-                                                level='error', dest=('debug',))
+                                                level='error')
                                     else:
                                         add_vertical_space(2)
                                         nfs, efs, xbcs = exp.get_nimbus_filepaths()
@@ -563,7 +563,7 @@ def main():
                         
                             selected_pids = dc.collect_plate_checklist(checkbox_keys)
                             if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                                m('No PCR or amplicon plates selected/added yet', dest=('css',), color='red',size='p')
+                                m('No PCR or amplicon plates selected/added yet', level='display', dest=('css',), color='red',size='p')
                         
                         with pcr_col:
                             ld.add_pcr_barcodes(key='pcr_bc_tab1', dna_pids=selected_pids['dna'])
@@ -591,14 +591,14 @@ def main():
                                 ['dna','pcr','taqwater1','primer'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected/added yet', dest=('css',), color='red',size='p')
+                            m('No PCR or amplicon plates selected/added yet', level='display', dest=('css',), color='red',size='p')
                         hline()    
                         #dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr1_components(selected_pids)
                         hline()
                         
                         if selected_pids['dna']:
-                            if exp.check_ready_pcr1(selected_pids, caller_id):
+                            if exp.check_ready_pcr1(selected_pids, caller_id=caller_id):
                                 _,button_col,_ = st.columns([2, 2, 1])
                                 echo_picklist_go = button_col.button('Generate Echo Picklists',
                                             key='echo_pcr1_go_button',
@@ -671,7 +671,8 @@ def main():
                         
                             selected_pids = dc.collect_plate_checklist(checkbox_keys)
                             if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                                m('No PCR or amplicon plates selected', dest=('css',), color='red',size='p')
+                                m('No PCR or amplicon plates selected', level='display', 
+                                        dest=('css',), color='red',size='p')
                        
                         with display_cont:
                             dc.display_pcr2_components(selected_pids)
@@ -701,7 +702,8 @@ def main():
                                 ['pcr','taqwater2','amplicon','index'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected', dest=('css',), color='red',size='p')
+                            m('No PCR or amplicon plates selected', 
+                                    level='display', dest=('css',), color='red',size='p')
                         hline()
                         #dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr2_components(selected_pids)
@@ -709,15 +711,16 @@ def main():
                         add_vertical_space(1)
                                                 
                         if selected_pids['pcr']:
-                            success = exp.check_ready_pcr2(selected_pids, caller_id)
+                            success = exp.check_ready_pcr2(selected_pids, caller_id=caller_id)
                             if success:
                                 do_generate = True
                         elif selected_pids['amplicon']:
-                            success = exp.check_ready_pcr2(selected_pids, caller_id, amplicon_only=True)
+                            success = exp.check_ready_pcr2(selected_pids, caller_id=caller_id, amplicon_only=True)
                             if success:
                                 do_generate = True
                         else:
-                            m('Either PCR plates or Amplicon plates must exist for indexing to begin')
+                            m('Either PCR plates or Amplicon plates must exist for indexing to begin',
+                                    level='display')
                                     
                         for msg,lvl in mq[caller_id]:
                             m(msg, lvl)
@@ -742,7 +745,7 @@ def main():
                                     selected_pids)
                             set_state('run_index', False)
                             if not success:
-                                m('Picklist generation failed. Please see the log')
+                                m('Picklist generation failed. Please see the log', level='display')
                                     
                         if generate.pcr2_picklists_exist(exp):
                             dc.show_echo2_outputs() 
@@ -830,7 +833,7 @@ def main():
                     caller_id = 'pre-execute-analysis'    
                     success = exp.check_sequence_upload_ready(caller_id)
                     for msg,lvl in mq[caller_id]:
-                        m(msg, level=lvl)
+                        m(msg, level=lvl, no_log=True)
                     mq[caller_id] = []
                     if not success:
                         st.warning('Resources are required for allele calling and must be present before FASTQs can be uploaded')
@@ -872,11 +875,11 @@ def main():
                         if do_matching:
                             success = generate.generate_targets(exp)
                             if not success:
-                                m('Critical: failed to save reference sequences to target file', dest=('log',))
+                                m('failed to save reference sequences to target file', level='critical')
                                 sleep(0.5)
                             success = generate.generate_primer_assayfams(exp)
                             if not success:
-                                m('Critical: failed to save primers and assay families to file', dest=('log'))
+                                m('failed to save primers and assay families to file', level='critical')
                                 sleep(0.5)
                             else:
                                 matching_prog = os.path.join('bin','ngsmatch.py')
@@ -915,7 +918,7 @@ def main():
                 
             with main_body_container:
                 if not Path(results_fp).exists():
-                    m('**No allele calling results available**', dest=('mkdn'))
+                    m('**No allele calling results available**', level='display', dest=('mkdn'))
                 else:
                     rodentity_results = []
                     custom_results = []
@@ -935,7 +938,8 @@ def main():
                                     rodentity_results.append(cols)
                                 else:
                                     other_results.append(cols)
-                    m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', dest=('css',))
+                    m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', 
+                            level='display', dest=('css',))
                     rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
                     with rodentity_view:
                         dfr = pd.DataFrame(rodentity_results, columns=hdr)
