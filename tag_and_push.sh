@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 
-VER="v0.26.016"
+VER="v0.27.000"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* CHANGED: parsers now overwrite existing plate entries by default unless they have different purpose
+* NEW: log has reordered columns and colour
+* FIXED: sample display column spacing
+* NEW: on-screen message displays from anywhere in code
+* FIXED: file record synching on re-uploaded files
 EOM
 
 mv changelog.txt changelog_old.txt

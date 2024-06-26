@@ -1,3 +1,10 @@
+v0.27.000
+Date: Thu Jun 27 06:27:28 AEST 2024
+* NEW: log has reordered columns and colour
+* FIXED: sample display column spacing
+* NEW: on-screen message displays from anywhere in code
+* FIXED: file record synching on re-uploaded files
+
 v0.26.016
 Date: Wed Jun 12 11:22:18 AEST 2024
 * CHANGED: parsers now overwrite existing plate entries by default unless they have different purpose
