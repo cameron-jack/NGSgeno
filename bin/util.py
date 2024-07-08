@@ -541,7 +541,7 @@ def delete_file(file_path, soft=True, caller_id=None):
                     m(f'failed to rename {file_path} to {del_path}, {exc}', level='error', caller_id=caller_id)
                     do_delete = True    
                 if not do_delete:
-                    m(f'renamed {file_path} to {del_path}', level='info', dest=('noGUI',))
+                    m(f'renamed {file_path} to {del_path}', level='success', dest=('noGUI',))
                     return True
                 
         if not soft or do_delete:

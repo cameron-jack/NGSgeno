@@ -1204,15 +1204,15 @@ class Experiment():
             self.deleted_plates[pid].append(deepcopy(self.plate_location_sample[pid]))
             # need to find this in reproducible steps and delete
             del self.plate_location_sample[pid]
-            m(f'moved plate {pid} to deleted plate bin', level='warning', caller_id=caller_id)
+            m(f'moved plate {pid} to deleted plate bin', level='warning', dest=('noGUI',))
             if pid in self.dest_sample_plates:
                 del self.dest_sample_plates[pid]
-                m(f'removed 384-well DNA plate entry {pid}', level='warning', caller_id=caller_id)
+                m(f'removed 384-well DNA plate entry {pid}', level='warning', dest=('noGUI',))
         elif pid in self.dest_sample_plates:
             del self.dest_sample_plates[pid]
-            m(f'removed 384-well DNA plate entry {pid}', level='success', caller_id=caller_id)
+            m(f'removed 384-well DNA plate entry {pid}', level='success', dest=('noGUI',))
         else:
-            m(f'{pid} has no definition loaded', level='error', caller_id=caller_id)
+            m(f'{pid} has no definition loaded', level='error', dest=('noGUI',))
             success = False
         return success
     

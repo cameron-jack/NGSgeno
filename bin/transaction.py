@@ -112,10 +112,10 @@ def add_pending_transactions(exp, transactions):
             exp.pending_steps = {}
         for t in transactions:
             if t in exp.pending_steps:
-                exp.log(f'Critical: file generation {t} already performed in this stage of the pipeline')
+                exp.log(f'file generation {t} already performed in this stage of the pipeline', level='critical')
                 return False
             exp.pending_steps[t] = deepcopy(transactions[t])
-            exp.log(f'Info: Adding generated file {t} to pending pipeline stage history')
+            exp.log(f'Adding generated file {t} to pending pipeline stage history', level='info')
             #print('These are the pending transactions', exp.pending_steps, file=sys.stderr)
         return True
 
@@ -292,7 +292,7 @@ def clear_pending_transactions(exp):
             os.remove(p)
             #print(f'removing pending file {p}', file=sys.stderr)
     except Exception as exc:
-        exp.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
+        m(f'Could not clear pending transactions, possbile locked file. {exc}', level='error')
         return False
     return True
 
@@ -308,13 +308,13 @@ def accept_pending_transactions(exp, file_name=None):
     """
     #print(f"accept_pending_transactions for {exp.pending_steps.keys()=}", file=sys.stderr)
     if not exp.pending_steps:
-        exp.log("Warning: there are no pending transactions to record")
+        m("there are no pending transactions to record", level='debug', dest=('noGUI',))
         return True  # It didn't actually fail
     ps_keys = exp.pending_steps.keys()
     if file_name:
         ps_keys = [ps for ps in ps_keys if file_name == ps_keys]
     if not ps_keys:
-        exp.log(f'Error: expected {file_name} in {exp.pending_steps.keys()}')
+        m(f'expected {file_name} in {exp.pending_steps.keys()}', level='error')
         return False
     MAX_STAGES=len(exp.reproducible_steps)
     clashing_index = MAX_STAGES
@@ -339,14 +339,14 @@ def accept_pending_transactions(exp, file_name=None):
                 try:
                     os.remove(fs)
                 except Exception as exc:
-                    exp.log(f'Error: Could not remove existing file {fs}, {exc}')
-                exp.log(f'Info: removed existing file {fs}')
+                    m(f'Could not remove existing file {fs}, {exc}', level='error')
+                m(f'removed existing file {fs}', level='info')
             try:
                 os.rename(ps, fs)
             except Exception as exc:
-                exp.log(f'Error: Failed to rename pending file {ps} to {fs}, {exc}')
+                m(f'failed to rename pending file {ps} to {fs}, {exc}', level='error')
                 return False
-            exp.log(f'Success: Renamed pending file {ps} to {fs}')
+            m(f'renamed pending file {ps} to {fs}', level='success', dest=('noGUI',))
         exp.pending_steps = {}
         return True
     else:
@@ -361,14 +361,14 @@ def accept_pending_transactions(exp, file_name=None):
         for af in affected_files:
             success = exp.del_file_record(af)
             if success:
-                exp.log(f'Info: Obsolete tracked pipeline file {af} removed')
+                m(f'obsolete tracked pipeline file {af} removed', level='info')
             else:
                 try:
                     os.remove(af)
                 except Exception as exc:
-                    exp.log(f'Error: Could not delete obsolete file {af}, {exc}')
+                    m(f'could not delete obsolete file {af}, {exc}', level='error')
                     return False
-                exp.log(f'Info: Obsolete tracked pipeline file {af} removed')
+                m(f'obsolete tracked pipeline file {af} removed', level='info')
         # Shouldn't just delete all plates
         #for ap in affected_pids:
             # soft delete
@@ -384,9 +384,9 @@ def accept_pending_transactions(exp, file_name=None):
             try:
                 os.rename(ps, fs)
             except Exception as exc:
-                exp.log(f'Error: Failed to rename pending file {ps} to {fs}, {exc}')
+                m(f'failed to rename pending file {ps} to {fs}, {exc}', level='error')
                 return False
-            exp.log(f'Success: Renamed pending file {ps} to {fs}')
+            m(f'renamed pending file {ps} to {fs}', level='info', dest=('noGUI',))
         exp.pending_steps = {}
         return True
 
@@ -437,7 +437,7 @@ def get_plate(exp, PID, transactions=None):
     PID should be a guarded plate ID 
     """
     if PID not in exp.plate_location_sample:
-        exp.log(f'Error: {PID} not found in plate records')
+        m(f'{PID} not found in plate records', level='error')
         return None
     mod_plate = deepcopy(exp.plate_location_sample[PID])
     # exp.reproducible_steps is a list, so stage will be a dictionary

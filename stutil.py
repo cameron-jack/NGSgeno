@@ -172,7 +172,7 @@ def m(message, level, dest=None, caller_id=None,
             return
             
     # Most widgets will not handle markdown
-    if level and 'css' in dest:
+    if level != 'display' and 'css' in dest:
         st.warning('Streamlit level displays are not compatible with css stylings')
         print('Streamlit level displays are not compatible with css stylings', file=sys.stderr)
     
@@ -185,6 +185,11 @@ def m(message, level, dest=None, caller_id=None,
                 level = 'info'
             
             exp.log(message, level=level, func=func, func_line=func_line, call_func=call_func, call_line=call_line)
+
+    print(message, flush=True)
+    if 'noGUI' in dest:
+        print('do not write to GUI', flush=True)
+        return
 
     if 'toast' in dest:
         st.toast(message)
@@ -229,9 +234,6 @@ def m(message, level, dest=None, caller_id=None,
     
     if 'mkdn' in dest and not level:
         st.markdown(message)
-        return
-    
-    if 'noGUI' in dest:
         return
     
     if message.lower().startswith('critical:') or message.lower().startswith('failure:'):

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from operator import ne
 import sys
 import os
 import gzip
@@ -128,7 +129,7 @@ def upload(exp, streams, purpose, caller_id=None, overwrite_plates=True, overwri
                 s = exp.accept_pending_file_record(pfp, final_fp, caller_id=caller_id)
                 if not s:
                     return False
-                s = process_upload(exp, final_fp, purpose, caller_id=caller_id)
+                s = process_upload(exp, final_fp, purpose, caller_id=caller_id, overwrite_plates=overwrite_plates)
                 if s is False:
                     success = False
                     exp.del_file_record(final_fp)
@@ -153,7 +154,7 @@ def upload(exp, streams, purpose, caller_id=None, overwrite_plates=True, overwri
             if not s:
                 m(f'could not update file record for {pfp}', level='error', caller_id=caller_id)
                 success = False
-            s = process_upload(exp, final_fp, purpose, caller_id=caller_id)
+            s = process_upload(exp, final_fp, purpose, caller_id=caller_id, overwrite_plates=overwrite_plates)
             if s is False:
                 success = False
                 exp.del_file_record(final_fp)
@@ -210,7 +211,7 @@ def accept_pending_upload(exp, fn, caller_id=None):
     return True
         
 
-def process_upload(exp, filepath, purpose, caller_id=None, overwrite_plates=False, overwrite_files=False):
+def process_upload(exp, filepath, purpose, caller_id=None, overwrite_plates=True, overwrite_files=False):
     """
     Called by upload() or accept_pending_upload()
     - Clears the file of its pending status (rename)
@@ -406,12 +407,14 @@ def parse_custom_manifest(exp, fp, caller_id=None, overwrite_plates=True):
                 elif header_dict[k].lower() == 'assay':
                     assay_cols.append(k)
             continue
+            
         if len(cols) < 5:  # skip empty rows
             continue
         pid = cols[plate_barcode_col]
         gpid = util.guard_pbc(pid, silent=True)
-        
-        well_records[gpid] = {'purpose':'sample','source':'custom', 'wells':set(), 'plate_type':'96'}  
+        if gpid not in well_records:
+            well_records[gpid] = {'purpose':'sample','source':'custom', 'wells':set(), 'plate_type':'96'}  
+            
         assays = [] 
         # do a first pass to set up recording a sample in a well
         for k,c in enumerate(cols):
@@ -425,9 +428,10 @@ def parse_custom_manifest(exp, fp, caller_id=None, overwrite_plates=True):
                 #print(f'well: {well=} {k=} {c=}')
                 if well in well_records[gpid]['wells'] and well_records[gpid][well] != {}:
                     m(f"duplicate {c} in {pid}. Skipping row {i+2} {cols=}", level='warning', caller_id=caller_id)
-                    break
+                    continue
                 well_records[gpid]['wells'].add(well)
                 well_records[gpid][well] = {'sampleWell':well}
+        
         # now do a second pass to collect everything together
         for k,c in enumerate(cols):
             if c.lower() == 'none':
@@ -474,6 +478,7 @@ def parse_custom_manifest(exp, fp, caller_id=None, overwrite_plates=True):
                 continue
             else:
                 exp.plate_location_sample[gpid] = {}  # create empty entry
+        print(f'{well_records=}', flush=True)
         exp.plate_location_sample[gpid] = well_records[gpid].copy()
 
     m(f'parsing {fp} with plates: {list(well_records.keys())}', level='end')
@@ -610,7 +615,7 @@ def parse_primer_layout(exp, fp, user_gpid=None, caller_id=None, overwrite_plate
             try:
                 well = util.unpadwell(row[0])
             except UnboundLocalError as exc:
-                m(f'You likely tried to upload volumes instead of layout! Using file {fp}',
+                m(f'You likely tried to upload volumes instead of layout! Using file {fp} {exc}',
                         level='error', caller_id=caller_id)
                 return False, []
             if well in well_records[gPID]:
@@ -619,17 +624,36 @@ def parse_primer_layout(exp, fp, user_gpid=None, caller_id=None, overwrite_plate
             well_records[gPID][well] = {'primer':row[1]}
     
     # check for a legitimate plate match
+    wipe_plate = True
     if gPID in exp.plate_location_sample:
         if exp.plate_location_sample[gPID]['purpose'] == 'primer':
-            m(f"Primer plate {PID} already exists, replacing plate", level='warning', caller_id=caller_id)
+            wells = exp.plate_location_sample[gPID].get('wells', None)
+            if wells is None:
+                m(f"Primer plate {PID} already exists, replacing plate", level='warning', caller_id=caller_id)
+            else:
+                for well in wells:
+                    well_data = exp.plate_location_sample[gPID].get(well, None)
+                    if well_data is None:
+                        continue
+                    elif 'primer' not in well_data and 'volume' in well_data:
+                        wipe_plate = False
+                        break
+            if not overwrite_plates and wipe_plate:
+                m(f'Primer plate already found in experiment, overwriting not allowed', 
+                        level='failure', caller_id=caller_id)
+                return False, []
+            elif overwrite_plates and wipe_plate:
+                m(f"Primer plate {PID} already exists, replacing", 
+                        level='warning', caller_id=caller_id)
         else:
             m(f"Primer plate PID: {PID} matches existing plate entry of different purpose "+\
                     f"{exp.plate_location_sample[gPID]['purpose']}", level='error', caller_id=caller_id)
             return False, []
     # create new plate entry and set purpose
-    exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
-            'plate_type':util.PLATE_TYPES['Echo384']}
-    m(f"Creating new primer plate record for {PID}", level='info', caller_id=caller_id)
+    if wipe_plate:
+        exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+                'plate_type':util.PLATE_TYPES['Echo384']}
+        m(f"Creating new primer plate record for {PID}", level='info', caller_id=caller_id)
 
     # copy across data from the temporary plate records                           
     for well in well_records[gPID]:
@@ -674,23 +698,35 @@ def parse_primer_volume(exp, fp, user_gpid=None, caller_id=None, overwrite_plate
                         continue  # row name cell
                     well = util.unpadwell(row[0] + str(j))
                     if well in well_records[gPID]:
-                        m(f'skipping duplicate well entry {well} in {fp}')
+                        m(f'skipping duplicate well entry {well} in {fp}', level='warning', dest=('noGUI',))
                         continue
                     well_records[gPID][well] = {'volume':float(col)*1000}
             else:  # columns
                 well = util.unpadwell(row[0])
                 if well in well_records[gPID]:
-                    m(f'skipping duplicate well entry {well} in {fp}')
+                    m(f'skipping duplicate well entry {well} in {fp}', level='warning', dest=('noGUI',))
                     continue
                 well_records[gPID][well] = {'volume':float(col)*1000}
 
+    wipe_plate = True
     if gPID in exp.plate_location_sample:
         if exp.plate_location_sample[gPID]['purpose'] == 'primer':
-            if not overwrite_plates:
+            wells = exp.plate_location_sample[gPID].get('wells', None)
+            if wells is None:
+                m(f"Primer plate {PID} already exists, replacing plate", level='warning', caller_id=caller_id)
+            else:
+                for well in wells:
+                    well_data = exp.plate_location_sample[gPID].get(well, None)
+                    if well_data is None:
+                        continue
+                    elif 'primer' in well_data and 'volume' not in well_data:
+                        wipe_plate = False
+                        break
+            if not overwrite_plates and wipe_plate:
                 m(f'Primer plate already found in experiment, overwriting not allowed', 
                         level='failure', caller_id=caller_id)
                 return False, []
-            else:
+            elif overwrite_plates and wipe_plate:
                 m(f"Primer plate {PID} already exists, replacing", 
                         level='warning', caller_id=caller_id)
         else:
@@ -698,9 +734,10 @@ def parse_primer_volume(exp, fp, user_gpid=None, caller_id=None, overwrite_plate
                     f"{exp.plate_location_sample[gPID]['purpose']}", level='error', caller_id=caller_id)
             return False, []
     # create new plate entry and set purpose
-    exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
-            'plate_type':util.PLATE_TYPES['Echo384']}
-    m(f"Creating new primer plate record for {PID}", level='info', caller_id=caller_id)
+    if wipe_plate:
+        exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+                'plate_type':util.PLATE_TYPES['Echo384']}
+        m(f"Creating new primer plate record for {PID}", level='info', caller_id=caller_id)
 
     for well in well_records[gPID]:
         if well not in exp.plate_location_sample[gPID]:
@@ -751,18 +788,37 @@ def parse_index_layout(exp, fp, user_gpid=None, caller_id=None, overwrite_plates
             well_records[gPID][well]['bc_name'] = bc_name
             well_records[gPID][well]['oligo'] = oligo
 
+    # check for a legitimate plate match
+    wipe_plate = True
     if gPID in exp.plate_location_sample:
         if exp.plate_location_sample[gPID]['purpose'] == 'index':
-            m(f"Index plate {PID} already exists, overwriting plate", level='failure', caller_id=caller_id)
+            wells = exp.plate_location_sample[gPID].get('wells', None)
+            if wells is None:
+                m(f"Index plate {PID} already exists, replacing plate", level='warning', caller_id=caller_id)
+            else:
+                for well in wells:
+                    well_data = exp.plate_location_sample[gPID].get(well, None)
+                    if well_data is None:
+                        continue
+                    elif 'index' not in well_data and 'volume' in well_data:
+                        wipe_plate = False
+                        break
+            if not overwrite_plates and wipe_plate:
+                m(f'Index plate already found in experiment, overwriting not allowed', 
+                        level='failure', caller_id=caller_id)
+                return False, []
+            elif overwrite_plates and wipe_plate:
+                m(f"Index plate {PID} already exists, replacing", 
+                        level='warning', caller_id=caller_id)
         else:
-            m(f"Index plate PID: {PID} matches "+\
-                    f"existing plate entry of different purpose "+\
+            m(f"Index plate PID: {PID} matches existing plate entry of different purpose "+\
                     f"{exp.plate_location_sample[gPID]['purpose']}", level='error', caller_id=caller_id)
             return False, []
     # create new plate entry and set purpose
-    exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
-            'plate_type':util.PLATE_TYPES['Echo384']}
-    m(f"Creating new index plate record for {PID}", level='info', caller_id=caller_id)
+    if wipe_plate:
+        exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
+                'plate_type':util.PLATE_TYPES['Echo384']}
+        m(f"creating new index plate record for {PID}", level='info', caller_id=caller_id)
 
     for well in well_records[gPID]:
         if well not in exp.plate_location_sample[gPID]:
@@ -841,19 +897,36 @@ def parse_index_volume(exp, fp, user_gpid=None, caller_id=None, overwrite_plates
                     m(f'duplicate well entry {well} seen in plate {PID}, overwriting', level='warning', caller_id=caller_id)
                 well_records[gPID][well] = {'volume': int(float(row[5]))*1000}
 
-    if gPID not in exp.plate_location_sample:
-        m(f"Adding index plate {PID}", level='info', caller_id=caller_id)
-        exp.plate_location_sample[gPID] = {'purpose':'index', 'source':'user', 'wells':set(), 
-                'plate_type':util.PLATE_TYPES['Echo384']}
-    else:
-        if exp.plate_location_sample[gPID]['purpose'] != 'index':
-            m(f"{PID} plate purpose is {exp.plate_location_sample[gPID]['purpose']}, expected 'index'",
-                level='error', caller_id=caller_id)
+    wipe_plate = True
+    if gPID in exp.plate_location_sample:
+        if exp.plate_location_sample[gPID]['purpose'] == 'index':
+            wells = exp.plate_location_sample[gPID].get('wells', None)
+            if wells is None:
+                m(f"Index plate {PID} already exists, replacing plate", level='warning', caller_id=caller_id)
+            else:
+                for well in wells:
+                    well_data = exp.plate_location_sample[gPID].get(well, None)
+                    if well_data is None:
+                        continue
+                    elif 'index' not in well_data and 'volume' in well_data:
+                        wipe_plate = False
+                        break
+            if not overwrite_plates and wipe_plate:
+                m(f'Index plate already found in experiment, overwriting not allowed', 
+                        level='failure', caller_id=caller_id)
+                return False, []
+            elif overwrite_plates and wipe_plate:
+                m(f"Index plate {PID} already exists, replacing", 
+                        level='warning', caller_id=caller_id)
+        else:
+            m(f"Index plate PID: {PID} matches existing plate entry of different purpose "+\
+                    f"{exp.plate_location_sample[gPID]['purpose']}", level='error', caller_id=caller_id)
             return False, []
-        m(f"{PID} exists, overwriting all index volumes", level='warning', caller_id=caller_id)
-        # zero out any existing volumes
-        for well in exp.plate_location_sample[gPID].get('wells', []):
-            exp.plate_location_sample[gPID][well]['volume'] = 0
+    # create new plate entry and set purpose
+    if wipe_plate:
+        exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
+                'plate_type':util.PLATE_TYPES['Echo384']}
+        m(f"Creating new index plate record for {PID}", level='info', caller_id=caller_id)
 
     for well in well_records[gPID]:
         if well not in exp.plate_location_sample[gPID]:
@@ -879,6 +952,7 @@ def parse_assay_primer_map(exp, fp, caller_id=None, overwrite_plates=True):
         
     Case is strictly enforced - we don't bother even checking case mistake, just reporting them
     """
+    m(f'parsing assay primer map {fp}', level='begin')
     # read the whole file before adding entries
     local_assayfam_primers = {}
     local_assay_assayfam = {}
@@ -934,14 +1008,18 @@ def parse_assay_primer_map(exp, fp, caller_id=None, overwrite_plates=True):
                         continue
                 local_primer_assayfam[primer] = assay_fam
 
-    for a in local_assay_assayfam:
-        exp.assay_assayfam[a] = local_assay_assayfam[a]
-    for af in local_assayfam_assays:
-        exp.assayfam_assays[af] = local_assayfam_assays[af]
-    for af in local_assayfam_primers:
-        exp.assayfam_primers[af] = local_assayfam_primers[af]
-    for primer in local_primer_assayfam:
-        exp.primer_assayfam[primer] = local_primer_assayfam[primer]
+    exp.assay_assayfam = local_assay_assayfam.copy()
+    exp.assayfam_assays = local_assayfam_assays.copy()
+    exp.assayfam_primers = local_assayfam_primers.copy()
+    exp.primer_assayfam = local_primer_assayfam.copy()
+    # for a in local_assay_assayfam:
+    #     exp.assay_assayfam[a] = local_assay_assayfam[a].copy()
+    # for af in local_assayfam_assays:
+    #     exp.assayfam_assays[af] = local_assayfam_assays[af].copy()
+    # for af in local_assayfam_primers:
+    #     exp.assayfam_primers[af] = local_assayfam_primers[af].copy()
+    # for primer in local_primer_assayfam:
+    #     exp.primer_assayfam[primer] = local_primer_assayfam[primer].copy()
     
     m(f'added assay/assayfam/primer mapping from {fp}', level='end')
     return True

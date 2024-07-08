@@ -219,6 +219,7 @@ def nimbus_gen(exp, caller_id=None):
                     # Get eight wells in the same column at a time
                     #for pos1,pos2,pos3,pos4 in zip(util.nimbus_ordered_96[0::4], util.nimbus_ordered_96[1::4], 
                     #        util.nimbus_ordered_96[2::4], util.nimbus_ordered_96[3::4]): 
+                    warnings = set()
                     for p in range(len(util.nimbus_ordered_96)//8):
                         pos_col = [util.nimbus_ordered_96[p*8+offset] for offset in range(8)]
                         # skip empty column
@@ -259,8 +260,8 @@ def nimbus_gen(exp, caller_id=None):
                             assayFamilies = []
                             for assay in shx[pos]['ngs_assays']:
                                 if assay not in exp.assay_assayfam:
-                                    msg = f'Warning: skipping assay {assay} in sample plate {util.unguard_pbc(dna_BC, silent=True)}'
-                                    m(msg, level='warning', caller_id=caller_id)
+                                    msg = f'skipping assay {assay} in sample plate {util.unguard_pbc(dna_BC, silent=True)} well {pos}'
+                                    warnings.add(msg)
                                     continue
                                 assayNames.append(assay)
                                 assayFamilies.append(exp.assay_assayfam[assay])
@@ -293,6 +294,8 @@ def nimbus_gen(exp, caller_id=None):
                             wells_used += 1
                             transactions[dna_fn][pbc][pos] = -1000 # 1000 nl of sample is transferred
                             transactions[fnstg][pbc][pos] = -1000
+                    for w in warnings:
+                        m(w, level='warning', caller_id=caller_id)
                 
     #except Exception as exc:
     #    print("Transactions in nimbus_gen on fail: ", transactions, file=sys.stderr)
@@ -301,7 +304,7 @@ def nimbus_gen(exp, caller_id=None):
     #    return False
     #print("Transactions in nimbus_gen()", transactions, file=sys.stderr)
     transaction.add_pending_transactions(exp, transactions)
-    m(f'Success: Hamilton Nimbus plate definition files have been generated', level='success', caller_id=caller_id)
+    m(f'Hamilton Nimbus plate definition files have been generated', level='success', caller_id=caller_id)
     return True
 
 

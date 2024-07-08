@@ -61,7 +61,7 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
     """
     cols = df.columns.tolist()
     if 'Level' in cols:
-        print(cols, flush=True)
+        #print(cols, flush=True)
         cols = [cols[0], cols[3], cols[4], cols[1], cols[2]]
         df = df[cols]
 
@@ -1402,7 +1402,7 @@ def set_nimbus_title(exp, efs, nfs):
             title = f'For {str(yet_to_run)} 96-well plate set(s)'
             colour = '#83b3c9'
     
-    m(title, dest=('css',), size='h5', color=colour, align='left')
+    m(title, level='display', dest=('css',), size='h5', color=colour, align='left')
         
 
 def get_echo_download_buttons(nfs):
