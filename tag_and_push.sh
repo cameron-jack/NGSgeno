@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.27.000"
+VER="v0.27.001"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* NEW: log has reordered columns and colour
-* FIXED: sample display column spacing
-* NEW: on-screen message displays from anywhere in code
-* FIXED: file record synching on re-uploaded files
+* FIXED: messaging, various parsers
 EOM
 
 mv changelog.txt changelog_old.txt
