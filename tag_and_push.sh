@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
-VER="v0.28.000"
+VER="v0.28.001"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* NEW: all uploads are queued and processed one at a time, separating the GUI from the parsing
-* NEW: multi-file plate uploads now get a file-plate-purpose mapping to solve conflicts
+* FIXED: begin and end function messages were being shown on screen
 EOM
 
 mv changelog.txt changelog_old.txt
