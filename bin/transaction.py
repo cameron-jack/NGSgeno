@@ -69,9 +69,9 @@ def untransact(pending_id, is_plate=False):
  
 def is_pending(exp):
     """
-    True if either exp.pending_uploads or exp.pending_steps have entries (both are sets)
+    True if either exp.uploaded_files['_upload_pending'] or exp.pending_steps have entries (both are sets)
     """
-    if exp.pending_uploads or exp.pending_steps:
+    if exp.uploaded_files['_upload_pending'] or exp.pending_steps:
         return True
     return False
 
@@ -237,16 +237,16 @@ def clashing_pending_transactions(exp):
         #print('Pending and final paths: ', str(transaction), str(final_path), file=sys.stderr)
         if Path(final_path).exists():
             clashes.append(final_path)
-            #exp.log(f'Warning: file path {final_path} already ' +
-            #        'exists and will be overwritten if pending changes are accepted')
+            #exp.log(f'file path {final_path} already ' +
+            #        'exists and will be overwritten if pending changes are accepted', level='warning')
         else:
             for step in exp.reproducible_steps:
                 if step is None or len(step) == 0:
                     continue
                 # each step is dict['filenames'] = {PID: {well:change}}
                 if final_path in step:
-                    #exp.log(f'Warning: file path {final_path} already ' +
-                    #        'exists and will be overwritten if pending changes are accepted')
+                    #exp.log(f'file path {final_path} already ' +
+                    #        'exists and will be overwritten if pending changes are accepted', level='warning')
                     clashes.append(final_path)                  
     return clashes
     
@@ -270,7 +270,7 @@ def clear_pending_transaction(exp, file_upload):
             os.remove(pf)
         exp.pending_steps.pop(pf)
     except Exception as exc:
-        exp.log(f'Critical: Could not clear pending transactions, possbile locked file. {exc}')
+        exp.log(f'could not clear pending transactions, possbile locked file. {exc}', level='critical')
         return False
     return True
 
@@ -297,7 +297,7 @@ def clear_pending_transactions(exp):
     return True
 
     
-def accept_pending_transactions(exp, file_name=None):
+def accept_pending_transactions(exp, file_name=None, caller_id=None):
     """ 
     Look up the keys from exp.pending_steps in exp.reproducible_steps then
         remove all entries matching and following this then
@@ -314,7 +314,7 @@ def accept_pending_transactions(exp, file_name=None):
     if file_name:
         ps_keys = [ps for ps in ps_keys if file_name == ps_keys]
     if not ps_keys:
-        m(f'expected {file_name} in {exp.pending_steps.keys()}', level='error')
+        m(f'expected {file_name} in {exp.pending_steps.keys()}', level='error', caller_id=caller_id)
         return False
     MAX_STAGES=len(exp.reproducible_steps)
     clashing_index = MAX_STAGES
@@ -323,7 +323,7 @@ def accept_pending_transactions(exp, file_name=None):
     for i,step in enumerate(exp.reproducible_steps):
         for dest in step:
             dp = convert_final_to_pending(exp,dest)
-            print(f"{dp=} {ps_keys=}", flush=True, file=sys.stderr)
+            #print(f"{dp=} {ps_keys=}", flush=True, file=sys.stderr)
             if dp in ps_keys:
                 if i < clashing_index:
                     clashing_index = i
@@ -339,12 +339,12 @@ def accept_pending_transactions(exp, file_name=None):
                 try:
                     os.remove(fs)
                 except Exception as exc:
-                    m(f'Could not remove existing file {fs}, {exc}', level='error')
-                m(f'removed existing file {fs}', level='info')
+                    m(f'Could not remove existing file {fs}, {exc}', level='error', caller_id=caller_id)
+                m(f'removed existing file {fs}', level='info', dest=('noGUI',))
             try:
                 os.rename(ps, fs)
             except Exception as exc:
-                m(f'failed to rename pending file {ps} to {fs}, {exc}', level='error')
+                m(f'failed to rename pending file {ps} to {fs}, {exc}', level='error', caller_id=caller_id)
                 return False
             m(f'renamed pending file {ps} to {fs}', level='success', dest=('noGUI',))
         exp.pending_steps = {}
@@ -361,20 +361,14 @@ def accept_pending_transactions(exp, file_name=None):
         for af in affected_files:
             success = exp.del_file_record(af)
             if success:
-                m(f'obsolete tracked pipeline file {af} removed', level='info')
+                m(f'obsolete tracked pipeline file {af} removed', level='info', caller_id=caller_id)
             else:
                 try:
                     os.remove(af)
                 except Exception as exc:
-                    m(f'could not delete obsolete file {af}, {exc}', level='error')
+                    m(f'could not delete obsolete file {af}, {exc}', level='error', caller_id=caller_id)
                     return False
-                m(f'obsolete tracked pipeline file {af} removed', level='info')
-        # Shouldn't just delete all plates
-        #for ap in affected_pids:
-            # soft delete
-            #success = exp.delete_plate(ap)
-            #if success:
-            #    exp.log('Info: Obsolete plate')
+                m(f'obsolete tracked pipeline file {af} removed', level='info', caller_id=caller_id)
             
         exp.reproducible_steps = exp.reproducible_steps[:clashing_index]
         exp.reproducible_steps.append({})
@@ -384,7 +378,7 @@ def accept_pending_transactions(exp, file_name=None):
             try:
                 os.rename(ps, fs)
             except Exception as exc:
-                m(f'failed to rename pending file {ps} to {fs}, {exc}', level='error')
+                m(f'failed to rename pending file {ps} to {fs}, {exc}', level='error', caller_id=caller_id)
                 return False
             m(f'renamed pending file {ps} to {fs}', level='info', dest=('noGUI',))
         exp.pending_steps = {}

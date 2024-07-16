@@ -20,7 +20,9 @@ upper_height = "upper_info_height"
 lower_info = "lower_info_viewer"
 lower_height = "lower_info_height"
 
-# universal message queue. Use this rather than st.session_state['message_queues']
+# universal message queue. Use this together with st.session_state['message_queues']
+if 'message_queues' not in st.session_state:
+    st.session_state['message_queues'] = defaultdict(list)
 mq = defaultdict(list)
 
 def init_state(key, value):
@@ -186,9 +188,8 @@ def m(message, level, dest=None, caller_id=None,
             
             exp.log(message, level=level, func=func, func_line=func_line, call_func=call_func, call_line=call_line)
 
-    print(message, flush=True)
-    if 'noGUI' in dest:
-        print('do not write to GUI', flush=True)
+    if 'nogui' in dest:
+        # do not write to GUI
         return
 
     if 'toast' in dest:
@@ -232,7 +233,7 @@ def m(message, level, dest=None, caller_id=None,
         st.markdown(message, unsafe_allow_html=True)
         return
     
-    if 'mkdn' in dest and not level:
+    if 'mkdn' in dest and (not level or level == 'display'):
         st.markdown(message)
         return
     

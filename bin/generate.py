@@ -298,8 +298,7 @@ def nimbus_gen(exp, caller_id=None):
                         m(w, level='warning', caller_id=caller_id)
                 
     #except Exception as exc:
-    #    print("Transactions in nimbus_gen on fail: ", transactions, file=sys.stderr)
-    #    exp.log(f'Error: Nimbus input file creation {exc}')
+    #    m(f'Nimbus input file creation {exc}', level='error')
     #    exp.save()
     #    return False
     #print("Transactions in nimbus_gen()", transactions, file=sys.stderr)
@@ -416,8 +415,7 @@ def mk_picklist(exp, fn, rows, transactions, output_plate_guards=False, caller_i
                             else util.unguard_pbc(str(d), silent=True) for (h,d) in zip(plhdr, row)])
             dst.writerows(data)
     #except Exception as exc:
-    #    exp.log(f"Failure: Picklist generation failed for {fn} {exc}")
-    #    print(f"Failure: Picklist generation failed for {fn} {exc}", file=sys.stderr)
+    #    m(f"Picklist generation failed for {fn} {exc}", level='error')
     #    if Path(fn).exists():
     #        os.remove(fn)
     #    transactions = None
@@ -510,7 +508,7 @@ def mk_mytaq_picklist(exp, fn, task_wells, pcrPlate_col, pcrWell_col, taqwater_b
             output_rows.append(taq_row)
         mk_picklist(exp, fn, output_rows, transactions)         
     #except Exception as exc:
-    #    exp.log(f"Error: failed to generate taq/water picklist {exc}")
+    #    m(f"failed to generate taq/water picklist {exc}", level='error')
     #    exp.save()
     #    return False
     return True
@@ -625,18 +623,18 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         taq_bcs = []
         try:
             pcr_bcs = [util.guard_pbc(p,silent=True) for p in pcr_plate_bcs]
-        except Exception as e:
-            exp.log(f"{e}")
+        except Exception as exc:
+            m(f"{exc}", level='error', caller_id=caller_id)
             return False
         try:
             dna_bcs = [util.guard_pbc(d,silent=True) for d in dna_plate_bcs] 
         except Exception as e:
-            exp.log(f"{e}")
+            m(f"{exc}", level='error', caller_id=caller_id)
             return False
         try:                          
             taq_bcs = [util.guard_pbc(t, silent=True) for t in taq_water_bcs]
         except Exception as e:
-            exp.log(f"{e}")
+            m(f"{e}", level='error', caller_id=caller_id)
             return False
 
         primer_pids = exp.get_primer_pids()
@@ -755,7 +753,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
             transactions[taq_fn] = None
 
     #except Exception as exc:
-    #    exp.log(f"Failure: PCR1 Echo picklists could not be created {exc}")
+    #    m(f"PCR1 Echo picklists could not be created {exc}", level='error')
     #    return False
     transaction.add_pending_transactions(exp, transactions)
     m(f'PCR1 Echo picklists created', level='success', caller_id=caller_id)
@@ -821,7 +819,7 @@ def i7i5alloc_rot(exp, vol, wellcount, index_survey_fn='index-svy.csv', caller_i
         return index_info_pairs
       
     #except Exception as exc:
-    #    exp.log(f"Error: {exc}")
+    #    m(f"{exc}", level='error')
 
 
 def generate_miseq_samplesheet(exp, miseq_fn, s3tab,transactions, caller_id=None):
@@ -861,7 +859,7 @@ Adapter,,,,,,,,,,
             dst.writerows(gen)
         
     #except Exception as exc:
-    #    exp.log(f"Failure: Miseq samplesheet generation {fnmiseq} will be deleted {exc}")
+    #    m(f"Miseq samplesheet generation {fnmiseq} will be deleted {exc}", level='error')
     #    if Path(fnmiseq).exist():
     #        os.remove(fnmiseq)
     #    exp.save()
@@ -1049,7 +1047,7 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
     transaction.add_pending_transactions(exp, transactions)
     
     #except Exception as exc:
-    #    exp.log(f"Error: {exc}")
+    #    m(f"{exc}", level='error')
     #    return False
     return True
 

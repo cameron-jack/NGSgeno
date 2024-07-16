@@ -385,8 +385,11 @@ def main():
                     ignore = dc.info_selection(widget_key+"top_viewer", 'info_panel1', 'info_panel2', 
                             'upper_panel_height', default_view1=default_view1, default_view2=default_view2, 
                             default_height=st.session_state.get('upper_panel_height',250))
-
-
+        # attempt to parse any files that are set for upload
+        parse.process_upload_queue(exp)
+        if '_upload_pending' not in exp.uploaded_files:
+            exp.uploaded_files['_upload_pending'] = {}
+        
         with save_container:
             save_message(exp, key = 'save1')
 
@@ -412,9 +415,8 @@ def main():
                     init_state('run queue', [])
                     with main_body_container:
                         st.subheader('Upload Sample Files')
-                        m('**Upload Rodentity plate files, custom manifests, or amplicon plate definition files '+\
-                                'then move to the next tab to upload pipeline consumables and other important files**',
-                                level='display', dest=('mkdn',))
+                        st.markdown('**Upload Rodentity plate files, custom manifests, or amplicon plate definition files '+\
+                                'then move to the next tab to upload pipeline consumables and other important files**')
                         ld.load_rodentity_data('rodentity_load1')
                         hline()
                         ld.load_custom_manifests('custom_load1')
@@ -438,7 +440,7 @@ def main():
                         ld.upload_pcr2_files('pcr2_load2')
                         add_vertical_space(1)
                         st.subheader('Custom Volumes')
-                        ld.custom_volumes(exp)
+                        ld.custom_volumes('custom1')
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_consumables', default_view1='Consumables', 
                         default_view2='Samples')
@@ -465,7 +467,7 @@ def main():
                             header_col.subheader('Generate Echo Files')
                             dc.set_nimbus_title(exp, nfs, efs)
                         add_vertical_space(2)
-                        if not ld.check_assay_file(exp):
+                        if not ld.check_assay_file():
                             m('Assay list file (assay to primer mapping) is required to proceed. '+\
                                     'Please upload this to continue', level='error')
                             success = ld.upload_assaylist('nimbus1_assaylist')
@@ -551,7 +553,7 @@ def main():
                         pcr_col, taqwater_col = st.columns(2)
 
                         st.subheader('Upload Files')
-                        ld.upload_pcr1_files(key='pcr1_primer1')
+                        ld.upload_pcr1_files('pcr1_primer1')
                         add_vertical_space(1)
 
                         st.subheader('Custom Volumes')
@@ -566,9 +568,9 @@ def main():
                                 m('No PCR or amplicon plates selected/added yet', level='display', dest=('css',), color='red',size='p')
                         
                         with pcr_col:
-                            ld.add_pcr_barcodes(key='pcr_bc_tab1', dna_pids=selected_pids['dna'])
+                            ld.add_pcr_barcodes('pcr_bc_tab1', dna_pids=selected_pids['dna'])
                         with taqwater_col:
-                            ld.add_taqwater_barcodes(key='tw_bc_tab1', pcr_stage=pcr_stage)
+                            ld.add_taqwater_barcodes('tw_bc_tab1', pcr_stage=pcr_stage)
                         
                         with display_cont:
                             dc.display_pcr1_components(selected_pids)
@@ -659,7 +661,7 @@ def main():
                         pcr_col, taqwater_col = st.columns(2)
 
                         st.subheader('Upload Files')
-                        ld.upload_pcr2_files(key='pcr2_index1')
+                        ld.upload_pcr2_files('pcr2_index1')
                         add_vertical_space(1)
 
                         st.subheader('Custom Volumes')
@@ -678,9 +680,9 @@ def main():
                             dc.display_pcr2_components(selected_pids)
 
                         with pcr_col:
-                            ld.add_pcr_barcodes(key='pcr_bc_tab2', dna_pids=selected_pids['dna'])
+                            ld.add_pcr_barcodes('pcr_bc_tab2', dna_pids=selected_pids['dna'])
                         with taqwater_col:
-                            ld.add_taqwater_barcodes(key='tw_bc_tab2', pcr_stage=pcr_stage)
+                            ld.add_taqwater_barcodes('tw_bc_tab2', pcr_stage=pcr_stage)
                         add_vertical_space(1)
                 
                 # ** Info viewer **
@@ -808,7 +810,7 @@ def main():
                             st.error(msg)
                         st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
                     else:
-                        ld.upload_miseq_fastqs()
+                        ld.upload_miseq_fastqs('miseq_tab1')
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq2', default_view1='Status', 
@@ -839,9 +841,9 @@ def main():
                         st.warning('Resources are required for allele calling and must be present before FASTQs can be uploaded')
                         st.subheader('Upload reference sequences')
                         ld.upload_reference_sequences('reference_allele1')
-                        ld.upload_miseq_fastqs()
+                        ld.upload_miseq_fastqs('miseq_tab1a')
                     else:
-                        ld.upload_miseq_fastqs()
+                        ld.upload_miseq_fastqs('miseq_tab1b')
                         # check whether output files already exist and are opened elsewhere
                         target_fn = exp.get_exp_fn('target.fa')
                         results_fn = exp.get_exp_fn('results.csv')
@@ -890,7 +892,7 @@ def main():
                                     cmd_str += ' --exhaustive'
                                 if debug_mode:
                                     cmd_str += ' --debug'
-                                exp.log(f'Info: {cmd_str}')
+                                m(f'{cmd_str}', level='info')
                                 subprocess.Popen(cmd_str.split(' '))
                                 st.write(f'Calling {cmd_str}')
                                 sleep(1.0)
@@ -978,10 +980,10 @@ def main():
         #=============================================== UPDATE MESSAGES ==============================================
         with message_container:
             #dc.display_temporary_messages()
-            dc.display_persistent_messages(key='main1')
+            dc.display_persistent_messages('main1')
 
-
-            ### End of main display ###
+        parse.process_upload_queue(exp)
+        ### End of main display ###
 
 if __name__ == '__main__':
     main()

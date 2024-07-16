@@ -515,7 +515,7 @@ def get_soft_delete_path(file_path):
     t = t.strftime("%y%m%d_%H%M%S_")
     fn_orig = WindowsPath(file_path).name
     fn_root = WindowsPath(file_path).parent
-    print(f'**** {file_path} {fn_orig} {fn_root} ****')
+    #print(f'**** {file_path} {fn_orig} {fn_root} ****')
     new_path = Path(fn_root)/('DEL_' + t + str(fn_orig))
     return str(new_path)
 
@@ -544,14 +544,16 @@ def delete_file(file_path, soft=True, caller_id=None):
                     m(f'renamed {file_path} to {del_path}', level='success', dest=('noGUI',))
                     return True
                 
-        if not soft or do_delete:
+        if (not soft) or do_delete:
             try:
                 Path(file_path).unlink()
             except Exception as exc:
                 m(f'could not delete file {file_path} {exc}', level='error', caller_id=caller_id)
-            return False
-        
-        m(f'deleted file {file_path}', level='info', dest=('noGUI',))
+                return False
+            m(f'deleted file {file_path}', level='info', dest=('noGUI',))
+            return True
+    else:
+        m(f'file {file_path} not present', level='warning', dest=('noGUI',))
         return True
 
 

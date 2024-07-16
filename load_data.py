@@ -15,10 +15,11 @@ import sys
 from pathlib import PurePath, Path
 import itertools
 from math import fabs, factorial, floor, ceil
-from io import StringIO
-from shutil import copy2
+from io import StringIO, BytesIO
+from shutil import copy2, copyfileobj
 from time import sleep
 from unittest import expectedFailure
+import uuid
 
 import pandas as pd
 from pandas.core.arrays.period import raise_on_incompatible
@@ -79,44 +80,69 @@ entries to be displayed, rather than writing the messages themselves
 HELP_COLOUR = '#7f8b8f'
 FORM_BUTTON_COLOUR = '#4287f5'
 
+def queue_upload(streams, purpose, caller_id=None, overwrite_plates=True):
+    """
+    All file stream uploads go here first and are queued for parsing  
+    - Each file is uploaded with a pending_ prefix and
+    - saved to /exp/uploads/
+    - pending file uploads are saved to exp['uploaded_files']['_upload_queue'] =\
+            (pending_fn, purpose, caller_id, overwrite_plates)
+    The queue is processed by parse.process_pending_uploads(exp)
+    """
+    exp = st.session_state['experiment']
+    if exp.locked and purpose not in {'primer_assay_map','reference_sequences'}:
+        m(f'Cannot add files other than assay file or references while lock is active', level='failure', caller_id=caller_id)
+        return False
+    
+    for stream in streams:
+        pfp = exp.get_exp_fn(stream.name, subdir='uploads', trans=True)
+        if Path(pfp).exists():
+            success = util.delete_file(pfp, caller_id=caller_id)
+            if not success:
+                continue
+            
+        m(f"uploading {stream.name} to {pfp}", level='info', dest=('noGUI',))
+        with open(pfp, 'wb') as outf:
+            try:
+                copyfileobj(BytesIO(stream.getvalue()), outf)
+            except Exception as exc:
+                m(f'Could not copy stream {stream.name} to file {pfp}, {exc}', level='error', caller_id=caller_id)
+                continue
 
-def do_pending_cb(combined_pending, caller_id):
+        # queue the upload for later processing
+        if '_upload_queue' not in exp.uploaded_files:
+            exp.uploaded_files['_upload_queue'] = {}
+        
+        exp.uploaded_files['_upload_queue'][pfp] = (purpose, caller_id, overwrite_plates)
+        m(f'{pfp} queued for parsing', level='info', dest=('noGUI',))
+
+
+def do_pending_cb(pending_cbs, caller_id):
     """
     Action the pending_file_widget
     """
     exp = st.session_state['experiment']
-    expected_keys = ['pending_file_checkbox_'+str(pending) for pending in combined_pending]
-    pending_checked = []
-    # test all the checkboxes to see if they were ticked
-    for key in expected_keys:
-        if key in st.session_state:
-            if st.session_state[key]:
-                 pending_checked.append(key[len('pending_file_checkbox_'):])
-        if key not in st.session_state or not st.session_state[key]:
-            fp = key[len('pending_file_checkbox_'):]
-            if fp in exp.pending_steps:
-                exp.pending_steps.remove(fp)
-            if fp in exp.pending_uploads:
-                exp.pending_uploads.remove(fp)
-
-    # go through each pending item to see if it is kept or discarded
-    for pending in pending_checked:
-        clashing_filenames, clashing_pids = trans.check_for_clashing_transactions(exp, filenames=pending)
-        if pending in exp.pending_uploads:
-            success = parse.accept_pending_upload(exp, pending, caller_id=caller_id)
-        elif pending in exp.pending_steps:
-            success = trans.accept_pending_transactions(exp, pending, caller_id=caller_id)
-        if success:
-            m(f'overwrote existing file {pending}', level='success', caller_id=caller_id)
-            if clashing_filenames:
-                m(f'{", ".join(clashing_filenames)} potentially affected by change', 
-                        level='warning', caller_id=caller_id)
-            if clashing_pids:
-                m(f'{", ".join(clashing_pids)} potentially affected by change', 
-                        level='warning', caller_id=caller_id)
-        else:
-            m(f'could not overwrite existing file {pending}', level='error',
-                      caller_id=caller_id)
+    for pcb in pending_cbs:
+        pfp = pending_cbs[pcb]
+        if pcb in st.session_state and st.session_state[pcb]:
+            clashing_files, clashing_pids = trans.check_for_clashing_transactions(exp, filenames=pfp)
+            if pfp in exp.uploaded_files['_upload_pending']:
+                purpose, caller_id, overwrite_plates = exp.uploaded_files['_upload_pending'][pfp]
+                success = parse.accept_pending_upload(exp, pfp, purpose, caller_id=caller_id, overwrite_plates=overwrite_plates)
+            elif pfp in exp.pending_steps:
+                success = trans.accept_pending_transactions(exp, pfp, caller_id=caller_id)
+            if success:
+                if clashing_files:
+                    m(f'{", ".join(clashing_files)} potentially affected by change', 
+                            level='warning', dest=('noGUI',))
+                if clashing_pids:
+                    m(f'{", ".join(clashing_pids)} potentially affected by change', 
+                            level='warning', dest=('noGUI',))
+            else:
+                m(f'could not overwrite existing file {pfp}', level='error',
+                        dest=('noGUI',))
+            if pfp in exp.uploaded_files['_upload_pending']:
+                del exp.uploaded_files['_upload_pending'][pfp]
 
 
 def pending_file_widget(key, caller_id):
@@ -130,9 +156,7 @@ def pending_file_widget(key, caller_id):
     exp = st.session_state['experiment']
     combined_pending = []  # both pending_uploads and pending_steps
     
-    pending_uploads = {}
-    if exp.pending_uploads:
-        pending_uploads = exp.pending_uploads.copy()
+    pending_uploads = list(exp.uploaded_files['_upload_pending'].keys())
     pending_steps = {}
     if exp.pending_steps:
         pending_steps = exp.pending_steps.copy()
@@ -142,17 +166,15 @@ def pending_file_widget(key, caller_id):
     # clear missing files, and make checkboxes for all pending files
     st.session_state['clashing_filenames'] = {}
     st.session_state['clashing_pids'] = {}
-    for pending_upload in pending_uploads:
-        if not Path(pending_upload).exists():
-            exp.pending_uploads.remove(pending_upload)
+    for pfp in pending_uploads:
+        if not Path(pfp).exists():
+            del exp.uploaded_files['_upload_pending'][pfp]
             continue
     for pending_step in pending_steps:
         if not Path(pending_step).exists():
             del exp.pending_steps[pending_step]
             continue
-    pending_uploads = {}
-    if exp.pending_uploads:
-        pending_uploads = exp.pending_uploads.copy()
+    pending_uploads = list(exp.uploaded_files['_upload_pending'].keys())
     pending_steps = {}
     if exp.pending_steps:
         pending_steps = exp.pending_steps.copy()
@@ -162,18 +184,20 @@ def pending_file_widget(key, caller_id):
     st.warning('The following files have been uploaded previously. Select the ones you want to overwrite and submit')
     
     with st.form('message_container_'+key, clear_on_submit=True):
-        for pending_upload in pending_uploads:
-            combined_pending.append(pending_upload)
-            #affected_pids = trans.get_affected_pid_chain(pending_upload)
-            #affected_fns = trans.get_affect_fn_chain(pending_upload)
-            clashing_filenames, clashing_pids = trans.check_for_clashing_transactions(exp, filenames=pending_upload)
-            st.checkbox(pending_upload + ' - ' + ','.join(clashing_filenames) + \
-                    ' - ' + ','.join([util.unguard_pbc(pid, silent=True) for pid in clashing_pids]),
-                          key=f'pending_file_checkbox_{pending_upload}')    
+        pending_cbs = {}
+        for pfp in pending_uploads:
+            key = f'pending_file_checkbox_{uuid.uuid4()}'
+            pending_cbs[key] = pfp
+            #clashing_filenames, clashing_pids = trans.check_for_clashing_transactions(exp, filenames=pfp)
+            #st.checkbox(pfp + ' - ' + ','.join(clashing_filenames) + \
+            #        ' - ' + ','.join([util.unguard_pbc(pid, silent=True) for pid in clashing_pids]),
+            #              key=f'pending_file_checkbox_{pfp}')
+            st.checkbox(pfp, key=key)    
         for pending_step in pending_steps:
-            combined_pending.append(pending_step)
-            st.checkbox(pending_step, key=f'pending_file_checkbox_{pending_step}')
-        st.form_submit_button('Submit', on_click=do_pending_cb, args=[combined_pending, caller_id])
+            key = f'pending_file_checkbox_{uuid.uuid4()}'
+            pending_cbs[key] = pending_step
+            st.checkbox(pending_step, key=key)
+        st.form_submit_button('Submit', on_click=do_pending_cb, args=[pending_cbs, caller_id])
     
 
 def upload_echo_inputs(key):
@@ -200,10 +224,7 @@ def upload_echo_inputs(key):
                     submitted = st.form_submit_button("Upload files")
 
                 if submitted and nim_outputs is not None:
-                    success = parse.upload(exp, nim_outputs, purpose='dna', overwrite_plates=True)  
-                    nim_names = ', '.join(nim.name for nim in nim_outputs)
-                    if success:
-                        m(f'{nim_names} successfully uploaded', level='info')
+                    queue_upload(nim_outputs, purpose='dna', caller_id=caller_id, overwrite_plates=True)  
 
         nfs, efs, xbcs = exp.get_nimbus_filepaths()
 
@@ -231,11 +252,11 @@ def upload_echo_inputs(key):
         with title_area:
             m(title, level='display', dest=('css',), size='h5', color=title_colour)
             add_vertical_space(1)
-            
-    # manage file transactions
-    if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr1':
+
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
         pending_file_widget(key, caller_id)
-        st.session_state['upload_option'] = ''
         
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -246,28 +267,12 @@ def upload_echo_inputs(key):
 
 def do_upload_primer_layout(upl, caller_id):
     """ helper method for clean deferred uploads of primer layouts """
-    exp = st.session_state['experiment']
-    upl_pid = upl.name.split('_')[0]
-    success = parse.upload(exp, [upl], purpose='primer_layout')
-    if success and not trans.is_pending(exp):
-        m(f'Added primer layouts for plate {upl_pid} from file {upl.name}',
-                level='success', caller_id=caller_id)
-    elif not success:
-        m(f'Failed to read primer plate layout from {upl.name}, please see the log',
-                level='error', caller_id=caller_id)
+    queue_upload([upl], 'primer_layout', caller_id=caller_id)
 
 
 def do_upload_primer_volume(upv, caller_id):
     """ helper method for clean deferred uploads of primer volumes """
-    exp = st.session_state['experiment']
-    upv_pid = upv.name.split('_')[0]
-    success = parse.upload(exp, [upv], purpose='primer_volume')
-    if success and not trans.is_pending(exp):
-        m(f'Added primer volumes for plate {upv_pid} from file {upv.name}',
-                level='success', caller_id=caller_id)
-    elif not success:
-        m(f'Failed to read primer plate volumes from {upv.name}, please see the log',
-                level='error', caller_id=caller_id)
+    queue_upload([upv], 'primer_volume', caller_id=caller_id)
 
 
 def upload_pcr1_files(key):
@@ -280,7 +285,6 @@ def upload_pcr1_files(key):
     
     exp = st.session_state['experiment']
     caller_id = 'upload_pcr1_files'
-    st.session_state['upload_option'] = ''  # do we display pending files here
     primer_form = st.form('primer plate upload'+key, clear_on_submit=True)
     init_state('deferred_primer_layout_upload_list', [])
     init_state('deferred_primer_volume_upload_list', [])
@@ -301,7 +305,6 @@ def upload_pcr1_files(key):
         
         # check whether the files are potentially incorrect based on file names
         if upload_button:
-            st.session_state['upload_option'] = 'pcr1'
             if uploaded_primer_layouts:
                 for upl in uploaded_primer_layouts:
                     if 'index' in upl.name.lower() or 'vol' in upl.name.lower():
@@ -359,11 +362,10 @@ def upload_pcr1_files(key):
                     col2.write(f'File flagged as potentially other purpose than primer volume')
         if make_button:
             st.button('Confirm', key='deferred_primer_list_confirm'+key, on_click=set_state, args=['confirm_primer_upload_button', True])
-            
-    #manage transactions:
-    if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr1':
+     
+    parse.process_upload_queue(exp)
+    if trans.is_pending(exp):
         pending_file_widget(key, caller_id)
-        st.session_state['upload_option'] = ''
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -392,7 +394,6 @@ def load_amplicons(key):
         upload_button = st.form_submit_button("Upload Files")
     
         if upload_button:
-            st.session_state['upload_option'] = 'amplicons'
             if uploaded_amplicon_plates:
                 # Try to remove obsolete files
                 miseq_fn = exp.get_exp_fn('MiSeq_'+exp.name+'.csv')
@@ -409,18 +410,12 @@ def load_amplicons(key):
                         m(f'Removed obsolete file {stage3_fn}', level='info')
                     else:
                         m(f'Could not remove obsolete file {stage3_fn}', level='warning')
-                success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
-                uap_ids = ','.join(uap.name for uap in uploaded_amplicon_plates)
-                if success:
-                    if not trans.is_pending(exp):
-                        m(f'Added amplicon manifests from {uap_ids}', level='success') 
-                else:
-                    m(f'Failed to upload at least one amplicon manifest, please see the log', 
-                            level='error')
+                queue_upload(uploaded_amplicon_plates, 'amplicon', caller_id=caller_id)
+               
+    parse.process_upload_queue(exp)
     # manage transactions
-    if trans.is_pending(exp) and st.session_state['upload_option'] == 'amplicons':
-        pending_file_widget(key, caller_id)
-        st.session_state['upload_option'] = ''           
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)          
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -431,29 +426,13 @@ def load_amplicons(key):
 
 def do_upload_index_layout(uil, caller_id):
     """ helper method for clean deferred uploads of index layouts """
-    exp = st.session_state['experiment']
-    uil_pid = uil.name.split('_')[0]
-    success = parse.upload(exp, [uil], purpose='index_layout')
-    if success and not trans.is_pending(exp):
-        m(f'Added index layouts for plate {uil_pid} from file {uil.name}',
-                level='success', caller_id=caller_id)
-    elif not success:
-        m(f'Failed to read index plate layout from {uil.name}, please see the log',
-                level='error', caller_id=caller_id)
-
+    queue_upload([uil], 'index_layout', caller_id=caller_id)
+    
 
 def do_upload_index_volume(uiv, caller_id):
     """ helper method for clean deferred uploads of index volumes """
-    exp = st.session_state['experiment']
-    uiv_pid = uiv.name.split('_')[0]
-    success = parse.upload(exp, [uiv], purpose='index_volume')
-    if success and not trans.is_pending(exp):
-        m(f'Added index volumes for plate {uiv_pid} from file {uiv.name}',
-                level='success', caller_id=caller_id)
-    elif not success:
-        m(f'Failed to read index plate volumes from {uiv.name}, please see the log',
-                level='error', caller_id=caller_id)
-        
+    queue_upload([uiv], 'index_volume', caller_id=caller_id)
+            
 
 def upload_pcr2_files(key):
     """
@@ -463,7 +442,6 @@ def upload_pcr2_files(key):
     st.markdown('**Upload Index Files (PCR round 2)**')
     exp = st.session_state['experiment']
     caller_id = 'upload_pcr2_files'
-    st.session_state['upload_option'] = ''  # do we display pending files here
     init_state('deferred_index_layout_upload_list', [])
     init_state('deferred_index_volume_upload_list', [])
     with st.form('index plate upload'+key, clear_on_submit=True):
@@ -492,7 +470,6 @@ def upload_pcr2_files(key):
         upload_button = st.form_submit_button("Upload Files")
 
         if upload_button:
-            st.session_state['upload_option'] = 'pcr2'
             if uploaded_index_layouts:
                 for uil in uploaded_index_layouts:
                     if 'primer' in uil.name.lower() or 'vol' in uil.name.lower():
@@ -526,16 +503,7 @@ def upload_pcr2_files(key):
                     else:
                         m(f'Could not remove obsolete file {stage3_fn}',
                                 level='warning')
-
-                success = parse.upload(exp, uploaded_amplicon_plates, purpose='amplicon')
-                uap_ids = ','.join(uap.name for uap in uploaded_amplicon_plates)
-                if success:
-                    if not trans.is_pending(exp):
-                        m(f'Added amplicon manifests from {uap_ids}',
-                                level='success')
-                else:
-                    m(f'Failed to upload at least one amplicon manifest, please see the log',
-                            level='error')
+                queue_upload(uploaded_amplicon_plates, purpose='amplicon', caller_id=caller_id)              
       
     # handle deferred index file uploads
     init_state('confirm_index_upload_button', False)
@@ -582,11 +550,9 @@ def upload_pcr2_files(key):
         if make_button:
             st.button('Confirm', key='deferred_index_list_confirm'+key, on_click=set_state, args=['confirm_index_upload_button', True])
 
-    # manage transactions
-    if trans.is_pending(exp) and st.session_state['upload_option'] == 'pcr2':
-        #with st.session_state['message_container']:
+    parse.process_upload_queue(exp)
+    if trans.is_pending(exp):
         pending_file_widget(key, caller_id)
-        st.session_state['upload_option'] = ''
 
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -612,20 +578,11 @@ def upload_assaylist(key):
     success = False
     if upload_button:
         if uploaded_assaylists:
-            success = parse.upload(exp, uploaded_assaylists, 'assay_primer_map')
-            assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
-            if success and not trans.is_pending(exp):
-                m(f'Added assay/primer lists from files {assaylist_names}',
-                        level='success')
-            elif not success:
-                m(f'Failed to upload at least one assay/primer list file, please see the log',
-                        level='error')
-   
-    #manage transactions:
-    if trans.is_pending(exp) and st.session_state['upload_option'] == 'consumables':
-        #with st.session_state['message_container']:
+            queue_upload(uploaded_assaylists, 'assay_primer_map', caller_id=caller_id)
+    
+    parse.process_upload_queue(exp)
+    if trans.is_pending(exp):
         pending_file_widget(key, caller_id)
-        st.session_state['upload_option'] = ''
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -643,7 +600,6 @@ def upload_extra_consumables(key):
     st.markdown('**Upload Custom Reference / Assay Lists**')
     exp = st.session_state['experiment']
     caller_id = 'upload_extra_consumables'
-    st.session_state['upload_option'] = ''  # do we display pending files here
     upload_form = st.form('Consumables upload'+key, clear_on_submit=True)
     
     col1, col2 = upload_form.columns(2)
@@ -659,36 +615,20 @@ def upload_extra_consumables(key):
     upload_button = upload_form.form_submit_button("Upload Files")
 
     if upload_button:
-        st.session_state['upload_option'] = 'consumables'
         if uploaded_references:
-            success = parse.upload(exp, uploaded_references, 'reference_sequences')
-            ref_names = ', '.join(ur.name for ur in uploaded_references)
-            if success and not trans.is_pending(exp):
-                m(f'Added reference sequences from files {ref_names}', 
-                        level='success')
-            elif not success:
-                m(f'Failed to upload at least one reference sequence file, please see the log', 
-                        level='error')
+            queue_upload(uploaded_references, 'reference_sequences', caller_id=caller_id)
+            
         if uploaded_assaylists:
-            #success = parse.upload(exp, uploaded_assaylists, 'primer_assay_map')
-            # Genotyping team use the assay->primer direction
-            success = parse.upload(exp, uploaded_assaylists, 'assay_primer_map')
-            assaylist_names = ''.join(ual.name for ual in uploaded_assaylists)
-            if success and not trans.is_pending(exp):
-                m(f'Added assay/primer lists from files {assaylist_names}',
-                        level='success')
-            elif not success:
-                m(f'Failed to upload at least one assay/primer list file, please see the log',
-                        level='error')
+            queue_upload(uploaded_assaylists, 'assay_primer_map', caller_id=caller_id)
+            
         # TODO: add the ability to add a custom taq+water plate, perhaps?
         #if uploaded_taqwater_plates:
         #    success = exp.add_taqwater_layout_volume
-   
-    #manage transactions:
-    if trans.is_pending(exp) and st.session_state['upload_option'] == 'consumables':
-        #with st.session_state['message_container']:
+
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
         pending_file_widget(key, caller_id)
-        st.session_state['upload_option'] = ''
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -697,11 +637,13 @@ def upload_extra_consumables(key):
         mq[caller_id] = []
 
 
-def check_assay_file(exp):
+def check_assay_file():
+    exp = st.session_state['experiment']
     return any(file.get('purpose', '') == 'assay_primer_map' for file in exp.uploaded_files.values())
 
 
-def custom_volumes(exp):
+def custom_volumes(key):
+    exp = st.session_state['experiment']
     volumes_dict = exp.transfer_volumes.copy()
     caller_id = 'custom_volumes'
     st.markdown('**Volumes for DNA and Primers**')
@@ -749,6 +691,11 @@ def custom_volumes(exp):
         else:
             m("Volume could not be modified. Please use integers only", level='error')
 
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
+    
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
@@ -771,19 +718,13 @@ def upload_reference_sequences(key):
         upload_button = st.form_submit_button("Upload Files")
 
     if upload_button and uploaded_references:      
-        success = parse.upload(exp, uploaded_references, 'reference_sequences')
-        ur_names = [ur.name for ur in uploaded_references] 
-        if success:
-            if not trans.is_pending(exp):
-                st.success(f'Added rodentity plate data from files {ur_names}')
-        else:
-            st.error(f'Could not upload at least one rodentity plate file, please see the log')
-    #manage transactions:
-    if trans.is_pending(exp) and st.session_state['upload_option'] == 'consumables':
-        #with st.session_state['message_container']:
-        pending_file_widget(key)
-        st.session_state['upload_option'] = ''
+        queue_upload(uploaded_references, 'reference_sequences', caller_id=caller_id)
         
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
+    
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
@@ -797,7 +738,6 @@ def load_rodentity_data(key):
     """
     exp = st.session_state['experiment']
     caller_id = 'load_rodentity_data'
-    st.session_state['upload_option'] = ''  # do we display pending files here
     plates_to_clear = [False, False, False, False]
     with st.expander('Add data from Rodentity JSON files',expanded=True):
         st.info('Add up to four Rodentity JSON ear-punch plate (96-well) files at a time and click on **Submit**. '+\
@@ -812,20 +752,11 @@ def load_rodentity_data(key):
             rod_upload_submit_button = st.form_submit_button('Submit')
 
         if rod_upload_submit_button and rodentity_epps:
-            st.session_state['upload_option'] = 'rodentity'
-            success = parse.upload(exp, rodentity_epps, 'rodentity_sample', caller_id=caller_id)
-            rod_names = ', '.join(rod.name for rod in rodentity_epps)
-            if success:
-                m(f'Added rodentity plate data from files {rod_names}', 
-                        level='success')
-            else:
-                m(f'Failed to upload at least one rodentity plate file, please see the log',
-                        level='error')
+            queue_upload(rodentity_epps, 'rodentity_sample', caller_id=caller_id)
                
-            if trans.is_pending(exp) and st.session_state['upload_option'] == 'rodentity':
+            if trans.is_pending(exp):
                 #with message_container:
-                pending_file_widget(key, caller_id)
-                st.session_state['upload_option'] = ''
+                pending_file_widget(key+'1a', caller_id)
 
             for rod_epp in rodentity_epps:
                 rod_pid = util.guard_pbc(rod_epp.name.rstrip('.json'), silent=True)
@@ -873,8 +804,7 @@ def load_rodentity_data(key):
                     if plate and exp.unassigned_plates[i+1]:
                         exp.unassigned_plates[i+1] = ''
                         plates_to_clear[i] = False
-                st.rerun()
-                
+                st.rerun()      
 
         with rod_col2.form('rod_destination_form', clear_on_submit=True):
             rod_dp = st.text_input('Destination plate ID (barcode)', 
@@ -904,7 +834,13 @@ def load_rodentity_data(key):
                                level='success')
                         exp.unassigned_plates = {1:'',2:'',3:'',4:''}
                         sleep(2)
-                        #st.rerun()
+                        
+    parse.process_upload_queue(exp)
+
+    #manage transactions:
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
+
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
@@ -916,7 +852,6 @@ def load_custom_manifests(key):
     """ Demonstration upload panel for custom manifests """
     exp = st.session_state['experiment']
     caller_id = 'load_custom_manifest'
-    st.session_state['upload_option'] = ''  # do we display pending files here
     if 'custom' not in exp.unassigned_plates or not exp.unassigned_plates['custom']:
         exp.unassigned_plates['custom'] = {'None':{}}
     with st.expander('Upload custom manifests', expanded=True):
@@ -929,17 +864,19 @@ def load_custom_manifests(key):
                 #st.markdown('<p style="color:#FEFEFE">.</p>', unsafe_allow_html=True)
                 submit_manifest = st.form_submit_button()
                 if submit_manifest and manifest_uploads:
-                    success = parse.upload(exp, manifest_uploads, 'custom_sample')
-                    if success:
-                        m(f'Custom file uploaded', level='success')
-                    else:
-                        m('Custom file upload failed, see log', level='error')
-                    st.session_state['upload_option'] = 'custom'
+                    queue_upload(manifest_uploads, 'custom_sample', caller_id=caller_id)
 
-        if trans.is_pending(exp) and st.session_state['upload_option'] == 'custom':
-            #with st.form(f'clash form {key}', clear_on_submit=True):
-            pending_file_widget(key, caller_id)
-            st.session_state['upload_option'] = ''
+        parse.process_upload_queue(exp)
+
+        if trans.is_pending(exp):
+            pending_file_widget(key+'1a', caller_id)
+
+        if caller_id in mq:
+            for msg, lvl in mq[caller_id]:
+                m(msg, level=lvl, no_log=True)
+            sleep(0.3)
+            mq[caller_id] = []
+
         st.info('Choose the desired layout for the 384-well DNA plate (made with the Hamilton Nimbus). '+\
                 'Then provide the DNA plate name and press **Accept**')
         
@@ -978,6 +915,12 @@ def load_custom_manifests(key):
                             m(f'Assigned custom plates to {util.unguard_pbc(dest_pid)}', level='success')
                         else:
                             m('Failed to assign custom plates', level='error')
+    
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
+    
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
@@ -985,7 +928,7 @@ def load_custom_manifests(key):
         mq[caller_id] = []
         
 
-def add_pcr_barcodes(key, dna_pids):
+def add_pcr_barcodes(key):
     caller_id = 'add_pcr_barcodes'
     exp = st.session_state['experiment']
 
@@ -1009,6 +952,11 @@ def add_pcr_barcodes(key, dna_pids):
             else:
                 m(f'This plate barcode {pcr_plate_barcode} appears to already be in use', 
                         level='error')
+    
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
     
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -1039,12 +987,17 @@ def add_taqwater_barcodes(key, pcr_stage):
             else:
                 m(f'This plate barcode {taqwater_plate_barcode} appears to already be in use',
                         level='error')
-                
+     
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
+    
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = []                
 
 
 def provide_barcodes(key, pcr_stage, dna_pids):
@@ -1097,6 +1050,12 @@ def provide_barcodes(key, pcr_stage, dna_pids):
             else:
                 m(f'This plate barcode {taqwater_plate_barcode} appears to already be in use',
                         level='error', caller_id=caller_id)
+    
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
+    
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
@@ -1104,7 +1063,7 @@ def provide_barcodes(key, pcr_stage, dna_pids):
         mq[caller_id] = []
 
 
-def upload_miseq_fastqs():
+def upload_miseq_fastqs(key):
     exp = st.session_state['experiment']
     caller_id = 'upload_miseq_fastqs'
     if not exp.locked:
@@ -1130,15 +1089,15 @@ def upload_miseq_fastqs():
             copy2(fp, exp.get_exp_dn('raw'))
         file_field.markdown('<h5>Done</h5>', unsafe_allow_html=True)
         copy_progress.progress(100)
-        #if not exp.locked:
-        #    exp.lock()
-        #    m(f'Experiment {exp.name} is now locked from changes to plate layouts', level='info', dest=('log',))
-    # display any messages for this widget
+
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
+    
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = []
-
-
 

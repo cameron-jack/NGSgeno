@@ -15,6 +15,8 @@ Stores both the inventory - all the plates and samples - but also the options us
 import os
 import sys
 import csv
+
+from pandas.core.base import NoNewAttributesMixin
 import jsonpickle
 from itertools import combinations
 from io import StringIO, BytesIO
@@ -120,10 +122,10 @@ class Experiment():
         # In order to access a plate with all its modifications we need a function for looking up plates and applying 
         #   modifications during the pipeline. We'll call this Experiment.get_plate(PID)
         ###
-        self.uploaded_files = {}
+        self.uploaded_files = {}  # {'_upload_queue':{fp:tuple}} defers all uploads, {'_upload_pending':{fp:tuple}} for pending uploads
         self.reproducible_steps = []  # a strict subset of the log that only includes working instructions
         self.pending_steps = set() # reproducible steps (files) that are awaiting user approval to replace existing steps
-        self.pending_uploads = set() # not a reproducible step, but needs to be cleared by user
+        self.pending_uploads = set() # DEPRECATED - replaced with uploaded_files['_upload_pending'] = {}
         self.log_entries = []  # use self.log(message, level='') to add to this
         self.log_time = datetime.datetime.now()  # save the log after a certain time has elapsed, to avoid too much IO
         self.transfer_volumes = {'DNA_VOL':util.DNA_VOL, 'PRIMER_VOL':util.PRIMER_VOL, 'PRIMER_TAQ_VOL':util.PRIMER_TAQ_VOL,
@@ -274,7 +276,7 @@ class Experiment():
 
     def del_file_record(self, file_name, soft=True, caller_id=None):
         """
-        Remove a file record, and its plate definitions (to deleted_plates)
+        Remove a file record, and its plate definitions (to deleted_plates) if required
         If 'soft' then rename the file to Dyyyymmddhhmmss_filename
         If not 'rename' then delete the file permanently
         """
@@ -286,13 +288,17 @@ class Experiment():
             # clear any plates first
             for pid in self.uploaded_files[file_name].get('plates', []):
                 if pid in self.plate_location_sample:
-                    success = self.delete_plate(pid)
-                    if success:
-                        m(f'Removed plate entry {pid} from deleted file {file_name}',
-                                level='info', caller_id=caller_id)
+                    filepath_purpose = self.plate_location_sample[pid].get('filepath_purpose', None)
+                    if isinstance(filepath_purpose, dict) and file_name not in filepath_purpose:
+                        continue
                     else:
-                        m(f'Failed to remove plate entry {pid} from deleted file {file_name}', 
-                                level='error', caller_id=caller_id)
+                        success = self.delete_plate(pid)
+                        if success:
+                            m(f'Removed plate entry {pid} from deleted file {file_name}',
+                                    level='info', caller_id=caller_id)
+                        else:
+                            m(f'Failed to remove plate entry {pid} from deleted file {file_name}', 
+                                    level='error', caller_id=caller_id)
                         
             # now remove the actual entry
             del self.uploaded_files[file_name]
@@ -1131,7 +1137,7 @@ class Experiment():
         if not success:
             m('could not generate PCR1 picklists correctly', level='error', caller_id=caller_id)
             return False
-        self.log('generated PCR1 picklists', level=success, caller_id=caller_id)
+        m('generated PCR1 picklists', level=success, caller_id=caller_id)
         return True
 
 
