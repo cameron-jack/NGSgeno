@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
-VER="v0.28.001"
+VER="v0.28.002"
 DATE="Date: $(date)"
 
 read -r -d '' COMMENT << EOM
-* FIXED: begin and end function messages were being shown on screen
+* FIXED: Rodentity and custom upload functions adapted to new file handling
+* FIXED: auto deleting filenames/queues starting with underscore
 EOM
 
 mv changelog.txt changelog_old.txt

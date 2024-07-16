@@ -1,3 +1,8 @@
+v0.28.002
+Date: Wed Jul 17 07:55:23 AEST 2024
+* FIXED: Rodentity and custom upload functions adapted to new file handling
+* FIXED: auto deleting filenames/queues starting with underscore
+
 v0.28.001
 Date: Wed Jul 17 06:45:10 AEST 2024
 * FIXED: begin and end function messages were being shown on screen
