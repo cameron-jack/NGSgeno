@@ -749,42 +749,52 @@ def load_rodentity_data(key):
                         'Choose up to four Rodentity JSON files',
                         type='json',
                         accept_multiple_files=True)
+            set_state('rodentity_epps', [r.name for r in rodentity_epps])
             rod_upload_submit_button = st.form_submit_button('Submit')
 
         if rod_upload_submit_button and rodentity_epps:
             queue_upload(rodentity_epps, 'rodentity_sample', caller_id=caller_id)
-               
+            parse.process_upload_queue(exp)
+            #manage transactions:
             if trans.is_pending(exp):
-                #with message_container:
                 pending_file_widget(key+'1a', caller_id)
 
-            for rod_epp in rodentity_epps:
-                rod_pid = util.guard_pbc(rod_epp.name.rstrip('.json'), silent=True)
-                if all([exp.unassigned_plates[slot] != '' for slot in [1,2,3,4]]):
-                    m(f'Ran out of free slots for {util.unguard_pbc(rod_pid, silent=True)}',
-                            level='warning')
-                    continue
-                if rod_pid in exp.dest_sample_plates or \
-                        rod_pid in exp.unassigned_plates[1] or rod_pid in exp.unassigned_plates[2] or \
-                        rod_pid in exp.unassigned_plates[3] or rod_pid in exp.unassigned_plates[4]:
-                    m('Rodentity plate barcode already used at least once'
-                            , level='warning')
+            if caller_id in mq:
+                for msg, lvl in mq[caller_id]:
+                    m(msg, level=lvl, no_log=True)
+                sleep(0.3)
+                mq[caller_id] = []
+        
+        for rod_epp in st.session_state.get('rodentity_epps', []):
+            rod_pid = util.guard_pbc(rod_epp.rstrip('.json'), silent=True)
+            if all([exp.unassigned_plates[slot] != '' for slot in [1,2,3,4]]):
+                m(f'Ran out of free slots for {util.unguard_pbc(rod_pid, silent=True)}',
+                        level='warning')
+                continue
+            if rod_pid in exp.dest_sample_plates or \
+                    rod_pid in exp.unassigned_plates[1] or rod_pid in exp.unassigned_plates[2] or \
+                    rod_pid in exp.unassigned_plates[3] or rod_pid in exp.unassigned_plates[4]:
+                #m('Rodentity plate barcode already used at least once'
+                #        , level='warning')
+                continue
 
-                if rod_pid in exp.unassigned_plates['custom'] or \
-                        (rod_pid in exp.plate_location_sample and  
-                        exp.plate_location_sample[rod_pid]['purpose'] != 'sample'):
-                    m('Rodentity plate barcode already in use for a different purpose', 
-                            level='warning')
-                    continue                     
-                for plate_key in [1,2,3,4]:
-                    if exp.unassigned_plates[plate_key] not in exp.plate_location_sample:
-                        exp.unassigned_plates[plate_key] = ''
-                    if exp.unassigned_plates[plate_key] != '':
-                        continue
-                    exp.unassigned_plates[plate_key] = rod_pid
-                    break
+            if rod_pid in exp.unassigned_plates['custom'] or \
+                    (rod_pid in exp.plate_location_sample and  
+                    exp.plate_location_sample[rod_pid]['purpose'] != 'sample'):
+                m('Rodentity plate barcode already in use for a different purpose', 
+                        level='warning')
+                continue                     
+            for plate_key in [1,2,3,4]:
+                if exp.unassigned_plates[plate_key] not in exp.plate_location_sample:
+                    exp.unassigned_plates[plate_key] = ''
+                if exp.unassigned_plates[plate_key] != '':
+                    continue
+                exp.unassigned_plates[plate_key] = rod_pid
+                break
+        
         st.info('Then assign a DNA plate (384-well) barcode identifier for plate combining with the '+\
                 'Hamilton Nimbus, and click on **Accept**')
+        
         # this is so ugly. Never use this form style again!
         for plate_key in [1,2,3,4]:
             if exp.unassigned_plates[plate_key] not in exp.plate_location_sample:
@@ -805,7 +815,8 @@ def load_rodentity_data(key):
                         exp.unassigned_plates[i+1] = ''
                         plates_to_clear[i] = False
                 st.rerun()      
-
+   
+        caller_id = 'allocate_rodentity_dna'
         with rod_col2.form('rod_destination_form', clear_on_submit=True):
             rod_dp = st.text_input('Destination plate ID (barcode)', 
                             max_chars=30, 
@@ -833,19 +844,20 @@ def load_rodentity_data(key):
                         m(f'Added plate set for {util.unguard_pbc(rod_dp, silent=True)}',
                                level='success')
                         exp.unassigned_plates = {1:'',2:'',3:'',4:''}
+                        del st.session_state['rodentity_epps']
                         sleep(2)
                         
-    parse.process_upload_queue(exp)
+        parse.process_upload_queue(exp)
 
-    #manage transactions:
-    if trans.is_pending(exp):
-        pending_file_widget(key, caller_id)
+        #manage transactions:
+        if trans.is_pending(exp):
+            pending_file_widget(key+'1b', caller_id)
 
-    if caller_id in mq:
-        for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl, no_log=True)
-        sleep(0.3)
-        mq[caller_id] = []
+        if caller_id in mq:
+            for msg, lvl in mq[caller_id]:
+                m(msg, level=lvl, no_log=True)
+            sleep(0.3)
+            mq[caller_id] = []
                         
                    
 def load_custom_manifests(key):
@@ -879,7 +891,7 @@ def load_custom_manifests(key):
 
         st.info('Choose the desired layout for the 384-well DNA plate (made with the Hamilton Nimbus). '+\
                 'Then provide the DNA plate name and press **Accept**')
-        
+        caller_id = 'assign_custom_dna'
         with st.form(key='selection_form', clear_on_submit=True):
             st.write('Select up to four 96-well sample plate IDs (barcodes) to combine into a 384-well DNA plate')
             col1, col2, _, col3, _ = st.columns([2,2,1,2,2])
@@ -916,16 +928,16 @@ def load_custom_manifests(key):
                         else:
                             m('Failed to assign custom plates', level='error')
     
-    parse.process_upload_queue(exp)
+        parse.process_upload_queue(exp)
     
-    if trans.is_pending(exp):
-        pending_file_widget(key, caller_id)
+        if trans.is_pending(exp):
+            pending_file_widget(key, caller_id)
     
-    if caller_id in mq:
-        for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl, no_log=True)
-        sleep(0.3)
-        mq[caller_id] = []
+        if caller_id in mq:
+            for msg, lvl in mq[caller_id]:
+                m(msg, level=lvl, no_log=True)
+            sleep(0.3)
+            mq[caller_id] = []
         
 
 def add_pcr_barcodes(key):

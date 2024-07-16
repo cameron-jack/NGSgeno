@@ -1310,7 +1310,7 @@ class Experiment():
         Gather file records for display
         """
         file_usage = {}
-        all_files = self.uploaded_files.keys()
+        all_files = [fn for fn in self.uploaded_files.keys() if not fn.startswith('_')]
         del_files = []
         for fn in all_files:
             if not Path.exists(Path(fn)):
@@ -1319,7 +1319,7 @@ class Experiment():
             m(f'{fn} does not exist! Removing file record', level='warning', caller_id=caller_id)
             self.del_file_record(fn, caller_id=caller_id)
                 
-        for filename in self.uploaded_files:
+        for filename in [fn for fn in self.uploaded_files.keys() if not fn.startswith('_')]:
             file_usage[filename] = {'date modified':None, 'purpose':None}
             if 'purpose' in self.uploaded_files[filename]:
                 file_usage[filename]['purpose'] = self.uploaded_files[filename]['purpose']
