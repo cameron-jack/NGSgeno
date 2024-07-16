@@ -119,10 +119,10 @@ def m(message, level, dest=None, caller_id=None,
     Automatically add dests('log', 'toast' and 'debug') for any warning, failure, error or critical message! (No dest required)
     """
     if dest is None:
-        dest = {}
+        dest = set([])
     dest = set([d.lower() for d in dest])
+   
     level = level.lower()
-    
     # do not add debug to the log
     if level == 'debug':
         dest.add('debug')
@@ -134,7 +134,7 @@ def m(message, level, dest=None, caller_id=None,
         dest.add('log')
     
     if level == 'begin' or level == 'end':
-        dest.add('noGUI')
+        dest.add('nogui')
         
     if level in set(['warning', 'error', 'critical', 'failure']):
         if 'debug' not in dest: 
