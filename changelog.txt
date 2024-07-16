@@ -1,3 +1,8 @@
+v0.28.000
+Date: Tue Jul 16 18:13:27 AEST 2024
+* NEW: all uploads are queued and processed one at a time, separating the GUI from the parsing
+* NEW: multi-file plate uploads now get a file-plate-purpose mapping to solve conflicts
+
 v0.27.001
 Date: Mon Jul  8 12:37:25 AEST 2024
 * FIXED: messaging, various parsers
