@@ -1,3 +1,7 @@
+v0.28.003
+Date: 17/07/2024 4:14:19 PM
+* FIXED: incorrect parameters passed to add_pcr_barcodes()
+
 v0.28.002
 Date: Wed Jul 17 07:55:23 AEST 2024
 * FIXED: Rodentity and custom upload functions adapted to new file handling
