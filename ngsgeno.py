@@ -568,7 +568,7 @@ def main():
                                 m('No PCR or amplicon plates selected/added yet', level='display', dest=('css',), color='red',size='p')
                         
                         with pcr_col:
-                            ld.add_pcr_barcodes('pcr_bc_tab1', dna_pids=selected_pids['dna'])
+                            ld.add_pcr_barcodes('pcr_bc_tab1')
                         with taqwater_col:
                             ld.add_taqwater_barcodes('tw_bc_tab1', pcr_stage=pcr_stage)
                         
@@ -680,7 +680,7 @@ def main():
                             dc.display_pcr2_components(selected_pids)
 
                         with pcr_col:
-                            ld.add_pcr_barcodes('pcr_bc_tab2', dna_pids=selected_pids['dna'])
+                            ld.add_pcr_barcodes('pcr_bc_tab2')
                         with taqwater_col:
                             ld.add_taqwater_barcodes('tw_bc_tab2', pcr_stage=pcr_stage)
                         add_vertical_space(1)
