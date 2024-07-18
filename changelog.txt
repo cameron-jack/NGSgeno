@@ -1,3 +1,7 @@
+v0.28.004
+Date: 18/07/2024 3:53:01 PM
+* FIXED: two typos
+
 v0.28.003
 Date: 17/07/2024 4:14:19 PM
 * FIXED: incorrect parameters passed to add_pcr_barcodes()
