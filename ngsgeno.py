@@ -557,7 +557,7 @@ def main():
                         add_vertical_space(1)
 
                         st.subheader('Custom Volumes')
-                        ld.custom_volumes(exp)
+                        ld.custom_volumes('cust_vol')
 
                         with checkbox_cont:
                             checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 

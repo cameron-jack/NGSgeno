@@ -1137,7 +1137,7 @@ class Experiment():
         if not success:
             m('could not generate PCR1 picklists correctly', level='error', caller_id=caller_id)
             return False
-        m('generated PCR1 picklists', level=success, caller_id=caller_id)
+        m('generated PCR1 picklists', level='success', caller_id=caller_id)
         return True
 
 
@@ -1174,12 +1174,12 @@ class Experiment():
         if not success:
             m('failed to generate index survey file', level='error', caller_id=caller_id)
             return False
-        m('generated index survey file', level='success', caller_id=caller_id)
+        #m('generated index survey file', level='success', caller_id=caller_id)
         success = generate.generate_echo_PCR2_picklist(self, pcr_pids, index_pids, taqwater2_pids, amplicon_pids)
         if not success:
             m('could not generate PCR2 (index) picklists correctly', level='error', caller_id=caller_id)
             return False
-        m('generated PCR2 (index) picklists', level='success', caller_id=caller_id)
+        #m('generated PCR2 (index) picklists', level='success', caller_id=caller_id)
         return success
 
 
