@@ -791,7 +791,7 @@ def parse_index_layout(exp, fp, user_gpid=None, caller_id=None, overwrite_plates
         if plate_purpose is None:
             # this should not happen, every plate has a purpose. Wipe the existing plate
             exp.delete_plate(gPID)
-            exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+            exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
                     'plate_type':util.PLATE_TYPES['Echo384'],'filepath_purpose':{fp:'index_layout'}}
             m(f"Creating new index plate record for {PID}", level='info', caller_id=caller_id)
         elif plate_purpose != 'index':
@@ -811,16 +811,16 @@ def parse_index_layout(exp, fp, user_gpid=None, caller_id=None, overwrite_plates
                                 level='failure', caller_id=caller_id)
                         return False, []
                     m(f'replacing existing index layout for {gPID}, wiping plate information', level='warning', caller_id=caller_id)
-                    exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+                    exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
                             'plate_type':util.PLATE_TYPES['Echo384'],'filepath_purpose':{fp:'index_layout'}}
                       
                 elif filepath_purpose[fp] not in ['index_layout', 'index_volume']:
                     m(f'existing file of path {fp} has new purpose "index_layout" instead of {filepath_purpose[fp]}, '+ 
                             f'wiping plate information', level='warning', caller_id=caller_id)
-                    exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+                    exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
                             'plate_type':util.PLATE_TYPES['Echo384'],'filepath_purpose':{fp:'index_layout'}}
     else:
-        exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+        exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
                 'plate_type':util.PLATE_TYPES['Echo384'],'filepath_purpose':{fp:'index_layout'}}
                     
     for well in well_records[gPID]:
@@ -906,10 +906,10 @@ def parse_index_volume(exp, fp, user_gpid=None, caller_id=None, overwrite_plates
         if plate_purpose is None:
             # this should not happen, every plate has a purpose. Wipe the existing plate
             exp.delete_plate(gPID)
-            exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+            exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
                     'plate_type':util.PLATE_TYPES['Echo384'],'filepath_purpose':{fp:'index_volume'}}
             m(f"Creating new index plate record for {PID}", level='info', caller_id=caller_id)
-        elif plate_purpose != 'primer':
+        elif plate_purpose != 'index':
             m(f"index plate PID: {PID} matches existing plate entry of different purpose "+\
                     f"{exp.plate_location_sample[gPID]['purpose']}", level='error', caller_id=caller_id)
             return False, []
@@ -926,16 +926,16 @@ def parse_index_volume(exp, fp, user_gpid=None, caller_id=None, overwrite_plates
                                 level='failure', caller_id=caller_id)
                         return False, []
                     m(f'replacing existing index volumes for {gPID}, wiping plate information', level='warning', caller_id=caller_id)
-                    exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+                    exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
                             'plate_type':util.PLATE_TYPES['Echo384'],'filepath_purpose':{fp:'index_volume'}}
                       
                 elif filepath_purpose[fp] not in ['index_layout', 'index_volume']:
                     m(f'existing file of path {fp} has new purpose "index_volume" instead of {filepath_purpose[fp]}, '+ 
                             f'wiping plate information', level='warning', caller_id=caller_id)
-                    exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+                    exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
                             'plate_type':util.PLATE_TYPES['Echo384'],'filepath_purpose':{fp:'index_volume'}}
     else:
-        exp.plate_location_sample[gPID] = {'purpose': 'primer', 'source':'user', 'wells':set(), 
+        exp.plate_location_sample[gPID] = {'purpose': 'index', 'source':'user', 'wells':set(), 
                 'plate_type':util.PLATE_TYPES['Echo384'],'filepath_purpose':{fp:'index_volume'}}
                     
     for well in well_records[gPID]:
@@ -1064,8 +1064,8 @@ def load_dna_plate(exp, filepath, caller_id=None, overwrite_plates=True):
     with open(filepath, 'rt') as f:
         #RecordId	TRackBC	TLabwareId	TPositionId	SRackBC	SLabwareId	SPositionId
         #1	p2021120604p	Echo_384_COC_0001	A1	p2111267p	ABg_96_PCR_NoSkirt_0001	A1
-        dbc = util.guard_pbc(filepath.split('_')[-2], silent=True)
-        exp.plate_location_sample[dbc] = {'purpose':'dna','wells':set(),'source':'','plate_type':'384PP_AQ_BP'}
+        gPID = util.guard_pbc(filepath.split('_')[-2], silent=True)
+        exp.plate_location_sample[gPID] = {'purpose':'dna','wells':set(),'source':'','plate_type':'384PP_AQ_BP'}
         source_plate_set = set()
         for i, line in enumerate(f):
             if i == 0:  # header
@@ -1088,21 +1088,21 @@ def load_dna_plate(exp, filepath, caller_id=None, overwrite_plates=True):
             source_plate_set.add(source_plate)
             dest_plate = util.guard_pbc(cols[dest_plate_bc_col], silent=True)
             dest_pos = util.unpadwell(cols[dest_well_col])
-            if dest_plate != dbc:
-                m(f"{dbc} doesn't match {dest_plate} as declared in Echo_384_COC file: {filepath}",
+            if dest_plate != gPID:
+                m(f"{gPID} doesn't match {dest_plate} as declared in Echo_384_COC file: {filepath}",
                         level='error', caller_id=caller_id)
-                return False, [dbc]         
+                return False, [gPID]         
             try:
-                exp.plate_location_sample[dbc][dest_pos] = exp.plate_location_sample[source_plate][source_pos]
+                exp.plate_location_sample[gPID][dest_pos] = exp.plate_location_sample[source_plate][source_pos]
             except:
-                m(f"cannot locate {dbc=} {dest_pos=} {source_plate=} {source_pos=}", 
+                m(f"cannot locate {gPID=} {dest_pos=} {source_plate=} {source_pos=}", 
                         level='critical', caller_id=caller_id)
-                return False, [dbc]
-            exp.plate_location_sample[dbc]['wells'].add(dest_pos)
-            exp.plate_location_sample[dbc]['samplePlate'] = source_plate
-            exp.plate_location_sample[dbc]['sampleWell'] = source_pos
-        exp.plate_location_sample[dbc]['source'] = ','.join(source_plate_set)
-    return True, [dbc]
+                return False, [gPID]
+            exp.plate_location_sample[gPID]['wells'].add(dest_pos)
+            exp.plate_location_sample[gPID]['samplePlate'] = source_plate
+            exp.plate_location_sample[gPID]['sampleWell'] = source_pos
+        exp.plate_location_sample[gPID]['source'] = ','.join(source_plate_set)
+    return True, [gPID]
 
 
 def myopen(fn):

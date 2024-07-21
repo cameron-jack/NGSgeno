@@ -1,3 +1,7 @@
+v0.28.005
+Date: 22/07/2024 9:34:14 AM
+* FIXED: corrected plate type in index file uploads
+
 v0.28.004
 Date: 18/07/2024 3:53:01 PM
 * FIXED: two typos

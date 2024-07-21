@@ -707,8 +707,10 @@ def main():
                             m('No PCR or amplicon plates selected', 
                                     level='display', dest=('css',), color='red',size='p')
                         hline()
+                        print(f'{selected_pids=}', flush=True)
                         #dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr2_components(selected_pids)
+                        print(f'{selected_pids=}', flush=True)
                         hline()
                         add_vertical_space(1)
                                                 

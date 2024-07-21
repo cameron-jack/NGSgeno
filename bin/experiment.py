@@ -1081,7 +1081,6 @@ class Experiment():
         """
         Check the everything required to successfully generate PCR2 picklists is available
         TODO: Check that volumes and wells are sufficient!
-        messages is a list, allowing us to pass useful info back to the UI
         Amplicon plates are optional
         Return success
         """
