@@ -46,13 +46,297 @@ import json
 import time
 from functools import partial
 from math import ceil, floor
-try:
-    import bin.util as util
-except ModuleNotFoundError:
-    import util
+
 
 import Bio.SeqIO
 import Bio.Align as Align
+
+# guard/unguard duplicated from util
+
+class UnguardedBarcodeError(Exception):
+    """ Exception raised for barcodes with degraded or missing guards
+
+    Attributes:
+        message -- explanation of the error
+    """
+    def __init__(self, message):
+        self.message = message
+
+class EmptyBarcodeError(Exception):
+    """ Exception raised when a barcode is an empty string
+
+    Attributes:
+        message -- explanation of the error
+    """
+    def __init__(self, message):
+        self.message = message
+
+
+class ExistingGuardError(Exception):
+    """ Exception raised when a barcode appears to already have a valid set of guards
+
+    Attributes:
+        message -- explanation of the error
+    """
+    def __init__(self, message):
+        self.message = message
+
+
+
+# Confirm guards
+def is_guarded_mbc(mbc):
+    """ Return True if Musterer barcode is correctly guarded, else False """
+    mbc = str(mbc)
+    if mbc.startswith('m') and mbc.endswith('m'):
+        return True
+    return False
+
+def is_guarded_rbc(rbc):
+    """ Return True if Rodentity barcode is correctly guarded (rNNNNNr), else False """
+    rbc = str(rbc)
+    if rbc.startswith('r') and rbc.endswith('r'):
+        return True
+    return False
+
+def is_guarded_cbc(cbc):
+    """ Return True if custom barcode is correctly guarded, else False """
+    cbc = str(cbc)
+    if cbc.startswith('c') and cbc.endswith('c'):
+        return True
+    return False
+
+def is_guarded_pbc(pbc):
+    """ Return True if plate barcode is correctly guarded, else False """
+    pbc = str(pbc)
+    if pbc.startswith('p') and pbc.endswith('p'):
+        return True
+    return False
+
+def is_guarded_abc(abc):
+    """ Return True if amplicon sample barcode is correctly guarded, else False """
+    abc = str(abc)
+    if abc.startswith('a') and abc.endswith('a'):
+        return True
+    return False
+
+def is_guarded(bc):
+    """ generic check of guard status """
+    if is_guarded_mbc(bc):
+        return True
+    elif is_guarded_rbc(bc):
+        return True
+    elif is_guarded_cbc(bc):
+        return True
+    elif is_guarded_pbc(bc):
+        return True
+    elif is_guarded_abc(bc):
+        return True
+    return False
+
+def get_guard_type(bc):
+    """ return the character of the guard in a barcode """
+    if is_guarded(bc):
+        return bc[0]
+    return None
+
+
+# Add guards to barcodes
+def guard_mbc(mbc, silent=False):
+    """ Add guards to Musterer barcode """
+    mbc = str(mbc).strip()
+    if mbc == '':
+        msg = f"Musterer barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(mbc):
+        if silent:
+            return mbc
+        msg = f"Musterer barcode appears to already have Musterer guards: {mbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(mbc):
+        msg = f"Musterer barcode appears to already have Rodentity guards: {mbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(mbc):
+        msg = f"Musterer barcode appears to already have custom guards: {mbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(mbc):
+        msg = f"Musterer barcode appears to already have plate guards: {mbc}"
+        raise ExistingGuardError(msg)
+    return 'm' + mbc + 'm'
+
+def guard_rbc(rbc, silent=False):
+    """ Add guards to Rodentity barcode """
+    rbc = str(rbc).strip()
+    if rbc == '':
+        msg = f"Rodentity barcode is zero length string!" 
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(rbc):
+        msg = f"Rodentity barcode appears to already have Musterer guards: {rbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(rbc):
+        if silent:
+            return rbc
+        msg = f"Rodentity barcode appears to already have Rodentity guards: {rbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(rbc):
+        msg = f"Rodentity barcode appears to already have custom guards: {rbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(rbc):
+        msg = f"Rodentity barcode appears to already have plate guards: {rbc}"
+        raise ExistingGuardError(msg)
+    return 'r' + rbc + 'r'  # Rodentity barcodes already start with 'M'
+
+def guard_cbc(cbc, silent=False):
+    """ Add guards to custom barcode """
+    cbc = str(cbc).strip()
+    if cbc == '':
+        msg = f"Custom barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(cbc):
+        msg = f"Custom barcode appears to already have Musterer guards: {cbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(cbc):
+        msg = f"Custom barcode appears to already have Rodentity guards: {cbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(cbc):
+        if silent:
+            return cbc
+        msg = f"Custom barcode appears to already have custom guards: {cbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(cbc):
+        msg = f"Custom barcode appears to already have plate guards: {cbc}"
+        raise ExistingGuardError(msg)
+    return 'c' + cbc + 'c'
+
+def guard_pbc(pbc, silent=False):
+    """ Add guards to plate barcode, silent ignores already correctly guarded case """
+    pbc = str(pbc).strip()
+    if pbc == '':
+        msg = f"Plate barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(pbc):
+        msg = f"Plate barcode appears to already have Musterer guards: {pbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(pbc):
+        msg = f"Plate barcode appears to already have Rodentity guards: {pbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(pbc):
+        msg = f"Plate barcode appears to already have custom guards: {pbc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_abc(pbc):
+        msg = f"Plate barcode appears to already have amplicon guards: {pbc}"
+    if is_guarded_pbc(pbc):
+        if silent:
+            return pbc
+        msg = f"Plate barcode appears to already have plate guards: {pbc}"
+        raise ExistingGuardError(msg)
+    return 'p' + pbc + 'p'
+
+def guard_abc(abc, silent=False):
+    """ Add guards to amplicon sample barcodes, silent ignores already correctly guarded case """
+    abc = str(abc).strip()
+    if abc == '':
+        msg = f"Amplicon sample barcode is zero length string!"
+        raise EmptyBarcodeError(msg)
+    if is_guarded_mbc(abc):
+        msg = f"Amplicon sample barcode appears to already have Musterer guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_rbc(abc):
+        msg = f"Amplicon sample barcode appears to already have Rodentity guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_cbc(abc):
+        msg = f"Amplicon sample barcode appears to already have custom guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(abc):
+        msg = f"Amplicon sample barcode appears to already have plate guards: {abc}"
+        raise ExistingGuardError(msg)
+    if is_guarded_pbc(abc):
+        if silent:
+            return abc
+        msg = f"Amplicon sample barcode appears to already have amplicon guards: {abc}"
+        raise ExistingGuardError(msg)
+    return 'a' + abc + 'a'
+
+
+# Unguard barcodes
+def unguard_mbc(mbc, silent=False):
+    """ remove guards from a Musterer barcode """
+    if type(mbc) != str:
+        msg = f"Musterer barcode is not a string! {mbc} is type {type(mbc)}"
+        raise AttributeError(msg)
+    if not mbc.startswith('m') and not mbc.endswith('m') and silent:  # just return unguarded barcodes as themselves
+        return mbc
+    if not mbc.startswith('m') or not mbc.endswith('m'):
+        msg = f"Musterer barcode guards degraded or missing in: {mbc}"
+        raise UnguardedBarcodeError(msg)
+    return mbc[1:-1]
+
+def unguard_rbc(rbc, silent=False):
+    """ remove guards from a Rodentity barcode """
+    if type(rbc) != str:
+        msg = f"Rodentity barcode is not a string! {rbc} is type {type(rbc)}"
+        raise AttributeError(msg)
+    if not rbc.startswith('r') and not rbc.endswith('r') and silent:  # just return unguarded barcodes as themselves
+        return rbc
+    if not rbc.startswith('r') or not rbc.endswith('r'):
+        msg = f"Musterer barcode guards degraded or missing in: {rbc}"
+        raise UnguardedBarcodeError(msg)
+    return rbc[1:-1]  # Rodentity barcodes keep their 'M' prefix
+
+def unguard_cbc(cbc, silent=False):
+    """ remove guards from a custom barcode """
+    if type(cbc) != str:
+        msg = f"Custom barcode is not a string! {cbc} is type {type(cbc)}"
+        raise AttributeError(msg)
+    if not cbc.startswith('c') and not cbc.endswith('c') and silent:  # just return unguarded barcodes as themselves
+        return cbc
+    if not cbc.startswith('c') or not cbc.endswith('c'):
+        msg = f"Custom barcode guards degraded or missing in: {cbc}"
+        raise UnguardedBarcodeError(msg)
+    return cbc[1:-1]
+
+def unguard_pbc(pbc, silent=False):
+    """ remove guards from a plate barcode """
+    if type(pbc) != str:
+        msg = f"Plate barcode is not a string! {pbc} is type {type(pbc)}"
+        raise AttributeError(msg)
+    if not pbc.startswith('p') and not pbc.endswith('p') and silent:  # just return unguarded barcodes as themselves
+        #print(f'{pbc=}', file=sys.stderr)
+        return pbc
+    if not pbc.startswith('p') or not pbc.endswith('p'):
+        msg = f"Plate barcode guards degraded or missing in: {pbc}"
+        raise UnguardedBarcodeError(msg)
+    return pbc[1:-1]
+
+def unguard_abc(abc, silent=False):
+    """ remove guards from an amplicon sample barcode """
+    if type(abc) != str:
+        msg = f"Amplicon sample barcode is not a string! {abc} is type {type(abc)}"
+        raise AttributeError(msg)
+    if not abc.startswith('a') and not abc.endswith('a') and silent:  # just return unguarded barcodes as themselves
+        return abc
+    if not abc.startswith('a') or not abc.endswith('a'):
+        msg = f"Amplicon sample barcode guards degraded or missing in: {abc}"
+        raise UnguardedBarcodeError(msg)
+    return abc[1:-1]
+
+def unguard(bc, silent=False):
+    """ shortcut, for when we don't know what kind of guarding we have but need to remove it for output """
+    if is_guarded_mbc(bc):
+        return unguard_mbc(bc)
+    elif is_guarded_rbc(bc):
+        return unguard_rbc(bc)
+    elif is_guarded_cbc(bc):
+        return unguard_cbc(bc)
+    elif is_guarded_pbc(bc):
+        return unguard_pbc(bc)
+    elif is_guarded_abc(bc):
+        return unguard_abc(bc)
+    else:
+        if not silent:
+            print('Possibly unguarded already:',bc, file=sys.stdout)
+        return bc
+
+
 
 # Add/remove leading 0's from well ids - replicated from util.py to allay path issues
 def padwell(w):
@@ -301,7 +585,7 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
     Return seqcnt (Counter of unique sequences), passing (T/F), readCount, cleanCount, MergeCount, msg
     """
     readCount, cleanCount, cleanCount2, joinCount, mergeCount = -1, -1, -1, -1, -1
-    rfn= "*{}-{}_*_R1_*.fastq.gz".format(util.unguard(wr['pcrPlate'],silent=True), padwell(wr['pcrWell']))
+    rfn= "*{}-{}_*_R1_*.fastq.gz".format(unguard(wr['pcrPlate'],silent=True), padwell(wr['pcrWell']))
     fn1s = glob.glob(os.path.join(rundir, "raw", rfn))
     lrecs = []
     if not fn1s:
@@ -539,7 +823,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
             for l in lrecs:
                 log.append(l)
         return
-    pcrPlate = util.unguard(pcrPlate, silent=True)
+    pcrPlate = unguard(pcrPlate, silent=True)
     pcrWell = padwell(pcrWell)
     msg = f"Info: {PID} Working on {sampleNo=} {pcrPlate=} {pcrWell=}"
     lrecs.append(msg)
@@ -1017,7 +1301,7 @@ def main(args):
         WRec = collections.namedtuple("WRec", hdr)
         wdata = sorted((WRec(*r) for r in src), key=lambda x:(x.pcrPlate, x.pcrWell[0], int(x.pcrWell[1:]), x.primer))
     #print(wdata, file=sys.stderr)
-    wdata = [rec for rec in wdata if util.unguard(rec.pcrPlate, silent=True) +'-'+ util.padwell(rec.pcrWell) in raw_file_identifiers]
+    wdata = [rec for rec in wdata if unguard(rec.pcrPlate, silent=True) +'-'+ padwell(rec.pcrWell) in raw_file_identifiers]
     #print(f'After filtering by available files {wdata=}', file=sys.stderr)
     log.append(f"Info: {len(wdata)} sample wells to process.")
     ## get a set of assay family names - family name ends with first underscore char  

@@ -942,8 +942,8 @@ def main():
                                     rodentity_results.append(cols)
                                 else:
                                     other_results.append(cols)
-                    m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', 
-                            level='display', dest=('css',))
+                    #m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', 
+                    #        level='display', dest=('css',))
                     rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
                     with rodentity_view:
                         dfr = pd.DataFrame(rodentity_results, columns=hdr)

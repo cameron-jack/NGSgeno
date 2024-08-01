@@ -1,3 +1,9 @@
+v0.28.006
+Date: 1/08/2024 12:46:10 PM
+* FIXED: util.py dependencies in ngsmatch.py removed to fix path issue
+* FIXED: removed debugging line from display of report stage (7)
+* NEW: this script!
+
 v0.28.005
 Date: 22/07/2024 9:34:14 AM
 * FIXED: corrected plate type in index file uploads
