@@ -1,3 +1,8 @@
+v0.28.008
+Date: 13/08/2024 11:37:46 AM
+* FIXED: pipe_stage state variable not initialised by bottom of workflow
+* CHANGED: warnings, errors, etc no longer automatically create toast message alerts
+
 v0.28.007
 Date: 13/08/2024 10:44:51 AM
 * FIXED: Rodentity uploads would fail if DNA plate slots became full

@@ -963,7 +963,10 @@ def main():
             upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Status', 
                     default_view2='Plates', checked=False)
 
-        if st.session_state['pipeline_stage'] != pipeline_stage:
+        if 'pipeline' not in st.session_state:
+            st.session_state['pipeline_stage'] = pipeline_stage
+            
+        elif st.session_state['pipeline_stage'] != pipeline_stage:
             st.session_state['pipeline_stage'] = pipeline_stage
             # save the pipeline if we move to a new stage
             exp.save()

@@ -139,8 +139,8 @@ def m(message, level, dest=None, caller_id=None,
     if level in set(['warning', 'error', 'critical', 'failure']):
         if 'debug' not in dest: 
             dest.add('debug')
-        if 'toast' not in dest:
-            dest.add('toast')
+        #if 'toast' not in dest:
+        #    dest.add('toast')
             
     try:
         func = sys._getframe(1).f_code.co_name

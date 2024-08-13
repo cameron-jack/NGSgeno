@@ -1,10 +1,9 @@
-$VER = "v0.28.007"
+$VER = "v0.28.008"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* FIXED: Rodentity uploads would fail if DNA plate slots became full
-* NEW: Rodentity upload is now two widgets to fix an issue with synchronisation of uploads and slots
-* CHANGED: We now save the experiment any time we move to a new pipeline stage
+* FIXED: pipe_stage state variable not initialised by bottom of workflow
+* CHANGED: warnings, errors, etc no longer automatically create toast message alerts
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
