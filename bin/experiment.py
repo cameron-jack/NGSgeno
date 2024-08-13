@@ -387,7 +387,12 @@ class Experiment():
         self.dest_sample_plates[dna_plate_id] = sample_plate_ids
         self.plate_location_sample[dna_plate_id] = {'purpose':'dna', 'source':','.join(sample_plate_ids), 'wells':set()}
         if source == 'rodentity':
-            self.unassigned_plates = {1:'', 2:'', 3:'', 4:''}
+            self.unassigned_plates[1] = ''
+            self.unassigned_plates[2] = ''
+            self.unassigned_plates[3] = ''
+            self.unassigned_plates[4] = ''
+        elif source == 'custom':
+            self.unassigned_plates['custom'] = {}
         return True
 
 

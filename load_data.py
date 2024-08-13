@@ -734,130 +734,126 @@ def upload_reference_sequences(key):
 
 def load_rodentity_data(key):
     """
-    Manage combining up to four rodentity plates (from JSON) with one destination PID 
+    Select up to four JSON Rodentity plate definition files for upload
     """
     exp = st.session_state['experiment']
     caller_id = 'load_rodentity_data'
-    plates_to_clear = [False, False, False, False]
-    with st.expander('Add data from Rodentity JSON files',expanded=True):
-        st.info('Add up to four Rodentity JSON ear-punch plate (96-well) files at a time and click on **Submit**. '+\
-                'This will move the plate identifiers into the four slots below (P1-4). ')
-        
-        with st.form('rodentity_upload_form', clear_on_submit=True):
-            epps_col1, _ = st.columns([1,1])
-            rodentity_epps = epps_col1.file_uploader(
-                        'Choose up to four Rodentity JSON files',
-                        type='json',
-                        accept_multiple_files=True)
-            set_state('rodentity_epps', [r.name for r in rodentity_epps])
-            rod_upload_submit_button = st.form_submit_button('Submit')
-
-        if rod_upload_submit_button and rodentity_epps:
-            queue_upload(rodentity_epps, 'rodentity_sample', caller_id=caller_id)
-            parse.process_upload_queue(exp)
-            #manage transactions:
-            if trans.is_pending(exp):
-                pending_file_widget(key+'1a', caller_id)
-
-            if caller_id in mq:
-                for msg, lvl in mq[caller_id]:
-                    m(msg, level=lvl, no_log=True)
-                sleep(0.3)
-                mq[caller_id] = []
-        
-        for rod_epp in st.session_state.get('rodentity_epps', []):
-            rod_pid = util.guard_pbc(rod_epp.rstrip('.json'), silent=True)
-            if all([exp.unassigned_plates[slot] != '' for slot in [1,2,3,4]]):
-                m(f'Ran out of free slots for {util.unguard_pbc(rod_pid, silent=True)}',
-                        level='warning')
-                continue
-            if rod_pid in exp.dest_sample_plates or \
-                    rod_pid in exp.unassigned_plates[1] or rod_pid in exp.unassigned_plates[2] or \
-                    rod_pid in exp.unassigned_plates[3] or rod_pid in exp.unassigned_plates[4]:
-                #m('Rodentity plate barcode already used at least once'
-                #        , level='warning')
-                continue
-
-            if rod_pid in exp.unassigned_plates['custom'] or \
-                    (rod_pid in exp.plate_location_sample and  
-                    exp.plate_location_sample[rod_pid]['purpose'] != 'sample'):
-                m('Rodentity plate barcode already in use for a different purpose', 
-                        level='warning')
-                continue                     
-            for plate_key in [1,2,3,4]:
-                if exp.unassigned_plates[plate_key] not in exp.plate_location_sample:
-                    exp.unassigned_plates[plate_key] = ''
-                if exp.unassigned_plates[plate_key] != '':
-                    continue
-                exp.unassigned_plates[plate_key] = rod_pid
-                break
-        
-        st.info('Then assign a DNA plate (384-well) barcode identifier for plate combining with the '+\
-                'Hamilton Nimbus, and click on **Accept**')
-        
-        # this is so ugly. Never use this form style again!
-        for plate_key in [1,2,3,4]:
-            if exp.unassigned_plates[plate_key] not in exp.plate_location_sample:
-                exp.unassigned_plates[plate_key] = ''
     
-        rod_col1, _, rod_col2, _ = st.columns([3,1,2,2])
-        with rod_col1.form('set_rod_plates_form', clear_on_submit=True):
-            for i in range(4):
-                plates_to_clear[i] = st.checkbox(
-                            f"P{str(i+1)}: {util.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
-                            help='Click the checkbox to allow a set plate ID to be cleared', 
-                            key='check'+str(i+1))
-            clear_plates_button = st.form_submit_button('Clear IDs', 
-                    help='Clear selected Rodentity plate IDs')
-            if clear_plates_button:
-                for i, plate in enumerate(plates_to_clear):
-                    if plate and exp.unassigned_plates[i+1]:
-                        exp.unassigned_plates[i+1] = ''
-                        plates_to_clear[i] = False
-                st.rerun()      
-   
-        caller_id = 'allocate_rodentity_dna'
-        with rod_col2.form('rod_destination_form', clear_on_submit=True):
-            rod_dp = st.text_input('Destination plate ID (barcode)', 
-                            max_chars=30, 
-                            key='rod_dp_key')
-            if rod_dp:
-                rod_dp = util.guard_pbc(rod_dp, silent=True)
-            accept_rod_dest_button = st.form_submit_button('Accept')
+    st.info('Add up to four Rodentity JSON ear-punch plate (96-well) files at a time and click on **Submit**. '+\
+            'This will move the plate identifiers into the four slots below (P1-4). ')
+    free_slots = len([slot for slot in exp.unassigned_plates.keys() if exp.unassigned_plates[slot] == ''])
+    with st.form('rodentity_upload_form', clear_on_submit=True):
+        epps_col1, _ = st.columns([1,1])
+        rodentity_epps = epps_col1.file_uploader(
+                f'Choose up to {free_slots} Rodentity JSON files to fill available DNA plate positions',
+                type='json',
+                accept_multiple_files=True)
+        rod_upload_submit_button = st.form_submit_button('Submit')
 
-            if accept_rod_dest_button and rod_dp:
-                if rod_dp in exp.dest_sample_plates or rod_dp in exp.plate_location_sample or \
-                        rod_dp in exp.unassigned_plates[1] or rod_dp in exp.unassigned_plates[2] or \
-                        rod_dp in exp.unassigned_plates[3] or rod_dp in exp.unassigned_plates[4] or \
-                        rod_dp in exp.unassigned_plates['custom']:
-                    m(f'Destination plate barcode already in use: {util.unguard_pbc(rod_dp, silent=True)}',
-                            level='warning')
+    if 'custom' not in exp.unassigned_plates:
+        exp.unassigned_plates['custom'] = {}
+    if rod_upload_submit_button and rodentity_epps:
+        if len(rodentity_epps) > free_slots:
+            m(f'Please select {free_slots} or less Rodentity JSON files at a time',
+                    level='warning', caller_id=caller_id)
+            rodentity_epps = []
+        else:
+            rod_pids = [util.guard_pbc(epp.name.rstrip('.json'), silent=True) for epp in rodentity_epps]
+            allowed_pids = []
+            for rp in rod_pids:
+                if rp in exp.unassigned_plates['custom'] or \
+                        (rp in exp.plate_location_sample and   
+                        exp.plate_location_sample[rp]['purpose'] != 'sample'):
+                    m(f'Rodentity plate barcode {util.unguard_pbc(rp)} already in use for a different purpose, skipping', level='warning')
+                else:
+                    allowed_pids.append(rp)
+            # put Rodentity plates in DNA plate slots
+            for rp in allowed_pids:
+                for slot in exp.unassigned_plates:
+                    if exp.unassigned_plates[slot] == '':
+                        exp.unassigned_plates[slot] = rp
+                        break
+                            
+            epps = [ep for ep in rodentity_epps if util.guard_pbc(ep.name.rstrip('.json'), silent=True) in allowed_pids]
+            queue_upload(epps, 'rodentity_sample', caller_id=caller_id)
+    parse.process_upload_queue(exp)
+    #manage transactions:
+    if trans.is_pending(exp):
+        pending_file_widget(key+'1a', caller_id)
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl, no_log=True)
+        sleep(0.3)
+        mq[caller_id] = []
+
+
+def assign_rodentity_dna_plate(key):
+    """
+    Manage combining up to four rodentity plates (from JSON) with one destination DNA PID 
+    """
+    exp = st.session_state['experiment']
+    caller_id = "assign_rodentity_dna_plate"
+    st.info('Then assign a DNA plate (384-well) barcode identifier for plate combining with the '+\
+            'Hamilton Nimbus, and click on **Accept**')
+    # this is so ugly. Never use this form style again!
+    # declare the checkbox space but update at end of function to make sure it's the latest view
+    plates_to_clear = [False, False, False, False]
+    rod_col1, _, rod_col2, _ = st.columns([3,1,2,2])
+    slotbox_container = rod_col1.container()
+         
+    with rod_col2.form('rod_destination_form', clear_on_submit=True):
+        rod_dp = st.text_input('Destination plate ID (barcode)', 
+                        max_chars=30, 
+                        key='rod_dp_key')
+        if rod_dp:
+            rod_dp = util.guard_pbc(rod_dp, silent=True)
+        accept_rod_dest_button = st.form_submit_button('Accept')
+
+        if accept_rod_dest_button and rod_dp:
+            if rod_dp in exp.plate_location_sample or \
+                    rod_dp in exp.unassigned_plates[1] or rod_dp in exp.unassigned_plates[2] or \
+                    rod_dp in exp.unassigned_plates[3] or rod_dp in exp.unassigned_plates[4] or \
+                    rod_dp in exp.unassigned_plates['custom']:
+                m(f'Destination plate barcode already in use: {util.unguard_pbc(rod_dp, silent=True)}',
+                        level='warning')
+                sleep(1.5)
+            else:
+                sample_plate_ids = [exp.unassigned_plates[k] for k in [1,2,3,4] if exp.unassigned_plates[k]]
+                success = exp.build_dna_plate_entry(sample_plate_ids, rod_dp, source='rodentity')
+                if not success:
+                    m('Failed to incorporate plate set. Please read the log', 
+                            level='error')
                     sleep(1.5)
                 else:
-                    sample_plate_ids = [exp.unassigned_plates[k] for k in [1,2,3,4] if exp.unassigned_plates[k]]
-                    success = exp.build_dna_plate_entry(sample_plate_ids, rod_dp, source='rodentity')
-                    if not success:
-                        m('Failed to incorporate plate set. Please read the log', 
-                                level='error')
-                        sleep(1.5)
-                    else:
-                        m(f'Added plate set for {util.unguard_pbc(rod_dp, silent=True)}',
-                               level='success')
-                        exp.unassigned_plates = {1:'',2:'',3:'',4:''}
-                        del st.session_state['rodentity_epps']
-                        sleep(2)
+                    m(f'Added plate set for {util.unguard_pbc(rod_dp, silent=True)}',
+                            level='success')
+                    sleep(1)
+                    st.rerun()
                         
-        parse.process_upload_queue(exp)
+        
+    with slotbox_container.form('set_rod_plates_form', clear_on_submit=True):
+        for i in range(4):
+            plates_to_clear[i] = st.checkbox(
+                    f"P{str(i+1)}: {util.unguard_pbc(exp.unassigned_plates[i+1], silent=True)}", 
+                    help='Click the checkbox to allow a set plate ID to be cleared', 
+                    key='check'+str(i+1))
+        clear_plates_button = st.form_submit_button('Clear IDs', help='Clear selected Rodentity plate IDs')
+        if clear_plates_button:
+            for i, plate in enumerate(plates_to_clear):
+                if plate and exp.unassigned_plates[i+1]:
+                    exp.unassigned_plates[i+1] = ''
+                    plates_to_clear[i] = False
+            st.rerun()
 
-        #manage transactions:
-        if trans.is_pending(exp):
-            pending_file_widget(key+'1b', caller_id)
+    #manage transactions:
+    if trans.is_pending(exp):
+        pending_file_widget(key+'1b', caller_id)
 
-        if caller_id in mq:
-            for msg, lvl in mq[caller_id]:
-                m(msg, level=lvl, no_log=True)
-            sleep(0.3)
-            mq[caller_id] = []
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl, no_log=True)
+        sleep(0.3)
+        mq[caller_id] = []
                         
                    
 def load_custom_manifests(key):
@@ -865,7 +861,7 @@ def load_custom_manifests(key):
     exp = st.session_state['experiment']
     caller_id = 'load_custom_manifest'
     if 'custom' not in exp.unassigned_plates or not exp.unassigned_plates['custom']:
-        exp.unassigned_plates['custom'] = {'None':{}}
+        exp.unassigned_plates['custom'] = {}
     with st.expander('Upload custom manifests', expanded=True):
         st.info('For non-Rodentity samples in 96-well plates, you can add these here. '+\
                 'Upload them first and then choose the layout you want.')

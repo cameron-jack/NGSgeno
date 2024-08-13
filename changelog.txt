@@ -1,3 +1,9 @@
+v0.28.007
+Date: 13/08/2024 10:44:51 AM
+* FIXED: Rodentity uploads would fail if DNA plate slots became full
+* NEW: Rodentity upload is now two widgets to fix an issue with synchronisation of uploads and slots
+* CHANGED: We now save the experiment any time we move to a new pipeline stage
+
 v0.28.006
 Date: 1/08/2024 12:46:10 PM
 * FIXED: util.py dependencies in ngsmatch.py removed to fix path issue

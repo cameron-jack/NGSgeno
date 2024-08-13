@@ -1,10 +1,10 @@
-$VER = "v0.28.006"
+$VER = "v0.28.007"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* FIXED: util.py dependencies in ngsmatch.py removed to fix path issue
-* FIXED: removed debugging line from display of report stage (7)
-* NEW: this script!
+* FIXED: Rodentity uploads would fail if DNA plate slots became full
+* NEW: Rodentity upload is now two widgets to fix an issue with synchronisation of uploads and slots
+* CHANGED: We now save the experiment any time we move to a new pipeline stage
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

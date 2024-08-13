@@ -417,7 +417,9 @@ def main():
                         st.subheader('Upload Sample Files')
                         st.markdown('**Upload Rodentity plate files, custom manifests, or amplicon plate definition files '+\
                                 'then move to the next tab to upload pipeline consumables and other important files**')
-                        ld.load_rodentity_data('rodentity_load1')
+                        with st.expander('Upload Rodentity Ear Punch Plates', expanded=True):
+                            ld.load_rodentity_data('rodentity_load1')
+                            ld.assign_rodentity_dna_plate('rodentity_load2')
                         hline()
                         ld.load_custom_manifests('custom_load1')
                         hline()
@@ -961,7 +963,10 @@ def main():
             upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Status', 
                     default_view2='Plates', checked=False)
 
-        st.session_state['pipeline_stage'] = pipeline_stage
+        if st.session_state['pipeline_stage'] != pipeline_stage:
+            st.session_state['pipeline_stage'] = pipeline_stage
+            # save the pipeline if we move to a new stage
+            exp.save()
 
         #=============================================== UPPER INFO SECTION ============================================
         
