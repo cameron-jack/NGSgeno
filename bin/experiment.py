@@ -744,20 +744,23 @@ class Experiment():
     def get_primers_for_assays(self, assays, caller_id=None):
         """
         For each assay in assays, find the matching assay family and the corresponding primers
-        Return a dictionary[assay] = [primers]
+        Return a dictionary[assay] = [primers] and missing_assays = set()
         """
         assay_primers = {}
+        missing_assays = set()
         for assay in assays:           
             if assay in assay_primers:
                 continue  # we've already seen this assay
             if assay not in self.assay_assayfam:
+                missing_assays.add(assay)
                 continue
             assayfam = self.assay_assayfam[assay]
             if assayfam not in self.assayfam_primers:
+                missing_assays.add(assay)
                 continue
             primers = self.assayfam_primers[assayfam]
             assay_primers[assay] = primers
-        return assay_primers
+        return assay_primers, missing_assays
 
 
     def get_assay_primer_usage(self, dna_pids, caller_id=None):
@@ -766,6 +769,7 @@ class Experiment():
         """
         assay_usage = defaultdict(int)
         primer_usage = defaultdict(int)
+        missing_assays = set()
         if not dna_pids:
             return assay_usage, primer_usage
         
@@ -776,15 +780,40 @@ class Experiment():
             m(f'no DNA plates found matching DNA plate IDs: {dna_pids}', level='error', caller_id=caller_id)
             return assay_usage, primer_usage
 
-        for dpid in dpids:        
-            for well in self.plate_location_sample[dpid]['wells']:       
-                assays = self.plate_location_sample[dpid][well]['ngs_assays']
-                for assay in assays:  
-                    assay_usage[assay] += 1
-                assays_primers = self.get_primers_for_assays(assays)
-                for a in assays_primers:
-                    for primer in assays_primers[a]:
-                        primer_usage[primer] += 1
+        for dpid in dpids:  
+            wells = self.plate_location_sample[dpid].get('wells', None)
+            if not wells:  # get from source plates
+                sources = self.plate_location_sample[dpid].get('source', None)
+                #print(f"{type(sources)=} {sources=} ")
+                if not sources:
+                    continue
+                spids = [src for src in sources.strip().split(',') if util.is_guarded_pbc(src)]
+                for spid in spids:
+                    wells = self.plate_location_sample[spid].get('wells', None)
+                    for well in self.plate_location_sample[dpid]['wells']:       
+                        assays = self.plate_location_sample[dpid][well].get('ngs_assays', [])
+                        for assay in assays:  
+                            assay_usage[assay] += 1
+                        assays_primers, missing = self.get_primers_for_assays(assays)
+                        for missing_assay in missing:
+                            missing_assays.add(missing_assay)
+                        for a in assays_primers:
+                            for primer in assays_primers[a]:
+                                primer_usage[primer] += 1
+            else:        
+                for well in self.plate_location_sample[dpid]['wells']:       
+                    assays = self.plate_location_sample[dpid][well].get('ngs_assays', [])
+                    for assay in assays:  
+                        assay_usage[assay] += 1
+                    assays_primers, missing = self.get_primers_for_assays(assays)
+                    for missing_assay in missing:
+                            missing_assays.add(missing_assay)
+                    for a in assays_primers:
+                        for primer in assays_primers[a]:
+                            primer_usage[primer] += 1
+                            
+        if missing_assays and caller_id:
+            m(f'The following assays are expected but not found in the assay-primer map (assay list file): {missing_assays}', level='warning', no_log=True, caller_id=caller_id)
         return assay_usage, primer_usage
 
 
@@ -1474,12 +1503,11 @@ class Experiment():
         for fn in fns:
             if not Path(fn).exists():
                 success = False
-                m(f"{fn} not present", level='error', caller_id=caller_id)
+                m(f"{fn} not present, cannot proceeed with sequence upload", level='error', caller_id=caller_id)
 
         # check that at least one reference sequence has been uploaded
         if len(self.reference_sequences) == 0:
-            success = False
-            m('No reference sequences have been uploaded yet, please add these', level='error', 
+            m('No reference sequences have been uploaded yet, please add these before running allele calling', level='warning', 
                     caller_id=caller_id)
 
         return success

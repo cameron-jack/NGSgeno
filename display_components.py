@@ -58,6 +58,7 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
         dict: The selected row
         
     Special behaviour for log tables to colour significant events and set better column ordering
+    and for available primers/indexes
     """
     cols = df.columns.tolist()
     if 'Level' in cols:
@@ -68,6 +69,16 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
     options = GridOptionsBuilder.from_dataframe(
         df, enableRowGroup=True, enableValue=True, enablePivot=True)
     
+    if 'Available Doses' in cols and 'Required Doses' in cols:
+        cell_js = JsCode("""
+            function(params) {
+                // mark inadequate amounts
+                if (params.data['Required Doses'] > params.data['Available Doses']) {
+                     return {'color': 'white', 'backgroundColor': 'red'}
+                }    
+            };""")
+        options.configure_column('Primer', cellStyle=cell_js)
+
     if 'Level' in cols:    
         cell_js = JsCode(""" 
             function(params) {
@@ -159,8 +170,8 @@ def manage_delete_cb(caller_id, category, ids):
                     failed_ids.append(gid)
         st.session_state['previous_plate_delete_selection'] = ids
     elif category == 'group':  # from summary
-        for row in ids:
-            dest_pid = util.guard_pbc(row['DNA/amplicon PID'], silent=True)
+        for pid in ids:
+            dest_pid = util.guard_pbc(pid, silent=True)
             if dest_pid in exp.plate_location_sample and exp.plate_location_sample[dest_pid]['purpose'] == 'amplicon':
                 success = exp.delete_plate(dest_pid)
                 if success:
@@ -173,18 +184,18 @@ def manage_delete_cb(caller_id, category, ids):
             else:
                 sample_pids = exp.dest_sample_plates[dest_pid]
                 delete_pids = sample_pids + [dest_pid]
-                for pid in delete_pids:
-                    success = exp.delete_plate(pid)
+                for dpid in delete_pids:
+                    success = exp.delete_plate(dpid)
                     if success:
-                        successful_ids.append(pid)
+                        successful_ids.append(dpid)
                     else:
-                        failed_ids.append(pid)
+                        failed_ids.append(dpid)
         st.session_state['previous_group_delete_selection'] = ids
     # set up messages
     for sid in successful_ids:
         m(f'{sid} removed', level='success', caller_id=caller_id)
     for fid in failed_ids:
-        m(f'{sid} could not be removed', level='error', caller_id=caller_id)
+        m(f'{fid} could not be removed', level='error', caller_id=caller_id)
     return True
 
 
@@ -226,6 +237,7 @@ def cancel_delete(category, ids):
 
 def display_persistent_messages(key):
     """
+    DEPRECATED
     Display any persistent user alerts, and allow the user to choose which ones to clear
     Messages are tuples of message, level. Where level: info/warning/errror/success
     A key is required to ensure the form and checkboxes are unqiue
@@ -261,9 +273,11 @@ def display_persistent_messages(key):
     
 
 def display_samples(key, height=250, caller_id=None):
-    """ display a summary of all loaded DNA, amplicon, and sample plates """
+    """ 
+    Info bar display a summary of all loaded DNA, amplicon, and sample plates
+    Use only the provided caller_id
+    """
     exp = st.session_state['experiment']
-    caller_id = 'display_samples'
     selection = []
     df = exp.inputs_as_dataframe()
     if df is None or not isinstance(df, pd.DataFrame):
@@ -286,17 +300,13 @@ def display_samples(key, height=250, caller_id=None):
                                 args=(caller_id, 'group',rows), key="delete " + str(key), help=f"Delete {lines}")
                         del_col3.button("No",on_click=cancel_delete, args=('group',rows), 
                                 key="keep " + str(key), help=f"Keep {lines}")
-    selection = None
-    # display any messages for this widget
-    if caller_id in mq:
-        for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl, no_log=True)
-        sleep(0.3)
-        mq[caller_id] = []
+    selection = None 
 
 
 def display_consumables(key, height=300, caller_id=None):
     """
+    info bar display of "consumables" non-sample plate info
+    Use only the provided caller_id
     summarise_consumables():
         d = {'taqwater_pids_pcr1':[], 'taqwater_pids_pcr2':[], 'taq_vol_pcr1':0, 'taq_vol_pcr2':0,'water_vol_pcr1':0, 
                 'water_vol_pcr2':0, 'primer_pids':[], 'primer_count_ngs':0, 'primer_count_custom':0, 'unique_primers':set(), 
@@ -331,15 +341,13 @@ def display_consumables(key, height=300, caller_id=None):
         st.write('No plates loaded')
     else:
         selection = aggrid_interactive_table(plate_df, grid_height=height, key=str(key)+'consumables_aggrid')
-    # display any messages for this widget
-    if caller_id in mq:
-        for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl, no_log=True)
-        sleep(0.3)
-        mq[caller_id] = []
 
 
-def display_plates(key, plate_usage, height=300, caller_id=None): 
+def display_plates(key, plate_usage, height=300, caller_id=None):
+    """
+    Info bar display of plates
+    Use only the provided caller_id
+    """
     exp = st.session_state['experiment']
     caller_id = 'display_plates'
     plate_df = pd.DataFrame(plate_usage, columns=['Plates', 'Num Wells', 'Purpose'])
@@ -367,12 +375,6 @@ def display_plates(key, plate_usage, height=300, caller_id=None):
                                 args=(caller_id,'plate',pids), key="delete " + str(key), help=f"Delete {pids}")
                         del_col3.button("No", on_click=cancel_delete,
                                 args=('plate',pids), key="keep " + str(key), help=f"Keep {pids}")
-    # display any messages for this widget
-    if caller_id in mq:
-        for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl, no_log=True)
-        sleep(0.3)
-        mq[caller_id] = []
 
 
 def display_pcr1_components(selected_pids, caller_id=None):
@@ -677,9 +679,9 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
     return st.session_state['path']
 
 
-def handle_picklist_download(picklist_type, picklist_paths, error_msgs, file_col, btn_col, caller_id=None):
+def handle_picklist_download(picklist_type, picklist_paths, file_col, btn_col, caller_id=None):
     if not picklist_paths:
-        error_msgs.append(f"No {picklist_type} picklist available")
+        m(f"No {picklist_type} picklist available", level='error', no_log=True, caller_id=caller_id)
     else:
         for ppp in picklist_paths:
             ppp_fn = Path(ppp).name
@@ -696,35 +698,25 @@ def handle_picklist_download(picklist_type, picklist_paths, error_msgs, file_col
 def get_echo1_download_btns(caller_id=None):
     exp = st.session_state['experiment']
     picklist_file_col, picklist_btn_col = st.columns(2)
-    error_msgs = []
 
     dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR1_picklist_filepaths()
     
     picklist_dict = {'DNA': dna_picklist_paths, 'primer': primer_picklist_paths, 'taq/water': taqwater_picklist_paths}
 
     for pltype, plpath in picklist_dict.items():
-        handle_picklist_download(pltype, plpath, error_msgs, picklist_file_col, picklist_btn_col)
-
-    if error_msgs:
-        for msg in error_msgs:
-            custom_text('p', '#ff0000', msg, 'center', padding='5px', display=True)
+        handle_picklist_download(pltype, plpath, picklist_file_col, picklist_btn_col, caller_id=caller_id)
             
 
 def get_echo2_download_btns(caller_id=None):
     exp = st.session_state['experiment']
     picklist_file_col, picklist_btn_col = st.columns(2)    
-    error_msgs = []
 
     index_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
 
     picklist_dict = {'index': index_picklist_paths, 'taq/water': taqwater_picklist_paths}
 
     for pltype, plpath in picklist_dict.items():
-        handle_picklist_download(pltype, plpath, error_msgs, picklist_file_col, picklist_btn_col)
-    
-    if error_msgs:
-        for msg in error_msgs:
-            custom_text('p', '#ff0000', msg, 'center', padding='5px', display=True)
+        handle_picklist_download(pltype, plpath, picklist_file_col, picklist_btn_col, caller_id=caller_id)
 
 
 def show_echo1_outputs(caller_id=None):
@@ -732,10 +724,9 @@ def show_echo1_outputs(caller_id=None):
     caller_id = 'show_echo1_outputs'
     picklist_file_col, picklist_btn_col = st.columns(2)
     dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR1_picklist_filepaths()
-    error_msgs = []
     
     if not dna_picklist_paths:
-        error_msgs.append('No DNA picklist available')
+        m('No DNA picklist available', level='error', no_log=True, caller_id=caller_id)
     else:
         for dpp in dna_picklist_paths:
             dpp_fn = Path(dpp).name
@@ -746,7 +737,7 @@ def show_echo1_outputs(caller_id=None):
                     data=open(dpp, 'rt'), file_name=dpp_fn, mime='text/csv', key='dna_download_'+dpp_fn)
 
     if not primer_picklist_paths:
-        error_msgs.append('No primer picklist available')
+        m('No primer picklist available', level='error', no_log=True, caller_id=caller_id)
     else:
         for ppp in primer_picklist_paths:
             ppp_fn = Path(ppp).name
@@ -757,7 +748,7 @@ def show_echo1_outputs(caller_id=None):
                     data=open(ppp, 'rt'), file_name=ppp_fn, mime='text/csv', key='primer_download_'+dpp_fn)
             
     if not taqwater_picklist_paths:
-        error_msgs.append('No taq/water picklist available')
+        m('No taq/water picklist available', level='error', no_log=True, caller_id=caller_id)
     else:
         for tpp in taqwater_picklist_paths:
             tpp_fn = Path(tpp).name
@@ -767,10 +758,6 @@ def show_echo1_outputs(caller_id=None):
             picklist_btn_col.download_button(label=f"Download", 
                     data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv', key='taqwater_download_'+tpp_fn)
 
-    if error_msgs:
-        for msg in error_msgs:
-            picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
-                    unsafe_allow_html=True)
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -785,10 +772,8 @@ def show_echo2_outputs(caller_id=None):
     picklist_file_col, picklist_btn_col = st.columns(2)
     index_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
     
-    error_msgs = []
-
     if not index_picklist_paths:
-        error_msgs.append('No index picklist available')
+        m('No index picklist available', level='error', no_log=True, caller_id=caller_id)
     else:
         for ipp in index_picklist_paths:
             ipp_fn = Path(ipp).name
@@ -799,7 +784,7 @@ def show_echo2_outputs(caller_id=None):
                     data=open(ipp, 'rt'), file_name=ipp_fn, mime='text/csv', key='index_download_'+ipp_fn)
 
     if not taqwater_picklist_paths:
-        error_msgs.append('No taq/water picklist available')
+        m('No taq/water picklist available', level='error', no_log=True, caller_id=caller_id)
     else:
         for tpp in taqwater_picklist_paths:
             tpp_fn = Path(tpp).name
@@ -809,10 +794,6 @@ def show_echo2_outputs(caller_id=None):
             picklist_btn_col.download_button(label=f"Download",\
                         data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv',\
                                 key='taqwater_download_'+tpp_fn)
-    if error_msgs:
-        for msg in error_msgs:
-            picklist_file_col.markdown(f'<p style="color:#ff0000;text-align:right">{msg}</p>',\
-                    unsafe_allow_html=True)
     # display any messages for this widget
     if caller_id in mq:
         for msg, lvl in mq[caller_id]:
@@ -825,8 +806,10 @@ def display_status(key, height=300, caller_id=None):
     """
     Display the progress in the pipeline for this experiment
     Should use aggrid to display the stages and the changes at each stage
+    Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
+    caller_id = 'display_feedback'
     steps, header = exp.get_stages()
     status_df = pd.DataFrame(steps, columns=header)
     #status_df.reset_index(inplace=True)
@@ -834,11 +817,14 @@ def display_status(key, height=300, caller_id=None):
     status_df = aggrid_interactive_table(status_df, grid_height=height, key=str(key)+'status_aggrid')
 
 
+
 def view_plates(key, height=500, caller_id=None):
     """
     Visual view of the plates in the experument
+    Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
+    caller_id = 'display_feedback'
     plate_ids = []
     for pid in exp.plate_location_sample:
         plate_ids.append(f"{exp.plate_location_sample[pid]['purpose']} plate: {util.unguard(pid, silent=True)}")
@@ -866,6 +852,7 @@ def display_files(key, file_usage, height=250, caller_id=None):
     """
     Display info for all files that have so far been uploaded into the experiment
     Give info on name, any plates they contain, whether they are required so far, etc
+    Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
     caller_id = 'display_files'
@@ -900,22 +887,24 @@ def display_files(key, file_usage, height=250, caller_id=None):
                     del_col3.button("No", on_click=cancel_delete,
                             args=('file',fns), key="keep " + str(key), help=f"Keep {fns}")
                     selection = None
-    # display any messages for this widget
-    if caller_id in mq:
-        for msg, lvl in mq[caller_id]:
-            m(msg, level=lvl, no_log=True)
-        sleep(0.3)
-        mq[caller_id] = []
+
 
 
 def display_primers(key, dna_pids=None, primer_pids=None, height=350, caller_id=None):
     """
     Alternative display_primer_components using aggrid
     Designed as a component for a generic display widget
+    Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
+    if not caller_id:
+        caller_id = 'display_feedback'
     ul_conv = 1000
-    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
+    if not dna_pids:
+        dna_pids = exp.get_dna_pids(caller_id=caller_id)
+    if not primer_pids:
+        primer_pids = exp.get_primer_pids(caller_id=caller_id)
+    assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids, caller_id=caller_id)
     primer_avail_vols_doses = exp.get_available_primer_vols_doses(pmr_pids=primer_pids)
     primer_info_array = []
     for primer in exp.primer_assayfam:
@@ -925,6 +914,8 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, caller_id=
         avail_vol = primer_avail_vols_doses.get(primer,[0,0])[0]  # nl
         avail_doses = primer_avail_vols_doses.get(primer,[0,0])[1]
         avail_wells = util.num_req_wells(avail_vol)
+        if req_wells == 0 and avail_wells == 0:
+            continue
         info = [primer, req_doses, req_vol/ul_conv, req_wells, avail_doses, avail_vol/ul_conv, avail_wells]
         primer_info_array.append(info)
 
@@ -936,8 +927,10 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, caller_id=
 def display_indexes(key, dna_pids=None, height=350, caller_id=None):
     """
     Display info for all indexes that have been uploaded into the experiment
+    Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
+    caller_id = 'display_feedback'
     assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
     fwd_idx, rev_idx = exp.get_index_avail()
     indexes = {**fwd_idx, **rev_idx}
@@ -949,13 +942,15 @@ def display_indexes(key, dna_pids=None, height=350, caller_id=None):
                                           'avail_transfers':'Available transfers', 
                                           'avail_vol':'Available Volume (μL)'})
     index_table = aggrid_interactive_table(index_df,grid_height=height,key=str(key)+'index_display')
-
+    
 
 def display_references(key, height=350, caller_id=None):
     """
     Show the amplicon targets/reference sequences that are loaded
+    Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
+    caller_id = 'display_feedback'
     refseq = st.session_state['experiment'].reference_sequences
     for group in refseq:
         dataset = [(ref,refseq[group][ref]) for ref in exp.reference_sequences[group]]
@@ -967,6 +962,8 @@ def display_references(key, height=350, caller_id=None):
 def display_log(key, height=250, caller_id=None):
     """
     Display the log
+    Messages are displayed by the component holding these widgets
+    Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
     log_entries = st.session_state['experiment'].get_log(100)
@@ -976,6 +973,7 @@ def display_log(key, height=250, caller_id=None):
         df = pd.DataFrame(log_entries, columns=exp.get_log_header())
         df = df.drop(['Calling function', 'Call line'], axis = 1)
         aggrid_interactive_table(df, grid_height=height, key=str(key)+'logs')
+    
 
 # def change_screens_open(screen_name):
 #     """

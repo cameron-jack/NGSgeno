@@ -385,6 +385,14 @@ def main():
                     ignore = dc.info_selection(widget_key+"top_viewer", 'info_panel1', 'info_panel2', 
                             'upper_panel_height', default_view1=default_view1, default_view2=default_view2, 
                             default_height=st.session_state.get('upper_panel_height',250))
+            caller_id = 'display_feedback'
+            # display any messages for this widget
+            if caller_id in mq:
+                for msg, lvl in mq[caller_id]:
+                    m(msg, level=lvl, no_log=True)
+                sleep(0.3)
+                mq[caller_id] = []
+                
         # attempt to parse any files that are set for upload
         parse.process_upload_queue(exp)
         if '_upload_pending' not in exp.uploaded_files:
@@ -549,7 +557,7 @@ def main():
 
                         display_cont = st.container()
                         hline()
-                        
+
                         add_vertical_space(1)
                         st.subheader('Add Barcodes', help='Add barcodes for plates')
                         pcr_col, taqwater_col = st.columns(2)
@@ -560,15 +568,15 @@ def main():
 
                         st.subheader('Custom Volumes')
                         ld.custom_volumes('cust_vol')
-
+                        selected_pids = {}
                         with checkbox_cont:
                             checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
                                 ['dna','pcr','taqwater1','primer'])
                         
                             selected_pids = dc.collect_plate_checklist(checkbox_keys)
-                            if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                                m('No PCR or amplicon plates selected/added yet', level='display', dest=('css',), color='red',size='p')
-                        
+                            if not selected_pids['pcr']:
+                                m('No PCR plates selected/added yet', level='display', dest=('css',), color='red',size='p')            
+
                         with pcr_col:
                             ld.add_pcr_barcodes('pcr_bc_tab1')
                         with taqwater_col:
@@ -576,6 +584,11 @@ def main():
                         
                         with display_cont:
                             dc.display_pcr1_components(selected_pids)
+                            
+                            add_vertical_space(1)
+                            if selected_pids['dna']:
+                                dc.display_primers('pcr_tab1', dna_pids=selected_pids['dna'], primer_pids=selected_pids['primer'])
+                                 
                         add_vertical_space(1)
 
                 # ** Info viewer **
@@ -808,13 +821,18 @@ def main():
                     ld.upload_reference_sequences('reference_miseq2')
                     add_vertical_space(2)
                 
-                    ready_messages = []
-                    if not exp.check_sequence_upload_ready(ready_messages):
-                        for msg in ready_messages:
-                            st.error(msg)
-                        st.warning('These resources are required for allele calling and must be present before FASTQs can be uploaded')
+                    caller_id = 'seq_upload_ready'
+                    success = exp.check_sequence_upload_ready(caller_id)
+                    if caller_id in mq:
+                        for msg, lvl in mq[caller_id]:
+                            m(msg, level=lvl, no_log=True)
+                        sleep(0.3)
+                    mq[caller_id] = []
+                    if not success:
+                        st.warning('Resources are required for allele calling and must be present before FASTQs can be uploaded')
                     else:
                         ld.upload_miseq_fastqs('miseq_tab1')
+                    
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq2', default_view1='Status', 
@@ -963,14 +981,6 @@ def main():
             upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Status', 
                     default_view2='Plates', checked=False)
 
-        if 'pipeline' not in st.session_state:
-            st.session_state['pipeline_stage'] = pipeline_stage
-            
-        elif st.session_state['pipeline_stage'] != pipeline_stage:
-            st.session_state['pipeline_stage'] = pipeline_stage
-            # save the pipeline if we move to a new stage
-            exp.save()
-
         #=============================================== UPPER INFO SECTION ============================================
         
         upper_panels = [v for v in (st.session_state.get('info_panel1', 'None'), 
@@ -994,6 +1004,16 @@ def main():
 
         parse.process_upload_queue(exp)
         ### End of main display ###
+
+        #================================================ AUTO SAVE ===================================================
+        if 'pipeline' not in st.session_state:
+            st.session_state['pipeline_stage'] = pipeline_stage
+            
+        elif st.session_state['pipeline_stage'] != pipeline_stage:
+            st.session_state['pipeline_stage'] = pipeline_stage
+            # save the pipeline if we move to a new stage
+            exp.save()
+            
 
 if __name__ == '__main__':
     main()

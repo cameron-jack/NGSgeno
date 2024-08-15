@@ -136,7 +136,7 @@ def m(message, level, dest=None, caller_id=None,
     if level == 'begin' or level == 'end':
         dest.add('nogui')
         
-    if level in set(['warning', 'error', 'critical', 'failure']):
+    if level in set(['error', 'critical', 'failure']):
         if 'debug' not in dest: 
             dest.add('debug')
         #if 'toast' not in dest:
