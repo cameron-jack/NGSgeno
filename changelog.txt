@@ -1,3 +1,9 @@
+v0.28.010
+Date: 16/08/2024 1:37:53 AM
+* FIXED: autosave now works and runs after parsing uploads and after generating files
+* TODO: require the assaylist file for PCR1 output file tracking
+* TODO: Save buttons to CSV and Excel for primer display
+
 v0.28.009
 Date: 16/08/2024 1:28:47 AM
 * FIXED: Primer display now correctly reports primer use

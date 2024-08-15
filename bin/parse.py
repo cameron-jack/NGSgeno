@@ -183,6 +183,8 @@ def process_upload(exp, pfp, purpose, caller_id=None, overwrite_plates=True):
     plates now get loaded with {filepath:purpose}
             
     caller_id (str) is the name of the associated display unit for user messages
+    
+    Saves the experiment on successful upload and parse
     """
     fp = transaction.untransact(pfp)
     if not Path(pfp).exists():
@@ -233,11 +235,12 @@ def process_upload(exp, pfp, purpose, caller_id=None, overwrite_plates=True):
         m(f'no parser implemented for {purpose=}', level='critical', caller_id=caller_id)
 
     if success:
-        m(f'parsed {fp} for {purpose}', level='success', caller_id=caller_id)
+        #m(f'parsed {fp} for {purpose}', level='success', caller_id=caller_id)
         exp.mod_file_record(fp, extra_PIDs=pids)
+        exp.save()
         return True
     else:
-        m(f'could not parse {fp} for {purpose}', level='error', caller_id=caller_id)
+        #m(f'could not parse {fp} for {purpose}', level='error', caller_id=caller_id)
         exp.del_file_record(fp, soft=True)
         return False
 

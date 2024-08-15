@@ -147,6 +147,7 @@ async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match
 def run_generate(exp, target_func, *args, **kwargs):
     """
     Run target_func() and ask user to respond to any file/pipeline clashes in the given context, if provided
+    Saves the experiment after use
     """
     trans.clear_pending_transactions(exp)
     trans.enforce_file_consistency(exp)
@@ -163,6 +164,7 @@ def run_generate(exp, target_func, *args, **kwargs):
                 st.button('Cancel', on_click=trans.clear_pending_transactions, args=[exp], key='cancel_overwrite_button')
             else:
                 trans.accept_pending_transactions(exp)
+    exp.save()
     return success
 
 
@@ -1008,11 +1010,8 @@ def main():
         #================================================ AUTO SAVE ===================================================
         if 'pipeline' not in st.session_state:
             st.session_state['pipeline_stage'] = pipeline_stage
-            
         elif st.session_state['pipeline_stage'] != pipeline_stage:
             st.session_state['pipeline_stage'] = pipeline_stage
-            # save the pipeline if we move to a new stage
-            exp.save()
             
 
 if __name__ == '__main__':

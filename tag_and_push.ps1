@@ -1,13 +1,8 @@
-$VER = "v0.28.009"
+$VER = "v0.28.010"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* FIXED: Primer display now correctly reports primer use
-* CHANGED: primers without any uses and without any volume are not reported
-* NEW: Primer display now flags red any primer that without sufficient availability
-* CHANGED: warnings are no longer reported to console or debugging by default
-* BUG: Autosaving feature is not working
-* TODO: Put autosaving on file upload and generate functions
+* FIXED: autosave now works and runs after parsing uploads and after generating files
 * TODO: require the assaylist file for PCR1 output file tracking
 * TODO: Save buttons to CSV and Excel for primer display
 "@
