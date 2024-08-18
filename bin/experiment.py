@@ -295,19 +295,19 @@ class Experiment():
                         success = self.delete_plate(pid)
                         if success:
                             m(f'Removed plate entry {pid} from deleted file {file_name}',
-                                    level='info', caller_id=caller_id)
+                                    level='info', dest=('noGUI',), caller_id=caller_id)
                         else:
                             m(f'Failed to remove plate entry {pid} from deleted file {file_name}', 
-                                    level='error', caller_id=caller_id)
+                                    level='error', dest=('noGUI',), caller_id=caller_id)
                         
             # now remove the actual entry
             del self.uploaded_files[file_name]
-            m(f'removed file record of {file_name}, attempting to remove file', level='success', caller_id=caller_id)
+            m(f'removed file record of {file_name}, attempting to remove file', level='success', dest=('noGUI',), caller_id=caller_id)
             return True
         
         if Path(file_name).exists():
-            m(f'No file record exists, but file found. Attempting to remove file', 
-                    level='warning', caller_id=caller_id)
+            #m(f'No file record exists, but file found. Attempting to remove file', 
+            #        level='warning', caller_id=caller_id)
             util.delete_file(file_name, soft=soft, caller_id=caller_id)
             return True
         m(f'{file_name} not present in file records, and file does not exist', level='warning', caller_id=caller_id)
@@ -811,8 +811,8 @@ class Experiment():
                     for a in assays_primers:
                         for primer in assays_primers[a]:
                             primer_usage[primer] += 1
-                            
-        if missing_assays and caller_id:
+        # only report this on the Primer page
+        if missing_assays and caller_id not in [None, 'display_feedback']:
             m(f'The following assays are expected but not found in the assay-primer map (assay list file): {missing_assays}', level='warning', no_log=True, caller_id=caller_id)
         return assay_usage, primer_usage
 

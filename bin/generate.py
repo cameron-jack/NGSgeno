@@ -220,6 +220,7 @@ def nimbus_gen(exp, caller_id=None):
                     #for pos1,pos2,pos3,pos4 in zip(util.nimbus_ordered_96[0::4], util.nimbus_ordered_96[1::4], 
                     #        util.nimbus_ordered_96[2::4], util.nimbus_ordered_96[3::4]): 
                     warnings = set()
+                    skipped_assays_pos = {}
                     for p in range(len(util.nimbus_ordered_96)//8):
                         pos_col = [util.nimbus_ordered_96[p*8+offset] for offset in range(8)]
                         # skip empty column
@@ -260,8 +261,9 @@ def nimbus_gen(exp, caller_id=None):
                             assayFamilies = []
                             for assay in shx[pos]['ngs_assays']:
                                 if assay not in exp.assay_assayfam:
-                                    msg = f'skipping assay {assay} in sample plate {util.unguard_pbc(dna_BC, silent=True)} well {pos}'
-                                    warnings.add(msg)
+                                    if assay not in skipped_assays_pos:
+                                        skipped_assays_pos[assay] = []
+                                    skipped_assays_pos[assay].append(pos)
                                     continue
                                 assayNames.append(assay)
                                 assayFamilies.append(exp.assay_assayfam[assay])
@@ -294,6 +296,11 @@ def nimbus_gen(exp, caller_id=None):
                             wells_used += 1
                             transactions[dna_fn][pbc][pos] = -1000 # 1000 nl of sample is transferred
                             transactions[fnstg][pbc][pos] = -1000
+                    ug_dna_BC = util.unguard_pbc(dna_BC, silent=True)
+                    if skipped_assays_pos:
+                        print(f'{skipped_assays_pos=}', flush=True)
+                        assay_line = '; '.join([f'{assay} ({",".join(skipped_assays_pos[assay])})' for assay in skipped_assays_pos])
+                        warnings.add(f'skipping assays: {assay_line} in sample plate {ug_dna_BC}')
                     for w in warnings:
                         m(w, level='warning', caller_id=caller_id)
                 

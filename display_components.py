@@ -75,6 +75,8 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
                 // mark inadequate amounts
                 if (params.data['Required Doses'] > params.data['Available Doses']) {
                      return {'color': 'white', 'backgroundColor': 'red'}
+                } else if (params.data['Required Doses'] < params.data['Available Doses']) {
+                     return {'color': 'black', 'backgroundColor': 'white'}
                 }    
             };""")
         options.configure_column('Primer', cellStyle=cell_js)
@@ -141,10 +143,7 @@ def manage_delete_cb(caller_id, category, ids):
     exp = st.session_state['experiment']
     successful_ids = []
     failed_ids = []
-    init_state('message_queues',dict())
-    if caller_id not in st.session_state['message_queues']:
-        st.session_state['message_queues'][caller_id] = []
-        
+            
     if category == 'file':
         for id in ids:
             if id not in exp.uploaded_files:
@@ -496,7 +495,7 @@ def display_pcr1_components(selected_pids, caller_id=None):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 
 
 def display_pcr2_components(selected_pids, caller_id=None):
@@ -626,7 +625,7 @@ def display_pcr2_components(selected_pids, caller_id=None):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
     
 
 def st_directory_picker(label='Selected directory:', initial_path=Path(),\
@@ -674,7 +673,7 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 
     return st.session_state['path']
 
@@ -763,7 +762,7 @@ def show_echo1_outputs(caller_id=None):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 
 
 def show_echo2_outputs(caller_id=None):
@@ -799,17 +798,16 @@ def show_echo2_outputs(caller_id=None):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 
     
-def display_status(key, height=300, caller_id=None):
+def display_status(key, height=300, caller_id='display_feedback'):
     """
     Display the progress in the pipeline for this experiment
     Should use aggrid to display the stages and the changes at each stage
     Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
-    caller_id = 'display_feedback'
     steps, header = exp.get_stages()
     status_df = pd.DataFrame(steps, columns=header)
     #status_df.reset_index(inplace=True)
@@ -818,13 +816,12 @@ def display_status(key, height=300, caller_id=None):
 
 
 
-def view_plates(key, height=500, caller_id=None):
+def view_plates(key, height=500, caller_id='display_feedback'):
     """
     Visual view of the plates in the experument
     Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
-    caller_id = 'display_feedback'
     plate_ids = []
     for pid in exp.plate_location_sample:
         plate_ids.append(f"{exp.plate_location_sample[pid]['purpose']} plate: {util.unguard(pid, silent=True)}")
@@ -848,14 +845,13 @@ def view_plates(key, height=500, caller_id=None):
                         unsafe_allow_html=True)
 
 
-def display_files(key, file_usage, height=250, caller_id=None):
+def display_files(key, file_usage, height=250, caller_id='display_feedback'):
     """
     Display info for all files that have so far been uploaded into the experiment
     Give info on name, any plates they contain, whether they are required so far, etc
     Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
-    caller_id = 'display_files'
     file_df = pd.DataFrame.from_dict(file_usage, orient='index')
     if file_df is None or not isinstance(file_df, pd.DataFrame):
         st.write('No plates loaded')
@@ -889,16 +885,13 @@ def display_files(key, file_usage, height=250, caller_id=None):
                     selection = None
 
 
-
-def display_primers(key, dna_pids=None, primer_pids=None, height=350, caller_id=None):
+def display_primers(key, dna_pids=None, primer_pids=None, height=350, save_buttons=False, caller_id='display_feedback'):
     """
     Alternative display_primer_components using aggrid
-    Designed as a component for a generic display widget
+    Designed as a component for a generic display widget and as a standalone with optional save to file
     Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
-    if not caller_id:
-        caller_id = 'display_feedback'
     ul_conv = 1000
     if not dna_pids:
         dna_pids = exp.get_dna_pids(caller_id=caller_id)
@@ -923,14 +916,23 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, caller_id=
             'Required Volume (μL)', 'Required Wells', 'Available Doses', 'Available Volume (μL)', 'Available Wells'])
     primer_table = aggrid_interactive_table(primer_df, grid_height=height, key=str(key)+'primer_display')
 
-        
-def display_indexes(key, dna_pids=None, height=350, caller_id=None):
+    if save_buttons:
+        button_cols = st.columns([2,2,6])
+        with button_cols[0]:  # save to CSV
+            output_csv = primer_df.to_csv(index=False).encode('utf-8')
+            st.download_button('Download CSV', output_csv, file_name="primer_list.csv", mime='text/csv')
+        #with button_cols[1]:  # save to Excel - requires xlsxwriter module
+        #    writer = pd.ExcelWriter("primer_list.xlsx", engine="xlsxwriter")
+        #    output_xlsx = primer_df.to_excel(writer, index=False)
+        #    st.download_button('Download Excel', output_xlsx, file_name="primer_list.xlsx")
+            
+
+def display_indexes(key, dna_pids=None, height=350, caller_id='display_feedback'):
     """
     Display info for all indexes that have been uploaded into the experiment
     Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
-    caller_id = 'display_feedback'
     assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids)
     fwd_idx, rev_idx = exp.get_index_avail()
     indexes = {**fwd_idx, **rev_idx}
@@ -944,7 +946,7 @@ def display_indexes(key, dna_pids=None, height=350, caller_id=None):
     index_table = aggrid_interactive_table(index_df,grid_height=height,key=str(key)+'index_display')
     
 
-def display_references(key, height=350, caller_id=None):
+def display_references(key, height=350, caller_id='display_feedback'):
     """
     Show the amplicon targets/reference sequences that are loaded
     Messages are displayed by the component holding these widgets
@@ -959,7 +961,7 @@ def display_references(key, height=350, caller_id=None):
         aggrid_interactive_table(ref_df, key=str(key)+'seqs'+group, grid_height=height)
 
 
-def display_log(key, height=250, caller_id=None):
+def display_log(key, height=250, caller_id='display_feedback'):
     """
     Display the log
     Messages are displayed by the component holding these widgets

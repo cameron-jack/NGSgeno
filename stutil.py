@@ -20,10 +20,8 @@ upper_height = "upper_info_height"
 lower_info = "lower_info_viewer"
 lower_height = "lower_info_height"
 
-# universal message queue. Use this together with st.session_state['message_queues']
-if 'message_queues' not in st.session_state:
-    st.session_state['message_queues'] = defaultdict(list)
-mq = defaultdict(list)
+# universal message queue system
+mq = defaultdict(set)
 
 def init_state(key, value):
     """
@@ -223,7 +221,7 @@ def m(message, level, dest=None, caller_id=None,
         #     st.session_state['message_queues'][caller_id] = []
         # st.session_state['message_queues'][caller_id].append((message, level))
         # return        
-        mq[caller_id].append((message,level))
+        mq[caller_id].add((message,level))
         return
 
     if 'persist' in dest:

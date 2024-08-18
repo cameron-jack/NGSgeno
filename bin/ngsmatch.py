@@ -1304,6 +1304,8 @@ def main(args):
     wdata = [rec for rec in wdata if unguard(rec.pcrPlate, silent=True) +'-'+ padwell(rec.pcrWell) in raw_file_identifiers]
     #print(f'After filtering by available files {wdata=}', file=sys.stderr)
     log.append(f"Info: {len(wdata)} sample wells to process.")
+    if len(wdata) == 0:
+        return
     ## get a set of assay family names - family name ends with first underscore char  
     #assays = frozenset(r.primer.split('_',1)[0] for r in wdata)
         

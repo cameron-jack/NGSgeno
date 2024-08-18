@@ -393,7 +393,7 @@ def main():
                 for msg, lvl in mq[caller_id]:
                     m(msg, level=lvl, no_log=True)
                 sleep(0.3)
-                mq[caller_id] = []
+                mq[caller_id] = set()
                 
         # attempt to parse any files that are set for upload
         parse.process_upload_queue(exp)
@@ -589,8 +589,12 @@ def main():
                             
                             add_vertical_space(1)
                             if selected_pids['dna']:
-                                dc.display_primers('pcr_tab1', dna_pids=selected_pids['dna'], primer_pids=selected_pids['primer'])
-                                 
+                                primer_max_vol = util.CAP_VOLS[util.PLATE_TYPES['Echo384']]
+                                primer_dead_vol = util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
+                                st.write(f'Available volumes equal the measured volume - dead volume ({primer_dead_vol/1000}ul). Max primer volume is {primer_max_vol/1000}ul.')
+                                dc.display_primers('pcr_tab1', dna_pids=selected_pids['dna'], 
+                                        primer_pids=selected_pids['primer'], save_buttons=True)
+                                
                         add_vertical_space(1)
 
                 # ** Info viewer **
@@ -632,7 +636,7 @@ def main():
                                         
                         for msg,lvl in mq[caller_id]:
                             m(msg, lvl)
-                        mq[caller_id] = []
+                        mq[caller_id] = set()
 
                         if generate.pcr1_picklists_exist(exp):
                             dc.get_echo1_download_btns()
@@ -745,7 +749,7 @@ def main():
                                     
                         for msg,lvl in mq[caller_id]:
                             m(msg, lvl)
-                        mq[caller_id] = []
+                        mq[caller_id] = set()
 
                         if do_generate:
                             _,picklist_button_col,_ = st.columns([2, 2, 1])
@@ -829,7 +833,7 @@ def main():
                         for msg, lvl in mq[caller_id]:
                             m(msg, level=lvl, no_log=True)
                         sleep(0.3)
-                    mq[caller_id] = []
+                    mq[caller_id] = set()
                     if not success:
                         st.warning('Resources are required for allele calling and must be present before FASTQs can be uploaded')
                     else:
@@ -860,7 +864,7 @@ def main():
                     success = exp.check_sequence_upload_ready(caller_id)
                     for msg,lvl in mq[caller_id]:
                         m(msg, level=lvl, no_log=True)
-                    mq[caller_id] = []
+                    mq[caller_id] = set()
                     if not success:
                         st.warning('Resources are required for allele calling and must be present before FASTQs can be uploaded')
                         st.subheader('Upload reference sequences')

@@ -1,10 +1,15 @@
-$VER = "v0.28.010"
+$VER = "v0.28.011"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* FIXED: autosave now works and runs after parsing uploads and after generating files
+* NEW: Primer display on Primer tab 1 now has a download button to save table as CSV
+* CHANGED: Many unnecessary screen messages now silent
+* FIXED: ngsmatch.py now exits softly when no samples are present
+* FIXED: table colouring reverts correctly for primers
+* NEW: Primer table now displays full well and dead volumes
 * TODO: require the assaylist file for PCR1 output file tracking
-* TODO: Save buttons to CSV and Excel for primer display
+* TODO: Echo COC files should be invalidated by changed Nimbus files
+* TODO: Excel format save button for primer list 
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

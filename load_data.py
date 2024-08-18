@@ -262,7 +262,7 @@ def upload_echo_inputs(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
                        
 
 def do_upload_primer_layout(upl, caller_id):
@@ -371,7 +371,7 @@ def upload_pcr1_files(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
     
 
 def load_amplicons(key):
@@ -421,7 +421,7 @@ def load_amplicons(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
         
 
 def do_upload_index_layout(uil, caller_id):
@@ -558,7 +558,7 @@ def upload_pcr2_files(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
         
 
 def upload_assaylist(key):
@@ -588,7 +588,7 @@ def upload_assaylist(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
     return success
     
 
@@ -634,7 +634,7 @@ def upload_extra_consumables(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 
 
 def check_assay_file():
@@ -700,7 +700,7 @@ def custom_volumes(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 
 
 def upload_reference_sequences(key):
@@ -729,7 +729,7 @@ def upload_reference_sequences(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
     
 
 def load_rodentity_data(key):
@@ -784,7 +784,7 @@ def load_rodentity_data(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 
 
 def assign_rodentity_dna_plate(key):
@@ -853,7 +853,7 @@ def assign_rodentity_dna_plate(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
                         
                    
 def load_custom_manifests(key):
@@ -883,7 +883,7 @@ def load_custom_manifests(key):
             for msg, lvl in mq[caller_id]:
                 m(msg, level=lvl, no_log=True)
             sleep(0.3)
-            mq[caller_id] = []
+            mq[caller_id] = set()
 
         st.info('Choose the desired layout for the 384-well DNA plate (made with the Hamilton Nimbus). '+\
                 'Then provide the DNA plate name and press **Accept**')
@@ -933,7 +933,7 @@ def load_custom_manifests(key):
             for msg, lvl in mq[caller_id]:
                 m(msg, level=lvl, no_log=True)
             sleep(0.3)
-            mq[caller_id] = []
+            mq[caller_id] = set()
         
 
 def add_pcr_barcodes(key):
@@ -970,7 +970,7 @@ def add_pcr_barcodes(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 
 
 def add_taqwater_barcodes(key, pcr_stage):
@@ -1005,7 +1005,7 @@ def add_taqwater_barcodes(key, pcr_stage):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []                
+        mq[caller_id] = set()                
 
 
 def provide_barcodes(key, pcr_stage, dna_pids):
@@ -1068,7 +1068,7 @@ def provide_barcodes(key, pcr_stage, dna_pids):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 
 
 def upload_miseq_fastqs(key):
@@ -1107,5 +1107,5 @@ def upload_miseq_fastqs(key):
         for msg, lvl in mq[caller_id]:
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
-        mq[caller_id] = []
+        mq[caller_id] = set()
 

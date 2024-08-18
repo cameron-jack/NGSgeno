@@ -148,6 +148,7 @@ def convert_final_to_pending(exp, final_name):
     #print(f"{pending_path=}", file=sys.stderr)
     return pending_path
 
+
 def check_for_clashing_transactions(exp, filenames=None, pids=None):
     """
     If not filenames or pids are provided, go through self.pending_steps and check whether any of the 
@@ -313,8 +314,8 @@ def accept_pending_transactions(exp, file_name=None, caller_id=None):
     ps_keys = exp.pending_steps.keys()
     if file_name:
         ps_keys = [ps for ps in ps_keys if file_name == ps_keys]
-    if not ps_keys:
-        m(f'expected {file_name} in {exp.pending_steps.keys()}', level='error', caller_id=caller_id)
+    elif not ps_keys:
+        m(f'expected {file_name} in {exp.pending_steps.keys()}', level='error', dest=('noGUI',), caller_id=caller_id)
         return False
     MAX_STAGES=len(exp.reproducible_steps)
     clashing_index = MAX_STAGES
@@ -344,7 +345,7 @@ def accept_pending_transactions(exp, file_name=None, caller_id=None):
             try:
                 os.rename(ps, fs)
             except Exception as exc:
-                m(f'failed to rename pending file {ps} to {fs}, {exc}', level='error', caller_id=caller_id)
+                m(f'failed to rename pending file {ps} to {fs}, {exc}', level='error', dest=('noGUI',), caller_id=caller_id)
                 return False
             m(f'renamed pending file {ps} to {fs}', level='success', dest=('noGUI',))
         exp.pending_steps = {}
@@ -361,14 +362,14 @@ def accept_pending_transactions(exp, file_name=None, caller_id=None):
         for af in affected_files:
             success = exp.del_file_record(af)
             if success:
-                m(f'obsolete tracked pipeline file {af} removed', level='info', caller_id=caller_id)
+                m(f'obsolete tracked pipeline file {af} removed', level='info', dest=('noGUI',), caller_id=caller_id)
             else:
                 try:
                     os.remove(af)
                 except Exception as exc:
-                    m(f'could not delete obsolete file {af}, {exc}', level='error', caller_id=caller_id)
+                    m(f'could not delete obsolete file {af}, {exc}', level='error', dest=('noGUI',), caller_id=caller_id)
                     return False
-                m(f'obsolete tracked pipeline file {af} removed', level='info', caller_id=caller_id)
+                m(f'obsolete tracked pipeline file {af} removed', level='info', dest=('noGUI',), caller_id=caller_id)
             
         exp.reproducible_steps = exp.reproducible_steps[:clashing_index]
         exp.reproducible_steps.append({})
