@@ -898,7 +898,9 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, save_butto
     if not primer_pids:
         primer_pids = exp.get_primer_pids(caller_id=caller_id)
     assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids, caller_id=caller_id)
-    primer_avail_vols_doses = exp.get_available_primer_vols_doses(pmr_pids=primer_pids)
+    primer_avail_vols_doses = exp.get_available_primer_vols_doses(pmr_pids=primer_pids, caller_id=caller_id)
+    primer_wells = exp.get_available_primer_wells(pmr_pids=primer_pids, caller_id=caller_id)
+    pmr_pids_wells = {pmr:{} for pmr in primer_wells}     
     primer_info_array = []
     for primer in exp.primer_assayfam:
         req_vol = exp.transfer_volumes['PRIMER_VOL']*primer_usage.get(primer,0)  # nl
@@ -906,14 +908,25 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, save_butto
         req_wells = util.num_req_wells(req_vol)
         avail_vol = primer_avail_vols_doses.get(primer,[0,0])[0]  # nl
         avail_doses = primer_avail_vols_doses.get(primer,[0,0])[1]
-        avail_wells = util.num_req_wells(avail_vol)
+        avail_wells = len([pmr_info for pmr_info in primer_wells.get(primer, [])]) 
         if req_wells == 0 and avail_wells == 0:
             continue
-        info = [primer, req_doses, req_vol/ul_conv, req_wells, avail_doses, avail_vol/ul_conv, avail_wells]
+        if primer not in primer_wells:
+            pos_line = ''
+        else:
+            for ppid, well, vol, dose in primer_wells[primer]:
+                if ppid not in pmr_pids_wells[primer]:
+                    pmr_pids_wells[primer][ppid] = []
+                pmr_pids_wells[primer][ppid].append(well)
+            ppid_well_lines = [f"{util.unguard_pbc(ppid, silent=True)}:\
+                    {','.join(pmr_pids_wells[primer][ppid])}" for ppid in pmr_pids_wells[primer]]
+            pos_line = ' '.join(ppid_well_lines)
+        info = [primer, req_doses, req_vol/ul_conv, req_wells, avail_doses, avail_vol/ul_conv, 
+                avail_wells, pos_line]
         primer_info_array.append(info)
 
     primer_df = pd.DataFrame(primer_info_array, columns=['Primer', 'Required Doses', 
-            'Required Volume (μL)', 'Required Wells', 'Available Doses', 'Available Volume (μL)', 'Available Wells'])
+            'Required Volume (μL)', 'Required Wells', 'Available Doses', 'Available Volume (μL)', 'Available Wells', 'Positions'])
     primer_table = aggrid_interactive_table(primer_df, grid_height=height, key=str(key)+'primer_display')
 
     if save_buttons:

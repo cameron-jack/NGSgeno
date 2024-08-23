@@ -1,3 +1,8 @@
+v0.28.012
+Date: 23/08/2024 4:12:55 PM
+* NEW: Primer display now also shows plate ID and well for available primers
+* FIXED: Number of available wells shows correct number
+
 v0.28.011
 Date: 19/08/2024 7:51:14 AM
 * NEW: Primer display on Primer tab 1 now has a download button to save table as CSV

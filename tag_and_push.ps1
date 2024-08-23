@@ -1,15 +1,9 @@
-$VER = "v0.28.011"
+$VER = "v0.28.012"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* NEW: Primer display on Primer tab 1 now has a download button to save table as CSV
-* CHANGED: Many unnecessary screen messages now silent
-* FIXED: ngsmatch.py now exits softly when no samples are present
-* FIXED: table colouring reverts correctly for primers
-* NEW: Primer table now displays full well and dead volumes
-* TODO: require the assaylist file for PCR1 output file tracking
-* TODO: Echo COC files should be invalidated by changed Nimbus files
-* TODO: Excel format save button for primer list 
+* NEW: Primer display now also shows plate ID and well for available primers
+* FIXED: Number of available wells shows correct number
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
