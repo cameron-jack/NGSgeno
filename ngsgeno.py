@@ -591,6 +591,8 @@ def main():
                             if selected_pids['dna']:
                                 primer_max_vol = util.CAP_VOLS[util.PLATE_TYPES['Echo384']]
                                 primer_dead_vol = util.DEAD_VOLS[util.PLATE_TYPES['Echo384']]
+                                if not selected_pids['primer']:
+                                    st.warning(f'Primers will appear highlighted red if no primer plate files have been loaded')
                                 st.write(f'Available volumes equal the measured volume - dead volume ({primer_dead_vol/1000}ul). Max primer volume is {primer_max_vol/1000}ul.')
                                 dc.display_primers('pcr_tab1', dna_pids=selected_pids['dna'], 
                                         primer_pids=selected_pids['primer'], save_buttons=True)

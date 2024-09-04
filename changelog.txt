@@ -1,3 +1,7 @@
+v0.28.013
+Date: 4/09/2024 1:52:36 PM
+* NEW: Warning added on primer display if no primer plate info has been loaded
+
 v0.28.012
 Date: 23/08/2024 4:12:55 PM
 * NEW: Primer display now also shows plate ID and well for available primers

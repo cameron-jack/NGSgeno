@@ -1,9 +1,8 @@
-$VER = "v0.28.012"
+$VER = "v0.28.013"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* NEW: Primer display now also shows plate ID and well for available primers
-* FIXED: Number of available wells shows correct number
+* NEW: Warning added on primer display if no primer plate info has been loaded
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
