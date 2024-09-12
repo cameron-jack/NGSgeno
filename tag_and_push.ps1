@@ -1,8 +1,10 @@
-$VER = "v0.28.013"
+$VER = "v0.28.014"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* NEW: Warning added on primer display if no primer plate info has been loaded
+* CHANGED: primer volumes must add up to 2000nl, primers now at 250nl
+* NEW: Warning message about primer volumes
+* CHANGED: Auto update pipeline version disabled
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

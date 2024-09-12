@@ -4,15 +4,16 @@ Integrates robotic sample preparation and Illumina Miseq DNA sequencing of ampli
 
 # To do
 
-1. GUI improvements (on-going)
-2. Efficieny and Allele Ratio terms are required in the results.csv output file
-3. Incorrect reporting of index use needs to be 
-4. Modular indexing code
-5. New file generation/transaction code
-6. Secure access through SSL
-7. Multi-user logins and user tracking (attach user to logs and user to uploads and transacted steps)
-8. Access levels -> Superuser (can do everything), Admin (can perform various configurable actions), User - just run the pipeline and not change anything
-9. Integrate inputs and outputs with automatic uploads to Lab Archives
+miseq_samplesheet needs sample name in it - it got taken out when we took out sample barcodes
+
+1. Documentation! Sphinx docs of code. 
+1. Modular indexing code
+2. New file generation/transaction code
+3. New resource manager - plates and files
+4. Secure access through SSL
+5. Multi-user logins and user tracking (attach user to logs and user to uploads and transacted steps)
+6. Access levels -> Superuser (can do everything), Admin (can perform various configurable actions), User - just run the pipeline and not change anything
+7. Integrate inputs and outputs with automatic uploads to Lab Archives
 
 ## Dependencies
 

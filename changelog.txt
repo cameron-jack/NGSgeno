@@ -1,3 +1,9 @@
+v0.28.014
+Date: 12/09/2024 12:21:29 PM
+* CHANGED: primer volumes must add up to 2000nl, primers now at 250nl
+* NEW: Warning message about primer volumes
+* CHANGED: Auto update pipeline version disabled
+
 v0.28.013
 Date: 4/09/2024 1:52:36 PM
 * NEW: Warning added on primer display if no primer plate info has been loaded

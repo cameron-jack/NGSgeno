@@ -647,6 +647,13 @@ def custom_volumes(key):
     volumes_dict = exp.transfer_volumes.copy()
     caller_id = 'custom_volumes'
     st.markdown('**Volumes for DNA and Primers**')
+    total_vol = sum([exp.transfer_volumes['DNA_VOL'],exp.transfer_volumes['PRIMER_VOL'],
+                     exp.transfer_volumes['PRIMER_TAQ_VOL'], exp.transfer_volumes['PRIMER_WATER_VOL']])
+    message = f'DNA, Primer, Primer Taq and Primer Water volumes must total 2000nl. Current total: {total_vol}'
+    if total_vol != 2000:
+        st.markdown(f':red[{message}]')
+    else:
+        st.write(f'{message}')
     col1, col2, col3,_ = st.columns([1,1,1,4])
     col1.write(f'Current volumes (nL):')
     allow_edit = col2.checkbox('Edit current volumes')

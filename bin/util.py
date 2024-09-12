@@ -73,10 +73,10 @@ CONFIG_PATH = PurePath('library/config.ini')  # everything is now relative to th
 ERROR_FN = 'error_msg.txt'
 
 # default transfer volumes for liquid handling. These are loaded into each experiment upon creation.
-DNA_VOL = 200
-PRIMER_VOL = 125
-PRIMER_TAQ_VOL = 1000
-PRIMER_WATER_VOL = 300
+DNA_VOL = 200  # adds up to 2000
+PRIMER_VOL = 250  # adds up to 2000
+PRIMER_TAQ_VOL = 1000  # adds up to 2000
+PRIMER_WATER_VOL = 550  # adds up to 2000
 INDEX_VOL = 175
 INDEX_TAQ_VOL = 2000
 INDEX_WATER_VOL = 650
