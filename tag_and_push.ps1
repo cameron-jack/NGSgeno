@@ -1,10 +1,8 @@
-$VER = "v0.28.014"
+$VER = "v0.28.015"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* CHANGED: primer volumes must add up to 2000nl, primers now at 250nl
-* NEW: Warning message about primer volumes
-* CHANGED: Auto update pipeline version disabled
+* CHANGED: sample barcode had been accidentally removed from miseq samplesheet. It is now back.
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

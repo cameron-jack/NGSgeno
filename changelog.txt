@@ -1,3 +1,7 @@
+v0.28.015
+Date: 12/09/2024 12:41:17 PM
+* CHANGED: sample barcode had been accidentally removed from miseq samplesheet. It is now back.
+
 v0.28.014
 Date: 12/09/2024 12:21:29 PM
 * CHANGED: primer volumes must add up to 2000nl, primers now at 250nl

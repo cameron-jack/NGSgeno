@@ -860,7 +860,8 @@ Adapter,,,,,,,,,,
             hdr = "Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,I5_Index_ID,index2,Sample_Project,Description".split(',')
             dst = csv.writer(dstfd, dialect='unix', quoting=csv.QUOTE_MINIMAL)
             dst.writerow(hdr)
-            gen = [(util.unguard_pbc(r.pcrPlate, silent=True)+'_'+util.padwell(r.pcrWell), '', '', '',
+            gen = [(util.unguard_pbc(r.pcrPlate, silent=True)+'_'+util.padwell(r.pcrWell), 
+                    util.unguard(r.sampleBarcode, silent=True), '', '',
                     r.i7name, r.i7bc,r.i5name, r.i5bc,'NGSgeno') for r in s3tab.data]
             
             dst.writerows(gen)
