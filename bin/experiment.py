@@ -198,12 +198,12 @@ class Experiment():
         if trans:
             fp = transaction.transact(str(fp)) 
         return str(fp)
-      
+
     
     def get_raw_fastq_pairs(self, caller_id=None):
         """ return a sorted list of tuple(R1_path, R2_path) to raw FASTQ files """
         valid_pairs = []
-        rdp = self.get_raw_dirpath()
+        rdp = Path(self.get_exp_dn(subdir='raw'))
         r1s = [rdp/Path(f) for f in os.listdir(rdp) if f.endswith('.fastq.gz') and '_R1_' in f]
         for r1 in r1s:
             r2 = Path(str(r1).replace('_R1_001','_R2_001'))

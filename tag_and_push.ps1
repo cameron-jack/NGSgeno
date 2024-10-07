@@ -1,8 +1,12 @@
-$VER = "v0.28.015"
+$VER = "v0.28.016"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* CHANGED: sample barcode had been accidentally removed from miseq samplesheet. It is now back.
+* Final preproduction fixes
+* FIXED: Typo in efficiency column in the results.csv from the allele calling 
+* CHANGED: interface to show FASTQ files already present on the Allele Calling page
+* REMOVED: FASTQ upload
+* NEW: auto saving the primer report file to primer_list.csv
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

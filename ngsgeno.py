@@ -788,7 +788,8 @@ def main():
 
             with tab_col1:
                 with tab_col1:
-                    miseq_tab = dc.create_tabs([("Download", "Miseq Samplesheet"), ("Upload", "Miseq Sequence Files")])
+                    #miseq_tab = dc.create_tabs([("Download", "Miseq Samplesheet"), ("Upload", "Miseq Sequence Files")])
+                    miseq_tab = dc.create_tabs([("Download", "Miseq Samplesheet")])
                 if not miseq_tab:
                     init_state('miseq_tab', 1)
                     miseq_tab = st.session_state['miseq_tab']
@@ -867,13 +868,14 @@ def main():
                     for msg,lvl in mq[caller_id]:
                         m(msg, level=lvl, no_log=True)
                     mq[caller_id] = set()
+                    ld.display_fastqs('disp_fastq1')
                     if not success:
-                        st.warning('Resources are required for allele calling and must be present before FASTQs can be uploaded')
+                        st.warning('Resources are required for allele calling:')
                         st.subheader('Upload reference sequences')
                         ld.upload_reference_sequences('reference_allele1')
-                        ld.upload_miseq_fastqs('miseq_tab1a')
+                        #ld.upload_miseq_fastqs('miseq_tab1a')
                     else:
-                        ld.upload_miseq_fastqs('miseq_tab1b')
+                        #ld.upload_miseq_fastqs('miseq_tab1b')
                         # check whether output files already exist and are opened elsewhere
                         target_fn = exp.get_exp_fn('target.fa')
                         results_fn = exp.get_exp_fn('results.csv')

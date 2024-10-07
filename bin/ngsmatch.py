@@ -1408,7 +1408,7 @@ def main(args):
         #    print(f"Opening {args.outfn} for results", file=sys.stderr)
             dst = csv.writer(dstfd, dialect="unix", quoting=csv.QUOTE_ALL)
             hdrres1 = ("readCount", "cleanCount", "mergeCount")
-            hdrres2 = ("seqCount", "seqName", "efficieny", "otherCount", "otherName")
+            hdrres2 = ("seqCount", "seqName", "efficiency", "otherCount", "otherName")
             complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))
             primer_col = [i for i,col in enumerate(complete_row_hdr) if col=='primer'][0]
             dst.writerow(complete_row_hdr)

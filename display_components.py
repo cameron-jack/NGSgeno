@@ -633,6 +633,7 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
     """
     Streamlit being JS/AJAX has no ability to select a directory. This is for server paths only.
     Initial code by Aidin Jungo here: https://github.com/aidanjungo/StreamlitDirectoryPicker
+    DEPRECATED - too ugly
     """
     caller_id = 'st_directory_picker'
     if "path" not in st.session_state:
@@ -928,12 +929,20 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, save_butto
     primer_df = pd.DataFrame(primer_info_array, columns=['Primer', 'Required Doses', 
             'Required Volume (μL)', 'Required Wells', 'Available Doses', 'Available Volume (μL)', 'Available Wells', 'Positions'])
     primer_table = aggrid_interactive_table(primer_df, grid_height=height, key=str(key)+'primer_display')
-
-    if save_buttons:
-        button_cols = st.columns([2,2,6])
-        with button_cols[0]:  # save to CSV
-            output_csv = primer_df.to_csv(index=False).encode('utf-8')
-            st.download_button('Download CSV', output_csv, file_name="primer_list.csv", mime='text/csv')
+    primer_csv = primer_df.to_csv(index=False) #.encode('utf-8')
+    primer_list_fn = exp.get_exp_fn('primer_list.csv', caller_id=caller_id)
+    if 'primer_csv' not in st.session_state:
+        st.session_state['primer_csv'] = 0
+    if st.session_state['primer_csv'] != primer_csv:
+        st.session_state['primer_csv'] = primer_csv
+        primer_df.to_csv(path_or_buf=primer_list_fn, index=False) #.encode('utf-8')
+    st.write(f'Primer table written to file: {primer_list_fn}')
+   
+    #if save_buttons:
+    #    button_cols = st.columns([2,2,6])
+    #    with button_cols[0]:  # save to CSV
+    #        output_csv = primer_df.to_csv(index=False).encode('utf-8')
+    #        st.download_button('Download CSV', output_csv, file_name="primer_list.csv", mime='text/csv')
         #with button_cols[1]:  # save to Excel - requires xlsxwriter module
         #    writer = pd.ExcelWriter("primer_list.xlsx", engine="xlsxwriter")
         #    output_xlsx = primer_df.to_excel(writer, index=False)

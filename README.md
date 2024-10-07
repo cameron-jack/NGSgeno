@@ -3,9 +3,6 @@
 Integrates robotic sample preparation and Illumina Miseq DNA sequencing of amplicons with the APF's Rodentity database.
 
 # To do
-
-miseq_samplesheet needs sample name in it - it got taken out when we took out sample barcodes
-
 1. Documentation! Sphinx docs of code. 
 1. Modular indexing code
 2. New file generation/transaction code

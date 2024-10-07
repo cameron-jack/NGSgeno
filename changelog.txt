@@ -1,3 +1,11 @@
+v0.28.016
+Date: 8/10/2024 8:02:42 AM
+* Final preproduction fixes
+* FIXED: Typo in efficiency column in the results.csv from the allele calling 
+* CHANGED: interface to show FASTQ files already present on the Allele Calling page
+* REMOVED: FASTQ upload
+* NEW: auto saving the primer report file to primer_list.csv
+
 v0.28.015
 Date: 12/09/2024 12:41:17 PM
 * CHANGED: sample barcode had been accidentally removed from miseq samplesheet. It is now back.

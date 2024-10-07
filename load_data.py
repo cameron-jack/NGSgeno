@@ -1078,7 +1078,25 @@ def provide_barcodes(key, pcr_stage, dna_pids):
         mq[caller_id] = set()
 
 
+def display_fastqs(key):
+    """ show the contents of the 'raw' directory """
+    exp = st.session_state['experiment']
+    caller_id = 'upload_miseq_fastqs'
+    fastq_files = exp.get_raw_fastq_pairs(caller_id=caller_id)
+    st.subheader('Available FASTQ files in RAW folder')
+    if len(fastq_files) == 0:
+        st.write('Add FASTQ files to a folder called "raw" in the experiment run folder')
+    elif len(fastq_files) == 1:
+        st.write(f"1. {str(fastq_files[0])}")
+    else:
+        st.write(f"1. {fastq_files[0][0]}, {fastq_files[0][1]}")
+        if len(fastq_files) > 1:
+            st.write(f"...")
+            st.write(f"{len(fastq_files)}. {fastq_files[-1][0]}, {fastq_files[-1][1]}")
+            
+
 def upload_miseq_fastqs(key):
+    """ pretty ugly. No longer used in the main app """
     exp = st.session_state['experiment']
     caller_id = 'upload_miseq_fastqs'
     if not exp.locked:
