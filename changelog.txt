@@ -1,3 +1,9 @@
+v0.28.017
+Date: 17/10/2024 1:21:36 PM
+* Final preproduction fixes - allele calling
+* FIXED: Splitting inexact matching by in-group and out-group caused some sequences to be incorrectly assigned
+* NEW: Various parameters for matching have been exposed in the user interface
+
 v0.28.016
 Date: 8/10/2024 8:02:42 AM
 * Final preproduction fixes

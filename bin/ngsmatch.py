@@ -487,11 +487,12 @@ def test_annotation():
     return True
 
 
-def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.75):
+def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.90):
     """
     Inexact matching of a merged sequence with a set of reference target sequences
-    Declare a match if we have 75% sequence identity over the matched length or better
+    Declare a match if we have 90% sequence identity over the matched length or better
     Identity must be >= 0 and <= 1.0
+    We must check for the best match against all targets or we will incorrectly call variant sequences!
     Return True/False, and matching reference sequence/None
     rundir, debug, lock_d are used for logging debug messages
     """
@@ -572,7 +573,7 @@ def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.75):
         seq_anno = annotate_seq(aligned_rs, aligned_seq)
         #print(f"{seq_anno=} {best_rs=}", flush=True)
         return True, best_rs, seq_anno
-    msg = f'Best alignment identity worse than 75% {aligned_rs=} {aligned_seq=} {best_rs=} {seq=}'
+    msg = f'Best alignment identity worse than {identity*100}% {aligned_rs=} {aligned_seq=} {best_rs=} {seq=}'
     wdb(msg, rundir, debug, lock_d)
     return False, None, None
 
@@ -772,7 +773,8 @@ def archetypes(seq_counts, rundir, debug, lock_d):
 
 def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assayfam_primers, 
         match_cache, anno_cache, miss_cache, reps, log, lock_mtc, lock_msc, lock_r, 
-        lock_l, lock_d, mincov, minprop, exact, exhaustive, debug=False):
+        lock_l, lock_d, margin, identity, mincov, minprop, exact, no_miss_cache,
+        exhaustive, debug=False):
     """ 
     Worker process that runs bbduk, bbmerge, and matching
     work_block: work block number
@@ -790,7 +792,11 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     lock_r: lock object for the results    
     lock_l: lock for logging
     lock_d: lock for writing to debug
+    margin: minimum overlap for exact matching
+    identity: proportional identity score for inexact matching
     exact: disable inexact matching
+    no_offtarget_inexact: disable offtarget inexact matching
+    no_miss_cache: disable miss cache
     exhaustive: [T/F] don't skip any sequences, not matter how low their count
     debug: write messages direct to file (slow I/O)
 
@@ -924,19 +930,19 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                     match_cnt[ref_seq+'//'+anno] += num
                 continue
             # miss cache - doesn't match any known sequence
-            if seq in msc:
+            if not no_miss_cache and seq in msc:
                 msg = f"Info: Miss cache hit {num} {seq}"
                 wdb(msg, rundir, debug, lock_d)
                 match_cnt[seq] += num
                 continue
             # substring or superstring
-            is_match, ref_seq = exact_match(seq, on_target_seqs)
+            is_match, ref_seq = exact_match(seq, on_target_seqs, margin=margin)
             if is_match:
                 msg = f"Info: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
                 wdb(msg, rundir, debug, lock_d)
                 match_cnt[ref_seq] += num
                 continue
-            is_match, ref_seq = exact_match(seq, off_target_seqs)
+            is_match, ref_seq = exact_match(seq, off_target_seqs, margin=margin)
             if is_match:
                 msg = f"Info: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
                 wdb(msg, rundir, debug, lock_d)
@@ -944,12 +950,13 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 continue
             
             if not exact:
-                is_match, ref_seq, seq_anno = inexact_match(seq, on_target_seqs, rundir, debug, lock_d)
-                if not is_match:
-                    is_match, ref_seq, seq_anno = inexact_match(seq, off_target_seqs, rundir, debug, lock_d)
+                # inexact matching must be done against all known sequences at once or it risks false association
+                is_match, ref_seq, seq_anno = inexact_match(seq, on_target_seqs.union(off_target_seqs),rundir, debug, 
+                        lock_d, identity=identity)
 
                 if is_match:
-                    msg = f"Info: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']} {wr['pcrWell']} {num} {seq}\n"
+                    msg = f"Info: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']}"+\
+                            f" {wr['pcrWell']} {num} {seq}\n"
                     wdb(msg, rundir, debug, lock_d)
                     mtc[seq] = ref_seq
                     match_cnt[ref_seq] += num
@@ -961,7 +968,8 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
             # add to miss cache
             msg = f"Info: No match for {pcrPlate=} {pcrWell=} {num=} {seq=}\n"
             wdb(msg, rundir, debug, lock_d)
-            msc[seq] = None
+            if not no_miss_cache:
+                msc[seq] = None
             match_cnt[seq] += num
                     
         else:
@@ -1368,7 +1376,8 @@ def main(args):
         for i, wr in enumerate(wrs):
             r = pool.apply_async(process_well, args=(i, wr, args.rundir, seq_ids, id_seq, primer_assayfam, 
                 assayfam_primers, match_cache, anno_cache, miss_cache, reps, logm, lock_mtc, 
-                lock_msc, lock_r, lock_l, lock_d, args.mincov, args.minprop, args.exact, args.exhaustive, args.debug))
+                lock_msc, lock_r, lock_l, lock_d, args.margin, args.identity, args.mincov, args.minprop, 
+                args.exact, args.no_miss_cache, args.exhaustive, args.debug))
             reports.append(r)
             if i % 3 == 0:
                 launch_progress = ceil(100*i/total_jobs)
@@ -1472,12 +1481,15 @@ if __name__=="__main__":
     parser.add_argument('-n','--ncpus', type=int, default=os.cpu_count()-1, help='Number of processes to run simultaneously, default=number of CPUs in system - 1')
     parser.add_argument('-l','--logfn', default='match.log', help='Name of logging file (default=match.log)')
     parser.add_argument('-r','--rundir', required=True, help='Path to experiment folder')
+    parser.add_argument('-i','--identity',type=float,default=0.9,help='Proportional score for inexact matching')
     parser.add_argument('-m','--mincov', type=int, default=5, help='Do not match unique sequences with less than this many reads coverage, default 50')
     parser.add_argument('-p','--minprop', type=float, default=0.1, help='Do not match unique sequences '+\
             'with less than this proportion of the total number of exact matched on-target reads, default 0.2. Must be between 0.0 and 1.0')
     parser.add_argument('-e','--exact', action="store_true", help="disable inexact matching")
     parser.add_argument('-x','--exhaustive',action='store_true',help='Try to match every sequence, '+\
             'no matter how few counts. Ignores --minseqs and --minprop')
+    parser.add_argument('-C','--no_miss_cache', action="store_true", help="disable miss cache")
+    parser.add_argument('-M','--margin',type=int,default=70,help="minimum sequence overlap in bases for exact matching")
     parser.add_argument('-s','--stagefile', default="Stage3.csv", help="Name of the NGS genotyping Stage 3 file (default=Stage3.csv)")
     args = parser.parse_args()
     in_error = False

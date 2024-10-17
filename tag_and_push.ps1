@@ -1,12 +1,10 @@
-$VER = "v0.28.016"
+$VER = "v0.28.017"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Final preproduction fixes
-* FIXED: Typo in efficiency column in the results.csv from the allele calling 
-* CHANGED: interface to show FASTQ files already present on the Allele Calling page
-* REMOVED: FASTQ upload
-* NEW: auto saving the primer report file to primer_list.csv
+* Final preproduction fixes - allele calling
+* FIXED: Splitting inexact matching by in-group and out-group caused some sequences to be incorrectly assigned
+* NEW: Various parameters for matching have been exposed in the user interface
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
