@@ -481,6 +481,30 @@ def unguard(bc, silent=False):
             print('Possibly unguarded already:',bc, file=sys.stdout)
         return bc
 
+
+# guard/unguard a collection
+def guard_pids(pids, silent=True, caller_id=None):
+    success = True
+    gpids = []
+    try:
+        gpids = [guard_pbc(p,silent=silent) for p in pids]
+    except Exception as exc:
+        m(f"{exc}", level='error', caller_id=caller_id)
+        success = False
+    return gpids, success
+
+
+def unguard_pids(gpids, silent=True, caller_id=None):
+    success = True
+    pids = []
+    try:
+        pids = [unguard_pbc(p,silent=silent) for p in gpids]
+    except Exception as exc:
+        m(f"{exc}", level='error', caller_id=caller_id)
+        success = False
+    return pids, success
+
+
 # File choosers - obsolete
 #def get_mouse_ref():
 #    return sorted(glob.glob(os.path.join('..','library', "reference_sequences_*.fa")) +        

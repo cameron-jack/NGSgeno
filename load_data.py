@@ -383,13 +383,13 @@ def load_amplicons(key):
     add_vertical_space(2)
     st.markdown('**Upload Amplicon Plate Files**')
     st.info('You may add extra 384-well plates of pre-prepared amplicons. These will be incorporated during indexing (stage 4)')
-    with st.form('index plate upload'+key, clear_on_submit=True): 
+    with st.form('amplicon plate upload'+key, clear_on_submit=True): 
         uploaded_amplicon_plates = st.file_uploader(
-                    'Upload Extra Amplicon Plates - CSV or XLSX.'+
-                    'Invalidates MiSeq and Stage3 CSV files if they exist', 
-                    key='amplicon_plate_uploader'+key, 
-                    type=['csv', 'xlsx'], 
-                    accept_multiple_files=True)
+                'Upload Extra Amplicon Plates - CSV or XLSX.'+
+                'Invalidates MiSeq and Stage3 CSV files if they exist', 
+                key='amplicon_plate_uploader'+key, 
+                type=['csv', 'xlsx'], 
+                accept_multiple_files=True)
         
         upload_button = st.form_submit_button("Upload Files")
     
@@ -423,6 +423,40 @@ def load_amplicons(key):
         sleep(0.3)
         mq[caller_id] = set()
         
+
+def load_manifest_384(key):
+    """
+    Upload a 384-well DNA plate manifest
+    """
+    exp = st.session_state['experiment']
+    caller_id = 'load_manifest_384'
+    add_vertical_space(2)
+    st.markdown('**Upload 384-well Plate Manifest Files**')
+    st.info('You may add user-defined 384-well sample (DNA) plates here.')
+    with st.form('manifest_384 plate upload'+key, clear_on_submit=True): 
+        uploaded_384_plates = st.file_uploader(
+                'Upload 384-well custom manifests - CSV or XLSX.',
+                key='manifest_384_plate_uploader'+key, 
+                type=['csv', 'xlsx'], 
+                accept_multiple_files=True)
+        
+        upload_button = st.form_submit_button("Upload Files")
+    
+        if upload_button:
+            if uploaded_384_plates:
+                queue_upload(uploaded_384_plates, 'custom_384_sample', caller_id=caller_id)
+               
+    parse.process_upload_queue(exp)
+    # manage transactions
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)          
+    
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl, no_log=True)
+        sleep(0.3)
+        mq[caller_id] = set()
+
 
 def do_upload_index_layout(uil, caller_id):
     """ helper method for clean deferred uploads of index layouts """
@@ -864,7 +898,7 @@ def assign_rodentity_dna_plate(key):
                         
                    
 def load_custom_manifests(key):
-    """ Demonstration upload panel for custom manifests """
+    """ Upload panel for 96-well custom manifests """
     exp = st.session_state['experiment']
     caller_id = 'load_custom_manifest'
     if 'custom' not in exp.unassigned_plates or not exp.unassigned_plates['custom']:

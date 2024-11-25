@@ -625,23 +625,10 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
         m('assay list must be loaded before generating primer picklist', level='failure', caller_id=caller_id)
         return False
     if True:
-        pcr_bcs = []
-        dna_bcs = []
-        taq_bcs = []
-        try:
-            pcr_bcs = [util.guard_pbc(p,silent=True) for p in pcr_plate_bcs]
-        except Exception as exc:
-            m(f"{exc}", level='error', caller_id=caller_id)
-            return False
-        try:
-            dna_bcs = [util.guard_pbc(d,silent=True) for d in dna_plate_bcs] 
-        except Exception as e:
-            m(f"{exc}", level='error', caller_id=caller_id)
-            return False
-        try:                          
-            taq_bcs = [util.guard_pbc(t, silent=True) for t in taq_water_bcs]
-        except Exception as e:
-            m(f"{e}", level='error', caller_id=caller_id)
+        dna_bcs, dna_success = util.guard_pids(dna_plate_bcs, caller_id=caller_id)
+        pcr_bcs, pcr_success = util.guard_pids(pcr_plate_bcs, caller_id=caller_id)
+        taq_bcs, taq_success = util.guard_pids(taq_water_bcs, caller_id=caller_id)
+        if not dna_success or not pcr_success or not taq_success:
             return False
 
         primer_pids = exp.get_primer_pids()
@@ -887,27 +874,11 @@ def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_b
     transactions = {}
     #try:
     if True:
-        try:
-            pcr_bcs = [util.guard_pbc(p,silent=True) for p in pcr_plate_bcs]
-        except Exception as exc:
-            m(f"PCR plate barcode in error {pcr_plate_bcs=} {exc}", level='error', caller_id=caller_id)
-            pcr_bcs = []
-        # user chosen index PIDs are already set in exp.generate_echo_index_survey()
-        try:
-            index_bcs = [util.guard_pbc(i, silent=True) for i in index_plate_bcs]
-        except Exception as exc:
-            m(f"Index plate barcode in error {index_plate_bcs=} {exc}", level='error', caller_id=caller_id)
-            index_bcs = []
-        try:
-            amplicon_bcs = [util.guard_pbc(d,silent=True) for d in amplicon_plate_bcs] 
-        except Exception as exc:
-            m(f"Amplicon plate barcodes in error {amplicon_plate_bcs=} {exc}", level='error', caller_id=caller_id)
-            amplicon_bcs = []
-        try:                          
-            taq_bcs = [util.guard_pbc(t, silent=True) for t in taq_water_bcs]
-        except Exception as exc:
-            m(f"Taq-water plate barcodes in error {taq_water_bcs=} {exc}", level='error', caller_id=caller_id)
-            taq_bcs = []
+        pcr_bcs, pcr_success = util.guard_pids(pcr_plate_bcs, caller_id=caller_id)
+        index_bcs, index_success = util.guard_pids(index_plate_bcs, caller_id=caller_id)
+        taq_bcs, taq_success = util.guard_pids(taq_water_bcs, caller_id=caller_id)
+        amplicon_bcs, amplicon_success = util.guard_pids(amplicon_plate_bcs, caller_id=caller_id)
+        
         outfmt = f"PCR-picklist_{exp.name}.csv"
     
         fnstage2 = "Stage2.csv"

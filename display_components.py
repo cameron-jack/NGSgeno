@@ -1283,11 +1283,12 @@ def display_plate_checklist(widget_key:str, inc_plate_types:list) -> list:
     for i, ipt in enumerate(inc_plate_types): 
         if ipt == 'dna':
             checklist_cols[i].markdown('**DNA Plates**')
-            for dp in exp.get_dna_pids(echo_ready=True):
+            for dp in exp.get_dna_pids():
                 cb_name = f'{str(widget_key)}_plate_checkbox_dna_{dp}'
                 val = checklist_cols[i].checkbox(util.unguard_pbc(dp, silent=True), 
                         key=cb_name, value=True)
                 checkbox_keys.append(cb_name)
+            
         if ipt == 'pcr':
             checklist_cols[i].markdown('**PCR Plates**')
             for pp in exp.get_pcr_pids():

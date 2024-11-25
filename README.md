@@ -3,14 +3,13 @@
 Integrates robotic sample preparation and Illumina Miseq DNA sequencing of amplicons with the APF's Rodentity database.
 
 # To do
-1. Documentation! Sphinx docs of code. 
-1. Modular indexing code
-2. New file generation/transaction code
-3. New resource manager - plates and files
-4. Secure access through SSL
-5. Multi-user logins and user tracking (attach user to logs and user to uploads and transacted steps)
-6. Access levels -> Superuser (can do everything), Admin (can perform various configurable actions), User - just run the pipeline and not change anything
-7. Integrate inputs and outputs with automatic uploads to Lab Archives
+* Documentation! Sphinx docs of code. 
+* Modular indexing code
+* New file generation/transaction code
+* Secure access through SSL
+* Multi-user logins and user tracking (attach user to logs and user to uploads and transacted steps)
+* Access levels -> Superuser (can do everything), Admin (can perform various configurable actions), User - just run the pipeline and not change anything
+* Integrate inputs and outputs with automatic uploads to Lab Archives
 
 ## Dependencies
 
@@ -37,32 +36,27 @@ See changelog.txt
 
 TBD
 
-## Amplicon sequence analysis description
-
-1. Sequences are copied back from the sequencing instrument (Miseq) to the appropriate folder on the pipeline workstation.
-2. The script ngsmatch.py performs the following steps:
-2.1. Reads belonging to each well are trimmed for poor quality bases using BBduk (BBtools)
-2.2. Paired read ends are merged using BBmerge (BBtools)
-2.3. The counts for all unique merged sequences are collected by the script
-2.4. We attempt to match each unique sequence against all possible target amplicon sequences, first using exact matching, and then using inexact matching (75% identity) if exact matching fails.
-Sequences with a high proportion of counts in any given well, or with at least 50 counts, are reported using their unique sequence. This lets us identify new, real amplicon sequences. Unique sequences that do not make up at least 10% of the reads in a well, or have at least 5 reads, do not get matched and are simply counted as "other" to save time.
-2.5. A report named results.csv is generated at this stage with all required metadata to identify where the sequences and their read counts came from.
-2.6. A FASTA file named variants.fa records all variant sequences observed in each sample well. This provides are more convenient format than the Excel results table.
-
-## Definitions of terms
-
-Efficiency - found in the final reports, this is the total number of sequences that contributed to a called genotype divided by the total merged reads counted in the given wells for an assay. It is reported as a percentage.
-Allele ratios - found in the final reports, this is the proportion of sequences that matched to a particular haplotype call e.g. wt/mut may give an allele ratio of 0.61/0.39.
-Other - reported by ngsmatch.py, this is a collective name for all other unique sequences that were in too small a proportion to meaningfully affect a final genotype call. It is comprised of all unique sequences with less than 20% of the total sequences in a well, or less than 50 reads, whichever is larger. This is to keep the processing time reasonable - roughly 1 hour per 1000 wells vs 12 hours per 1000 wells.
-
 ## Credits
-The NGS Genotyping Pipeline and NGSXplorer are the creations of The ANU Bioinformatics Consultancy (ABC), The Biomolecular Resource Facility (BRF), The John Curtin School of Medical Research (JCSMR), and The Australian National University (ANU).
-The project was initiated at the end of 2018 by the BRF and the construction was undertaken by the ABC - primarily Bob Buckley assisted by Cameron Jack, and later Cameron Jack assisted by Gabi (Gabrielle) Ryan. 
-Some additional components were built by the Informatics Team at the Australian Phenomics Facility (led by Philip Wu). Laboratory processes were constructed by the BRF Genotyping team, initially led by Sorelle Bowman, and later by Simone Kuelzer and Peter Milburn.
+The NGS Genotyping Pipeline and NGSXplorer are the creations of The ANU Bioinformatics Consultancy (ABC), 
+The Biomolecular Resource Facility (BRF), The John Curtin School of Medical Research (JCSMR), and The Australian National University (ANU).
+The project was initiated at the end of 2018 by the BRF and the construction was undertaken by the ABC - primarily 
+Bob Buckley assisted by Cameron Jack, and later Cameron Jack assisted by Gabi (Gabrielle) Ryan. 
+Some additional components were built by the Informatics Team at the Australian Phenomics Facility (led by Philip Wu). 
+Laboratory processes were constructed by the BRF Genotyping team, initially led by Sorelle Bowman, and later by Simone Kuelzer and Peter Milburn.
 
-## TODO
-* Check file and plate uploads for duplicates, and look for key terms in file and plate names to check for possible incorrect uploads.
-* Ability to delete a file and plate together - warning if they are in use
-* Atomic generates
-* Check interfaces for consistency
-* Shift some operations out of Experiment.py
+## License
+This software (product) is issued with the MIT license
+
+Copyright 2018 The Australian National University
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated 
+documentation files (the “Software”), to deal in the Software without restriction, including without 
+limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies 
+of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE 
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS 
+OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT 
+OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

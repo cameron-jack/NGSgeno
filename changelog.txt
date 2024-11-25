@@ -1,3 +1,10 @@
+v0.28.018
+Date: 26/11/2024 9:56:08 AM
+* NEW: Added 384-well DNA-plate upload for reruns of failed assays
+* NEW: sample viewer display includes new 384-well plates
+* NEW: 384-plates without matching Echo COC files now accepted
+* UPDATED: various messages regarding DNA plates
+
 v0.28.017
 Date: 17/10/2024 1:21:36 PM
 * Final preproduction fixes - allele calling

@@ -434,6 +434,8 @@ def main():
                         hline()
                         ld.load_custom_manifests('custom_load1')
                         hline()
+                        ld.load_manifest_384('manifest_384_load1')
+                        hline()
                         ld.load_amplicons('amp_load1')
                         hline()
 
@@ -552,9 +554,9 @@ def main():
                             st.info('Provide the barcodes for PCR plates and Taq/water plates and '+\
                                     'upload primer layouts and volumes here, then move to the *Generate Picklists* tab')
                         else:
-                            st.error('Load Echo input files (output from Nimbus) to enable PCR1')
+                            st.warning('Do you need to upload Echo input files (output from Nimbus)?')
                         
-                        checkbox_cont= st.container()
+                        checkbox_cont = st.container()
                         hline()   
                         add_vertical_space(1) 
 
@@ -578,7 +580,7 @@ def main():
                         
                             selected_pids = dc.collect_plate_checklist(checkbox_keys)
                             if not selected_pids['pcr']:
-                                m('No PCR plates selected/added yet', level='display', dest=('css',), color='red',size='p')            
+                                m('No PCR plates selected/available', level='display', dest=('css',), color='red',size='p')            
 
                         with pcr_col:
                             ld.add_pcr_barcodes('pcr_bc_tab1')

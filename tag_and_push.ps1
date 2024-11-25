@@ -1,10 +1,11 @@
-$VER = "v0.28.017"
+$VER = "v0.28.018"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Final preproduction fixes - allele calling
-* FIXED: Splitting inexact matching by in-group and out-group caused some sequences to be incorrectly assigned
-* NEW: Various parameters for matching have been exposed in the user interface
+* NEW: Added 384-well DNA-plate upload for reruns of failed assays
+* NEW: sample viewer display includes new 384-well plates
+* NEW: 384-plates without matching Echo COC files now accepted
+* UPDATED: various messages regarding DNA plates
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

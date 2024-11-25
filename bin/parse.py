@@ -208,12 +208,15 @@ def process_upload(exp, pfp, purpose, caller_id=None, overwrite_plates=True):
     pids = None  # list of plateIDs associated with a file
     if purpose == 'amplicon':
         success, pids = parse_amplicon_manifest(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
-    elif purpose == 'DNA' or purpose == 'dna':
+    elif purpose == 'DNA' or purpose == 'dna':  # Echo_COC file
         success, pids = load_dna_plate(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'rodentity_sample':  # becomes purpose=sample source=rodentity
         success, pids = parse_rodentity_json(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'custom_sample':  # becomes purpose=sample source=custom
         success, pids = parse_custom_manifest(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
+    elif purpose == 'custom_384_sample':  # actually 'dna' plates in this system
+        success, pids = parse_custom_manifest(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates,
+                pformat='Echo384')
     elif purpose == 'pcr':
         m('no parser implemented for PCR plate records', level='critical', caller_id=caller_id)
         # parse_pcr_record(exp, fp)
@@ -349,7 +352,8 @@ def parse_rodentity_json(exp, fp, caller_id=None, overwrite_plates=True):
     return True, list(well_records.keys())
             
 
-def parse_custom_manifest(exp, fp, caller_id=None, overwrite_plates=True):
+def parse_custom_manifest(exp, fp, caller_id=None, overwrite_plates=True,
+        pformat='96'):
     """
     Parse a custom manifest files and store them in self.unassigned_plates['custom'] =\
             {plateBarcode={Assay=[],...}}
@@ -360,6 +364,7 @@ def parse_custom_manifest(exp, fp, caller_id=None, overwrite_plates=True):
     Optional columns: [sampleNo, sampleName, alleleSymbol] and anything else
     
     caller_id (str) is the name of the associated display unit for user messages
+    pformat is either '96' or 'Echo384', both defined in util.py
     """
     m(f'Parsing custom manifest {fp}', level='begin')
     if fp.lower().endswith('xlsx'):
@@ -398,8 +403,13 @@ def parse_custom_manifest(exp, fp, caller_id=None, overwrite_plates=True):
             continue
         pid = cols[plate_barcode_col]
         gpid = util.guard_pbc(pid, silent=True)
-        if gpid not in well_records:
-            well_records[gpid] = {'purpose':'sample','source':'custom', 'wells':set(), 'plate_type':'96'}  
+        
+        if gpid not in well_records and pformat == '96':
+            well_records[gpid] = {'purpose':'sample','source':'custom', 'wells':set(),
+                    'plate_type':util.PLATE_TYPES[pformat]}
+        elif gpid not in well_records and pformat == 'Echo384':
+            well_records[gpid] = {'purpose':'dna','source':'custom', 'wells':set(),
+                    'plate_type':util.PLATE_TYPES[pformat]}
             
         assays = [] 
         # do a first pass to set up recording a sample in a well
@@ -458,13 +468,20 @@ def parse_custom_manifest(exp, fp, caller_id=None, overwrite_plates=True):
                 m(f'Overwriting turned off, cannot overwrite existing plate entry {gpid}', 
                         level='failure', caller_id=caller_id)
                 continue
-            elif exp.plate_location_sample[gpid]['purpose'] != 'sample':
+            elif pformat == '96' and exp.plate_location_sample[gpid]['purpose'] != 'sample':
+                m(f'plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}', 
+                        level='error', caller_id=caller_id)
+                continue
+            elif pformat == 'Echo384' and exp.plate_location_sample[gpid]['purpose'] != 'dna':
                 m(f'plate {gpid} already exists with purpose {exp.plate_location_sample[gpid]["purpose"]}', 
                         level='error', caller_id=caller_id)
                 continue
             else:
                 exp.plate_location_sample[gpid] = {}  # create empty entry
-        well_records[gpid]['filepath_purpose'] = {fp:'custom_sample'}
+        if pformat == '96':
+            well_records[gpid]['filepath_purpose'] = {fp:'custom_sample'}
+        elif pformat == 'Echo384':
+            well_records[gpid]['filepath_purpose'] = {fp:'custom_384'}
         exp.plate_location_sample[gpid] = well_records[gpid].copy()
 
     m(f'parsing {fp} with plates: {list(well_records.keys())}', level='end')
@@ -1068,7 +1085,8 @@ def load_dna_plate(exp, filepath, caller_id=None, overwrite_plates=True):
         #RecordId	TRackBC	TLabwareId	TPositionId	SRackBC	SLabwareId	SPositionId
         #1	p2021120604p	Echo_384_COC_0001	A1	p2111267p	ABg_96_PCR_NoSkirt_0001	A1
         gPID = util.guard_pbc(filepath.split('_')[-2], silent=True)
-        exp.plate_location_sample[gPID] = {'purpose':'dna','wells':set(),'source':'','plate_type':'384PP_AQ_BP'}
+        exp.plate_location_sample[gPID] = {'purpose':'dna','wells':set(),'source':'',
+                'plate_type':util.PLATE_TYPES['Echo384']}
         source_plate_set = set()
         for i, line in enumerate(f):
             if i == 0:  # header

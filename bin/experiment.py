@@ -443,9 +443,14 @@ class Experiment():
         for amp_pid in self.get_amplicon_pids():
             amp_wells = 0
             for well in self.plate_location_sample[amp_pid]['wells']:
-                if util.is_guarded_abc(self.plate_location_sample[amp_pid][well]['barcode']):
-                    amp_wells += 1
-                    total_well_counts['a'] += 1
+                if 'barcode' in self.plate_location_sample[amp_pid][well]:
+                    barcode = self.plate_location_sample[amp_pid][well]['barcode']
+                    if util.is_guarded_abc(barcode):
+                        amp_wells += 1
+                        total_well_counts['a'] += 1
+                    elif util.is_guarded_cbc(barcode):  # these should be guarded with 'a', but we'll note them anyway
+                        amp_wells += 1
+                        total_well_counts['a'] += 1
             plate_set_summary.append([util.unguard_pbc(amp_pid, silent=True), '', '', '', '', amp_wells, 0])
             
         for dna_pid in self.dest_sample_plates:
@@ -461,18 +466,18 @@ class Experiment():
                 # drop any deleted plates
             self.dest_sample_plates[dna_pid] = new_dest_scheme
 
-
             for i,sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
                 plate_set_details.append(util.unguard_pbc(sample_pid, silent=True))
-                for well in self.plate_location_sample[sample_pid]['wells']:  
-                    if util.is_guarded_cbc(self.plate_location_sample[sample_pid][well]['barcode']):
-                        custom_wells += 1
-                        total_well_counts['c'] += 1 
-                    elif util.is_guarded_rbc(self.plate_location_sample[sample_pid][well]['barcode']):
-                        rodentity_wells += 1
-                        total_well_counts['r'] += 1   
-                    
-                    total_unique_samples.add(self.plate_location_sample[sample_pid][well]['barcode'])
+                for well in self.plate_location_sample[sample_pid]['wells']:
+                    if 'barcode' in self.plate_location_sample[sample_pid]['wells']:
+                        barcode = self.plate_location_sample[sample_pid][well]['barcode']
+                        if util.is_guarded_cbc(barcode):
+                            custom_wells += 1
+                            total_well_counts['c'] += 1 
+                        elif util.is_guarded_rbc(barcode):
+                            rodentity_wells += 1
+                            total_well_counts['r'] += 1   
+                        total_unique_samples.add(barcode)
                 #print(f'{dna_pid=} {sample_pid=} {custom_wells=} {rodentity_wells=}')
                 pid_count += 1
             for j in range(4-pid_count):
@@ -482,6 +487,26 @@ class Experiment():
             plate_set_details.append(str(rodentity_wells))
             # print(f'{plate_set_details=}', file=sys.stderr)
             plate_set_summary.append(plate_set_details)
+
+        # now get any individual 384-well DNA plates that were loaded separately
+        for dna_pid in self.get_dna_pids():
+            dpid = util.unguard_pbc(dna_pid, silent=True)
+            custom_wells = 0
+            rodentity_wells = 0
+            if dna_pid not in self.dest_sample_plates:
+                for well in self.plate_location_sample[dna_pid]['wells']:
+                    if 'barcode' in self.plate_location_sample[dna_pid][well]:
+                        barcode = self.plate_location_sample[dna_pid][well]['barcode']
+                        if util.is_guarded_cbc(barcode):
+                            custom_wells += 1
+                            total_well_counts['c'] += 1 
+                        elif util.is_guarded_rbc(barcode):
+                            rodentity_wells += 1
+                            total_well_counts['r'] += 1   
+                    
+                        total_unique_samples.add(barcode)
+            plate_set_summary.append([dpid,'','','','',str(custom_wells),str(rodentity_wells)])
+
         if len(plate_set_summary) > 0:
             plate_set_summary.append(['Total','','','','',total_well_counts['c']+total_well_counts['a'], total_well_counts['r']])
                     # 'Total assays': len(total_unique_assays)})
@@ -1019,42 +1044,43 @@ class Experiment():
         return num_reactions
 
 
-    def generate_echo_primer_survey(self, primer_survey_filename='primer-svy.csv', caller_id=None):
-        """ 
-        Generate a primer survey file for use by the Echo. Replaces echovolume.py
-        Not strictly necessary, but the old code reads this file in making the picklists.
-        """
-        if self.locked:
-            m('cannot generate primer survey file while lock is active.', level='failure', caller_id=caller_id)
-            return False
-        primer_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primer']
-        header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
-                'primer names pooled', 'volume']
-        transactions = {}                                       
-        primer_survey_fn = self.get_exp_fn(primer_survey_filename, trans=True)
-        transactions[primer_survey_fn] = {} # add plates and modifications to this
-        try:
-            with open(primer_survey_fn, 'wt') as fout:
-                print(','.join(header), file=fout)
-                for i,pid in enumerate(primer_pids):
-                    transactions[primer_survey_fn][pid] = {}
-                    plate=self.plate_location_sample[pid]
-                    for well in util.row_ordered_384:
-                        if well not in plate['wells']:
-                            continue
-                        if 'primer' not in plate[well]:
-                            continue
-                        if 'volume' not in plate[well]:
-                            continue
-                        outline = ','.join([f"Source[{i+1}]",util.unguard_pbc(pid,silent=True),plate['plate_type'],
-                                well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
-                        print(outline, file=fout)
-        except Exception as exc:
-            m(f'could not write primer survey {exc}', level='error', caller_id=caller_id)
-            return False
-        transaction.add_pending_transactions(self,transactions)
-        m(f"written Echo primer survey to {primer_survey_fn}", level='success', caller_id=caller_id)
-        return True
+    # def generate_echo_primer_survey(self, primer_survey_filename='primer-svy.csv', caller_id=None):
+    #     """ 
+    #     Generate a primer survey file for use by the Echo. Replaces echovolume.py
+    #     Not strictly necessary, but the old code reads this file in making the picklists.
+    #     DEPRECATED
+    #     """
+    #     if self.locked:
+    #         m('cannot generate primer survey file while lock is active.', level='failure', caller_id=caller_id)
+    #         return False
+    #     primer_pids = [p for p in self.plate_location_sample if self.plate_location_sample[p]['purpose'] == 'primer']
+    #     header = ['Source Plate Name', 'Source Plate Barcode', 'Source Plate Type', 'plate position on Echo 384 PP',
+    #             'primer names pooled', 'volume']
+    #     transactions = {}                                       
+    #     primer_survey_fn = self.get_exp_fn(primer_survey_filename, trans=True)
+    #     transactions[primer_survey_fn] = {} # add plates and modifications to this
+    #     try:
+    #         with open(primer_survey_fn, 'wt') as fout:
+    #             print(','.join(header), file=fout)
+    #             for i,pid in enumerate(primer_pids):
+    #                 transactions[primer_survey_fn][pid] = {}
+    #                 plate=self.plate_location_sample[pid]
+    #                 for well in util.row_ordered_384:
+    #                     if well not in plate['wells']:
+    #                         continue
+    #                     if 'primer' not in plate[well]:
+    #                         continue
+    #                     if 'volume' not in plate[well]:
+    #                         continue
+    #                     outline = ','.join([f"Source[{i+1}]",util.unguard_pbc(pid,silent=True),plate['plate_type'],
+    #                             well,plate[well]['primer'],f"{int(plate[well]['volume'])/1000}"])
+    #                     print(outline, file=fout)
+    #     except Exception as exc:
+    #         m(f'could not write primer survey {exc}', level='error', caller_id=caller_id)
+    #         return False
+    #     transaction.add_pending_transactions(self,transactions)
+    #     m(f"written Echo primer survey to {primer_survey_fn}", level='success', caller_id=caller_id)
+    #     return True
 
 
     def check_plate_presence(self, pids, purpose, caller_id=None):
@@ -1158,10 +1184,9 @@ class Experiment():
 
     def generate_echo_PCR1_picklists(self, selected_pids, caller_id=None):
         """
-        Calls echo_primer.generate_echo_PCR1_picklist() to do the work, needs a set of accepted DNA_plates,
+        Calls generate.generate_echo_PCR1_picklist() to do the work, needs a set of accepted DNA_plates,
         the final assay list, and a set of destination PCR plate barcodes, taq+water plates, primer plates, primer volumes.
         Returns True on success
-        TODO: We need to reduce available taq and water during this operation.
         """
         dna_pids = selected_pids['dna']
         pcr_pids = selected_pids['pcr']
