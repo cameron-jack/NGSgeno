@@ -465,11 +465,12 @@ class Experiment():
                     new_dest_scheme.append(spid)
                 # drop any deleted plates
             self.dest_sample_plates[dna_pid] = new_dest_scheme
+            #print(f'{dna_pid=} {self.dest_sample_plates[dna_pid]=}')
 
             for i,sample_pid in enumerate(sorted(self.dest_sample_plates[dna_pid])):
                 plate_set_details.append(util.unguard_pbc(sample_pid, silent=True))
                 for well in self.plate_location_sample[sample_pid]['wells']:
-                    if 'barcode' in self.plate_location_sample[sample_pid]['wells']:
+                    if 'barcode' in self.plate_location_sample[sample_pid][well]:
                         barcode = self.plate_location_sample[sample_pid][well]['barcode']
                         if util.is_guarded_cbc(barcode):
                             custom_wells += 1
@@ -478,7 +479,7 @@ class Experiment():
                             rodentity_wells += 1
                             total_well_counts['r'] += 1   
                         total_unique_samples.add(barcode)
-                #print(f'{dna_pid=} {sample_pid=} {custom_wells=} {rodentity_wells=}')
+                print(f'{dna_pid=} {sample_pid=} {custom_wells=} {rodentity_wells=}')
                 pid_count += 1
             for j in range(4-pid_count):
                 plate_set_details.append('')
@@ -488,9 +489,12 @@ class Experiment():
             # print(f'{plate_set_details=}', file=sys.stderr)
             plate_set_summary.append(plate_set_details)
 
+        viewed_plates = set([p[0] for p in plate_set_summary])
         # now get any individual 384-well DNA plates that were loaded separately
-        for dna_pid in self.get_dna_pids():
+        for dna_pid in self.get_dna_pids(plate_type='Echo384'):
             dpid = util.unguard_pbc(dna_pid, silent=True)
+            if dpid in viewed_plates:
+                continue
             custom_wells = 0
             rodentity_wells = 0
             if dna_pid not in self.dest_sample_plates:
@@ -629,7 +633,7 @@ class Experiment():
         return True
 
 
-    def get_dna_pids(self, dna_pids=None, echo_ready=False, caller_id=None):
+    def get_dna_pids(self, dna_pids=None, echo_ready=False, plate_type=None, caller_id=None):
         """ 
         Return a list of available DNA plate ids 
         If echo_ready then include only those with echo_coc files uploaded
@@ -638,6 +642,8 @@ class Experiment():
         if dna_pids:
             dna_pids = [util.guard_pbc(d, silent=True) for d in dna_pids]
             dpids = [d for d in dpids if d in dna_pids]
+        if plate_type and plate_type in util.PLATE_TYPES:
+            dpids = [d for d in dpids if self.plate_location_sample[d]['plate_type']==util.PLATE_TYPES[plate_type]]
         if echo_ready:
             nfs, efs, xbcs = self.get_nimbus_filepaths()
             echo_ready_pids = []

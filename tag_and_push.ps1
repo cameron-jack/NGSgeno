@@ -1,11 +1,9 @@
-$VER = "v0.28.018"
+$VER = "v0.28.019"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* NEW: Added 384-well DNA-plate upload for reruns of failed assays
-* NEW: sample viewer display includes new 384-well plates
-* NEW: 384-plates without matching Echo COC files now accepted
-* UPDATED: various messages regarding DNA plates
+* FIXED: Sample viewer code was incorrectly looking up barcodes in sample wells
+* FIXED: All DNA plates were being added again to the list of sample plates, not just the separately loaded 384-well ones
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
