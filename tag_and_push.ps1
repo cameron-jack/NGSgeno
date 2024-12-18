@@ -1,9 +1,8 @@
-$VER = "v0.28.019"
+$VER = "v0.28.020"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* FIXED: Sample viewer code was incorrectly looking up barcodes in sample wells
-* FIXED: All DNA plates were being added again to the list of sample plates, not just the separately loaded 384-well ones
+* FIXED: new DNA plates from Rodentity uploads were not being assigned a plate type
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

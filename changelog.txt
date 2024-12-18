@@ -1,3 +1,7 @@
+v0.28.020
+Date: 18/12/2024 4:07:06 PM
+* FIXED: new DNA plates from Rodentity uploads were not being assigned a plate type
+
 v0.28.019
 Date: 17/12/2024 2:06:02 PM
 * FIXED: Sample viewer code was incorrectly looking up barcodes in sample wells

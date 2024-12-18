@@ -385,7 +385,8 @@ class Experiment():
             return False
 
         self.dest_sample_plates[dna_plate_id] = sample_plate_ids
-        self.plate_location_sample[dna_plate_id] = {'purpose':'dna', 'source':','.join(sample_plate_ids), 'wells':set()}
+        self.plate_location_sample[dna_plate_id] = {'purpose':'dna', 'source':','.join(sample_plate_ids), 
+                'wells':set(), 'plate_type':util.PLATE_TYPES['Echo384']}
         if source == 'rodentity':
             self.unassigned_plates[1] = ''
             self.unassigned_plates[2] = ''
@@ -479,7 +480,7 @@ class Experiment():
                             rodentity_wells += 1
                             total_well_counts['r'] += 1   
                         total_unique_samples.add(barcode)
-                print(f'{dna_pid=} {sample_pid=} {custom_wells=} {rodentity_wells=}')
+                #print(f'{dna_pid=} {sample_pid=} {custom_wells=} {rodentity_wells=}')
                 pid_count += 1
             for j in range(4-pid_count):
                 plate_set_details.append('')
