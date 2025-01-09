@@ -3,7 +3,7 @@
 Integrates robotic sample preparation and Illumina Miseq DNA sequencing of amplicons with the APF's Rodentity database.
 
 # To do
-* Documentation! Sphinx docs of code. 
+* Documentation! Sphinx docs of code. Need proper docstrings and type definitions
 * Modular indexing code
 * New file generation/transaction code
 * Secure access through SSL
@@ -23,7 +23,7 @@ openpyxl - for reading/writing excel files
 biopython==1.81 - sequence matching 
 requests - connecting to DBs
 jsonpickle - save/load experiment info
-streamlit==1.26 - web interface
+streamlit==1.31.1 - web interface
 st_aggrid - interactive web tables
 extra_streamlit_components - advanced GUI widgets
 pandas - dataframes to support web tables

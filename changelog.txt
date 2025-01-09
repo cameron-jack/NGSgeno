@@ -1,3 +1,8 @@
+v0.28.021
+Date: 9/01/2025 12:30:14 PM
+* FIXED: __init__.py incorrectly names __init.py__
+* CHANGED: has git push commented out
+
 v0.28.020
 Date: 18/12/2024 4:07:06 PM
 * FIXED: new DNA plates from Rodentity uploads were not being assigned a plate type

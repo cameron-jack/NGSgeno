@@ -1,8 +1,9 @@
-$VER = "v0.28.020"
+$VER = "v0.28.021"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* FIXED: new DNA plates from Rodentity uploads were not being assigned a plate type
+* FIXED: __init__.py incorrectly names __init.py__
+* CHANGED: has git push commented out
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
@@ -18,5 +19,5 @@ $MSG = $COMMENT
 git commit -m $MSG
 git tag -a $VER -m $MSG
 
-git push
-git push origin $VER
+#git push
+#git push origin $VER
