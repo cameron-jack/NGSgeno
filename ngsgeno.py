@@ -627,13 +627,14 @@ def main():
                         
                         if selected_pids['dna']:
                             if exp.check_ready_pcr1(selected_pids, caller_id=caller_id):
-                                _,button_col,_ = st.columns([2, 2, 1])
+                                _,button_col,cb_col,_ = st.columns([5, 2, 2, 4])
                                 echo_picklist_go = button_col.button('Generate Echo Picklists',
                                             key='echo_pcr1_go_button',
                                             type='primary')
+                                cb_force = cb_col.checkbox('Force picklist generation', key='force_pcr1_picklist')
                                 if echo_picklist_go:
                                     success = run_generate(exp, exp.generate_echo_PCR1_picklists,
-                                            selected_pids)
+                                            selected_pids, force=cb_force, caller_id=caller_id)
                                     if not success:
                                         st.error('Picklist generation failed. Please see the log')
                                     else:

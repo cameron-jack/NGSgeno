@@ -521,14 +521,29 @@ def mk_mytaq_picklist(exp, fn, task_wells, pcrPlate_col, pcrWell_col, taqwater_b
     return True
 
 
-def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True, caller_id=None):
+def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True, force=False, caller_id=None):
     """
     dna_records is a list of dictionaries
+
+    args:
+        exp - Experiment
+        dna_records - a list of dictionaries with the following keys (below)
+        pmr_pids - list of primer plate IDs
+        rotate - if True, move to next available primer well after each dose
+        caller_id - for logging
+        force - if True, set the primerPlate and primerWell to None if the primer is not available
+
+    returns:
+        success - True if all primers were allocated, False if any primer was
+                not available (unless force is True)
     dna_fields=['samplePlate','sampleWell','sampleBarcode','strain','sex','alleleSymbol',
                  'alleleKey','assayKey','assays','assayFamilies','clientName','sampleName',
                  'dnaPlate','dnaWell','primer']
+        
     We want to add 'primerPlate' and 'primerWell' to the this dictionary
     if rotate is True, move to next available primer well after each dose
+    Note: we carry on if the primer is not available, but we log a warning
+    We only fail if the primer was available but runs out (unless force is True)
     """
     success = True
     primer_plate_well_vol_doses = exp.get_available_primer_wells(pmr_pids=pmr_pids)
@@ -538,7 +553,7 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True, caller
         pmr = rec['primer']
         if pmr not in primer_plate_well_vol_doses:
             #print(f'{i=} {pmr=}') 
-            m(f'primer {pmr} not available on primer plate(s)', level='warning', caller_id=caller_id)
+            m(f'primer {pmr} not available on primer plate(s), ', level='warning', caller_id=caller_id)
             dna_records[i]['primerPlate'] = None
             dna_records[i]['primerWell'] = None
             continue
@@ -548,8 +563,16 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True, caller
                 if sum([doses for pid, well, vol, doses in primer_plate_well_vol_doses[pmr]]) == 0:
                     # all wells for this primer are empty
                     m(f'primer {pmr} has run out of available doses', level='warning', caller_id=caller_id)
-                    success = False
-                    break
+                    if force:
+                        dna_records[i]['primerPlate'] = None
+                        dna_records[i]['primerWell'] = None
+                        m(f'Ignoring missing primer {pmr} for {i=}', level='warning', caller_id=caller_id)
+                        break
+                    else:
+                        m(f'stopping allocation of primers to DNA records, use Force to complete or top up well', 
+                                level='warning', caller_id=caller_id)
+                        success = False
+                        break
                 pid, well, vol, doses = primer_plate_well_vol_doses[pmr][offset]
                 if doses > 0:
                     primer_uses[pmr] += 1
@@ -568,8 +591,16 @@ def allocate_primers_to_dna(exp, dna_records, pmr_pids=None, rotate=True, caller
                 if sum([doses for pid, well, vol, doses in primer_plate_well_vol_doses[pmr]]) == 0:
                     # all wells for this primer are empty
                     m(f'primer {pmr} has run out of available doses', level='warning', caller_id=caller_id)
-                    success = False
-                    break
+                    if force:
+                        m(f'Ignoring missing primer {pmr} for {i=}', level='warning', caller_id=caller_id)
+                        dna_records[i]['primerPlate'] = None
+                        dna_records[i]['primerWell'] = None
+                        break
+                    else:
+                        m(f'stopping allocation of primers to DNA records, use Force to complete or top up well', 
+                                level='warning', caller_id=caller_id)
+                        success = False
+                        break
                 pid, well, vol, doses = primer_plate_well_vol_doses[pmr][offset]
                 if doses > 0:
                     primer_uses[pmr] += 1  # not actually used in this mode 
@@ -616,7 +647,7 @@ def stage_write(exp, fn, header, data, output_plate_guards=False, ignore_missing
     return True
 
 
-def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs, caller_id=None):
+def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs, force=False, caller_id=None):
     """
     Entry point. Takes an experiment instance plus plate barcodes for dna plates, PCR plates, primer plates, taq/water plates.
     """
@@ -661,7 +692,7 @@ def generate_echo_PCR1_picklist(exp, dna_plate_bcs, pcr_plate_bcs, taq_water_bcs
                  'dnaPlate','dnaWell','primer','primerPlate','primerWell','pcrPlate','pcrWell']
 
         dna_records = exp.get_dna_records(dna_bcs)
-        success = allocate_primers_to_dna(exp, dna_records)
+        success = allocate_primers_to_dna(exp, dna_records,force=force, caller_id=caller_id)
         if not success:
             return False
 
@@ -864,10 +895,12 @@ Adapter,,,,,,,,,,
     return True
 
     
-def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, taq_water_bcs, amplicon_plate_bcs=None, caller_id=None):
+def generate_echo_PCR2_picklist(exp, pcr_plate_bcs, index_plate_bcs, 
+        taq_water_bcs, amplicon_plate_bcs=None, caller_id=None):
     """
     Replacement for main(). Called as a library only.
-    User included PCR plates, index plates, taq/water plates, amplicon plates (optional) are user provided
+    User included PCR plates, index plates, taq/water plates, 
+    amplicon plates (optional) are user provided
     Also calls generate_miseq_samplesheet()
     Called from Experiment.generate_echo_PCR2_picklists()
     """

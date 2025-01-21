@@ -1,9 +1,13 @@
-$VER = "v0.28.021"
+$VER = "v1.00.000"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* FIXED: __init__.py incorrectly names __init.py__
-* CHANGED: has git push commented out
+Production release
+* NEW: supports new Illumina i100 sequencer files
+* NEW: adds a Force option for generating primer picklists in spite of insufficient primer volmes
+* NEW: proper messaging support extended through primer file generation functions
+* CHANGED: push returned to tag_and_push.ps1
+* FIXED: inccorect indentation in ngsmatch.py giving false lock file errors
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
@@ -19,5 +23,5 @@ $MSG = $COMMENT
 git commit -m $MSG
 git tag -a $VER -m $MSG
 
-#git push
-#git push origin $VER
+git push
+git push origin $VER

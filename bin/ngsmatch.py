@@ -1292,162 +1292,170 @@ def main(args):
                 print('Could not clear debug.log, perhaps you have it open?', file=sys.stderr)
                 return
         print(f'Writing debug information to {db_log_fn}', file=sys.stderr)
-    
-    log.append('Info: Run with the following command line options:')
-    for arg in vars(args):
-        log.append(f'Info: {arg} {getattr(args, arg)}')
-    
-    # read the wells data
-    start_time = datetime.datetime.now()
-    log.append(f"Begin: {start_time}")
-    raw_pair_list = get_raw_fastq_pairs(os.path.join(args.rundir, 'raw'))
-    raw_file_identifiers = set([str(f[0].name).split('_')[0] for f in raw_pair_list])
-    #print(sorted(raw_file_identifiers), file=sys.stderr)
-    with open(os.path.join(args.rundir,args.stagefile)) as srcfd:
-        src = csv.reader(srcfd, dialect="unix")
-        hdr = next(src)
-        WRec = collections.namedtuple("WRec", hdr)
-        wdata = sorted((WRec(*r) for r in src), key=lambda x:(x.pcrPlate, x.pcrWell[0], int(x.pcrWell[1:]), x.primer))
-    #print(wdata, file=sys.stderr)
-    wdata = [rec for rec in wdata if unguard(rec.pcrPlate, silent=True) +'-'+ padwell(rec.pcrWell) in raw_file_identifiers]
-    #print(f'After filtering by available files {wdata=}', file=sys.stderr)
-    log.append(f"Info: {len(wdata)} sample wells to process.")
-    if len(wdata) == 0:
-        return
-    ## get a set of assay family names - family name ends with first underscore char  
-    #assays = frozenset(r.primer.split('_',1)[0] for r in wdata)
+    try:
+        log.append('Info: Run with the following command line options:')
+        for arg in vars(args):
+            log.append(f'Info: {arg} {getattr(args, arg)}')
         
-    # read the target sequence file into dictionaries [seq] = set([ids]), and [id] = seq             
-    seq_ids, id_seq = parse_targets(args.rundir, args.targets, log, args.debug)
-    print('Parsed targets', flush=True)
+        # read the wells data
+        start_time = datetime.datetime.now()
+        log.append(f"Begin: {start_time}")
+        raw_pair_list = get_raw_fastq_pairs(os.path.join(args.rundir, 'raw'))
+        raw_file_identifiers = set([str(f[0].name).split('_')[0] for f in raw_pair_list])
+        if len(raw_file_identifiers) == 0:
+            return
+        # New Illumina doesn't have a dash in the file name
+        if raw_file_identifiers[0][-4] != '-':
+            raw_file_identifiers = set(['-'.join(str(f[0].name).split('_')[0:2]) for f in raw_pair_list])
+        #print(sorted(raw_file_identifiers), file=sys.stderr)
+        with open(os.path.join(args.rundir,args.stagefile)) as srcfd:
+            src = csv.reader(srcfd, dialect="unix")
+            hdr = next(src)
+            WRec = collections.namedtuple("WRec", hdr)
+            wdata = sorted((WRec(*r) for r in src), key=lambda x:(x.pcrPlate, x.pcrWell[0], int(x.pcrWell[1:]), x.primer))
+        #print(wdata, file=sys.stderr)
+        wdata = [rec for rec in wdata if unguard(rec.pcrPlate, silent=True) +'-'+ padwell(rec.pcrWell) in raw_file_identifiers]
+        #print(f'After filtering by available files {wdata=}', file=sys.stderr)
+        log.append(f"Info: {len(wdata)} sample wells to process.")
+        if len(wdata) == 0:
+            return
+        ## get a set of assay family names - family name ends with first underscore char  
+        #assays = frozenset(r.primer.split('_',1)[0] for r in wdata)
+            
+        # read the target sequence file into dictionaries [seq] = set([ids]), and [id] = seq             
+        seq_ids, id_seq = parse_targets(args.rundir, args.targets, log, args.debug)
+        print('Parsed targets', flush=True)
 
-    # get relationship of primers to assay family
-    #print(f'{args.primer_assayfam=}')
-    primer_assayfam, assayfam_primers = parse_primer_assayfams(args.rundir, args.primer_assayfam)
-    #primer_assayfam, assayfam_primers = parse_primer_file(os.path.join(args.rundir, args.primer_assayfam))
-    print(f'Parsed primers/assays', flush=True) # {primer_assayfam=} {assayfam_primers=}')
-    
-    if not os.path.isdir(os.path.join(args.rundir,"raw")):
-        log.append("Error: raw FASTQ data folder is absent - please transfer MiSeq data.")
-        write_log(log, os.path.join(args.rundir,args.logfn))
-        return
-    
-    for d in ("cleaned", "merged"):
-        dp = os.path.join(args.rundir, d)
-        if not os.path.isdir(dp):
-            os.mkdir(dp)
-                
-    # parallel execute over wdata and collect results
-    grouped_wrs = itertools.groupby(wdata, key=lambda x:(x.pcrPlate, x.pcrWell))
-    wrs = []
-    for key, group in grouped_wrs:
-        for g in group:
-            wrs.append(OrderedDict(g._asdict()))
+        # get relationship of primers to assay family
+        #print(f'{args.primer_assayfam=}')
+        primer_assayfam, assayfam_primers = parse_primer_assayfams(args.rundir, args.primer_assayfam)
+        #primer_assayfam, assayfam_primers = parse_primer_file(os.path.join(args.rundir, args.primer_assayfam))
+        print(f'Parsed primers/assays', flush=True) # {primer_assayfam=} {assayfam_primers=}')
         
-    with mp.Manager() as manager:
-        # Use a server process to manage shared data structures. Heavy option, but works on Windows
-        match_cache = manager.dict()  # [seq] = known_seq
-        anno_cache = manager.dict()  # [seq] = annotation
-        miss_cache = manager.dict()  # just use this as a set
-        reps = manager.dict()  # [sampleNo] = all columns
-        logm = manager.list()
-        lock_mtc = manager.Lock()  # match_cache locking
-        lock_msc = manager.Lock()  # miss_cache locking
-        lock_r = manager.Lock()  # result list locking
-        lock_l = manager.Lock()  # log list locking
-        lock_d = manager.Lock()  # debug file locking
-      
-        with lock_mtc:
-            for seq in seq_ids:
-                match_cache[seq] = seq  # variants of these will also go in here 
+        if not os.path.isdir(os.path.join(args.rundir,"raw")):
+            log.append("Error: raw FASTQ data folder is absent - please transfer MiSeq data.")
+            write_log(log, os.path.join(args.rundir,args.logfn))
+            return
+        
+        for d in ("cleaned", "merged"):
+            dp = os.path.join(args.rundir, d)
+            if not os.path.isdir(dp):
+                os.mkdir(dp)
+                    
+        # parallel execute over wdata and collect results
+        grouped_wrs = itertools.groupby(wdata, key=lambda x:(x.pcrPlate, x.pcrWell))
+        wrs = []
+        for key, group in grouped_wrs:
+            for g in group:
+                wrs.append(OrderedDict(g._asdict()))
+            
+        with mp.Manager() as manager:
+            # Use a server process to manage shared data structures. Heavy option, but works on Windows
+            match_cache = manager.dict()  # [seq] = known_seq
+            anno_cache = manager.dict()  # [seq] = annotation
+            miss_cache = manager.dict()  # just use this as a set
+            reps = manager.dict()  # [sampleNo] = all columns
+            logm = manager.list()
+            lock_mtc = manager.Lock()  # match_cache locking
+            lock_msc = manager.Lock()  # miss_cache locking
+            lock_r = manager.Lock()  # result list locking
+            lock_l = manager.Lock()  # log list locking
+            lock_d = manager.Lock()  # debug file locking
+        
+            with lock_mtc:
+                for seq in seq_ids:
+                    match_cache[seq] = seq  # variants of these will also go in here 
 
-        #print('Before launching jobs', file=sys.stderr, flush=True)
-        # multiprocessing
-        NUMPROCS = args.ncpus
-           
-        pool = manager.Pool(NUMPROCS)
-        reports = []
-        launch_progress = 0
-        match_progress = 0
-        print('launching jobs', flush=True)
-        total_jobs = len(wrs)
-        # multiprocessing pool counter from https://superfastpython.com/multiprocessing-pool-asyncresult/
-        reports = []
-        for i, wr in enumerate(wrs):
-            r = pool.apply_async(process_well, args=(i, wr, args.rundir, seq_ids, id_seq, primer_assayfam, 
-                assayfam_primers, match_cache, anno_cache, miss_cache, reps, logm, lock_mtc, 
-                lock_msc, lock_r, lock_l, lock_d, args.margin, args.identity, args.mincov, args.minprop, 
-                args.exact, args.no_miss_cache, args.exhaustive, args.debug))
-            reports.append(r)
-            if i % 3 == 0:
-                launch_progress = ceil(100*i/total_jobs)
+            #print('Before launching jobs', file=sys.stderr, flush=True)
+            # multiprocessing
+            NUMPROCS = args.ncpus
+            
+            pool = manager.Pool(NUMPROCS)
+            reports = []
+            launch_progress = 0
+            match_progress = 0
+            print('launching jobs', flush=True)
+            total_jobs = len(wrs)
+            # multiprocessing pool counter from https://superfastpython.com/multiprocessing-pool-asyncresult/
+            reports = []
+            for i, wr in enumerate(wrs):
+                r = pool.apply_async(process_well, args=(i, wr, args.rundir, seq_ids, id_seq, primer_assayfam, 
+                    assayfam_primers, match_cache, anno_cache, miss_cache, reps, logm, lock_mtc, 
+                    lock_msc, lock_r, lock_l, lock_d, args.margin, args.identity, args.mincov, args.minprop, 
+                    args.exact, args.no_miss_cache, args.exhaustive, args.debug))
+                reports.append(r)
+                if i % 3 == 0:
+                    launch_progress = ceil(100*i/total_jobs)
+                    completed = sum([r.ready() for r in reports])
+                    match_progress = floor(100*completed/total_jobs)
+                    report_progress(args.rundir, launch_progress, match_progress)
+                    
+            while match_progress < 100:
                 completed = sum([r.ready() for r in reports])
-                match_progress = floor(100*completed/total_jobs)
-                report_progress(args.rundir, launch_progress, match_progress)
-                
-        while match_progress < 100:
-            completed = sum([r.ready() for r in reports])
-            # report the number of remaining tasks
-            print(f'Match completion: {100*completed/total_jobs}')
-            match_progress = 100*completed/total_jobs
-            report_progress(args.rundir, 100, floor(match_progress))
-            # wait a moment
-            time.sleep(2.5)       
-        report_progress(args.rundir, 100, 100)
-                        
-        pool.close()
-        pool.join()
-        print('All processes completed', flush=True)
+                # report the number of remaining tasks
+                print(f'Match completion: {100*completed/total_jobs}')
+                match_progress = 100*completed/total_jobs
+                report_progress(args.rundir, 100, floor(match_progress))
+                # wait a moment
+                time.sleep(2.5)       
+            report_progress(args.rundir, 100, 100)
+                            
+            pool.close()
+            pool.join()
+            print('All processes completed', flush=True)
 
-        with lock_l:
-            for l in logm:
-                log.append(l)
+            with lock_l:
+                for l in logm:
+                    log.append(l)
 
-        with lock_r:
-            completed_jobs = [reps[key] for key in sorted(reps.keys())]
+            with lock_r:
+                completed_jobs = [reps[key] for key in sorted(reps.keys())]
 
-        test_variant_seq()
+            test_variant_seq()
 
-        with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd,\
-                open(os.path.join(args.rundir,args.variants), 'wt', buffering=1) as varfd:
-            print(f"Opening {args.outfn} for results", flush=True)
-            print(f"Opening {args.variants} for variant sequences", flush=True)
+            with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd,\
+                    open(os.path.join(args.rundir,args.variants), 'wt', buffering=1) as varfd:
+                print(f"Opening {args.outfn} for results", flush=True)
+                print(f"Opening {args.variants} for variant sequences", flush=True)
 
-        #with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd:
-        #    print(f"Opening {args.outfn} for results", file=sys.stderr)
-            dst = csv.writer(dstfd, dialect="unix", quoting=csv.QUOTE_ALL)
-            hdrres1 = ("readCount", "cleanCount", "mergeCount")
-            hdrres2 = ("seqCount", "seqName", "efficiency", "otherCount", "otherName")
-            complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))
-            primer_col = [i for i,col in enumerate(complete_row_hdr) if col=='primer'][0]
-            dst.writerow(complete_row_hdr)
-            for i,job in enumerate(completed_jobs):
-                try:
-                    dst.writerow(job)
-                except Exception as exc:
-                    print(f'{exc=}', flush=True)
-                #print(i, job, flush=True)
-                var_count_entries = job[-2].split(';')
-                var_name_entries = job[-1].split(';')
-                primer_name = job[primer_col]
-                #print(f'{primer_name=} {var_count_entries=} {var_name_entries=}')
-                for var_count, var_name in zip(var_count_entries, var_name_entries):
-                    if var_name.startswith('other'):
-                        continue
-                    var_row_name = f'>Sample:{i+1};Primer:{primer_name}'
-                    if '//' in var_name:
-                        var_row_name += f';{var_name}'
-                    else:
-                        var_row_name += f';No_match'
-                    var_row_name += f';count:{var_count}'
-                    print(var_row_name, file=varfd)
-                    if '//' in var_name:
-                        print(get_variant_seq(var_name, id_seq), file=varfd)
-                    else:
-                        print(var_name, file=varfd)
-                        
-            dstfd.flush()
-            varfd.flush()
+            #with open(os.path.join(args.rundir,args.outfn), "wt", buffering=1) as dstfd:
+            #    print(f"Opening {args.outfn} for results", file=sys.stderr)
+                dst = csv.writer(dstfd, dialect="unix", quoting=csv.QUOTE_ALL)
+                hdrres1 = ("readCount", "cleanCount", "mergeCount")
+                hdrres2 = ("seqCount", "seqName", "efficiency", "otherCount", "otherName")
+                complete_row_hdr = tuple((x for xs in (hdr, hdrres1, hdrres2) for x in xs))
+                primer_col = [i for i,col in enumerate(complete_row_hdr) if col=='primer'][0]
+                dst.writerow(complete_row_hdr)
+                for i,job in enumerate(completed_jobs):
+                    try:
+                        dst.writerow(job)
+                    except Exception as exc:
+                        print(f'{exc=}', flush=True)
+                    #print(i, job, flush=True)
+                    var_count_entries = job[-2].split(';')
+                    var_name_entries = job[-1].split(';')
+                    primer_name = job[primer_col]
+                    #print(f'{primer_name=} {var_count_entries=} {var_name_entries=}')
+                    for var_count, var_name in zip(var_count_entries, var_name_entries):
+                        if var_name.startswith('other'):
+                            continue
+                        var_row_name = f'>Sample:{i+1};Primer:{primer_name}'
+                        if '//' in var_name:
+                            var_row_name += f';{var_name}'
+                        else:
+                            var_row_name += f';No_match'
+                        var_row_name += f';count:{var_count}'
+                        print(var_row_name, file=varfd)
+                        if '//' in var_name:
+                            print(get_variant_seq(var_name, id_seq), file=varfd)
+                        else:
+                            print(var_name, file=varfd)
+                            
+                dstfd.flush()
+                varfd.flush()
+    except Exception as exc:
+        print(f'Error: {exc}', flush=True)
+        log.append(f'Error: {exc}')
 
     end_time = datetime.datetime.now()
     msg = f"End: {end_time} took: {end_time - start_time}"
@@ -1500,11 +1508,11 @@ if __name__=="__main__":
             with open(lock_path,"wt"):
                 report_progress(args.rundir, 0, 0)  # set this up asap
                 main(args)
-                os.remove(lock_path)
-                print('Completed regular execution')
+            print('Completed regular execution')
         except Exception as exc:
-            os.remove(lock_path)
             print(f'Completed with exception {exc}', flush=True)
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
     else:
         print("Analysis already running", file=sys.stderr)
         exit(2)

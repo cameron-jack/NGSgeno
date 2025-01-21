@@ -1189,16 +1189,23 @@ class Experiment():
         return success
     
 
-    def generate_echo_PCR1_picklists(self, selected_pids, caller_id=None):
+    def generate_echo_PCR1_picklists(self, selected_pids, force=False, caller_id=None):
         """
         Calls generate.generate_echo_PCR1_picklist() to do the work, needs a set of accepted DNA_plates,
         the final assay list, and a set of destination PCR plate barcodes, taq+water plates, primer plates, primer volumes.
+
+        args:
+            selected_pids: dictionary of selected plate IDs
+            force: if True, will not stop if primers allocations run out
+            caller_id: the calling function
+
         Returns True on success
         """
         dna_pids = selected_pids['dna']
         pcr_pids = selected_pids['pcr']
         taqwater1_pids = selected_pids['taqwater1']
-        success = generate.generate_echo_PCR1_picklist(self, dna_pids, pcr_pids, taqwater1_pids)
+        success = generate.generate_echo_PCR1_picklist(self, dna_pids, pcr_pids, 
+                taqwater1_pids,force=force,caller_id=caller_id)
         if not success:
             m('could not generate PCR1 picklists correctly', level='error', caller_id=caller_id)
             return False
@@ -1208,7 +1215,8 @@ class Experiment():
 
     def get_echo_PCR1_picklist_filepaths(self, caller_id=None):
         """
-        Return file paths for PCR1_dna-picklist_XXX.csv, PCR1_primer-picklist_XXX.csv, PCR1_taqwater-picklist_XXX.csv
+        Return file paths for PCR1_dna-picklist_XXX.csv, 
+        PCR1_primer-picklist_XXX.csv, PCR1_taqwater-picklist_XXX.csv
         """
         all_files = os.listdir(self.get_exp_dn())
         dna_picklist_paths = []
@@ -1226,8 +1234,10 @@ class Experiment():
 
     def generate_echo_PCR2_picklists(self, selected_pids, caller_id=None):
         """
-        Calls echo_index.generate_echo_PCR2_picklist() to do the work, needs a set of destination PCR plate barcodes, 
-        taq+water plates, index plates, index volumes, and optionally any amplicon plates (post-PCR).
+        Calls echo_index.generate_echo_PCR2_picklist() to do the work, 
+        needs a set of destination PCR plate barcodes, 
+        taq+water plates, index plates, index volumes, 
+        and optionally any amplicon plates (post-PCR).
         Returns True on success
         """
         pcr_pids = selected_pids['pcr']
@@ -1240,7 +1250,8 @@ class Experiment():
             m('failed to generate index survey file', level='error', caller_id=caller_id)
             return False
         #m('generated index survey file', level='success', caller_id=caller_id)
-        success = generate.generate_echo_PCR2_picklist(self, pcr_pids, index_pids, taqwater2_pids, amplicon_pids)
+        success = generate.generate_echo_PCR2_picklist(self, pcr_pids, index_pids, 
+                taqwater2_pids, amplicon_pids, caller_id=caller_id)
         if not success:
             m('could not generate PCR2 (index) picklists correctly', level='error', caller_id=caller_id)
             return False
