@@ -588,6 +588,11 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
     readCount, cleanCount, cleanCount2, joinCount, mergeCount = -1, -1, -1, -1, -1
     rfn= "*{}-{}_*_R1_*.fastq.gz".format(unguard(wr['pcrPlate'],silent=True), padwell(wr['pcrWell']))
     fn1s = glob.glob(os.path.join(rundir, "raw", rfn))
+    if not fn1s:
+        # we need to look for newer Illumina files with an underscore
+        rfn= "*{}_{}_*_R1_*.fastq.gz".format(unguard(wr['pcrPlate'],silent=True), padwell(wr['pcrWell']))
+        fn1s = glob.glob(os.path.join(rundir, "raw", rfn))
+    fn1s = glob.glob(os.path.join(rundir, "raw", rfn))
     lrecs = []
     if not fn1s:
         with lock_l:
@@ -900,6 +905,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     if exhaustive:
         wdb('Info: Aggregating archetype sequences', rundir, debug, lock_d)
         seqcnt = archetypes(seqcnt, rundir, debug, lock_d)
+        
     # calculate min count proportion from exact matches to our expected targets
     family_exact_counts = 0
     for on_target_id in on_target_ids:
@@ -1293,6 +1299,7 @@ def main(args):
                 return
         print(f'Writing debug information to {db_log_fn}', file=sys.stderr)
     try:
+    #if True:  # helps with debugging
         log.append('Info: Run with the following command line options:')
         for arg in vars(args):
             log.append(f'Info: {arg} {getattr(args, arg)}')

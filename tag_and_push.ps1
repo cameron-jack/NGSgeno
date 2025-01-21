@@ -1,9 +1,8 @@
-$VER = "v1.01.00"
+$VER = "v1.01.001"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* NEW: Illumina FASTQ sequence count added (takes about 4 seconds for a full run)
-* FIXED: set/list index issue when checking for new Illumina FASTQ file names
+* FIXED: New Illumina name pattern needed in preprocessing step
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

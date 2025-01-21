@@ -1,3 +1,7 @@
+v1.01.001
+Date: 22/01/2025 10:09:29 AM
+* FIXED: New Illumina name pattern needed in preprocessing step
+
 v1.01.00
 Date: 21/01/2025 2:34:09 PM
 * NEW: Illumina FASTQ sequence count added (takes about 4 seconds for a full run)
