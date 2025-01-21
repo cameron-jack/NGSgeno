@@ -19,6 +19,7 @@ from io import StringIO, BytesIO
 from shutil import copy2, copyfileobj
 from time import sleep
 from unittest import expectedFailure
+import gzip
 import uuid
 
 import pandas as pd
@@ -1127,6 +1128,22 @@ def display_fastqs(key):
         if len(fastq_files) > 1:
             st.write(f"...")
             st.write(f"{len(fastq_files)}. {fastq_files[-1][0]}, {fastq_files[-1][1]}")
+
+    def blocks(files, size=65536):
+        while True:
+            b = files.read(size)
+            if not b: break
+            yield b
+
+    #fns = [fn for fn in os.listdir('.') if fn.endswith('.fastq.gz')]
+    seq_count = 0
+    for fn0,fn1 in fastq_files:
+        with gzip.open(fn0, "rt", encoding="utf-8",errors='ignore') as f:
+            seq_count += sum(bl.count("\n") for bl in blocks(f))
+        with gzip.open(fn1, "rt", encoding="utf-8",errors='ignore') as f:
+            seq_count += sum(bl.count("\n") for bl in blocks(f))
+    st.write('')
+    st.write(f"There are {seq_count//4} sequences across all raw FASTQ files")
             
 
 def upload_miseq_fastqs(key):

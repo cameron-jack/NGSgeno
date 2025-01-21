@@ -1301,12 +1301,13 @@ def main(args):
         start_time = datetime.datetime.now()
         log.append(f"Begin: {start_time}")
         raw_pair_list = get_raw_fastq_pairs(os.path.join(args.rundir, 'raw'))
-        raw_file_identifiers = set([str(f[0].name).split('_')[0] for f in raw_pair_list])
+        raw_file_identifiers = [str(f[0].name).split('_')[0] for f in raw_pair_list]
         if len(raw_file_identifiers) == 0:
             return
         # New Illumina doesn't have a dash in the file name
         if raw_file_identifiers[0][-4] != '-':
-            raw_file_identifiers = set(['-'.join(str(f[0].name).split('_')[0:2]) for f in raw_pair_list])
+            raw_file_identifiers = ['-'.join(str(f[0].name).split('_')[0:2]) for f in raw_pair_list]
+        raw_file_identifiers = set(raw_file_identifiers)
         #print(sorted(raw_file_identifiers), file=sys.stderr)
         with open(os.path.join(args.rundir,args.stagefile)) as srcfd:
             src = csv.reader(srcfd, dialect="unix")

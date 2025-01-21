@@ -1,3 +1,8 @@
+v1.01.00
+Date: 21/01/2025 2:34:09 PM
+* NEW: Illumina FASTQ sequence count added (takes about 4 seconds for a full run)
+* FIXED: set/list index issue when checking for new Illumina FASTQ file names
+
 v1.00.000
 Date: 21/01/2025 1:43:52 PM
 Production release
