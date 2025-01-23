@@ -1,3 +1,7 @@
+v1.01.002
+Date: 23/01/2025 12:37:32 PM
+* CHANGED: FASTQ sequence count hidden behind button, added progress bar
+
 v1.01.001
 Date: 22/01/2025 10:09:29 AM
 * FIXED: New Illumina name pattern needed in preprocessing step

@@ -1,8 +1,8 @@
-$VER = "v1.01.001"
+$VER = "v1.01.002"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* FIXED: New Illumina name pattern needed in preprocessing step
+* CHANGED: FASTQ sequence count hidden behind button, added progress bar
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

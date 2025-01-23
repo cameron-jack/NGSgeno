@@ -1136,14 +1136,19 @@ def display_fastqs(key):
             yield b
 
     #fns = [fn for fn in os.listdir('.') if fn.endswith('.fastq.gz')]
-    seq_count = 0
-    for fn0,fn1 in fastq_files:
-        with gzip.open(fn0, "rt", encoding="utf-8",errors='ignore') as f:
-            seq_count += sum(bl.count("\n") for bl in blocks(f))
-        with gzip.open(fn1, "rt", encoding="utf-8",errors='ignore') as f:
-            seq_count += sum(bl.count("\n") for bl in blocks(f))
-    st.write('')
-    st.write(f"There are {seq_count//4} sequences across all raw FASTQ files")
+    count_button = st.button('Count sequences')
+    if count_button:
+        seq_count = 0
+        pb = st.progress(0, "Reading FASTQ files...")
+        for i, (fn0,fn1) in enumerate(fastq_files):
+            pb.progress(i/len(fastq_files), f'Reading {i+1}/{len(fastq_files)}')
+            with gzip.open(fn0, "rt", encoding="utf-8",errors='ignore') as f:
+                seq_count += sum(bl.count("\n") for bl in blocks(f))
+            with gzip.open(fn1, "rt", encoding="utf-8",errors='ignore') as f:
+                seq_count += sum(bl.count("\n") for bl in blocks(f))
+        pb.progress(1.0, "Done")
+        st.write('')
+        st.write(f"There are {seq_count//4} sequences across all raw FASTQ files")
             
 
 def upload_miseq_fastqs(key):
