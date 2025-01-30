@@ -363,21 +363,93 @@ def myopen(fn):
     return open(fn, errors="ignore")
 
 
+def pairwise(t):
+    it = iter(t)
+    return itertools.izip(it, it)
+
+
 def exact_match(seq, refseqs, margin=70):
     """
     Exact matching a merged read with a set of reference target sequences
-    Return True/False, matching reference sequence/None
+    
+    args:
+    seq: the read sequence to match
+    refseqs: list of reference target sequences
+    margin: maximum length difference between seq and refseqs
+
+    returns:
+    True/False, matching reference sequence/None
+
     If the length difference is greater than margin, don't try to match 
+    If there are parentheses in the sequence, these are masked regions
+    and we should split the sequence on these and match the unmasked regions.
+
+    Simple algorithm for a single masked region and known amplicons:
+    1. Cut out the two reference flanks and compare these to the sequence
+    2. If they match, then we have a match
+
+    General algorithm for masked regions (more than 1):
+    1. split the reference sequence on masked regions
+    2. for each masked region, take up to 11 bases either side
+    and find these exactly in seq.
+    3. They must have the same order as the reference sequence and be minimally spaced.
+    4. If there is more than 1 mapping, skip this combination
+    5. If there is a suitable match then we must find either the masked region in seq
+    or seq in the masked region.
+    6. Now that we've identified the masked region, we can check the unmasked region
+    7. Take the whole region up to the next masked region and check for a match.
+    8. Take the whole region after the last masked region and check for a match.
+    9. If all regions match then we have a match.
+
     """
     for rs in refseqs:
+        found_match = False
+        # compare length of sequenced region to reference seq
         if abs(len(rs) - len(seq)) > margin:
             continue  # skip matching when length is too mismatched
-        if len(seq) < len(rs):
-            if seq in rs:
-                return True, rs
-        else:
-            if rs in seq:
-                return True, rs
+        
+        # unmasked case
+        if rs.count('(') == 0 and rs.count(')') == 0:
+            if len(seq) < len(rs):
+                if seq in rs:
+                    return True, rs
+            else:
+                if rs in seq:
+                    return True, rs
+        # simple masked case
+        elif rs.count('(') == 1 and rs.count(')') == 1:
+            left_flank = rs.split('(')[0]
+            right_flank = rs.split(')')[1]
+            if left_flank in seq:
+                centre_pos = seq.find(left_flank) + len(left_flank)
+                if right_flank in seq[centre_pos:]:
+                    return True, rs
+
+        # general masked case with multiple masked regions
+        # difficult to code (currently broken)... leave it for now as currently not needed
+        # if rs.count('(') > 1 and rs.count('(') == rs.count(')'):
+        #     # find all masked regions in seq (as index pairs)
+        #     left_bracket_pos = [pos for pos, char in enumerate(rs) if char == ('(')]
+        #     right_bracket_pos = [pos for pos, char in enumerate(rs) if char == (')')]
+        #     rs_mask_index_pairs = list(zip(left_bracket_pos, right_bracket_pos))
+        #     rs_valid_regions = []
+        #     seq_mask_index_pairs = []
+        #     for rs_left,rs_right in rs_mask_index_pairs:
+        #         search_left = rs_left[-11:]
+        #         search_right = rs_right[:11]
+        #         left_search_indices = [m.end() for m in re.finditer(search_left, seq)]
+        #         right_search_indices = [m.start() for m in re.finditer(search_right, seq)]
+        #         if len(left_search_indices) > 0 and len(right_search_indices) > 0:
+        #             combined_indices = sorted(left_search_indices + right_search_indices)
+        #             for l, r in pairwise(combined_indices):
+        #                 if l in left_search_indices and r in right_search_indices:
+        #                     seq_mask_index_pairs.append((l, r))
+        #                     centre_seq = seq[l:r]
+        #                     if centre_seq in rs_masked or rs_masked in centre_seq:
+        #                         # we have a match, now check the unmasked regions
+        #                         seq_masked_regions.append((l, r))
+        #                         break
+         
     return False, None
 
 
@@ -810,8 +882,10 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     Group sequences into archetypes and order by decreasing count
     Check whether any sequences exactly match the expected assay family and base cutoffs on this
     Check all remaining sequences until counts falls below cutoff
-      -> Exact matches against the match cache (includes all assay families)
+      -> Exact matches against prefered assays
+      -> Exact matches against all assay families
       -> Exact matches against the miss cache
+      The miss cache is problematic... we may miss amplicons that are out of context
       -> Inexact matches against the match cache -> add variants to match cache
       -> Inexact matches against the miss cache -> add variants to miss cache
       -> Add any remaining entries to the miss cache

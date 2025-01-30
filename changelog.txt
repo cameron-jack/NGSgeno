@@ -1,3 +1,8 @@
+v1.01.003
+Date: 30/01/2025 1:37:47 PM
+* NEW: added support for masking of reference sequences using parentheses
+* NEW: added Milburn's algorithm for matching reference flanks
+
 v1.01.002
 Date: 23/01/2025 12:37:32 PM
 * CHANGED: FASTQ sequence count hidden behind button, added progress bar

@@ -1,8 +1,9 @@
-$VER = "v1.01.002"
+$VER = "v1.01.003"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* CHANGED: FASTQ sequence count hidden behind button, added progress bar
+* NEW: added support for masking of reference sequences using parentheses
+* NEW: added Milburn's algorithm for matching reference flanks
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
