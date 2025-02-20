@@ -1,9 +1,8 @@
-$VER = "v1.01.003"
+$VER = "v1.02.000"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* NEW: added support for masking of reference sequences using parentheses
-* NEW: added Milburn's algorithm for matching reference flanks
+* NEW: supports any number of variable regions in reference sequences
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
