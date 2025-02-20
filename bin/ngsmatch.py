@@ -390,17 +390,8 @@ def exact_match(seq, refseqs, margin=70):
 
     General algorithm for masked regions (more than 1):
     1. split the reference sequence on masked regions
-    2. for each masked region, take up to 11 bases either side
-    and find these exactly in seq.
-    3. They must have the same order as the reference sequence and be minimally spaced.
-    4. If there is more than 1 mapping, skip this combination
-    5. If there is a suitable match then we must find either the masked region in seq
-    or seq in the masked region.
-    6. Now that we've identified the masked region, we can check the unmasked region
-    7. Take the whole region up to the next masked region and check for a match.
-    8. Take the whole region after the last masked region and check for a match.
-    9. If all regions match then we have a match.
-
+    2. for each unmasked reference region, match this to the sequence
+    3. if all unmasked regions match, then we have a match
     """
     for rs in refseqs:
         found_match = False
@@ -425,32 +416,45 @@ def exact_match(seq, refseqs, margin=70):
                 if right_flank in seq[centre_pos:]:
                     return True, rs
 
-        # general masked case with multiple masked regions
-        # difficult to code (currently broken)... leave it for now as currently not needed
-        # if rs.count('(') > 1 and rs.count('(') == rs.count(')'):
-        #     # find all masked regions in seq (as index pairs)
-        #     left_bracket_pos = [pos for pos, char in enumerate(rs) if char == ('(')]
-        #     right_bracket_pos = [pos for pos, char in enumerate(rs) if char == (')')]
-        #     rs_mask_index_pairs = list(zip(left_bracket_pos, right_bracket_pos))
-        #     rs_valid_regions = []
-        #     seq_mask_index_pairs = []
-        #     for rs_left,rs_right in rs_mask_index_pairs:
-        #         search_left = rs_left[-11:]
-        #         search_right = rs_right[:11]
-        #         left_search_indices = [m.end() for m in re.finditer(search_left, seq)]
-        #         right_search_indices = [m.start() for m in re.finditer(search_right, seq)]
-        #         if len(left_search_indices) > 0 and len(right_search_indices) > 0:
-        #             combined_indices = sorted(left_search_indices + right_search_indices)
-        #             for l, r in pairwise(combined_indices):
-        #                 if l in left_search_indices and r in right_search_indices:
-        #                     seq_mask_index_pairs.append((l, r))
-        #                     centre_seq = seq[l:r]
-        #                     if centre_seq in rs_masked or rs_masked in centre_seq:
-        #                         # we have a match, now check the unmasked regions
-        #                         seq_masked_regions.append((l, r))
-        #                         break
+        # general masked case with multiple masked regions    
+        elif rs.count('(') > 1 and rs.count(')') == rs.count('('):
+            seq_index = 0
+            for section in rs.split('('):
+                if ')' in section:
+                    non_variable_seq = section.split(')')[1]
+                else:
+                    non_variable_seq = section
+                seq_index = seq.find(non_variable_seq, seq_index)
+                if seq_index == -1:
+                    return False, None
+            return True, rs
          
     return False, None
+
+
+def test_exact_match():
+    """
+    Some test cases to ensure that exact matching of a sequence to a set of reference sequences is working correctly
+    """
+    refseqs = ['ATGCGTGTTCAAGTACACCCAAGTTGACAGTGCA']
+    seq = 'ATGCGTGTTCAAGTACACCCAAGTTGACAGTGCA'
+    success, rs = exact_match(seq, refseqs)
+    if not success:
+        return False
+    
+    refseqs = ['ATGCGTG(TTC)AAGTACACCCAAGTTGACAGTGCA']
+    seq = 'ATGCGTGTCAAGTACACCCAAGTTGACAGTGCA'
+    success, rs = exact_match(seq, refseqs)
+    if not success:
+        return False
+    
+    refseqs = ['ATGCGTG(TTC)AAGTACAC(CC)AAGTTGAC(A)GTGCA']
+    seq = 'ATGCGTGTCAAGTACACAAGTTGACAGTGCA'
+    success, rs = exact_match(seq, refseqs)
+    if not success:
+        return False
+    
+    return True
 
 
 def join_diffs(last_diffs):

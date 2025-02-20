@@ -266,6 +266,115 @@ def save_message(exp, key):
     with col2:
         save_button(exp, key)
 
+
+class MatchManager(object):
+    def __init__(self, rundir, targets, primer_assayfam, outfn, variants, ncpus, mincov, minprop, exhaustive, debug):
+        self.rundir = rundir
+        self.targets = targets
+        self.primer_assayfam = primer_assayfam
+        self.outfn = outfn
+        self.variants = variants
+        self.ncpus = ncpus
+        self.mincov = mincov
+        self.minprop = minprop
+        self.exhaustive = exhaustive
+        self.debug = debug
+
+        
+
+    def get_preprocess_progress(self):
+        return 0
+    
+    def get_match_progress(self):
+        return 0
+
+
+async def report_match_progress(exp, preprocess_prog, match_prog):
+    """
+    Allows the interface to keep running while a background process (ngsmatch.py) progress is tracked
+    """
+    if 'match_manager' in st.session_state:
+        MM = st.session_state['match_manager']
+        while True:
+            preprocess_prog.progress(MM.get_preprocess_progress())
+            progress_files = list(Path(rundir).glob('match_progress_*'))
+            if len(progress_files) == 0:
+                launch_progress = 0
+                match_progress = 0
+            elif len(progress_files) == 1:
+                launch_progress = int(str(progress_files[0]).split('_')[-2])
+                match_progress = int(str(progress_files[0]).split('_')[-1])
+            
+            if launch_progress > 100:
+                launch_progress = 100
+            if match_progress > 100:
+                match_progress = 100
+            preprocess_prog.write('Allele calling task launch progress: '+str(launch_progress)+'%')
+            preprocess_prog.progress(launch_progress)
+            match_prog.write('Allele calling task completion progress: '+str(match_progress)+'%')
+            match_prog.progress(match_progress)
+
+            if launch_progress == 100 and match_progress == 100:
+                m('Analysis completed', level='info')
+                st.session_state['match_running'] = False
+                return
+            await asyncio.sleep(1)
+    while True:
+        progress_files = list(Path(rundir).glob('match_progress_*'))
+        if len(progress_files) == 0:
+            launch_progress = 0
+            match_progress = 0
+        elif len(progress_files) == 1:
+            launch_progress = int(str(progress_files[0]).split('_')[-2])
+            match_progress = int(str(progress_files[0]).split('_')[-1])
+        
+        if launch_progress > 100:
+            launch_progress = 100
+        if match_progress > 100:
+            match_progress = 100
+        launch_msg.write('Allele calling task launch progress: '+str(launch_progress)+'%')
+        launch_prog.progress(launch_progress)
+        completion_msg.write('Allele calling task completion progress: '+str(match_progress)+'%')
+        match_prog.progress(match_progress)
+
+        if launch_progress == 100 and match_progress == 100:
+            m('Analysis completed', level='info')
+            st.session_state['match_running'] = False
+            return
+        await asyncio.sleep(1)
+
+def manage_matching(exp: Experiment, lock_path: Path, targets: Path, primer_assayfam: Path, outfn: Path, 
+        variants: Path, ncpus: int, mincov: int, minprop: float, exhaustive: bool, debug: bool) -> None:
+    """
+    Manage the NGS match process
+    """
+    if os.path.exists(lock_path):
+        MM = st.session_state.get('match_manager', None)
+        if not MM:
+            m('No current match manager found, clearing lock file', level='warning')
+            try:
+                os.remove(lock_path)
+            except Exception as exc:
+                m(f'Removing lock file: {exc}', level='error')
+            return
+        
+
+        # report on progress - NGSMatch object already exists
+        print("Analysis already running", file=sys.stderr)
+        exit(2)
+    else:
+        try:
+            with open(lock_path,"wt"):
+                rundir = exp.get_exp_dn()
+                MM = MatchManager(rundir, targets, primer_assayfam, outfn, variants, ncpus, mincov, minprop, 
+                        exhaustive, debug)
+                init_state('match_manager', MM)
+                report_progress(rundir, 0, 0)  # set this up asap
+                main(args)
+            print('Completed regular')
+        except Exception as exc:
+            m(f'Error in NGSMatch: {exc}', level='error')
+
 def display_pipeline_header(exp):
     """
     main pipeline header section (constant across pipeline stages)
