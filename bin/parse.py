@@ -16,10 +16,10 @@ from io import StringIO, BytesIO
 from shutil import copyfileobj
 from string import ascii_uppercase
 import functools
+import chardet
 
 import openpyxl
 from pandas.core.base import NoNewAttributesMixin
-from Bio.SeqIO.FastaIO import SimpleFastaParser
 
 try:
     import bin.util as util
@@ -48,6 +48,7 @@ Supports:
 
 Contains all file IO methods that involved barcodes, that are not purely for user reporting or robot inputs. 
 Trivial file reads which don't involve barcodes should stay with the rest of their functionality for better readability
+Incorporates FASTA checking and parsing code by Eslam Ibrahim, ANU Bioinformatics Consultancy, 2024
 
 The following rules must be followed to protect users from typing mistakes and MS Excel weirdness:
 * Barcodes should be guarded when first read from a new source
@@ -69,6 +70,8 @@ Important note: files are state and are immutable in the eyes of the pipeline. P
 never held in Experiment.reproducible_steps at the top level, and they are never saved as files by the pipeline.
 
 Behaves like a C++ "friend" of the Experiment class - very tightly coupled.
+
+Our own FASTA parser and checking code is here, replacing BioPython's SeqIO.FastaIO.SimpleFastaParser
 """
 
 def process_upload_queue(exp):
@@ -1055,22 +1058,16 @@ def parse_reference_sequences(exp, fp, caller_id=None, overwrite_plates=True):
     caller_id (str) is the name of the associated display unit for user messages
     """
     m(f'parsing reference sequences {fp}', level='begin')
-    ref_seq = {}
-    try:
-        with open(fp, 'rt', errors='ignore') as data:
-            for ref_seq_pair in SimpleFastaParser(data):
-                ref_seq[ref_seq_pair[0]] = ref_seq_pair[1]
-    except Exception as exc:
-        m(f'could not read reference seq file {fp} {exc}', level='error', caller_id=caller_id)
+    sequences = parse_fasta(open(fp, 'rb'), caller_id=caller_id)
+    if not sequences:
+        m(f'could not read reference seq file {fp}', level='error', caller_id=caller_id)
         return False
-    if fp in exp.reference_sequences:
-        m(f'{fp} already uploaded. Overwriting records', level='warning', caller_id=caller_id)
-    exp.reference_sequences = {}  # Only one reference file allowed by client
+    exp.reference_sequences = {}
     exp.reference_sequences[fp] = {}
-    for ref in ref_seq:
-        exp.reference_sequences[fp][ref] = ref_seq[ref]
+    for ref in sequences:
+        exp.reference_sequences[fp][ref] = sequences[ref]
 
-    m(f'{len(ref_seq)} reference sequences imported from {fp}', level='info', caller_id=caller_id)
+    m(f'{len(sequences)} reference sequences imported from {fp}', level='info', caller_id=caller_id)
     return True
   
 
@@ -1170,6 +1167,199 @@ def read_csv_or_excel_from_stream(multi_stream):
         manifest_names.append(manifest_name)
         manifest_tables.append(rows)
     return manifest_names, manifest_tables
+
+
+def check_non_ascii(file_content):
+    """
+    A function to check for non-ASCII characters.
+    Inputs: character stream
+    Outputs: list of dictionaries
+    """
+    issue_num = 0
+    issues = []
+    lines = file_content.splitlines()
+    line_num = 1  # Start with the first line
+
+    for line_num, line in enumerate(lines):
+        for idx, char in enumerate(line):
+            if ord(char) > 127:  # ASCII characters have values from 0 to 127
+                issue_num += 1
+                issues.append({
+                    'Issue Number': issue_num,
+                    'Line Number': line_num,
+                    'Issue': f"Invalid character in sequence header: '{char}' at position {idx + 1}"
+                })
+        line_num += 1  # Move to the next line number
+    return issues  
+
+
+def check_valid_sequence(file_content):
+    """
+    Function to check that sequences contain only A, T, C, G, N, (, ), [, ]
+        brackets and parentheses are allowed for reference sequences to denote variable regions
+    Spaces and tabs will not be reported here, only checked in check_gaps
+    Inputs: character stream
+    Outputs: list of dictionaries
+    """
+    issues = []
+    lines = file_content.splitlines()
+    line_num = 1  # Start with the first line
+
+    for line in lines:
+        if line.startswith(">") or not line.strip():  # Ignore headers and blank lines
+            line_num += 1
+            continue
+        
+        sequence = line.strip().replace(" ", "").replace("\t", "")  # Clean the sequence
+
+        for idx, char in enumerate(sequence):
+            if char not in "AaTtCcGgNn()[]":  # Check for valid characters
+                global issue_num
+                issue_num += 1
+                issues.append({
+                    'Issue Number': issue_num,
+                    'Line Number': line_num,
+                    'Issue': f"Invalid character in sequence: '{char}' at position {idx + 1}"
+                })
+        
+        line_num += 1  # Move to the next line number
+
+    return issues
+
+
+def check_gaps(file_content):
+    """
+    Function to check for gaps (spaces or tabs) within sequences.
+    Inputs: character stream
+    Outputs: list of dictionaries
+    """
+    issues = []
+    lines = file_content.splitlines()
+    line_num = 1  # Start with the first line
+
+    for line in lines:
+        if line.startswith(">") or not line.strip():  # Ignore headers and blank lines
+            line_num += 1
+            continue
+
+        if " " in line or "\t" in line:
+            global issue_num
+            issue_num += 1
+            issues.append({
+                'Issue Number': issue_num,
+                'Line Number': line_num,
+                'Issue': "Gap (space or tab) in sequence"
+            })
+        
+        line_num += 1  # Move to the next line number
+
+    return issues
+
+### FASTA parsing/checking funtions below ###
+
+def check_blank_lines(file_content):
+    """
+    FASTA files should not contain blank lines
+    Inputs: character stream
+    Outputs: issues as a list of dictionaries
+    """
+    issues = []
+    lines = file_content.splitlines()
+    line_num = 1  # Start with the first line
+
+    for line in lines:
+        if not line.strip():  # Blank line
+            global issue_num
+            issue_num += 1
+            issues.append({
+                'Issue Number': issue_num,
+                'Line Number': line_num,
+                'Issue': "Blank line found"
+            })
+        line_num += 1  # Move to the next line number
+    return issues
+
+
+def check_fasta_file(file_content):
+    """
+    Issue feature checks for FASTA specific file features
+    Inputs: character stream
+    Outputs: issues as a list of dictionaries
+    """
+    issues = []
+    issues.extend(check_non_ascii(file_content))
+    issues.extend(check_valid_sequence(file_content))
+    issues.extend(check_gaps(file_content))
+    issues.extend(check_blank_lines(file_content))
+    return issues   
+
+
+def _report_issues(issues, caller_id=None):
+    """
+    Helper: report issues in a list of dictionaries
+    """
+    if issues:
+        for issue in issues:
+            m(f"Issue {issue['Issue Number']}: {issue['Issue']} at line {issue['Line Number']}", level='error', caller_id=caller_id)
+
+
+def read_text_file(file_stream, caller_id=None):
+    """
+    Common text file handling to search for character issues before parsing
+    """
+    # Read the raw file
+    rawfile = file_stream.read()
+    
+    # Detect encoding and Decode the file content
+    result = chardet.detect(rawfile)
+    if not result:
+        m('Could not interpret file format', level='error',caller_id=caller_id)
+        return None
+    charenc = result['encoding']
+    if not charenc:
+        m('Could not interpret file format', level='error', caller_id=caller_id)
+        return None
+
+    file_content = rawfile.decode(charenc)
+    
+    # Check for issues in the file content
+    issues = check_non_ascii(file_content)
+    if issues:
+        _report_issues(issues)
+        return None
+    else:
+        return file_content
+    
+
+def parse_fasta(file_stream, caller_id=None):
+    """
+    Parse a FASTA file and return a dictionary of sequences
+    """
+    file_content = read_text_file(file_stream, caller_id=caller_id)
+    if not file_content:
+        return None
+    # Check for issues in the file content
+    issues = check_fasta_file(file_content)
+    if issues:
+        _report_issues(issues)
+        return None
+    else:
+        # Parse the FASTA file
+        sequences = {}
+        lines = file_content.splitlines()
+        seq_id = None
+        seq = []
+        for line in lines:
+            if line.startswith(">"):
+                if seq_id:
+                    sequences[seq_id] = "".join(seq)
+                seq_id = line[1:].strip()
+                seq = []
+            else:
+                seq.append(line.strip())
+        if seq_id:
+            sequences[seq_id] = "".join(seq)
+        return sequences
 
 
 if __name__ == '__main__':

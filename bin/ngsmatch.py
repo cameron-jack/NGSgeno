@@ -363,19 +363,14 @@ def myopen(fn):
     return open(fn, errors="ignore")
 
 
-def pairwise(t):
-    it = iter(t)
-    return itertools.izip(it, it)
-
-
-def exact_match(seq, refseqs, margin=70):
+def exact_match(seq, refseqs, margin=0.9):
     """
     Exact matching a merged read with a set of reference target sequences
     
     args:
     seq: the read sequence to match
     refseqs: list of reference target sequences
-    margin: maximum length difference between seq and refseqs
+    margin: seq and refseq must be within this factor of each other in length
 
     returns:
     True/False, matching reference sequence/None
@@ -385,8 +380,16 @@ def exact_match(seq, refseqs, margin=70):
     and we should split the sequence on these and match the unmasked regions.
 
     Simple algorithm for a single masked region and known amplicons:
-    1. Cut out the two reference flanks and compare these to the sequence
+    1. Cut out the two reference flanks at brackets and compare these to the sequence
     2. If they match, then we have a match
+
+    Two bracket algorithm for a pair of masked regions:
+    1. Cut out the two reference flanks at parentheses
+    2. remove any square brackets, and compare these to the sequence
+    3. If they match, then we have a match
+    4. Assuming it's not a match repeat from 1, but finding the flanks of the square brackets
+    5. Remove any parentheses and compare these to the sequence
+    5. If they match, then we have a match
 
     General algorithm for masked regions (more than 1):
     1. split the reference sequence on masked regions
@@ -396,9 +399,14 @@ def exact_match(seq, refseqs, margin=70):
     for rs in refseqs:
         found_match = False
         # compare length of sequenced region to reference seq
-        if abs(len(rs) - len(seq)) > margin:
-            continue  # skip matching when length is too mismatched
-        
+        rs = rs.replace('[','(').replace(']',')')
+        if '(' not in rs:
+            if len(seq) > len(rs):
+                if len(seq)*margin > len(rs):
+                    continue  # skip matching when length is too mismatched
+            else:
+                if len(rs)*margin > len(seq):
+                    continue  # skip matching when length is too mismatched
         # unmasked case
         if rs.count('(') == 0 and rs.count(')') == 0:
             if len(seq) < len(rs):
@@ -407,6 +415,22 @@ def exact_match(seq, refseqs, margin=70):
             else:
                 if rs in seq:
                     return True, rs
+        # two bracket type - DEPRECATED
+        elif rs.count('(') == 1 and rs.count('[') == 1 and \
+                rs.count(')') == 1 and rs.count(']') == 1:
+            left_flank = rs.split('(')[0].replace('[','').replace('[','')
+            right_flank = rs.split(')')[1].replace('[','').replace('[','')
+            if left_flank in seq:
+                centre_pos = seq.find(left_flank) + len(left_flank)
+                if right_flank in seq[centre_pos:]:
+                    return True, rs
+            else:
+                left_flank = rs.split('[')[0].replace('(','').replace(')','')
+                right_flank = rs.split(']')[1].replace('(','').replace(')','')
+                if left_flank in seq:
+                    centre_pos = seq.find(left_flank) + len(left_flank)
+                    if right_flank in seq[centre_pos:]:
+                        return True, rs
         # simple masked case
         elif rs.count('(') == 1 and rs.count(')') == 1:
             left_flank = rs.split('(')[0]
@@ -415,7 +439,6 @@ def exact_match(seq, refseqs, margin=70):
                 centre_pos = seq.find(left_flank) + len(left_flank)
                 if right_flank in seq[centre_pos:]:
                     return True, rs
-
         # general masked case with multiple masked regions    
         elif rs.count('(') > 1 and rs.count(')') == rs.count('('):
             seq_index = 0
@@ -427,8 +450,8 @@ def exact_match(seq, refseqs, margin=70):
                 seq_index = seq.find(non_variable_seq, seq_index)
                 if seq_index == -1:
                     return False, None
-            return True, rs
-         
+                seq_index += len(non_variable_seq)  # move past the non-variable sequence
+            return True, rs        
     return False, None
 
 
@@ -440,20 +463,39 @@ def test_exact_match():
     seq = 'ATGCGTGTTCAAGTACACCCAAGTTGACAGTGCA'
     success, rs = exact_match(seq, refseqs)
     if not success:
+        print('Test exact match failed')
         return False
     
     refseqs = ['ATGCGTG(TTC)AAGTACACCCAAGTTGACAGTGCA']
     seq = 'ATGCGTGTCAAGTACACCCAAGTTGACAGTGCA'
     success, rs = exact_match(seq, refseqs)
     if not success:
+        print('Test exact match with round brackets failed')
         return False
     
     refseqs = ['ATGCGTG(TTC)AAGTACAC(CC)AAGTTGAC(A)GTGCA']
-    seq = 'ATGCGTGTCAAGTACACAAGTTGACAGTGCA'
+    seq = 'ATGCGTGAAGTACACAAGTTGACAGTGCA'
     success, rs = exact_match(seq, refseqs)
     if not success:
+        print('Test exact match with multiple round brackets failed')
         return False
     
+    refseqs = ['ATGCGTG(TTC)AAGTACACCCAAGTTGAC[A]GTGCA']
+    seq1 = 'ATGCGTGTTCAAGTACACCCAAGTTGACAGTGCA'
+    seq2 = 'ATGCGTGAAGTACACCCAAGTTGACAGTGCA'
+    seq3 = 'ATGCGTGTTCAAGTACACCCAAGTTGACGTGCA'
+    success1, rs1 = exact_match(seq1, refseqs)
+    success2, rs2 = exact_match(seq2, refseqs)
+    success3, rs3 = exact_match(seq3, refseqs)
+    if not success1:
+        print(f'Test exact match with square brackets 1 failed for {seq1}')
+        return False
+    if not success2:
+        print(f'Test exact match with square brackets 2 failed for {seq2}')
+        return False
+    if not success3:
+        print(f'Test exact match with square brackets 3 failed for {seq3}')
+        return False
     return True
 
 
@@ -478,6 +520,7 @@ def annotate_seq(alnref, alnalt):
     """
     Return a string of PosRef/Alt e.g. 8-ATG11+TGC14A/G
     Ignore leading and trailing unmatched positions (ref or alt ---), only for global alignments
+    TODO: handle brackets from variable sections in reference sequences
     """
     #print(f'Ref: {alnref}', flush=True)
     #print(f'Alt: {alnalt}', flush=True)

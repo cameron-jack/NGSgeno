@@ -1,4 +1,8 @@
 v1.02.000
+Date: 17/04/2025 12:33:21 PM
+* NEW: supports any number of variable regions in reference sequences
+
+v1.02.000
 Date: 21/02/2025 4:40:50 AM
 * NEW: supports any number of variable regions in reference sequences
 
