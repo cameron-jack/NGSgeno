@@ -1007,8 +1007,9 @@ def main():
                             num_cpus = st.number_input(\
                                     label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
                                             value=cpus_avail)
-                            margin = st.number_input(label="Require at least this many bases in common between "+\
-                                    "reference target and observed sequence", format='%i',min_value=50, step=5,value=70)
+                            margin = st.number_input(label="Require lengths of read sequences and target "+\
+                                    "references to be proportionally similar by this amount. Value must be between 0.0 and 1.0 "+\
+                                    "default 0.9", format='%f',min_value=0.0, step=0.05,value=0.9)
                             identity = st.number_input(label="Proportion of identity required for inexact match "+\
                                     ", default 0.9. Must be between 0.0 and 1.0",
                                     format='%f',min_value=0.0, max_value=1.0, value=0.9, step=0.05)
@@ -1017,7 +1018,7 @@ def main():
                             minprop = st.number_input(label="Do not match unique sequences with less than this "+\
                                     "proportion of the reads seen for the most observed (expected) allele, default 0.1. Must be between 0.0 and 1.0",
                                     format='%f',min_value=0.0, max_value=1.0, value=0.1, step=0.05)
-                            exact_only = st.checkbox("Exact only: disable inexact matching")
+                            inexact_mode = st.checkbox("Enable inexact matching")
                             exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
                             no_miss_cache = st.checkbox("Disable miss cache: miss cache may cause off-target sequences to be missed")
                             debug_mode = st.checkbox('Turn on debugging for allele calling')
@@ -1039,8 +1040,8 @@ def main():
                                 cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} '+\
                                         f'--margin {margin} --identity {identity} --mincov {mincov} '+\
                                         f'--minprop {minprop}'
-                                if exact_only:
-                                    cmd_str += ' --exact'
+                                if inexact_mode:
+                                    cmd_str += ' --inexact'
                                 if no_miss_cache:
                                     cmd_str += ' --no_miss_cache'
                                 if exhaustive_mode:

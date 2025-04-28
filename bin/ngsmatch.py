@@ -442,6 +442,7 @@ def exact_match(seq, refseqs, margin=0.9):
         # general masked case with multiple masked regions    
         elif rs.count('(') > 1 and rs.count(')') == rs.count('('):
             seq_index = 0
+            failed_rs = False
             for section in rs.split('('):
                 if ')' in section:
                     non_variable_seq = section.split(')')[1]
@@ -449,9 +450,11 @@ def exact_match(seq, refseqs, margin=0.9):
                     non_variable_seq = section
                 seq_index = seq.find(non_variable_seq, seq_index)
                 if seq_index == -1:
-                    return False, None
+                    failed_rs = True
+                    break
                 seq_index += len(non_variable_seq)  # move past the non-variable sequence
-            return True, rs        
+            if not failed_rs:
+                return True, rs        
     return False, None
 
 
@@ -897,7 +900,7 @@ def archetypes(seq_counts, rundir, debug, lock_d):
 
 def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assayfam_primers, 
         match_cache, anno_cache, miss_cache, reps, log, lock_mtc, lock_msc, lock_r, 
-        lock_l, lock_d, margin, identity, mincov, minprop, exact, no_miss_cache,
+        lock_l, lock_d, margin, identity, mincov, minprop, inexact, no_miss_cache,
         exhaustive, debug=False):
     """ 
     Worker process that runs bbduk, bbmerge, and matching
@@ -916,9 +919,9 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     lock_r: lock object for the results    
     lock_l: lock for logging
     lock_d: lock for writing to debug
-    margin: minimum overlap for exact matching
+    margin: minimum proportion overlap for exact matching
     identity: proportional identity score for inexact matching
-    exact: disable inexact matching
+    inexact: enable inexact matching
     no_offtarget_inexact: disable offtarget inexact matching
     no_miss_cache: disable miss cache
     exhaustive: [T/F] don't skip any sequences, not matter how low their count
@@ -1076,7 +1079,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 match_cnt[ref_seq] += num
                 continue
             
-            if not exact:
+            if  inexact:
                 # inexact matching must be done against all known sequences at once or it risks false association
                 is_match, ref_seq, seq_anno = inexact_match(seq, on_target_seqs.union(off_target_seqs),rundir, debug, 
                         lock_d, identity=identity)
@@ -1511,7 +1514,7 @@ def main(args):
                 r = pool.apply_async(process_well, args=(i, wr, args.rundir, seq_ids, id_seq, primer_assayfam, 
                     assayfam_primers, match_cache, anno_cache, miss_cache, reps, logm, lock_mtc, 
                     lock_msc, lock_r, lock_l, lock_d, args.margin, args.identity, args.mincov, args.minprop, 
-                    args.exact, args.no_miss_cache, args.exhaustive, args.debug))
+                    args.inexact, args.no_miss_cache, args.exhaustive, args.debug))
                 reports.append(r)
                 if i % 3 == 0:
                     launch_progress = ceil(100*i/total_jobs)
@@ -1622,11 +1625,11 @@ if __name__=="__main__":
     parser.add_argument('-m','--mincov', type=int, default=5, help='Do not match unique sequences with less than this many reads coverage, default 50')
     parser.add_argument('-p','--minprop', type=float, default=0.1, help='Do not match unique sequences '+\
             'with less than this proportion of the total number of exact matched on-target reads, default 0.2. Must be between 0.0 and 1.0')
-    parser.add_argument('-e','--exact', action="store_true", help="disable inexact matching")
+    parser.add_argument('--inexact', action="store_true", help="enable inexact matching")
     parser.add_argument('-x','--exhaustive',action='store_true',help='Try to match every sequence, '+\
             'no matter how few counts. Ignores --minseqs and --minprop')
     parser.add_argument('-C','--no_miss_cache', action="store_true", help="disable miss cache")
-    parser.add_argument('-M','--margin',type=int,default=70,help="minimum sequence overlap in bases for exact matching")
+    parser.add_argument('-M','--margin',type=float,default=0.9,help="Sequences must be this proportion of the reference seq length")
     parser.add_argument('-s','--stagefile', default="Stage3.csv", help="Name of the NGS genotyping Stage 3 file (default=Stage3.csv)")
     args = parser.parse_args()
     in_error = False

@@ -1,3 +1,8 @@
+v1.02.002
+Date: 28/04/2025 11:33:12 AM
+* Fixed: bug in exact matching with variable regions that only considered one reference sequence
+* Changed: exact matching is the default
+
 v1.02.001
 Date: 17/04/2025 12:33:36 PM
 * CHANGED: Replaced biopython dependencey for FASTA parsing with Eslam's code

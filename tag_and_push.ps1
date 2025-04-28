@@ -1,10 +1,9 @@
-$VER = "v1.02.001"
+$VER = "v1.02.002"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* CHANGED: Replaced biopython dependencey for FASTA parsing with Eslam's code
-* CHANGED: dual bracket refseqs now treated as single bracket types
-* FIXED: Fixed exact matching with variable regions
+* Fixed: bug in exact matching with variable regions that only considered one reference sequence
+* Changed: exact matching is the default
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
