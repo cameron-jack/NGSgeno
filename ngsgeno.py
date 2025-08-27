@@ -13,6 +13,7 @@ experiment, and display_components.py for functions dedicated to the presentatio
 elements
 """
 from re import S
+import re
 import select
 #from telnetlib import theNULL
 import jsonpickle
@@ -55,6 +56,11 @@ try:
     import bin.parse as parse
 except ModuleNotFoundError:
     import parse
+
+try:
+    import bin.match as match
+except ModuleNotFoundError:
+    import match
 
 #import bin.file_io as file_io
 #import bin.db_io as db_io
@@ -267,26 +273,20 @@ def save_message(exp, key):
         save_button(exp, key)
 
 
-class MatchManager(object):
-    def __init__(self, rundir, targets, primer_assayfam, outfn, variants, ncpus, mincov, minprop, exhaustive, debug):
-        self.rundir = rundir
-        self.targets = targets
-        self.primer_assayfam = primer_assayfam
-        self.outfn = outfn
-        self.variants = variants
-        self.ncpus = ncpus
-        self.mincov = mincov
-        self.minprop = minprop
-        self.exhaustive = exhaustive
-        self.debug = debug
+def var_select_cb():
+    """
+    Callback for variant selection
+    """
+    st.session_state['v_chosen'] = st.session_state.get('variant_select1', None)
+    if st.session_state['v_chosen'] is not None:
+        st.session_state['ref_chosen'] = st.session_state['v_chosen'].split('//')[0]
 
-        
 
-    def get_preprocess_progress(self):
-        return 0
-    
-    def get_match_progress(self):
-        return 0
+def ref_select_cb():
+    """ 
+    Callback for reference selection
+    """
+    st.session_state['ref_chosen'] = st.session_state.get('amplicon_select1', None)
 
 
 async def report_match_progress(exp, preprocess_prog, match_prog):
@@ -459,7 +459,6 @@ def main():
                     st.session_state['pipeline_stage'] = 0
             pipeline_stage = st.session_state['pipeline_stage']
         
-        #info_bar = dc.info_bar('central')
         init_state('info_expand', False)
         upper_container = st.container()
         message_container = st.container()
@@ -488,7 +487,7 @@ def main():
         init_state('lower_panel_height', 350)
         
         # standard upper info viewer code for each tab
-        def upper_info_viewer_code(tab_col3, tab_col2, widget_key, default_view1='None', default_view2='None', checked=False):
+        def upper_info_viewer_code(tab_col3, tab_col2, widget_key, default_view1='None', default_view2='None', checked=True):
             with tab_col3:
                 add_vertical_space(2)
                 dc.show_upper_info_viewer_checkbox(widget_key, value=checked)
@@ -524,7 +523,11 @@ def main():
                     
             tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
             with tab_col1:
-                load_data_tab = dc.create_tabs([("Load Samples", ""),("Load Consumables", "")])   
+                #load_data_tab = dc.create_tabs([("Load Samples", "Rodentity or custom samples for the complete pipeline"),
+                #        ("Load Consumables", "Additional plates and information"),
+                #        ("Load Amplicons","Additional amplicons to be sequenced")])   
+                load_data_tab = dc.create_tabs([("Load Samples", ""),("Load Consumables", ""), 
+                        ("Load Amplicons", "")])
             if not load_data_tab:
                 init_state('load_tab', 1)
                 load_data_tab = st.session_state['load_tab']
@@ -535,7 +538,7 @@ def main():
                     init_state('run queue', [])
                     with main_body_container:
                         st.subheader('Upload Sample Files')
-                        st.markdown('**Upload Rodentity plate files, custom manifests, or amplicon plate definition files '+\
+                        st.markdown('**Upload Rodentity plate files, custom manifests, or 384-plate reruns, '+\
                                 'then move to the next tab to upload pipeline consumables and other important files**')
                         with st.expander('Upload Rodentity Ear Punch Plates', expanded=True):
                             ld.load_rodentity_data('rodentity_load1')
@@ -544,8 +547,6 @@ def main():
                         ld.load_custom_manifests('custom_load1')
                         hline()
                         ld.load_manifest_384('manifest_384_load1')
-                        hline()
-                        ld.load_amplicons('amp_load1')
                         hline()
 
                 # ** Info viewer **
@@ -559,15 +560,34 @@ def main():
                     init_state('upload stage', None)
                     with main_body_container:
                         st.subheader('Upload Consumables')
-                        ld.upload_extra_consumables('consumables_load2')
-                        ld.upload_pcr1_files('pcr1_load2')
-                        ld.upload_pcr2_files('pcr2_load2')
+                        st.markdown('**Upload consumables, PCR files, and custom volumes, '+\
+                                'then move to the next tab to upload amplicon files**')
+                        ld.load_extra_consumables('consumables_load2')
+                        ld.load_pcr1_files('pcr1_load2')
+                        ld.load_pcr2_files('pcr2_load2')
                         add_vertical_space(1)
                         st.subheader('Custom Volumes')
                         ld.custom_volumes('custom1')
+                        hline()
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_consumables', default_view1='Consumables', 
                         default_view2='Samples')
+
+            #------------------------------------ Load ~ TAB 3: Load amplicons ---------------------------------------
+            if load_data_tab == 3:
+                st.session_state['load_tab'] = 3
+                if unlocked(exp):
+                    init_state('upload stage', None)
+                    with main_body_container:
+                        st.subheader('Upload Amplicon Files')
+                        st.markdown('**Upload amplicon plates and reference files**')
+                        ld.load_amplicons('amp_load3')
+                        add_vertical_space(1)
+                        ld.load_amplicon_references('ref_load3')
+                        hline()
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_consumables', default_view1='Files', 
+                        default_view2='Samples')        
         
         #=============================================== STAGE 2: Nimbus ===============================================
         if pipeline_stage == 1:
@@ -594,7 +614,7 @@ def main():
                         if not ld.check_assay_file():
                             m('Assay list file (assay to primer mapping) is required to proceed. '+\
                                     'Please upload this to continue', level='error')
-                            success = ld.upload_assaylist('nimbus1_assaylist')
+                            success = ld.load_assaylist('nimbus1_assaylist')
                             if success:
                                 st.rerun()
                         else:
@@ -629,7 +649,7 @@ def main():
                         _, header_col, _ = st.columns([2,2,1])
                     
                         header_col.subheader('Upload Echo Input Files')
-                        ld.upload_echo_inputs('1')
+                        ld.load_echo_inputs('1')
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_nimbus2', default_view1='Status', 
@@ -677,7 +697,7 @@ def main():
                         pcr_col, taqwater_col = st.columns(2)
 
                         st.subheader('Upload Files')
-                        ld.upload_pcr1_files('pcr1_primer1')
+                        ld.load_pcr1_files('pcr1_primer1')
                         add_vertical_space(1)
 
                         st.subheader('Custom Volumes')
@@ -797,7 +817,7 @@ def main():
                         pcr_col, taqwater_col = st.columns(2)
 
                         st.subheader('Upload Files')
-                        ld.upload_pcr2_files('pcr2_index1')
+                        ld.load_pcr2_files('pcr2_index1')
                         add_vertical_space(1)
 
                         st.subheader('Custom Volumes')
@@ -891,7 +911,7 @@ def main():
                             dc.show_echo2_outputs() 
                 
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_index2', default_view1='Status', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_index2', default_view1='Files', 
                         default_view2='Files')
 
         #=============================================== STAGE 5: Miseq ================================================
@@ -923,7 +943,7 @@ def main():
                         add_vertical_space(1)
                     #hline()
 
-                    #ld.upload_reference_sequences('reference_miseq1')
+                    #ld.load_rodentity_references('reference_miseq1')
                     if exp.get_miseq_samplesheets():
                         dc.get_miseq_download_btn(exp)
                         add_vertical_space(4)
@@ -932,15 +952,15 @@ def main():
                         st.warning(f'No MiSeq Samplesheet available for download')
                 
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq1', default_view1='Status', 
-                        default_view2='Plates', checked=False)
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq1', default_view1='Files', 
+                        default_view2='Plates')
 
             #------------------------ Miseq ~ TAB 2: Upload Reference File and Miseq Sequences -------------------------
             if miseq_tab == 2:
                 st.session_state['miseq_tab'] = 2
                 with main_body_container:
                     st.subheader('Upload Custom Reference Files')
-                    ld.upload_reference_sequences('reference_miseq2')
+                    ld.load_rodentity_references('reference_miseq2')
                     add_vertical_space(2)
                 
                     caller_id = 'seq_upload_ready'
@@ -953,19 +973,19 @@ def main():
                     if not success:
                         st.warning('Resources are required for allele calling and must be present before FASTQs can be uploaded')
                     else:
-                        ld.upload_miseq_fastqs('miseq_tab1')
+                        ld.load_miseq_fastqs('miseq_tab1')
                     
 
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq2', default_view1='Status', 
-                        default_view2='Plates', checked=False)
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq2', default_view1='Files', 
+                        default_view2='Plates')
 
         #=========================================== STAGE 6: Allele Calling ===========================================
         if pipeline_stage == 5:
             tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
 
             with tab_col1:
-                allele_tab = dc.create_tabs([("Allele Calling", "")])
+                allele_tab = dc.create_tabs([("Allele Calling", "For Rodentity Mice"),("Amplicon Calling", "For custom amplicons")])
             if not allele_tab:
                 init_state('allele_tab', 1)
                 allele_tab = st.session_state['allele_tab']
@@ -976,7 +996,7 @@ def main():
                 st.session_state['allele_tab'] = 1
                 with main_body_container:
                     rundir = exp.get_exp_dn()
-                    caller_id = 'pre-execute-analysis'    
+                    caller_id = 'pre-execute-gt-analysis'    
                     success = exp.check_sequence_upload_ready(caller_id)
                     for msg,lvl in mq[caller_id]:
                         m(msg, level=lvl, no_log=True)
@@ -985,15 +1005,16 @@ def main():
                     if not success:
                         st.warning('Resources are required for allele calling:')
                         st.subheader('Upload reference sequences')
-                        ld.upload_reference_sequences('reference_allele1')
-                        #ld.upload_miseq_fastqs('miseq_tab1a')
+                        ld.load_rodentity_references('reference_allele1')
+                        #ld.load_miseq_fastqs('miseq_tab1a')
                     else:
-                        #ld.upload_miseq_fastqs('miseq_tab1b')
+                        #ld.load_miseq_fastqs('miseq_tab1b')
                         # check whether output files already exist and are opened elsewhere
-                        target_fn = exp.get_exp_fn('target.fa')
+                        targets_fn = exp.get_exp_fn('target.fa')
+                        primers_fn = exp.get_exp_fn('primers.csv')
                         results_fn = exp.get_exp_fn('results.csv')
                         matchlog_fn = exp.get_exp_fn('match.log')
-                        for fn in [target_fn, results_fn, matchlog_fn]:
+                        for fn in [targets_fn, primers_fn, results_fn, matchlog_fn]:
                             if Path(fn).exists():
                                 try:
                                     os.rename(fn, fn.replace('.','_tmp_swap.'))
@@ -1020,13 +1041,12 @@ def main():
                                     format='%f',min_value=0.0, max_value=1.0, value=0.1, step=0.05)
                             inexact_mode = st.checkbox("Enable inexact matching")
                             exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
-                            no_miss_cache = st.checkbox("Disable miss cache: miss cache may cause off-target sequences to be missed")
                             debug_mode = st.checkbox('Turn on debugging for allele calling')
                             do_matching = st.form_submit_button("Run allele calling")
 
                         if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
                             st.info('Analysis in progress')
-                        if do_matching:
+                        elif do_matching:
                             success = generate.generate_targets(exp)
                             if not success:
                                 m('failed to save reference sequences to target file', level='critical')
@@ -1042,8 +1062,6 @@ def main():
                                         f'--minprop {minprop}'
                                 if inexact_mode:
                                     cmd_str += ' --inexact'
-                                if no_miss_cache:
-                                    cmd_str += ' --no_miss_cache'
                                 if exhaustive_mode:
                                     cmd_str += ' --exhaustive'
                                 if debug_mode:
@@ -1059,61 +1077,208 @@ def main():
                         completion_msg = st.empty()
                         match_prog = st.progress(0)
                         asyncio.run(report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog))
+                        
+                # ** Info viewer **
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele1', default_view1='Files', 
+                        default_view2='Plates')
+
+            #-------------------------------- Allele ~ TAB 2: Amplicon calling --------------------------------
+            elif allele_tab == 2:
+                st.session_state['allele_tab'] = 2
+                with main_body_container:
+                    rundir = exp.get_exp_dn()
+                    caller_id = 'pre-execute-amp-analysis'
+                    st.subheader('Amplicon Calling')
+                    st.info('This section is for custom amplicon calling. Please choose the amplicon '+\
+                            'reference you wish to use or upload a new one')
+                    ld.load_amplicon_references('amplicon_ref1')
+                    
+                    targets_fn = exp.get_exp_fn('amplicon_targets.fa')
+                    results_fn = exp.get_exp_fn('amplicon_results.csv')
+                    matchlog_fn = exp.get_exp_fn('amplicon_match.log')
+                    # check whether output files already exist and are opened elsewhere
+                    for fn in [targets_fn, results_fn, matchlog_fn]:
+                        if Path(fn).exists():
+                            try:
+                                os.rename(fn, fn.replace('.','_tmp_swap.'))
+                                os.rename(fn.replace('.','_tmp_swap.'), fn)
+                            except PermissionError:
+                                st.error(f'{fn} appears to be in use. Please close this file before continuing')
+                    # choose amplicon plate(s) and reference file(s) to run
+                    plate_col, ref_col = st.columns(2)
+                    with plate_col:
+                        st.subheader('Select amplicon plates for allele calling')
+                        checkbox_keys = dc.display_plate_checklist('amplicon_checklist', ['amplicon'], default_value=False)
+                        selected_pids = dc.collect_plate_checklist(checkbox_keys)
+                        if not selected_pids['amplicon']:
+                            m('No amplicon plates selected', level='display', dest=('css',), color='red',size='p')
+                        else:
+                            st.write(f'Selected amplicon plates: {", ".join([util.unguard_pbc(gpid, silent=True) for gpid in selected_pids["amplicon"]])}')
+                    with ref_col:
+                        st.subheader('Select amplicon references to match against')
+                        checkbox_keys = dc.display_file_checklist('amplicon_reference_checklist', ['amplicon_reference'], default_value=False)
+                        selected_refs = dc.collect_file_checklist(checkbox_keys)
+                        if not selected_refs['amplicon_reference']:
+                            m('No amplicon references selected', level='display', dest=('css',), color='red',size='p')
+                        else:
+                            st.write(f'Selected amplicon references: {", ".join(dc.fns_from_checklist(selected_refs))}')
+                                   
+                    with st.form('amplicon_calling_form', clear_on_submit=True):
+                        cpus_avail = os.cpu_count() -1
+                        num_cpus = st.number_input(\
+                                label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
+                                        value=cpus_avail)
+                        mincov = st.number_input(label="Do not match unique sequences with less than this "+\
+                                "many reads coverage, default 5", format='%i',min_value=0, step=1,value=5)
+                        minprop = st.number_input(label="Do not match unique sequences with less than this "+\
+                                "proportion of the reads seen for the most observed (expected) allele, default 0.1. Must be between 0.0 and 1.0",
+                                format='%f',min_value=0.0, max_value=1.0, value=0.1, step=0.05)
+                        exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
+                        debug_mode = st.checkbox('Turn on debugging for allele calling')
+                        do_matching = st.form_submit_button("Run amplicon calling")
+
+                    if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
+                        st.info('Analysis in progress')
+                    elif do_matching:
+                        success = generate.generate_targets(exp, selected_refs['amplicon_reference'])
+                        if not success:
+                            m('failed to save reference sequences to target file', level='critical')
+                            sleep(0.5)
+                        else:
+                            matching_prog = os.path.join('bin','ngsmatch.py')
+                            cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} '+\
+                                    f'--mincov {mincov} --minprop {minprop}'
+                            if exhaustive_mode:
+                                cmd_str += ' --exhaustive'
+                            if debug_mode:
+                                cmd_str += ' --debug'
+                            if selected_pids['amplicon']:
+                                for pid in selected_pids['amplicon']:
+                                    cmd_str += f' --amplicon {",".join(selected_pids["amplicon"])}'
+                                cmd_str += f' --targets amplicon_targets.fa'
+                                m(f'{cmd_str}', level='info')
+                                subprocess.Popen(cmd_str.split(' '))
+                                st.write(f'Calling {cmd_str}')
+                                sleep(1.0)
+
+                    if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
+                        launch_msg = st.empty()
+                        launch_prog = st.progress(0)
+                        completion_msg = st.empty()
+                        match_prog = st.progress(0)
+                        asyncio.run(report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog))
+
+                 
 
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele1', default_view1='Status', 
-                        default_view2='Plates', checked=False)
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele2', default_view1='Files', 
+                        default_view2='Plates')
         
         #=============================================== STAGE 7: Reports ==============================================
         if pipeline_stage == 6:
             results_fp = exp.get_exp_fn('results.csv')
             tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
             with tab_col1:
-                allele_tab = dc.create_tabs([("Sequencing results", "")])
+                allele_tab = dc.create_tabs([("Sequencing results", ""),("Amplicon results", "")])
             if not allele_tab:
                 init_state('results_tab', 1)
                 allele_tab = st.session_state['results_tab']
                 
             with main_body_container:
-                if not Path(results_fp).exists():
-                    m('**No allele calling results available**', level='display', dest=('mkdn'))
-                else:
-                    rodentity_results = []
-                    custom_results = []
-                    other_results = []
-                    with open(results_fp, 'rt') as rfn:
-                        for i, line in enumerate(rfn):
-                            l = line.replace('"','')
-                            cols = [c.strip() for c in l.split(',')]
-                            if i == 0:
-                                hdr = cols
-                            else:
-                                sample = cols[3]
-                            
-                                if util.is_guarded_cbc(sample):
-                                    custom_results.append(cols)
-                                elif util.is_guarded_rbc(sample):
-                                    rodentity_results.append(cols)
+                if allele_tab == 1:
+                    if not Path(results_fp).exists():
+                        m('**No allele calling results available**', level='display', dest=('mkdn'))
+                    else:
+                        rodentity_results = []
+                        custom_results = []
+                        other_results = []
+                        with open(results_fp, 'rt') as rfn:
+                            for i, line in enumerate(rfn):
+                                l = line.replace('"','')
+                                cols = [c.strip() for c in l.split(',')]
+                                if i == 0:
+                                    hdr = cols
                                 else:
-                                    other_results.append(cols)
-                    #m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', 
-                    #        level='display', dest=('css',))
-                    rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
-                    with rodentity_view:
-                        dfr = pd.DataFrame(rodentity_results, columns=hdr)
-                        dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
+                                    sample = cols[3]
+                                
+                                    if util.is_guarded_cbc(sample):
+                                        custom_results.append(cols)
+                                    elif util.is_guarded_rbc(sample):
+                                        rodentity_results.append(cols)
+                                    else:
+                                        other_results.append(cols)
+                        #m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', 
+                        #        level='display', dest=('css',))
+                        rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
+                        with rodentity_view:
+                            dfr = pd.DataFrame(rodentity_results, columns=hdr)
+                            dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
 
-                    custom_view = st.expander('Custom results: '+str(len(custom_results)))
-                    with custom_view:
-                        dfc = pd.DataFrame(custom_results, columns=hdr)
-                        dc.aggrid_interactive_table(dfc, key='custom_view_key')
-                    other_view = st.expander('Other results: '+str(len(other_results)))
-                    with other_view:
-                        dfo = pd.DataFrame(other_results, columns=hdr)
-                        dc.aggrid_interactive_table(dfo, key='other_view_key')
+                        custom_view = st.expander('Custom results: '+str(len(custom_results)))
+                        with custom_view:
+                            dfc = pd.DataFrame(custom_results, columns=hdr)
+                            dc.aggrid_interactive_table(dfc, key='custom_view_key')
+                        other_view = st.expander('Other results: '+str(len(other_results)))
+                        with other_view:
+                            dfo = pd.DataFrame(other_results, columns=hdr)
+                            dc.aggrid_interactive_table(dfo, key='other_view_key')
+                elif allele_tab == 2:
+                    if not Path(exp.get_exp_fn('amplicon_results.csv')).exists():
+                        m('**No amplicon calling results available**', level='display', dest=('mkdn'))
+                    else:
+                        amplicon_table, chosen_vars = dc.show_results_table(exp)
+                        if chosen_vars:
+                            primer_chosen = chosen_vars[3]
+                            wt_counts = int(chosen_vars[6])
+                            
+                            #for index,row in amplicon_table.iterrows():
+                            #    print(row, file=sys.stderr)
+                            print(amplicon_table, file=sys.stderr)
+                            print(chosen_vars, file=sys.stderr)
+                            ref_seqs = {}
+                            with open(exp.get_exp_fn('amplicon_targets.fa'), 'rt') as rfn:
+                                for line in rfn:
+                                    if line.startswith('>'):
+                                        ref_name = line[1:].strip()
+                                        ref_seqs[ref_name] = ''
+                                    else:
+                                        ref_seqs[ref_name] += line.strip()
+                            ref_chosen = None
+                            if primer_chosen in ref_seqs:
+                                ref_chosen = primer_chosen
+                            else:
+                                for r in ref_seqs:
+                                    if primer_chosen in r and 'wt' in r.lower():
+                                        ref_chosen = r
+                                        break   
+                            if ref_chosen:
+                                vars_chosen = {cv.split('//')[1]:int(cc) for cv,cc in zip(chosen_vars[-2].split(';'),chosen_vars[-3].split(';')) if ref_chosen in cv and '//' in cv}
+                                if vars_chosen:
+                                    var_list = list(vars_chosen.keys())
+                                    aligned = match.run_msa((ref_chosen,ref_seqs[ref_chosen]),var_list)
+                                    align_cols = st.columns([2,7])
+                                    with align_cols[0]:
+                                        st.write('Variant:')
+                                        ids = []
+                                        for seq_id in aligned.names:
+                                            if seq_id != ref_chosen:
+                                                ids.append(f'{seq_id} ({vars_chosen[seq_id]})')
+                                            elif seq_id == ref_chosen:
+                                                ids.append(f'{seq_id} ({wt_counts})')
+                                        #ids = [f'{seq_id}' for seq_id in aligned.names]
+                                        st.code('\n'.join(ids))
+                                    with align_cols[1]:
+                                        st.write('Alignment:')
+                                        seqs = [f'{aligned.get_gapped_seq(seq_id)}' for seq_id in aligned.names]
+                                        st.code('\n'.join(seqs))
+                                
+                        
+
+                                    
+
             # ** Info viewer **
-            upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Status', 
-                    default_view2='Plates', checked=False)
+            upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Files', 
+                    default_view2='Plates')
 
         #=============================================== UPPER INFO SECTION ============================================
         

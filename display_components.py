@@ -11,6 +11,7 @@ display_pcr_componenent as well as aggrid_interactive_table and delete_entries
 
 import os
 import sys
+import re
 from pathlib import PurePath, Path
 import itertools
 from math import fabs, factorial, floor, ceil
@@ -29,7 +30,12 @@ import extra_streamlit_components as stx
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from st_aggrid.shared import GridUpdateMode
 
-from stutil import custom_text, add_vertical_space, m, init_state, mq
+from stutil import custom_text, add_vertical_space, hline, m, init_state, mq
+
+try:
+    from bin.match import reconstruct_sequence
+except ModuleNotFoundError: 
+    from match import build_aligned_pair, reconstruct_sequence
 try:
     from bin.experiment import Experiment, EXP_FN, load_experiment
 except ModuleNotFoundError:
@@ -37,7 +43,7 @@ except ModuleNotFoundError:
 try:
     import bin.util as util
 except ModuleNotFoundError:
-    import util                    
+    import util
 try:
     import bin.db_io as db_io
 except ModuleNotFoundError:
@@ -48,15 +54,20 @@ except ModuleNotFoundError:
     from makehtml import generate_heatmap_html
 
 
-def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1):
+def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, hidden: list=[],editable: list=[], 
+        filtering: bool=False,key: int=1):
     """Creates an st-aggrid interactive table based on a dataframe.
 
     Args:
         df (pd.DataFrame]): Source dataframe
-
+        grid_height (int, optional): Height of the grid in pixels. Defaults to 250.
+        hidden (list, optional): List of column names to hide. Defaults to [].
+        editable (list, optional): List of column names to make editable. Defaults to [].
+        filtering (bool, optional): Whether to enable filtering column for alleles. Defaults to False.
+        key (int, optional): A unique key for the table. Defaults to 1.
     Returns:
         dict: The selected row
-        
+
     Special behaviour for log tables to colour significant events and set better column ordering
     and for available primers/indexes
     """
@@ -68,7 +79,35 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
 
     options = GridOptionsBuilder.from_dataframe(
         df, enableRowGroup=True, enableValue=True, enablePivot=True)
-    
+
+    # params.data['report'] = kept_indices.map(i => raw_names[i]).join(';');
+    if filtering and 'otherCount' in cols and 'seqCount' in cols and \
+            'filtProportion' in cols: # and 'report' in cols:
+        print('Doing a thing!', flush=True)
+        # #if (params.data.otherCount && params.data.seqCount && params.data.filtProportion) {
+        filt_js = JsCode("""
+            function(params) {
+                params.data.report = 'A';
+                return 'A';
+                //raw_counts = params.data.otherCount.split(';').map(Number);
+                //raw_names = params.data.otherName.split(';');
+                //let kept_indices = new Array();
+                //for (let i = 0; i < raw_counts.length; i++) {
+                //    if (raw_counts[i] > Number(params.data.filtProportion) * Number(params.data.seqCount)) {
+                //        kept_indices.push(i);
+                //    }
+                //}
+                //params.data.report = kept_indices.map(i => raw_names[i]).join(';');
+                //return kept_indices.map(i => raw_names[i]).join(';');
+            };""")
+
+        #set_js = JsCode("""
+        #    function set_filt(params) {
+        #        params.data.report = filt_counts(params);
+        #        return true;
+        #    };""")
+        options.configure_column('report', valueGetter=filt_js, oneValueSetter=filt_js)
+
     if 'Available Doses' in cols and 'Required Doses' in cols:
         cell_js = JsCode("""
             function(params) {
@@ -77,12 +116,12 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
                      return {'color': 'white', 'backgroundColor': 'red'}
                 } else if (params.data['Required Doses'] < params.data['Available Doses']) {
                      return {'color': 'black', 'backgroundColor': 'white'}
-                }    
+                }
             };""")
         options.configure_column('Primer', cellStyle=cell_js)
 
-    if 'Level' in cols:    
-        cell_js = JsCode(""" 
+    if 'Level' in cols:
+        cell_js = JsCode("""
             function(params) {
             // different styles for each row
                 if (params.value === 'Error') {
@@ -95,22 +134,38 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, key: int=1)
                     //mark Warning cells as yellow
                     return {'color': 'black', 'backgroundColor': 'yellow'}
                 } else {
-                    return {'color': 'black', 'backgroundColor': 'white'}         
+                    return {'color': 'black', 'backgroundColor': 'white'}
                 }
             };""")
         options.configure_column('Level', cellStyle=cell_js)
 
+    if hidden:
+        for hid in hidden:
+            if hid in df.columns:
+                # hide the column
+                options.configure_column(field=hid, hide=True)
+            else:
+                m(f"Column {hid} not found in dataframe", level='Critical', dest='nogui')
+
+    if editable:
+        for ed in editable:
+            if ed in df.columns:
+                # make editable
+                options.configure_column(field=ed, editable=True)
+            else:
+                m(f"Column {ed} not found in dataframe", level='Critical', dest='nogui')
+
     if 'Message' in df.columns:
         options.configure_column(field = 'Message', width = 800)
-    
+
     if 'Func line' in df.columns:
         options.configure_column(field = 'Func line', width = 70)
-    
+
     options.configure_side_bar()
 
     options.configure_selection("multiple", use_checkbox=False, \
                 rowMultiSelectWithClick=False, suppressRowDeselection=False)
-    
+
     selection = None
     selection = AgGrid(
         df,
@@ -143,12 +198,12 @@ def manage_delete_cb(caller_id, category, ids):
     exp = st.session_state['experiment']
     successful_ids = []
     failed_ids = []
-            
+
     if category == 'file':
         for id in ids:
             if id not in exp.uploaded_files:
                 continue
-            success = exp.del_file_record(id)     
+            success = exp.del_file_record(id)
             if success:
                 successful_ids.append(id)
                 m(f'{id} removed', level='info')
@@ -212,7 +267,7 @@ def cancel_delete(category, ids):
 
 
 # def display_temporary_messages():
-#     """ 
+#     """
 #     Display any temporary user alerts
 #     Messages are tuples of message, level. Where level: info/warning/error/success
 #     """
@@ -232,7 +287,7 @@ def cancel_delete(category, ids):
 #                 st.markdown(message)
 #     # display only once
 #     st.session_state['messages_temp'] = []
-    
+
 
 def display_persistent_messages(key):
     """
@@ -268,11 +323,11 @@ def display_persistent_messages(key):
                 checkbox_name = (key, message, level)
                 if checkbox_name not in st.session_state or not st.session_state[checkbox_name]:
                      kept_messages.append((message,level))
-            st.session_state['messages_persist'] = kept_messages              
-    
+            st.session_state['messages_persist'] = kept_messages
+
 
 def display_samples(key, height=250, caller_id=None):
-    """ 
+    """
     Info bar display a summary of all loaded DNA, amplicon, and sample plates
     Use only the provided caller_id
     """
@@ -281,7 +336,7 @@ def display_samples(key, height=250, caller_id=None):
     df = exp.inputs_as_dataframe()
     if df is None or not isinstance(df, pd.DataFrame):
         st.markdown('**No 384-well DNA plate data loaded**')
-    else:    
+    else:
         selection = aggrid_interactive_table(df, key=key, grid_height=height)
         if selection is not None:
             if 'selected_rows' in selection and selection['selected_rows'] is not None:
@@ -295,11 +350,11 @@ def display_samples(key, height=250, caller_id=None):
                         st.markdown(f"**You selected {lines}**")
                         del_col1, del_col2, del_col3, _ = st.columns([2,1,1,4])
                         del_col1.markdown('<p style="color:#A01751">Delete selection?</p>', unsafe_allow_html=True)
-                        del_col2.button("Yes",on_click=manage_delete_cb, 
+                        del_col2.button("Yes",on_click=manage_delete_cb,
                                 args=(caller_id, 'group',rows), key="delete " + str(key), help=f"Delete {lines}")
-                        del_col3.button("No",on_click=cancel_delete, args=('group',rows), 
+                        del_col3.button("No",on_click=cancel_delete, args=('group',rows),
                                 key="keep " + str(key), help=f"Keep {lines}")
-    selection = None 
+    selection = None
 
 
 def display_consumables(key, height=300, caller_id=None):
@@ -307,15 +362,16 @@ def display_consumables(key, height=300, caller_id=None):
     info bar display of "consumables" non-sample plate info
     Use only the provided caller_id
     summarise_consumables():
-        d = {'taqwater_pids_pcr1':[], 'taqwater_pids_pcr2':[], 'taq_vol_pcr1':0, 'taq_vol_pcr2':0,'water_vol_pcr1':0, 
-                'water_vol_pcr2':0, 'primer_pids':[], 'primer_count_ngs':0, 'primer_count_custom':0, 'unique_primers':set(), 
-                'primer_well_count':0, 'assay_primer_mappings':0, 'reference_files':[], 'unique_references':set(), 
+        d = {'taqwater_pids_pcr1':[], 'taqwater_pids_pcr2':[], 'taq_vol_pcr1':0, 'taq_vol_pcr2':0,'water_vol_pcr1':0,
+                'water_vol_pcr2':0, 'primer_pids':[], 'primer_count_ngs':0, 'primer_count_custom':0, 'unique_primers':set(),
+                'primer_well_count':0, 'assay_primer_mappings':0, 'rodentity_reference_files':[], 
+                'custom_reference_files':[], 'amplicon_reference_files':[], 
                 'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
     """
     exp = st.session_state['experiment']
     caller_id = 'display_consumables'
     # display all the required files whether they are, or are not present
-    # Plates: primer, index, taq/water, PCR, references, primer/assaylist, 
+    # Plates: primer, index, taq/water, PCR, references, primer/assaylist,
     headers = ['Purpose','Barcode/ID','Wells','Type','Entries']
     consumables = exp.summarise_consumables()
 
@@ -325,13 +381,17 @@ def display_consumables(key, height=300, caller_id=None):
     for tp in consumables['taqwater_pids_pcr2']:
         data_rows.append(['taq/water (PCR 2)', util.unguard_pbc(tp, silent=True), 6, util.PLATE_TYPES['Echo6'], 6])
     for pp in consumables['primer_pids']:
-        data_rows.append(['primer', util.unguard_pbc(pp, silent=True), 384, util.PLATE_TYPES['Echo384'], 
+        data_rows.append(['primer', util.unguard_pbc(pp, silent=True), 384, util.PLATE_TYPES['Echo384'],
                 len(exp.plate_location_sample[pp]['wells'])])
     for ip in consumables['index_pids']:
         data_rows.append(['index', util.unguard_pbc(ip, silent=True), 384, util.PLATE_TYPES['Echo384'],
                 len(exp.plate_location_sample[ip]['wells'])])
-    for f in consumables['reference_files']:
-        data_rows.append(['reference sequences', f, 0, 'File', len(exp.reference_sequences[f])])
+    for f in consumables['rodentity_reference_files']:
+        data_rows.append(['Rodentity references', f, 0, 'File', exp.count_reference_sequences('rodentity_references')])
+    for f in consumables['custom_reference_files']:
+        data_rows.append(['Custom references', f, 0, 'File', exp.count_reference_sequences('custom_references')])
+    for f in consumables['amplicon_reference_files']:
+        data_rows.append(['Amplicon references', f, 0, 'File', exp.count_reference_sequences('amplicon_references')])
     for f in exp.uploaded_files:
         if exp.uploaded_files[f].get('purpose','') == 'assay_primer_map':
             data_rows.append(['assay-primer mappings', f, 0, 'File', consumables['assay_primer_mappings']])
@@ -378,7 +438,7 @@ def display_plates(key, plate_usage, height=300, caller_id=None):
 
 def display_pcr1_components(selected_pids, caller_id=None):
     """
-    Display panel that shows the required componenents for each PCR reaction, 
+    Display panel that shows the required componenents for each PCR reaction,
     including wells, PCR plates, taq+water plates
     Args:
         selected_pids (dict): 'dna','pcr','taqwater1'
@@ -388,7 +448,7 @@ def display_pcr1_components(selected_pids, caller_id=None):
     ul_conv = 1000
     pcr_stage = 1
     PCR_PLATE_WELLS = 384
-    
+
     dna_pids = selected_pids['dna']
     pcr_pids = selected_pids['pcr']
     taqwater1_pids = selected_pids['taqwater1']
@@ -397,12 +457,12 @@ def display_pcr1_components(selected_pids, caller_id=None):
         dna_pids = [util.guard_pbc(dp, silent=True) for dp in dna_pids]
     else:
         dna_pids = []
-        
+
     if pcr_pids:
         pcr_pids = [util.guard_pbc(pp, silent=True) for pp in pcr_pids]
     else:
         pcr_pids = []
-        
+
     #Page set up
     pcr_comps_area = st.container()
     col_size = [6, 4, 6, 4]
@@ -420,7 +480,7 @@ def display_pcr1_components(selected_pids, caller_id=None):
 
     taq_avail, water_avail, pids = exp.get_taqwater_avail(taqwater_bcs=taqwater1_pids)
     taq_avail_vol = taq_avail/ul_conv
-    water_avail_vol = water_avail/ul_conv            
+    water_avail_vol = water_avail/ul_conv
 
     #get actual values for volume of taq water plates
     required_water_vol_str = str(primer_water_vol/ul_conv) + ' μl'
@@ -432,10 +492,10 @@ def display_pcr1_components(selected_pids, caller_id=None):
 
     user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True) \
                             for p in taqwater1_pids])
-    
+
     num_supplied_taqwater = len(user_supplied_taqwater)
     user_taqwater_text = user_supplied_taqwater if user_supplied_taqwater else ':red[None]'
-    
+
     taq_water_needed = max(num_req_taq_water_plates - num_supplied_taqwater, 0)
     if taq_water_needed > 0:
         req_taqwater_text = ':red[**Remaining taq/water plates needed**]'
@@ -475,7 +535,7 @@ def display_pcr1_components(selected_pids, caller_id=None):
         add_vertical_space(3)
     with req_cols[3]:
         add_vertical_space(3)
-    
+
     req_cols[0].markdown(req_taqwater_text, unsafe_allow_html=True)
     req_cols[1].markdown(req_taqwater_num, unsafe_allow_html=True)
 
@@ -520,12 +580,12 @@ def display_pcr2_components(selected_pids, caller_id=None):
         pcr_pids = [util.guard_pbc(pp, silent=True) for pp in pcr_pids]
     else:
         pcr_pids = []
-    
+
     if amplicon_pids:
         amplicon_pids = [util.guard_pbc(ap, silent=True) for ap in amplicon_pids]
     else:
         amplicon_pids = []
-    
+
 
     num_reactions = exp.get_num_reactions(pcr_pids = pcr_pids, amplicon_pids = amplicon_pids)
     index_max = len(exp.get_index_pairs_avail(index_pids))
@@ -533,28 +593,28 @@ def display_pcr2_components(selected_pids, caller_id=None):
 
     #Taq/water (based on pcr stage)
     index_taq_vol, index_water_vol = exp.get_taqwater_req_vols_index(num_reactions)
-    
+
     #user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
     #                                    for p in exp.get_taqwater_avail(pcr_stage=pcr_stage)[2]])
     if taqwater2_pids is None:
         user_supplied_taqwater = ''
     else:
         user_supplied_taqwater = ', '.join([util.unguard_pbc(p, silent=True)\
-                for p in taqwater2_pids])    
+                for p in taqwater2_pids])
 
     num_supplied_taqwater = len(user_supplied_taqwater)
-                
+
     taq_avail, water_avail, pids = exp.get_taqwater_avail(taqwater_bcs=taqwater2_pids)
     taq_avail_vol = taq_avail/ul_conv
-    water_avail_vol = water_avail/ul_conv  
+    water_avail_vol = water_avail/ul_conv
     required_water_vol_str = str(index_water_vol/ul_conv)+ ' μl'
     water_avail_vol_str = str(water_avail_vol) + ' μl'
     required_taq_vol_str = str(index_taq_vol/ul_conv)+ ' μl'
     avail_taq_vol_str = str(taq_avail_vol)+ ' μl'
 
     num_req_taq_water_plates = util.num_req_taq_water_plates(index_taq_vol, index_water_vol)
-    
-    
+
+
     user_taqwater_text = user_supplied_taqwater
     if not user_supplied_taqwater:
         user_taqwater_text = ':red[None]'
@@ -568,15 +628,15 @@ def display_pcr2_components(selected_pids, caller_id=None):
         req_taqwater_num = str(taq_water_needed)
 
     if index_remain >= 0:
-        index_pairs_remain = f':green[{str(index_remain)}]'     
+        index_pairs_remain = f':green[{str(index_remain)}]'
     else:
         index_pairs_remain = f':red[{str(index_remain)}]'
-    
+
     supplied_pcr_txt = ':red[None]'
     if len(pcr_pids) > 0:
         supplied_pcr_txt = ', '.join([util.unguard_pbc(p, silent=True)\
                 for p in pcr_pids])
-        
+
     amplicon_pid_txt = 'None'
     if len(amplicon_pids) > 0:
         amplicon_pid_txt = ', '.join([util.unguard_pbc(p, silent=True)\
@@ -626,7 +686,7 @@ def display_pcr2_components(selected_pids, caller_id=None):
             m(msg, level=lvl, no_log=True)
         sleep(0.3)
         mq[caller_id] = set()
-    
+
 
 def st_directory_picker(label='Selected directory:', initial_path=Path(),\
             searched_file_types=['fastq','fastq.gz','fq','fq.gz'], caller_id=None):
@@ -646,14 +706,14 @@ def st_directory_picker(label='Selected directory:', initial_path=Path(),\
             and any([f.name.endswith(sft) for sft in searched_file_types])]
 
     col1, col2, col3, _ = st.columns([1, 3, 1, 5])
-    
+
     with col1:
         st.markdown("Back")
         if st.button("←") and "path" in st.session_state:
             st.session_state['path'] = st.session_state['path'].parent
             st.rerun()
 
-    with col2:   
+    with col2:
         if subdirectories:
             st.session_state['new_dir'] = st.selectbox("Subdirectories", sorted(subdirectories))
         else:
@@ -688,10 +748,10 @@ def handle_picklist_download(picklist_type, picklist_paths, file_col, btn_col, c
             with file_col:
                 custom_text('p', '#4b778c', ppp_fn, 'right', padding='5px', display=True)
             with btn_col:
-                st.download_button(label="Download", 
-                                   data=open(ppp, 'rt'), 
-                                   file_name=ppp_fn, 
-                                   mime='text/csv', 
+                st.download_button(label="Download",
+                                   data=open(ppp, 'rt'),
+                                   file_name=ppp_fn,
+                                   mime='text/csv',
                                    key=f'{picklist_type}_download_'+ppp_fn)
 
 
@@ -700,16 +760,16 @@ def get_echo1_download_btns(caller_id=None):
     picklist_file_col, picklist_btn_col = st.columns(2)
 
     dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR1_picklist_filepaths()
-    
+
     picklist_dict = {'DNA': dna_picklist_paths, 'primer': primer_picklist_paths, 'taq/water': taqwater_picklist_paths}
 
     for pltype, plpath in picklist_dict.items():
         handle_picklist_download(pltype, plpath, picklist_file_col, picklist_btn_col, caller_id=caller_id)
-            
+
 
 def get_echo2_download_btns(caller_id=None):
     exp = st.session_state['experiment']
-    picklist_file_col, picklist_btn_col = st.columns(2)    
+    picklist_file_col, picklist_btn_col = st.columns(2)
 
     index_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
 
@@ -724,7 +784,7 @@ def show_echo1_outputs(caller_id=None):
     caller_id = 'show_echo1_outputs'
     picklist_file_col, picklist_btn_col = st.columns(2)
     dna_picklist_paths, primer_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR1_picklist_filepaths()
-    
+
     if not dna_picklist_paths:
         m('No DNA picklist available', level='error', no_log=True, caller_id=caller_id)
     else:
@@ -733,7 +793,7 @@ def show_echo1_outputs(caller_id=None):
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{dpp_fn}</p>',\
                     unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download", 
+            picklist_btn_col.download_button(label=f"Download",
                     data=open(dpp, 'rt'), file_name=dpp_fn, mime='text/csv', key='dna_download_'+dpp_fn)
 
     if not primer_picklist_paths:
@@ -744,9 +804,9 @@ def show_echo1_outputs(caller_id=None):
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{ppp_fn}</p>',\
                         unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download", 
+            picklist_btn_col.download_button(label=f"Download",
                     data=open(ppp, 'rt'), file_name=ppp_fn, mime='text/csv', key='primer_download_'+dpp_fn)
-            
+
     if not taqwater_picklist_paths:
         m('No taq/water picklist available', level='error', no_log=True, caller_id=caller_id)
     else:
@@ -755,7 +815,7 @@ def show_echo1_outputs(caller_id=None):
             picklist_file_col.markdown(\
                         f'<p style="text-align:right;color:#4b778c;padding:5px">{tpp_fn}</p>',\
                         unsafe_allow_html=True)
-            picklist_btn_col.download_button(label=f"Download", 
+            picklist_btn_col.download_button(label=f"Download",
                     data=open(tpp, 'rt'), file_name=tpp_fn, mime='text/csv', key='taqwater_download_'+tpp_fn)
 
     # display any messages for this widget
@@ -771,7 +831,7 @@ def show_echo2_outputs(caller_id=None):
     caller_id = 'show_echo2_outputs'
     picklist_file_col, picklist_btn_col = st.columns(2)
     index_picklist_paths, taqwater_picklist_paths = exp.get_echo_PCR2_picklist_filepaths()
-    
+
     if not index_picklist_paths:
         m('No index picklist available', level='error', no_log=True, caller_id=caller_id)
     else:
@@ -801,7 +861,7 @@ def show_echo2_outputs(caller_id=None):
         sleep(0.3)
         mq[caller_id] = set()
 
-    
+
 def display_status(key, height=300, caller_id='display_feedback'):
     """
     Display the progress in the pipeline for this experiment
@@ -814,7 +874,6 @@ def display_status(key, height=300, caller_id='display_feedback'):
     #status_df.reset_index(inplace=True)
     #status_df = status_df.rename(columns = {'index':'Steps', 'pending':'Pending Steps'})
     status_df = aggrid_interactive_table(status_df, grid_height=height, key=str(key)+'status_aggrid')
-
 
 
 def view_plates(key, height=500, caller_id='display_feedback'):
@@ -833,8 +892,6 @@ def view_plates(key, height=500, caller_id='display_feedback'):
     if plate_selectbox is not None:
         plate_id = util.guard_pbc(plate_selectbox.split(':')[1])
         if plate_id in exp.plate_location_sample:
-            if exp.plate_location_sample[plate_id]['purpose'] == 'amplicon':
-                m(f'{exp.get_plate(plate_id)=}', level='debug', caller_id=caller_id)
             jsonpickle_plate = jsonpickle.encode(exp.get_plate(plate_id), keys=True)
             heatmap_str = generate_heatmap_html(jsonpickle_plate, plate_id, scaling=0.9)
             with open("makehtml.html", 'wt', encoding="utf-8") as outf:
@@ -857,7 +914,7 @@ def display_files(key, file_usage, height=250, caller_id='display_feedback'):
     if file_df is None or not isinstance(file_df, pd.DataFrame):
         st.write('No plates loaded')
         return
-   
+
     file_df.reset_index(inplace=True)
     #file_df = file_df.rename(columns = {'index':'File', 'plates':'Plates', 'purpose':'Purpose'})
     file_df = file_df.rename(columns = {'index':'File', 'date modified':'Date modified', 'purpose':'Purpose'})
@@ -901,7 +958,7 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, save_butto
     assay_usage, primer_usage = exp.get_assay_primer_usage(dna_pids, caller_id=caller_id)
     primer_avail_vols_doses = exp.get_available_primer_vols_doses(pmr_pids=primer_pids, caller_id=caller_id)
     primer_wells = exp.get_available_primer_wells(pmr_pids=primer_pids, caller_id=caller_id)
-    pmr_pids_wells = {pmr:{} for pmr in primer_wells}     
+    pmr_pids_wells = {pmr:{} for pmr in primer_wells}
     primer_info_array = []
     for primer in exp.primer_assayfam:
         req_vol = exp.transfer_volumes['PRIMER_VOL']*primer_usage.get(primer,0)  # nl
@@ -909,7 +966,7 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, save_butto
         req_wells = util.num_req_wells(req_vol)
         avail_vol = primer_avail_vols_doses.get(primer,[0,0])[0]  # nl
         avail_doses = primer_avail_vols_doses.get(primer,[0,0])[1]
-        avail_wells = len([pmr_info for pmr_info in primer_wells.get(primer, [])]) 
+        avail_wells = len([pmr_info for pmr_info in primer_wells.get(primer, [])])
         if req_wells == 0 and avail_wells == 0:
             continue
         if primer not in primer_wells:
@@ -922,11 +979,11 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, save_butto
             ppid_well_lines = [f"{util.unguard_pbc(ppid, silent=True)}:\
                     {','.join(pmr_pids_wells[primer][ppid])}" for ppid in pmr_pids_wells[primer]]
             pos_line = ' '.join(ppid_well_lines)
-        info = [primer, req_doses, req_vol/ul_conv, req_wells, avail_doses, avail_vol/ul_conv, 
+        info = [primer, req_doses, req_vol/ul_conv, req_wells, avail_doses, avail_vol/ul_conv,
                 avail_wells, pos_line]
         primer_info_array.append(info)
 
-    primer_df = pd.DataFrame(primer_info_array, columns=['Primer', 'Required Doses', 
+    primer_df = pd.DataFrame(primer_info_array, columns=['Primer', 'Required Doses',
             'Required Volume (μL)', 'Required Wells', 'Available Doses', 'Available Volume (μL)', 'Available Wells', 'Positions'])
     primer_table = aggrid_interactive_table(primer_df, grid_height=height, key=str(key)+'primer_display')
     primer_csv = primer_df.to_csv(index=False) #.encode('utf-8')
@@ -937,17 +994,7 @@ def display_primers(key, dna_pids=None, primer_pids=None, height=350, save_butto
         st.session_state['primer_csv'] = primer_csv
         primer_df.to_csv(path_or_buf=primer_list_fn, index=False) #.encode('utf-8')
     st.write(f'Primer table written to file: {primer_list_fn}')
-   
-    #if save_buttons:
-    #    button_cols = st.columns([2,2,6])
-    #    with button_cols[0]:  # save to CSV
-    #        output_csv = primer_df.to_csv(index=False).encode('utf-8')
-    #        st.download_button('Download CSV', output_csv, file_name="primer_list.csv", mime='text/csv')
-        #with button_cols[1]:  # save to Excel - requires xlsxwriter module
-        #    writer = pd.ExcelWriter("primer_list.xlsx", engine="xlsxwriter")
-        #    output_xlsx = primer_df.to_excel(writer, index=False)
-        #    st.download_button('Download Excel', output_xlsx, file_name="primer_list.xlsx")
-            
+
 
 def display_indexes(key, dna_pids=None, height=350, caller_id='display_feedback'):
     """
@@ -961,26 +1008,65 @@ def display_indexes(key, dna_pids=None, height=350, caller_id='display_feedback'
 
     index_df = pd.DataFrame.from_dict(indexes,  orient='index')
     index_df.reset_index(inplace=True)
-    index_df = index_df.rename(columns = {'index':'Index', 
-                                          'well_count':'Wells', 
-                                          'avail_transfers':'Available transfers', 
+    index_df = index_df.rename(columns = {'index':'Index',
+                                          'well_count':'Wells',
+                                          'avail_transfers':'Available transfers',
                                           'avail_vol':'Available Volume (μL)'})
     index_table = aggrid_interactive_table(index_df,grid_height=height,key=str(key)+'index_display')
-    
 
-def display_references(key, height=350, caller_id='display_feedback'):
+
+def choose_reference_files(key, height=350, subset='all', default=True, caller_id=None):
+    """
+    Allow multiselect of reference files to be used in the experiment
+    Args:
+        key (str): key for the component
+        height (int): height of the table
+        subset (str): 'all','amplicon','custom','rodentity' to show all or only the selected purpose
+        default (bool): whether to include all by default
+        caller_id (str): ID for the caller, used for messages
+    Notes: Not used, instead use dc.display_amplicon_file_checklist()
+    """
+    exp = st.session_state['experiment']
+    fns = [fn for fn, purp in exp.reference_sequences if purp == subset or subset == 'all']
+    if default is True:
+        options = st.multiselect(
+                "Which amplicon sequence reference files to use?",
+                fns, default=fns,
+        )
+    else:
+        options = st.multiselect(
+                "Which amplicon sequence reference files to use?",
+                fns, default=[],
+        )
+    return options
+
+
+def display_references(key, height=350, subset='all', caller_id='display_feedback'):
     """
     Show the amplicon targets/reference sequences that are loaded
+    Args:
+        key (str): key for the component
+        height (int): height of the table
+        subset (str): 'all','amplicon','custom','rodentity' to show all or only the selected purpose
+        caller_id (str): ID for the caller, used for messages
     Messages are displayed by the component holding these widgets
     """
     exp = st.session_state['experiment']
-    caller_id = 'display_feedback'
-    refseq = st.session_state['experiment'].reference_sequences
-    for group in refseq:
-        dataset = [(ref,refseq[group][ref]) for ref in exp.reference_sequences[group]]
-        ref_df = pd.DataFrame(dataset, columns=['Name','Sequence'])
-        st.markdown('**'+group+'**')
-        aggrid_interactive_table(ref_df, key=str(key)+'seqs'+group, grid_height=height)
+    dataset = []
+    for fn,purp in exp.reference_sequences:
+        if subset == 'amplicon' and purp != 'amplicon_reference':
+            dataset.extend(exp.reference_sequences[(fn,purp)])
+        elif subset == 'custom' and purp != 'custom_reference':
+            # custom references are not used in the pipeline, we should report a mistake
+            dataset.extend(exp.reference_sequences[(fn,purp)])
+            m(f'Custom reference sequences are not used in the pipeline, please check the calling code',level='critical')
+        elif subset == 'rodentity' and purp != 'rodentity_reference':
+            dataset.extend(exp.reference_sequences[(fn,purp)])
+        elif subset == 'all':
+            dataset.extend(exp.reference_sequences[(fn,purp)])
+    ref_df = pd.DataFrame(dataset, columns=['Name','Sequence'])
+    st.markdown('**'+group+'**')
+    aggrid_interactive_table(ref_df, key=str(key)+'seqs'+group, grid_height=height)
 
 
 def display_log(key, height=250, caller_id='display_feedback'):
@@ -997,174 +1083,6 @@ def display_log(key, height=250, caller_id='display_feedback'):
         df = pd.DataFrame(log_entries, columns=exp.get_log_header())
         df = df.drop(['Calling function', 'Call line'], axis = 1)
         aggrid_interactive_table(df, grid_height=height, key=str(key)+'logs')
-    
-
-# def change_screens_open(screen_name):
-#     """
-#     DEPRECATED - retain for potential future projects
-#     Required support function for info_bar()
-#     """
-#     if screen_name in st.session_state['screens_open']:
-#         st.session_state['screens_open'].remove(screen_name)
-#     else:
-#         st.session_state['screens_open'].add(screen_name)
-
-
-# def info_bar(key):
-#     """
-#     DEPRECATED - retain for potential future projects
-#     Define a bar and populate state if the toggle in screens_open.
-#     """
-#     if 'screens_open' not in st.session_state:
-#         st.session_state['screens_open'] = set()
-#     info_on = False
-#     if 'info_on' in st.session_state:
-#         if st.session_state['info_on']:
-#             info_on = True
-
-#     info_cols = st.columns([1,7])
-
-#     with info_cols[0]:
-#         info_on = st.toggle('Info viewer', 
-#                 value=info_on, 
-#                 help='Show extra information toggles')
-        
-#     with info_cols[1]:
-#         st.divider()
-
-#     if not info_on:
-#         st.session_state['info_on'] = False
-#         return
-
-#     if info_on:
-#         row1 = st.columns([1,1,1,1,1])
-#         with row1[0]:  # status
-#             already_on = False
-#             if 'status' in st.session_state['screens_open']:
-#                 already_on = True
-#             on = st.toggle(label='Status', value=already_on, key='status_toggle'+str(key), 
-#                     on_change=change_screens_open, args=['status'], help='Display status window')
-
-#             already_on = False
-
-#             if 'primers' in st.session_state['screens_open']:
-#                 already_on = True
-#             on = st.toggle(label='Primers', value=already_on, key='primers_toggle'+str(key), 
-#                     on_change=change_screens_open, args=['primers'], help='Display primers window')
-            
-#         with row1[1]:  # files
-#             already_on = False
-#             if 'files' in st.session_state['screens_open']:
-#                 already_on = True
-#             on = st.toggle(label='files', value=already_on, key='files_toggle'+str(key), 
-#                     on_change=change_screens_open, args=['files'], help='Display files window')
-#             already_on = False
-
-#             if 'indexes' in st.session_state['screens_open']:
-#                 already_on = True
-#             on = st.toggle(label='Indexes', value=already_on, key='index_toggle'+str(key), 
-#                     on_change=change_screens_open, args=['indexes'], help='Display indexes window')
-
-#         with row1[2]:  # plates
-#             already_on = False
-
-#             if 'plates' in st.session_state['screens_open']:
-#                 already_on = True
-#             on = st.toggle(label='Plates', value=already_on, key='plates_toggle'+str(key), 
-#                     on_change=change_screens_open, args=['plates'], help='Display plates window')
-
-#             already_on = False
-
-#             if 'references' in st.session_state['screens_open']:
-#                 already_on = True
-
-#             on = st.toggle(label='References', value=already_on, key='references_toggle'+str(key), 
-#                     on_change=change_screens_open, args=['references'], help='Display status window')
-
-#         with row1[3]:  # plate viewer
-#             already_on = False
-
-#             if 'plate_viewer' in st.session_state['screens_open']:
-#                 already_on = True
-#             on = st.toggle(label='Plate viewer', value=already_on, key='plate_view_toggle'+str(key), 
-#                     on_change=change_screens_open, args=['plate_viewer'], help='Display plate viewer window')
-
-#             already_on = False
-
-#             if 'log' in st.session_state['screens_open']:
-#                 already_on = True
-#             on = st.toggle(label='Log', value=already_on, key='log_toggle'+str(key), 
-#                     on_change=change_screens_open, args=['log'], help='Display log window')
-
-#         with row1[4]:
-#             view_height = st.number_input('Set display height', min_value=50, max_value=700, 
-#                     value=350, step=25, help="Size of display grid", key=str(key))
-
-#         st.divider()
-
-
-# def info_viewer_old(key, dna_pids=None, pcr_pids=None, primer_pids=None, index_pids=None, amp_pids=None, taq_pids=None):
-#     """
-#     Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
-#     Because aggrid allows selection, each module can also handle a standard set of operations (such as delete).
-#     DEPRECATED: Maintain as an alternative display system
-#     """
-#     exp = st.session_state['experiment']
-#     if 'info_expand' not in st.session_state:
-#         st.session_state['info_expand'] = False
-    
-#     #info_expander = st.expander('Info Panel', expanded=st.session_state['info_expand'])
-#     container = st.container()
-        
-#     col1,col2 = st.columns([7,1])
-#     with col2:
-#         view_height = st.number_input('Set display height', min_value=50, max_value=700, 
-#                 value=350, step=25, help="Size of display grid", key=str(key))
-#     with col1:
-#         view_tab = stx.tab_bar(data=[
-#             stx.TabBarItemData(id=1, title="Status", description=""),
-#             stx.TabBarItemData(id=2, title="Files", description=""),
-#             stx.TabBarItemData(id=3, title="Plates", description=""),
-#             stx.TabBarItemData(id=4, title="Plate Viewer", description=""),
-#             stx.TabBarItemData(id=5, title="Primers", description=""),
-#             stx.TabBarItemData(id=6, title="Indexes", description=""),
-#             #stx.TabBarItemData(id=7, title="Reference sequences", description=""),
-#             stx.TabBarItemData(id=7, title="Log", description="")
-#         ], return_type=int, default=1)
-
-#     if view_tab == 1:
-#         # Status tab should tell us where we are up to in the pipeline and what's happened so far
-#         with container:
-#             display_status(key, height=view_height)
-                
-#     if view_tab == 2:
-#         #view_expander = container.expander(label='All uploaded files', expanded=False)
-#         file_usage = exp.get_file_usage()
-#         with container:
-#             display_files(key, file_usage, height=view_height)
-
-
-#     if view_tab == 3:
-#         plate_usage = exp.get_plate_usage()
-#         with container:
-#             display_plates(key, plate_usage, height=view_height)
-
-#     if view_tab == 4:
-#         with container:
-#             view_height = 500
-#             view_plates(key, height=view_height)
-
-#     if view_tab == 5:
-#         with container:
-#             display_primers(key, dna_pids=dna_pids, height=view_height)
-        
-#     if view_tab == 6:
-#         with container:
-#             display_indexes(key, dna_pids=dna_pids, height=view_height)
-
-#     if view_tab == 7:
-#         with container:
-#             display_log(key, height=view_height)
 
 
 def info_viewer(selection, key, dna_pids=None, view_height=350):
@@ -1172,14 +1090,14 @@ def info_viewer(selection, key, dna_pids=None, view_height=350):
     caller_id = 'info_viewer_'+str(key)
     if selection == 'Samples':
         display_samples(key=key+selection, height=view_height, caller_id=caller_id)
-    
+
     if selection == 'Consumables':
         display_consumables(key=key+selection, height=view_height, caller_id=caller_id)
 
     if selection == "Status":
         # Status tab should tell us where we are up to in the pipeline and what's happened so far
             display_status(key=key+selection, height=view_height, caller_id=caller_id)
-                
+
     if selection == "Files":
         file_usage = exp.get_file_usage()
         display_files(key+selection, file_usage, height=view_height, caller_id=caller_id)
@@ -1194,13 +1112,13 @@ def info_viewer(selection, key, dna_pids=None, view_height=350):
 
     if selection == "Primers":
         display_primers(key+selection, dna_pids=dna_pids, height=view_height, caller_id=caller_id)
-        
+
     if selection == "Indexes":
         display_indexes(key+selection, dna_pids=dna_pids, height=view_height, caller_id=caller_id)
 
     if selection == "Log":
         display_log(key+selection, height=view_height, caller_id=caller_id)
-    
+
 
 def set_state(key, value):
     """ Callback function for display elements """
@@ -1213,7 +1131,7 @@ def set_selection(set_key, widget_key):
         st.session_state[set_key] = st.session_state[widget_key]
 
 
-def info_selection(key, view1_key, view2_key, height_key, default_view1="None", 
+def info_selection(key, view1_key, view2_key, height_key, default_view1="None",
         default_view2="None", default_height=250):
     """
     Container for displaying module info functions, each of which provides a dataframe for display in an aggrid.
@@ -1226,32 +1144,32 @@ def info_selection(key, view1_key, view2_key, height_key, default_view1="None",
     defaults are returned, otherwise these are set via callbacks
     """
     key=str(key)
-    
-    options = ["None","Samples", "Consumables", "Status", "Files", "Plates", "Plate Viewer", 
+
+    options = ["None","Samples", "Consumables", "Status", "Files", "Plates", "Plate Viewer",
             "Primers", "Indexes", "Log"]
-    
+
     disp_col1, disp_col2, height_col = st.columns([4,4,2])
-    
+
     with disp_col1:
         select1_key = key+"_select1"
         selection1 = st.selectbox("Choose info to view", options=options, placeholder='',
-                index=options.index(default_view1), on_change=set_selection, 
+                index=options.index(default_view1), on_change=set_selection,
                 args=[view1_key, select1_key], key=select1_key)
         set_state(view1_key, selection1)
-        
+
     with disp_col2:
-        select2_key = key+"_select2"    
+        select2_key = key+"_select2"
         selection2 = st.selectbox("Choose info to view", options=options, placeholder='',
                 index=options.index(default_view2), on_change=set_selection,
                 args=[view2_key, select2_key], key=select2_key)
         set_state(view2_key, selection2)
-        
+
     with height_col:
         height_widget_key = key+"_height"
-        view_height = st.number_input('Set display height', min_value=50, max_value=700, 
+        view_height = st.number_input('Set display height', min_value=50, max_value=700,
                 value=default_height, step=25, help="Size of display grid", on_change=set_selection,
                 args=[height_key, height_widget_key], key=height_widget_key)
-        set_state(height_key, view_height)        
+        set_state(height_key, view_height)
 
     return True
 
@@ -1265,7 +1183,75 @@ def show_info_viewer(selection, height, groupkey):
                 info_viewer(selection[i], str(groupkey)+selection[i]+str(i), view_height=height)
 
 
-def display_plate_checklist(widget_key:str, inc_plate_types:list) -> list:
+def display_file_checklist(widget_key:str, inc_file_purposes:list, default_value=True) -> list:
+    """
+    Display a filename checklist, with each included category getting its own column
+    Returns a list of all checkbox keys for later lookup
+    args:
+        widget_key (str): a unique id for this widget
+        inc_file_purposes (list[str]): a list of file purposes to include
+                see parse.process_upload for the list of types
+                purposes: ['amplicon','DNA','pcr','rodentity_sample','custom_sample','primer_layout','primer_volume',
+                'index_layout','index_volume','primer_assay_map','rodentity_reference','amplicon_reference','taq_water']
+        default_value (bool): whether to set the checkboxes to True by default
+    return:
+        a list of checkbox ID strings
+    """
+    exp = st.session_state['experiment']
+    checkbox_keys = []
+    checklist_cols = st.columns(len(inc_file_purposes))
+    all_fns = [fp for fp in exp.uploaded_files.keys() if fp not in {'_upload_queue','_upload_pending'}]
+
+    for i, ift in enumerate(inc_file_purposes):
+        ift_txt = ift.replace('_',' ').capitalize()
+        checklist_cols[i].markdown(f'**{ift_txt} Files**')
+        for fp in [fp for fp in all_fns if exp.uploaded_files[fp]['purpose'] == ift]:
+            cb_name = f'{str(widget_key)}_file_checkbox_^_{ift}_^_{fp}'
+            val = checklist_cols[i].checkbox(util.fn_from_path(fp), key=cb_name, value=default_value)
+            checkbox_keys.append(cb_name)
+    print(f"Checkbox keys for {widget_key}: {checkbox_keys}", file=sys.stderr)
+    return checkbox_keys
+
+
+def collect_file_checklist(checkbox_keys:list) -> dict:
+    """
+    Return all filenames that have been selected by the given checkboxes
+    args:
+        checkbox_keys (list[str])
+    """
+    selected_files = {'amplicon':[],'DNA':[],'pcr':[],'rodentity_sample':[],
+            'custom_sample':[],'primer_layout':[],'primer_volume':[], 'index_layout':[],
+            'index_volume':[],'primer_assay_map':[],'rodentity_reference':[],
+            'amplicon_reference':[],'taq_water':[]}
+    for cb in checkbox_keys:
+        if st.session_state[cb]:
+            key_parts = cb.split('_^_')
+            if len(key_parts) != 3:
+                continue  # skip malformed keys
+            purpose = key_parts[-2]
+            fp = key_parts[-1]
+            if purpose in selected_files:
+                selected_files[purpose].append(fp)
+            else:
+                m(f'File selection checkbox key {cb} of unknown type', level='critical', dest=('log','debug','noGUI'))
+    return selected_files
+
+
+def fns_from_checklist(selected_files:dict) -> list:
+    """
+    Return a list of filenames from the selected files dictionary
+    args:
+        selected_files (dict): a dictionary of file purposes and lists of filenames
+    return:
+        a list of filenames
+    """
+    fps = []  # filepaths
+    for f_type in selected_files:
+        fps.extend(selected_files[f_type])
+    return [util.fn_from_path(fp) for fp in fps]
+
+
+def display_plate_checklist(widget_key:str, inc_plate_types:list, default_value=True) -> list:
     """
     Display a plate checklist, with each included category getting its own column
     Returns a list of all checkbox keys for later lookup
@@ -1274,65 +1260,65 @@ def display_plate_checklist(widget_key:str, inc_plate_types:list) -> list:
         widget_key (str): a unique id for this widget
         inc_plate_types (list[str]): a list of plate types to include ['dna','pcr','primer',
                 'index','taqwater1','taqwater2','amplicon']
+        default_value (bool): whether to set the checkboxes to True by default
     return:
         a list of checkbox ID strings
     """
     exp = st.session_state['experiment']
     checkbox_keys = []
     checklist_cols = st.columns(len(inc_plate_types))
-    for i, ipt in enumerate(inc_plate_types): 
+    for i, ipt in enumerate(inc_plate_types):
         if ipt == 'dna':
             checklist_cols[i].markdown('**DNA Plates**')
             for dp in exp.get_dna_pids():
                 cb_name = f'{str(widget_key)}_plate_checkbox_dna_{dp}'
-                val = checklist_cols[i].checkbox(util.unguard_pbc(dp, silent=True), 
-                        key=cb_name, value=True)
+                val = checklist_cols[i].checkbox(util.unguard_pbc(dp, silent=True),
+                        key=cb_name, value=default_value)
                 checkbox_keys.append(cb_name)
-            
         if ipt == 'pcr':
             checklist_cols[i].markdown('**PCR Plates**')
             for pp in exp.get_pcr_pids():
                 cb_name = f'{str(widget_key)}_plate_checkbox_pcr_{pp}'
-                val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True), 
-                        key=cb_name, value=True)
+                val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True),
+                        key=cb_name, value=default_value)
                 checkbox_keys.append(cb_name)
         if ipt == 'taqwater1':
             checklist_cols[i].markdown('**Taq/Water Plates (PCR 1)**')
             for tp in exp.get_taqwater_pids(pcr_stage=1):
                 cb_name = f'{str(widget_key)}_plate_checkbox_taqwater1_{tp}'
-                val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True), 
-                        key=cb_name, value=True)
+                val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True),
+                        key=cb_name, value=default_value)
                 checkbox_keys.append(cb_name)
         if ipt == 'taqwater2':
             checklist_cols[i].markdown('**Taq/Water Plates (PCR 2)**')
             for tp in exp.get_taqwater_pids(pcr_stage=2):
                 cb_name = f'{str(widget_key)}_plate_checkbox_taqwater2_{tp}'
-                val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True), 
-                        key=cb_name, value=True)
+                val = checklist_cols[i].checkbox(util.unguard_pbc(tp, silent=True),
+                        key=cb_name, value=default_value)
                 checkbox_keys.append(cb_name)
         if ipt == 'amplicon':
             checklist_cols[i].markdown('**Amplicon Plates**')
             for ap in exp.get_amplicon_pids():
                 cb_name = f'{str(widget_key)}_plate_checkbox_amplicon_{ap}'
-                val = checklist_cols[i].checkbox(util.unguard_pbc(ap, silent=True), 
-                        key=cb_name, value=True)
+                val = checklist_cols[i].checkbox(util.unguard_pbc(ap, silent=True),
+                        key=cb_name, value=default_value)
                 checkbox_keys.append(cb_name)
         if ipt == 'primer':
             checklist_cols[i].markdown('**Primer Plates**')
             for pp in exp.get_primer_pids():
                 cb_name = f'{str(widget_key)}_plate_checkbox_primer_{pp}'
-                val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True), 
-                        key=cb_name, value=True)
+                val = checklist_cols[i].checkbox(util.unguard_pbc(pp, silent=True),
+                        key=cb_name, value=default_value)
                 checkbox_keys.append(cb_name)
         if ipt == 'index':
             checklist_cols[i].markdown('**Index Plates**')
             for ip in exp.get_index_pids():
                 cb_name = f'{str(widget_key)}_plate_checkbox_index_{ip}'
-                val = checklist_cols[i].checkbox(util.unguard_pbc(ip, silent=True), 
-                        key=cb_name, value=True)
+                val = checklist_cols[i].checkbox(util.unguard_pbc(ip, silent=True),
+                        key=cb_name, value=default_value)
                 checkbox_keys.append(cb_name)
     return checkbox_keys
-    
+
 
 def collect_plate_checklist(checkbox_keys):
     """
@@ -1344,24 +1330,14 @@ def collect_plate_checklist(checkbox_keys):
     for cb in checkbox_keys:
         if st.session_state[cb]:
             key_parts = cb.split('_')
-            if key_parts[-2] == 'dna':
-                selected_pids['dna'].append(key_parts[-1])
-            elif key_parts[-2] == 'pcr':
-                selected_pids['pcr'].append(key_parts[-1])
-            elif key_parts[-2] == 'taqwater1':
-                selected_pids['taqwater1'].append(key_parts[-1])
-            elif key_parts[-2] == 'taqwater2':
-                selected_pids['taqwater2'].append(key_parts[-1])
-            elif key_parts[-2] == 'amplicon':
-                selected_pids['amplicon'].append(key_parts[-1])
-            elif key_parts[-2] == 'primer':
-                selected_pids['primer'].append(key_parts[-1])
-            elif key_parts[-2] == 'index':
-                selected_pids['index'].append(key_parts[-1])
+            plate_type = key_parts[-2]  # e.g. 'dna', 'pcr', 'taqwater1', etc.
+            plate_id = key_parts[-1]  # e.g. 'plate123'
+            if plate_type in selected_pids:
+                selected_pids[plate_type].append(plate_id)
             else:
                 m(f'Plate selection checkbox key {cb} of unknown type', level='critical', dest=('log','debug','noGUI'))
     return selected_pids
- 
+
 
 def create_tabs(tab_data):
     """
@@ -1388,7 +1364,7 @@ def show_upper_info_viewer_checkbox(widget_key, value=True): #, default_panel1='
     """
     if 'show_info_viewer' not in st.session_state:
         st.session_state['show_upper_info_viewer'] = True
-    
+
     if st.checkbox('Info Viewer', value=value, key=widget_key):
         st.session_state['show_upper_info_viewer'] = True
         # if default_panel1:
@@ -1424,9 +1400,9 @@ def set_nimbus_title(exp, efs, nfs):
         if yet_to_run > 0:
             title = f'For {str(yet_to_run)} 96-well plate set(s)'
             colour = '#83b3c9'
-    
+
     m(title, level='display', dest=('css',), size='h5', color=colour, align='left')
-        
+
 
 def get_echo_download_buttons(nfs):
     """
@@ -1440,15 +1416,15 @@ def get_echo_download_buttons(nfs):
         _,dl_col1,dl_col2,_= st.columns([6,3,2,6])
         for i, nf in enumerate(nfs):
             nimbus_fn=Path(nf).name
-            
+
             with dl_col1:
                 custom_text("p", "#4b778c", nimbus_fn, "left", display=True)
                 add_vertical_space(1)
 
-            dl_col2.download_button("Download ", 
-                                    open(nf), 
-                                    file_name=nimbus_fn, 
-                                    key='nimbus_input_1_'+str(i), 
+            dl_col2.download_button("Download ",
+                                    open(nf),
+                                    file_name=nimbus_fn,
+                                    key='nimbus_input_1_'+str(i),
                                     help=f"Download Nimbus input file {nf}")
 
 
@@ -1460,26 +1436,26 @@ def get_echo_download_buttons(nfs):
 
             if (i+1) % 2 != 0:
                 with dl_col1:
-                    
+
                     custom_text("p", "#4b778c", nimbus_fn, "left", display=True)
                     add_vertical_space(1)
 
-                dl_col2.download_button("Download ", 
-                                        open(nf), 
-                                        file_name=nimbus_fn, 
-                                        key='nimbus_input_2_'+str(i), 
+                dl_col2.download_button("Download ",
+                                        open(nf),
+                                        file_name=nimbus_fn,
+                                        key='nimbus_input_2_'+str(i),
                                         help=f"Download Nimbus input file {nf}")
-        
+
             else:
                 with dl_col3:
                     custom_text("p", "#4b778c", nimbus_fn, "left", display=True)
                     add_vertical_space(1)
-            
-                dl_col4.download_button("Download ", 
+
+                dl_col4.download_button("Download ",
                                         open(nf), file_name=nimbus_fn,\
-                                        key='nimbus_input'+str(i), 
+                                        key='nimbus_input'+str(i),
                                         help=f"Download Nimbus input file {nf}")
-            
+
 
 def get_miseq_download_btn(exp):
     """
@@ -1490,21 +1466,232 @@ def get_miseq_download_btn(exp):
     add_vertical_space(2)
     _, miseq_col1,_, miseq_col2, _ =  st.columns([5,2,1,3,3])
     for fp in exp.get_miseq_samplesheets():
-        
+
         fp_name = str(Path(fp).name)
         with miseq_col1:
             add_vertical_space(1)
             custom_text(size='h5', color='#cf3276', text=fp_name, align='right', display=True)
-        
+
         with miseq_col2:
             add_vertical_space(1)
-            download_miseq = st.download_button(label='Download', 
-                                                data=open(fp, 'rt'), 
-                                                file_name=fp_name, 
-                                                mime='text/csv', 
-                                                key='dnld_samplesheet_'+str(fp), 
+            download_miseq = st.download_button(label='Download',
+                                                data=open(fp, 'rt'),
+                                                file_name=fp_name,
+                                                mime='text/csv',
+                                                key='dnld_samplesheet_'+str(fp),
                                                 type='secondary')
 
+
+def _init_amplicon_table(exp):
+    """
+    Open the amplicon_results.csv file and build a table
+    returns:
+        pandas DataFrame
+    Notes:
+        This is called once to initialise the amplicon table in session state
+        It removes the "other" item from otherName and otherCount columns
+    """
+    amplicon_data = []
+    plate_cols = set()
+    barcode_cols = set()
+    mod_cols = []
+    hdr = []
+    otherCount_col = None
+    otherName_col = None
+    with open(exp.get_exp_fn('amplicon_results.csv'), 'rt') as rfn:
+        for i, line in enumerate(rfn):
+            l = line.replace('"','')
+            cols = [c.strip() for c in l.split(',')]
+            if i == 0:
+                hdr = cols
+                # remove guards
+                for k,hc in enumerate(hdr):
+                    if 'plate' in hc.lower():
+                        plate_cols.add(k)
+                    elif 'barcode' in hc.lower():
+                        barcode_cols.add(k)
+                    elif 'othercount' in hc.lower():
+                        otherCount_col = k
+                    elif 'othername' in hc.lower():
+                        otherName_col = k
+                # add extra columns
+                hdr.append('filtProportion')
+                #hdr.append('report')
+                print(f'{otherCount_col=},{otherName_col=}', file=sys.stderr)
+            else:
+                mod_cols = []
+                other_index = None
+                tmp_count = None 
+                for k,c in enumerate(cols):
+                    if k in plate_cols:
+                        mod_cols.append(util.unguard_pbc(c, silent=True))
+                    elif k in barcode_cols:
+                        # could be any guard type
+                        mod_cols.append(util.unguard(c, silent=True))
+                    elif k == otherName_col: # find the "other" first and identify its index
+                        # remove the "other" count from the list
+                        new_names = []
+                        for j, item in enumerate(c.split(';')):
+                            if item.startswith('other'):
+                                other_index = j
+                                continue
+                            new_names.append(item)
+                        mod_cols.append(';'.join(new_names))
+                        new_counts = []
+                        if tmp_count is not None:
+                            for j, item in enumerate(tmp_count.split(';')):
+                                if j == other_index:
+                                    continue
+                                new_counts.append(item)
+                            mod_cols.append(';'.join(new_counts))
+                    elif k == otherCount_col:
+                        if other_index is None:
+                            tmp_count = c
+                        else:
+                            # remove the "other" count from the list
+                            new_counts = []
+                            for j, item in enumerate(c.split(';')):
+                                if j == other_index:
+                                    continue
+                                new_counts.append(item)
+                            mod_cols.append(';'.join(new_counts))
+                    else:
+                        mod_cols.append(c)
+                # extra columns for report
+                mod_cols.append(0.15)
+                #mod_cols.append('')
+                amplicon_data.append(mod_cols)
+    print(amplicon_data)
+    return hdr, amplicon_data
+
+
+def show_results_table(exp):
+    """
+    Open the amplicon_results.csv file and build an interactive table
+    Returns:
+        list of chosen variants
+    """
+    # hide these columns but keep them available for the user
+    hidden_cols = ['sex','sampleNo','sampleName','strain','clientName','alleleSymbol',
+                'alleleKey','assayKey','assays','assayFamilies','primerPlate','primerWell',
+                'pcrPlate','pcrWell','index_plate','i7bc','i7well','i7name','i5bc','i5well',
+                'i5name','cleanCount','dnaPlate','dnaWell']
+    hdr, amplicon_data = _init_amplicon_table(exp)
+
+    #if 'amplicon_data' not in st.session_state:
+    #    hdr, amplicon_data = _init_amplicon_table(exp)
+    init_state('amplicon_data', (hdr, amplicon_data))
+    #hdr, amplicon_data = st.session_state['amplicon_data']
+    amplicon_dataframe = pd.DataFrame(amplicon_data, columns=hdr)
+    amplicon_table = aggrid_interactive_table(amplicon_dataframe, key='amplicon_view_key',
+            hidden=hidden_cols, editable=['filtProportion'],filtering=True)
+
+    variant_info = []
+    if amplicon_table is not None and amplicon_table['selected_rows'] is not None:
+        print(f'{amplicon_table["selected_rows"]=}', flush=True, file=sys.stderr)
+        if 'selected_rows' in amplicon_table and len(amplicon_table['selected_rows']) > 0:
+            for field in ['samplePlate','sampleWell','sampleBarcode','primer','otherCount','otherName','filtProportion']:
+                if field in amplicon_table['selected_rows']:
+                    variant_info.append(amplicon_table['selected_rows'][field].iloc[0])
+            #print(type(variant_info[-1]), file=sys.stderr)
+    return amplicon_table, variant_info
+
+
+def build_paired_sequence_views(ref_seq, var_anno, display_width=120, colour_all=False, colour_changes=True):
+    """
+    Build the views for the reference sequence, variant sequence, link and summary
+    Args:
+        ref_seq (str): reference sequence
+        var_anno (str): the sequence annotation chosen by the user
+        display_width (int): width of the display in characters, wrap outputs to this width
+        colour_all (bool): False, whether to colour every position in the display
+        colour_changes (bool): True, whether to colour the changes of variable sites only
+    Returns:
+        outputs (list of tuples): each tuple contains four strings:
+            ref_view, link_view, var_view, summary_view (str): the views for the reference sequences,
+            the link between the reference and variable sequences, 
+            the variable sequence, and a summary of the variable sequence
+    Notes:
+        This function builds on the variant sequence generated in ngsmatch.get_variant_seq()
+        It also adjusts the reference sequence so that bases remain in matching positions
+    """
+    if ref_seq is None or var_anno is None:
+        return [('', '', '', '')]
+
+    var_seq, mod_seq = build_aligned_pair(var_anno, ref_seq)
+    
+    # link view shows direct matches between sequences
+    link_view = ['|' if c1 == c2 else ' ' for c1, c2 in zip(mod_seq, var_seq)]
+    summary_view = []  # summary of differences
+    for m,v in zip(mod_seq, var_seq):
+        if m == v:
+            summary_view.append('*')
+        elif m == '-':
+            summary_view.append('+')
+        elif v == '-':
+            summary_view.append('-')
+        elif v != m:
+            summary_view.append(v)
+        else:
+            summary_view.append(' ')
+    summary_view = ''.join(summary_view)
+    outputs = []
+    link_chrs = ''.join(link_view)
+    summary_chrs = ''.join(summary_view)
+    for i in range(0, len(var_seq), display_width):
+        outputs.append((mod_seq[i:i+display_width],
+                link_chrs[i:i+display_width],
+                var_seq[i:i+display_width],
+                summary_chrs[i:i+display_width]))
+    return outputs
+
+
+def show_sequence_viewer(ref_id, ref_seq, var_annos_counts, display_width=120, colour_all=False, colour_changes=True):
+    """
+    Show the views for the reference sequences, sequence, variable and summary
+    Args:
+        ref_id (str): the identifier for the reference sequence
+        ref_seq (str): reference sequence
+        var_anno_group (list:[str,count]): a list of variant sequence annotations and counts
+        display_width (int): [120] width of the display in characters
+        colour_all (bool): False, whether to colour every position in the display
+        colour_changes (bool): True, whether to colour the changes of variable sites only
+    Returns:
+        ref_view, link_view, var_view, summary_view (str): the views for the reference sequences,
+        the link between the reference and variable sequences, the variable sequence and a summary of the variable sequence
+    """
+    alignment_views_counts = []
+    # for var_anno, count in var_annos_counts:
+    #     alignment_view = build_sequence_views(ref_seq, var_anno, display_width,
+    #         colour_all=colour_all, colour_changes=colour_changes)
+    #     ref_view, link_view, var_view, summary_view = alignment_view
+    #     alignment_views_counts.append((refview,count))
+    # var_string_parts = []
+    # for avc in alignment_views_counts:
+
+    # st.html(f'<p><b>Reference (Ref)</b>&nbsp;&nbsp;&nbsp;&nbsp;{ref_id}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Variant (V1)</b>&nbsp;&nbsp;&nbsp;&nbsp;{var_anno}</p>')
+    # title_col, display_col = st.columns([1,12])
+    # for i,view_group in enumerate(alignment_views):
+    #     ref_view, link_view, var_view, summary_view = view_group
+    #     st.write(f'ref len:{len(ref_view)} var len:{len(var_view)} link len:{len(link_view)} summary len:{len(summary_view)}')
+    #     offset = i * display_width
+    #     if colour_changes:
+    #         summary_view.replace('+', '<div style="color:violet;">+</div>')
+    #         #summary_view.replace(c, '<div style="color:black;">-</div>')
+    #         summary_view.replace('A', f'<div style="color:green;">A</div>')
+    #         summary_view.replace('C', f'<div style="color:blue;">C</div>')
+    #         summary_view.replace('G', f'<div style="color:orange;">G</div>')
+    #         summary_view.replace('T', f'<div style="color:red;">T</div>')
+    #     tbl_str = f'<table style="width:100%;">'+\
+    #             f'<tr><td style="width:10%;"><div style="font-family:monospace; font-weight: bold;">Ref</div></td>'+\
+    #             f'<td style="width:90%;"><div style="font-family:monospace; font-weight: light;">{ref_view}</div></td></tr>'+\
+    #             f'<tr><td style="width:10%;"><div style="font-family:monospace; font-weight: bold;">Var</div></td>'+\
+    #             f'<td style="width:90%;"><div style="font-family:monospace; font-weight: light;">{var_view}</div></td></tr>' +\
+    #             f'<tr><td style="width:10%;"><div style="font-family:monospace; font-weight: light;">'+\
+    #             f'{offset+1} - {offset + display_width}</div></td>'+\
+    #             f'<td style="width:90%;"><div style="font-family:monospace; font-weight: light;">{summary_view}</div></td></tr>'+\
+    #             f'</table>'
+    #     st.markdown(tbl_str, unsafe_allow_html=True)
 
 
 def add_css():
@@ -1517,7 +1704,7 @@ def add_css():
         #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 1rem;}
      </style>
      ''', unsafe_allow_html=True)
-    
+
     #remove drag and drop labels from upload buttons. Class name 'css-9ycgxx' could change in future streamlit versions
     hide_label = """
     <style>
@@ -1527,7 +1714,7 @@ def add_css():
     </style>
     """
     st.markdown(hide_label, unsafe_allow_html=True)
-    
+
     margins_css = """
     <style>
         .appview-container .main .block-container {
@@ -1604,6 +1791,6 @@ def add_css():
     </style>
     """
     st.markdown(secondary_button_css, unsafe_allow_html=True)
-    
+
 
 

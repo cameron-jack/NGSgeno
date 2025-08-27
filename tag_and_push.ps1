@@ -1,9 +1,17 @@
-$VER = "v1.02.002"
+$VER = "v2.01.000"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: bug in exact matching with variable regions that only considered one reference sequence
-* Changed: exact matching is the default
+* Incomplete: amplicon reporting, stable but unfinished
+* New: added amplicon matching - exact matching and variable region matching
+* New: multiple reference files are now supported, and users can select which ones they want to use for given samples
+* New: updates older reference sequences format to new format exp.reference_sequences[(source_fn, purpose)]=[(id, seq), ...]
+* New: amplicon reports in rich text (RTF) using rich
+* New: multiple sequence alignment in variant viewer using cogent3
+* Changed: info viewer is now enabled by default
+* Changed: read counts now include comma separator for thousands
+* Removed: miss-cache user options
+* Removed: miss-cache
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

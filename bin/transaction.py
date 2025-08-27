@@ -93,7 +93,7 @@ def get_files_affected_by_file(exp, fn):
     """
     pass
 
-def get_pids_affected_by_file(exp, fn):
+def get_files_affected_by_pid(exp, fn):
     """
     Return a list of all plateIDs that require fn
     """
@@ -252,7 +252,7 @@ def clashing_pending_transactions(exp):
     return clashes
     
 def clashing_pending_transaction(exp, file_upload):
-    clashes = clashing_pending_transactions()
+    clashes = clashing_pending_transactions(exp)
     file_path = exp.get_exp_fn(file_upload.name, trans=False)
     if file_path in clashes:
         return file_path

@@ -1110,26 +1110,58 @@ def match_nimbus_to_echo_files(exp, caller_id=None):
         return [], [], []
 
 
-def generate_targets(exp, caller_id=None):
-    """ create target file based on loaded references """
+def generate_targets(exp, reference_sources, caller_id=None):
+    """ 
+    Create target files based on loaded references 
+    'rodentity_reference' sources will be saved to targets.fa
+    'amplicon_reference' sources will be saved to amplicon_targets.fa
+    """
     #transactions = {}
     #target_fn = exp.get_exp_fn('targets.fa', trans=True)
-    target_fn = exp.get_exp_fn('targets.fa')
-    #transactions[target_fn] = {} # add plates and modifications to this
-    counter = 0
-    try:
-        with open(target_fn, 'wt') as targetf:
-            for group in exp.reference_sequences:
-                for id in exp.reference_sequences[group]:
-                    print(f'>{id}', file=targetf)
-                    print(f'{exp.reference_sequences[group][id]}', file=targetf)
-                    counter += 1    
-    except Exception as exc:
-        m(f'could not write reference sequences to {target_fn} {exc}', level='error', caller_id=caller_id)
-        return False
+    # 'rodentity_reference' sources will be saved to targets.fa
+    rodentity_refs = []
+    amplicon_refs = []
+    for fn, purp in exp.reference_sequences:
+        if not reference_sources:
+            if purp == 'rodentity_reference' or purp == 'custom_reference':
+                rodentity_refs.append(fn)
+        elif fn in reference_sources:
+            if purp == 'rodentity_reference' or purp == 'custom_reference':
+                rodentity_refs.append(fn)
+            elif purp == 'amplicon_reference':
+                amplicon_refs.append(fn)
+
+    if rodentity_refs:
+        target_fn = exp.get_exp_fn('targets.fa')
+        counter = 0
+        try:
+            with open(target_fn, 'wt') as targetf:
+                for source_fn in rodentity_refs:
+                    for id,seq in exp.reference_sequences[(source_fn,'rodentity_reference')]:
+                        print(f'>{id}', file=targetf)
+                        print(f'{seq}', file=targetf)
+                        counter += 1    
+        except Exception as exc:
+            m(f'could not write reference sequences to {target_fn} {exc}', level='error', caller_id=caller_id)
+            return False
+        m(f'Created reference sequences file {target_fn} containing {counter} sequences', level='success', caller_id=caller_id)
+    if amplicon_refs:
+        target_fn = exp.get_exp_fn('amplicon_targets.fa')
+        counter = 0
+        try:
+            with open(target_fn, 'wt') as targetf:
+                for source_fn in amplicon_refs:
+                    for id,seq in exp.reference_sequences[(source_fn,'amplicon_reference')]:
+                        print(f'>{id}', file=targetf)
+                        print(f'{seq}', file=targetf)
+                        counter += 1    
+        except Exception as exc:
+            m(f'could not write reference sequences to {target_fn} {exc}', level='error', caller_id=caller_id)
+            return False
+        m(f'Created reference sequences file {target_fn} containing {counter} sequences', level='success', caller_id=caller_id)
+
     #transaction.add_pending_transactions(exp, transactions)
     #transaction.accept_pending_transactions(exp)
-    m(f'Screated reference sequences file {target_fn} containing {counter} sequences', level='success', caller_id=caller_id)
     return True
 
 

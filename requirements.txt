@@ -6,3 +6,5 @@ streamlit_aggrid==1.0.5
 pandas==2.2.2
 extra_streamlit_components==0.1.71
 chardet==5.2.0
+rich==12.5.1
+cogent3==2024.7.19a9

@@ -201,7 +201,7 @@ def pending_file_widget(key, caller_id):
         st.form_submit_button('Submit', on_click=do_pending_cb, args=[pending_cbs, caller_id])
     
 
-def upload_echo_inputs(key):
+def load_echo_inputs(key):
     """
     Echo inputs are Nimbus outputs
     """
@@ -276,9 +276,9 @@ def do_upload_primer_volume(upv, caller_id):
     queue_upload([upv], 'primer_volume', caller_id=caller_id)
 
 
-def upload_pcr1_files(key):
+def load_pcr1_files(key):
     """
-    Upload form for primer layout and volumes. Copies input files into the directory 
+    Interface for uploads of primer layout and volumes. Copies input files into the directory 
     and manages transactions
     """  
     st.markdown('**Upload Primer Files (PCR round 1)**')
@@ -377,7 +377,7 @@ def upload_pcr1_files(key):
 
 def load_amplicons(key):
     """
-    Upload only amplicon plates here
+    Interface for uploading amplicon plates (barcoding stage)
     """
     exp = st.session_state['experiment']
     caller_id = 'load_amplicons'
@@ -427,13 +427,13 @@ def load_amplicons(key):
 
 def load_manifest_384(key):
     """
-    Upload a 384-well DNA plate manifest
+    Interface for uploading 384-well DNA plate manifests, for reruns or custom samples.
     """
     exp = st.session_state['experiment']
     caller_id = 'load_manifest_384'
     add_vertical_space(2)
     st.markdown('**Upload 384-well Plate Manifest Files**')
-    st.info('You may add user-defined 384-well sample (DNA) plates here.')
+    st.info('You may add user-defined 384-well sample (DNA) plates here, for reruns or custom analysis.')
     with st.form('manifest_384 plate upload'+key, clear_on_submit=True): 
         uploaded_384_plates = st.file_uploader(
                 'Upload 384-well custom manifests - CSV or XLSX.',
@@ -469,9 +469,9 @@ def do_upload_index_volume(uiv, caller_id):
     queue_upload([uiv], 'index_volume', caller_id=caller_id)
             
 
-def upload_pcr2_files(key):
+def load_pcr2_files(key):
     """
-    Upload inputs for indexing layout and volume. Extra option for amplicon plate upload.
+    Interface for indexing stage files for layout and volume. Extra option for amplicon plate upload.
     Copy uploaded files into the run folder and manage subsequent transactions
     """
     st.markdown('**Upload Index Files (PCR round 2)**')
@@ -596,7 +596,7 @@ def upload_pcr2_files(key):
         mq[caller_id] = set()
         
 
-def upload_assaylist(key):
+def load_assaylist(key):
     """
     Upload just the assay list (assay-primer mapping) file. Return True on success, False on failure
     """
@@ -627,9 +627,9 @@ def upload_assaylist(key):
     return success
     
 
-def upload_extra_consumables(key):
+def load_extra_consumables(key):
     """
-    Uploads for extra files such as custom references, assay lists, and taq/water plates.
+    Interface for uploads for extra files such as custom references, assay lists, and taq/water plates.
     Copy the uploaded files into the run folder and deal with subsequent transactions.
     """
     st.markdown('**Upload Custom Reference / Assay Lists**')
@@ -641,7 +641,7 @@ def upload_extra_consumables(key):
     uploaded_assaylists = col1.file_uploader('Upload Assay Lists', key='assaylist_uploader'+key, 
             type=['txt','csv'], accept_multiple_files=True)
 
-    uploaded_references = col2.file_uploader('Upload Custom Reference Files', key='ref_uploader'+key, 
+    uploaded_references = col2.file_uploader('Upload Rodentity/Custom Reference Files', key='ref_uploader'+key, 
             type=['txt','fa','fasta'], accept_multiple_files=True)
                                                                        
     # maybe someday?
@@ -651,7 +651,7 @@ def upload_extra_consumables(key):
 
     if upload_button:
         if uploaded_references:
-            queue_upload(uploaded_references, 'reference_sequences', caller_id=caller_id)
+            queue_upload(uploaded_references, 'rodentity_reference', caller_id=caller_id)
             
         if uploaded_assaylists:
             queue_upload(uploaded_assaylists, 'assay_primer_map', caller_id=caller_id)
@@ -745,22 +745,22 @@ def custom_volumes(key):
         mq[caller_id] = set()
 
 
-def upload_reference_sequences(key):
+def load_rodentity_references(key):
     """
-    Upload custom references
+    Interface for uploading rodentity references
     """
     exp = st.session_state['experiment']
-    caller_id = 'upload_reference_sequences'
+    caller_id = 'load_rodentity_references'
     with st.form('References upload'+key, clear_on_submit=True):
         uploaded_references = st.file_uploader(
-                'Upload Custom Reference Files',
+                'Upload Rodentity Sequence Reference Files',
                 key='ref_uploader'+key,
                 type=['txt','fa','fasta'],    
                 accept_multiple_files=True)
         upload_button = st.form_submit_button("Upload Files")
 
     if upload_button and uploaded_references:      
-        queue_upload(uploaded_references, 'reference_sequences', caller_id=caller_id)
+        queue_upload(uploaded_references, 'rodentity_reference', caller_id=caller_id)
         
     parse.process_upload_queue(exp)
     
@@ -773,6 +773,65 @@ def upload_reference_sequences(key):
         sleep(0.3)
         mq[caller_id] = set()
     
+
+def load_custom_references(key):
+    """
+    Interface for uploading custom (non-Rodentity) references
+    """
+    exp = st.session_state['experiment']
+    caller_id = 'load_custom_references'
+    with st.form('References upload'+key, clear_on_submit=True):
+        uploaded_references = st.file_uploader(
+                'Upload Custom (non-Rodentity) Sequence Reference Files',
+                key='ref_uploader'+key,
+                type=['txt','fa','fasta'],    
+                accept_multiple_files=True)
+        upload_button = st.form_submit_button("Upload Files")
+
+    if upload_button and uploaded_references:      
+        queue_upload(uploaded_references, 'custom_reference', caller_id=caller_id)
+        
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
+    
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl, no_log=True)
+        sleep(0.3)
+        mq[caller_id] = set()
+
+
+def load_amplicon_references(key):
+    """
+    Interface for uploading amplicon reference sets.
+    Any number of amplicon reference files are supported.
+    """
+    exp = st.session_state['experiment']
+    caller_id = 'load_amplicon_references'
+    with st.form('Amplicon reference upload'+key, clear_on_submit=True):
+        uploaded_references = st.file_uploader(
+                'Upload Amplicon Sequence Reference Files',
+                key='ref_uploader'+key,
+                type=['txt','fa','fasta'],    
+                accept_multiple_files=True)
+        upload_button = st.form_submit_button("Upload Files")
+
+    if upload_button and uploaded_references:      
+        queue_upload(uploaded_references, 'amplicon_reference', caller_id=caller_id)
+        
+    parse.process_upload_queue(exp)
+    
+    if trans.is_pending(exp):
+        pending_file_widget(key, caller_id)
+    
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl, no_log=True)
+        sleep(0.3)
+        mq[caller_id] = set()
+
 
 def load_rodentity_data(key):
     """
@@ -1127,7 +1186,7 @@ def display_fastqs(key):
         st.write(f"1. {fastq_files[0][0]}, {fastq_files[0][1]}")
         if len(fastq_files) > 1:
             st.write(f"...")
-            st.write(f"{len(fastq_files)}. {fastq_files[-1][0]}, {fastq_files[-1][1]}")
+            st.write(f"{len(fastq_files):,}. {fastq_files[-1][0]}, {fastq_files[-1][1]}")
 
     def blocks(files, size=65536):
         while True:
@@ -1148,10 +1207,10 @@ def display_fastqs(key):
                 seq_count += sum(bl.count("\n") for bl in blocks(f))
         pb.progress(1.0, "Done")
         st.write('')
-        st.write(f"There are {seq_count//4} sequences across all raw FASTQ files")
+        st.write(f"There are {seq_count//4:,} sequences across all raw FASTQ files")
             
 
-def upload_miseq_fastqs(key):
+def load_miseq_fastqs(key):
     """ pretty ugly. No longer used in the main app """
     exp = st.session_state['experiment']
     caller_id = 'upload_miseq_fastqs'

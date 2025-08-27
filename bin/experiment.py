@@ -112,7 +112,8 @@ class Experiment():
         self.assayfam_primers = {}  # {mapping of assay families to list of primers}
         self.assay_assayfam = {}  # mapping of assay to assay family
         self.assayfam_assays = {}  # mapping of assay family to list of assays for reverse lookups
-        self.reference_sequences = {}  # {source:{name:seq}} mapping of sequence name to sequence
+        # reference purposes are in {'rodentity_reference', 'custom_reference', 'amplicon_reference'}
+        self.reference_sequences = {}  # {(source,purpose):[(name,seq)]} mapping of sequence name to sequence
         ###
         # All generate_XXX() functions produce one or more files
         # a transaction record in self.reproducible_steps consists of a dictionary of form:
@@ -146,13 +147,13 @@ class Experiment():
         return str(self.__dict__)
 
     def lock(self):
-        self.log('Info: Locking/unlocking of experiment is currently disabled')
-        #self.log('Info: Locking experiment. No modification allowed to plates while lock remains')
+        self.log('Locking/unlocking of experiment is currently disabled', level='info')
+        #self.log('Locking experiment. No modification allowed to plates while lock remains', level='info')
         #self.locked = True
 
     def unlock(self):
-        self.log('Info: Locking/unlocking of experiment is currently disabled')
-        #self.log('Info: Unlocking experiment. Modification is now possible. There should be good reason for this!')
+        self.log('Locking/unlocking of experiment is currently disabled', level='info')
+        #self.log('Unlocking experiment. Modification is now possible. There should be good reason for this!', level='info')
         #self.locked = False
 
 
@@ -536,7 +537,8 @@ class Experiment():
         """
         d = {'taqwater_pids_pcr1':[], 'taqwater_pids_pcr2':[], 'taq_vol_pcr1':0, 'taq_vol_pcr2':0,'water_vol_pcr1':0, 
                 'water_vol_pcr2':0, 'primer_pids':[], 'primer_count_ngs':0, 'primer_count_custom':0, 'unique_primers':set(), 
-                'primer_well_count':0, 'assay_primer_mappings':0, 'reference_files':[], 'unique_references':set(), 
+                'primer_well_count':0, 'assay_primer_mappings':0, 'rodentity_reference_files':[],
+                'custom_reference_files':[], 'amplicon_reference_files':[], 
                 'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
         
         consumable_plate_purposes = set(['primer', 'taq_water', 'index'])
@@ -586,10 +588,13 @@ class Experiment():
                             d['unique_i7s'].add(plate[well]['idt_name'])
                         elif '_i5R_' in plate[well]['idt_name']:
                             d['unique_i5s'].add(plate[well]['idt_name'])
-        for f in self.reference_sequences:
-            d['reference_files'].append(f)
-            for refname in self.reference_sequences[f]:
-                d['unique_references'].add(refname)
+        for fn,purpose in self.reference_sequences:  # (source,purpose) -> [(name,seq)]
+            if purpose == 'rodentity_reference':
+                d['rodentity_reference_files'].append(fn)
+            elif purpose == 'custom_reference':
+                d['custom_reference_files'].append(fn)
+            elif purpose == 'amplicon_reference_files':
+                d['amplicon_reference_files'].append(fn)
         d['assay_primer_mappings'] = len(self.assayfam_primers)
         return d
 
@@ -1533,6 +1538,21 @@ class Experiment():
         return miseq_fps  
 
 
+    def count_reference_sequences(self, reference_type, caller_id=None):
+        """
+        Count the number of reference sequences of a given type
+        Args:
+            reference_type: 'allele', 'primer', 'index'
+        Returns:
+            int: number of reference sequences of the given type
+        """
+        if reference_type not in self.reference_sequences:
+            m(f'No reference sequences of type {reference_type} found', level='critical', caller_id=caller_id)
+            return 0
+        return sum((len(self.reference_sequences[(fn,ref_purp)]) for fn,ref_purp in \
+                self.reference_sequences if ref_purp == reference_type))
+
+
     def check_sequence_upload_ready(self, caller_id=None):
         """
         Prevent users from uploading sequence files without references being loaded, or without generating Stage3 or MiSeq files
@@ -1549,7 +1569,7 @@ class Experiment():
                 m(f"{fn} not present, cannot proceeed with sequence upload", level='error', caller_id=caller_id)
 
         # check that at least one reference sequence has been uploaded
-        if len(self.reference_sequences) == 0:
+        if len(self.reference_sequences.keys()) == 0:
             m('No reference sequences have been uploaded yet, please add these before running allele calling', level='warning', 
                     caller_id=caller_id)
 
@@ -1669,19 +1689,44 @@ class Experiment():
 
 
 def load_experiment(exp_path):
-    """ load experiment details from experiment.json, or return None. exp_path is the folder path only """
-    
+    """ 
+    load experiment details from experiment.json, or return None. exp_path is the folder path only 
+    automatically updates exp.rodentity_reference format if necessary from v1.02.002 or earlier
+    returns an Experiment object or None if the file does not exist
+    """
     exp_file_path = os.path.join(exp_path, EXP_FN)
     print('Attempting to load from path:', exp_file_path)
     if os.path.exists(exp_file_path):
         with open(exp_file_path, 'rt') as f:
             expt = jsonpickle.decode(f.read(), keys=True, handle_readonly=True) # this seems totally flaky, but it must come down to what the contents are?
         if isinstance(expt, Experiment):
+            # update older reference_sequences format
+            if expt.reference_sequences is not None:
+                keys_to_remove = []
+                for key in list(expt.reference_sequences.keys()):
+                    if isinstance(key, str):
+                        newkey = (key,'rodentity_reference')
+                        if newkey not in expt.reference_sequences:
+                            expt.reference_sequences[newkey] = [(name,seq) for name, seq in expt.reference_sequences[key].items()]
+                        keys_to_remove.append(key)
+                for key in keys_to_remove:
+                    del expt.reference_sequences[key]    
             return expt
         elif isinstance(expt, str):
             expt = dict(expt)
         exp = Experiment(expt['name'])
         exp.__setstate__(expt)
+        # update older reference_sequences format
+        if exp.reference_sequences is not None:
+            keys_to_remove = []
+            for key in list(exp.reference_sequences.keys()):
+                if isinstance(key, str):
+                    newkey = (key,'rodentity_reference')
+                    if newkey not in exp.reference_sequences:
+                        exp.reference_sequences[newkey] = [(name,seq) for name, seq in exp.reference_sequences[key].items()]
+                    keys_to_remove.append(key)
+            for key in keys_to_remove:
+                del exp.reference_sequences[key]
         return exp
     else:
         return None

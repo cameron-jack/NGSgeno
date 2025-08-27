@@ -106,7 +106,7 @@ def upload(exp, pfp, purpose, caller_id=None, overwrite_plates=True, overwrite_f
     Return True if uploaded stream is correctly saved and parsed, else False
     By default all entries are overwritten rather than protected - this is a practical issue for NGS Genotyping
     """
-    if exp.locked and purpose not in {'primer_assay_map','reference_sequences'}:
+    if exp.locked and purpose not in {'primer_assay_map','rodentity_reference','amplicon_reference'}:
         m(f'Cannot add files other than assay file or references while lock is active', level='failure', caller_id=caller_id)
         return False
 
@@ -152,7 +152,7 @@ def accept_pending_upload(exp, pfp, purpose, caller_id=None, overwrite_plates=Tr
     """
     Take a pending upload file pfp, its purpose, and attempt to parse the file
     """
-    if exp.locked and purpose not in {'primer_assay_map','reference_sequences'}:
+    if exp.locked and purpose not in {'primer_assay_map','rodentity_reference','amplicon_reference'}:
         m('Cannot add manifest while lock is active', level='failure', caller_id=caller_id)
         return False
 
@@ -182,7 +182,7 @@ def process_upload(exp, pfp, purpose, caller_id=None, overwrite_plates=True):
     - calls exp.add_file_record(filepath, purpose)
     - invokes the appropriate parser for the provided purpose and file extension
     purposes: ['amplicon','DNA','pcr','rodentity_sample','custom_sample','primer_layout','primer_volume',
-            'index_layout','index_volume','primer_assay_map','reference_sequences','taq_water']
+            'index_layout','index_volume','primer_assay_map','rodentity_reference','amplicon_reference','taq_water']
     plates now get loaded with {filepath:purpose}
             
     caller_id (str) is the name of the associated display unit for user messages
@@ -212,7 +212,7 @@ def process_upload(exp, pfp, purpose, caller_id=None, overwrite_plates=True):
     if purpose == 'amplicon':
         success, pids = parse_amplicon_manifest(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'DNA' or purpose == 'dna':  # Echo_COC file
-        success, pids = load_dna_plate(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
+        success, pids = parse_dna_plate(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'rodentity_sample':  # becomes purpose=sample source=rodentity
         success, pids = parse_rodentity_json(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'custom_sample':  # becomes purpose=sample source=custom
@@ -233,8 +233,8 @@ def process_upload(exp, pfp, purpose, caller_id=None, overwrite_plates=True):
         success, pids = parse_index_volume(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'assay_primer_map':
         success = parse_assay_primer_map(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
-    elif purpose == 'reference_sequences':
-        success = parse_reference_sequences(exp, fp, caller_id=caller_id, overwrite_plates=overwrite_plates)
+    elif purpose in {'rodentity_reference', 'custom_reference','amplicon_reference'}:
+        success = parse_reference_sequences(exp, fp, purpose, caller_id=caller_id, overwrite_plates=overwrite_plates)
     elif purpose == 'taq_water':
         m('no parser implemented for taq_water plates', level='critical', caller_id=caller_id)
     else:
@@ -1050,28 +1050,28 @@ def parse_assay_primer_map(exp, fp, caller_id=None, overwrite_plates=True):
     return True
 
 
-def parse_reference_sequences(exp, fp, caller_id=None, overwrite_plates=True):
+def parse_reference_sequences(exp, fp, purpose, caller_id=None, overwrite_plates=True):
     """
     read in reference (target) IDs and sequences.
     May be added when pipeline is locked.
-    Client allows only one reference file to be loaded at a time
+    Any number of reference files are supported
+    purpose may be 'rodentity_reference', 'custom_reference' or 'amplicon_reference'
+    Saved as exp.reference_sequences[(fp, purpose)] = [(ref_id,sequence)]
     caller_id (str) is the name of the associated display unit for user messages
+    Note: In version 1.02.002 and earlier only one reference file was allowed
+        and it was saved as exp.reference_sequences[fp] = {ref_id:sequence}
     """
     m(f'parsing reference sequences {fp}', level='begin')
     sequences = parse_fasta(open(fp, 'rb'), caller_id=caller_id)
     if not sequences:
         m(f'could not read reference seq file {fp}', level='error', caller_id=caller_id)
         return False
-    exp.reference_sequences = {}
-    exp.reference_sequences[fp] = {}
-    for ref in sequences:
-        exp.reference_sequences[fp][ref] = sequences[ref]
-
-    m(f'{len(sequences)} reference sequences imported from {fp}', level='info', caller_id=caller_id)
+    exp.reference_sequences[(fp,purpose)] = [(ref,sequences[ref]) for ref in sequences]
+    m(f'{len(exp.reference_sequences[(fp,purpose)])} reference sequences imported from {fp}', level='info', caller_id=caller_id)
     return True
   
 
-def load_dna_plate(exp, filepath, caller_id=None, overwrite_plates=True):
+def parse_dna_plate(exp, filepath, caller_id=None, overwrite_plates=True):
     """
     Filepath should point to an Echo_384_COC file/Nimbus output/Echo input
     caller_id (str) is the name of the associated display unit for user messages
