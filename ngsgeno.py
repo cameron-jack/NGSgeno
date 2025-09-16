@@ -1214,24 +1214,31 @@ def main():
                                         rodentity_results.append(cols)
                                     else:
                                         other_results.append(cols)
-                        #m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', 
-                        #        level='display', dest=('css',))
+                        # Display Rodentity results first, then custom, then other
+                        hidden_cols = ['clientName','sampleName','alleleSymbol',
+                                'alleleKey','assayKey','assays','assayFamilies','primerPlate','primerWell',
+                                'pcrPlate','pcrWell','index_plate','i7bc','i7well','i7name','i5bc','i5well',
+                                'i5name','cleanCount','dnaPlate','dnaWell']
                         st.write(f'Rodentity results: {len(rodentity_results)}')
                         dfr = pd.DataFrame(rodentity_results, columns=hdr)
-                        dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
-                        #rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
-                        #with rodentity_view:
-                        #    dfr = pd.DataFrame(rodentity_results, columns=hdr)
-                        #    dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
+                        dc.aggrid_interactive_table(dfr, hidden=hidden_cols, key='rodentity_view_key')
+                        
+                        hidden_cols = ['clientName','alleleSymbol',
+                                'alleleKey','assayKey','assays','assayFamilies','primerPlate','primerWell',
+                                'pcrPlate','pcrWell','index_plate','i7bc','i7well','i7name','i5bc','i5well',
+                                'i5name','cleanCount','dnaPlate','dnaWell']
+                        st.write(f'Custom results: {len(custom_results)}')
+                        dfc = pd.DataFrame(custom_results, columns=hdr)
+                        dc.aggrid_interactive_table(dfc, hidden=hidden_cols,key='custom_view_key')
+                        
+                        hidden_cols = ['clientName','alleleSymbol',
+                                'alleleKey','assayKey','assays','assayFamilies','primerPlate','primerWell',
+                                'pcrPlate','pcrWell','index_plate','i7bc','i7well','i7name','i5bc','i5well',
+                                'i5name','cleanCount','dnaPlate','dnaWell']
+                        st.write(f'Other results: {len(other_results)}')
+                        dfo = pd.DataFrame(other_results, columns=hdr)
+                        dc.aggrid_interactive_table(dfo, hidden=hidden_cols, key='other_view_key')
 
-                        custom_view = st.expander('Custom results: '+str(len(custom_results)))
-                        with custom_view:
-                            dfc = pd.DataFrame(custom_results, columns=hdr)
-                            dc.aggrid_interactive_table(dfc, key='custom_view_key')
-                        other_view = st.expander('Other results: '+str(len(other_results)))
-                        with other_view:
-                            dfo = pd.DataFrame(other_results, columns=hdr)
-                            dc.aggrid_interactive_table(dfo, key='other_view_key')
                 elif allele_tab == 2:
                     if not Path(exp.get_exp_fn('amplicon_results.csv')).exists():
                         m('**No amplicon calling results available**', level='display', dest=('mkdn'))

@@ -5,7 +5,7 @@ authors = [
     {name = "Cameron Jack", email = "cameron.jack@anu.edu.au"},
 ]
 
-version = "2.02.000"
+version = "2.02.001"
 requires-python = "==3.13" # Specifies Python 3.13
 readme = "README.md"
 classifiers = ["License :: OSI Approved :: MIT License"]

@@ -1,3 +1,9 @@
+v2.02.001
+Date: 16/09/2025 3:41:11 PM
+* Fixed: Finished new tables in genotyping report page
+* TODO: coloured text in PDF report
+* TODO: add multiple sequence alignmnent to genotyping report screen
+
 v2.02.000
 Date: 16/09/2025 2:03:15 PM
 * Fixed: retained parameter in match calling function caused crashed subprocesses

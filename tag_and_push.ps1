@@ -1,22 +1,10 @@
-$VER = "v2.02.000"
+$VER = "v2.02.001"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: retained parameter in match calling function caused crashed subprocesses
-* Fixed: amplicon matching was looking for primers
-* Fixed: debugging parameters weren't guarded against being absent
-* Fixed: amplicon inexact matching was using incorrectly named variable
-* Fixed: mixed types in view columns causing pyarrow error
-* Fixed: genotyping error messages for unknown sequences
-* Fixed: borked call to generate primer information
-* New: unreported/reported amplicon lists
-* New: tables being migrated to new Streamlit 1.49.0 style tables
-* Changed: identity limits now restricted to 0.0-1.0 with warnings
-* Changed: Streamlit updated to 1.49.1
-* Changed: streamlit.aggrid updated 1.1.8
-* Changed: Now reporting amplicons in PDF rather than rich text with fpdf2 v2.8.4
-* Changed: Report page removes expanding sections for clarity
+* Fixed: Finished new tables in genotyping report page
 * TODO: coloured text in PDF report
+* TODO: add multiple sequence alignmnent to genotyping report screen
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"
