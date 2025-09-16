@@ -21,8 +21,11 @@ from tabnanny import check
 import jsonpickle
 from time import sleep
 import datetime
+import jsonpickle
+import warnings
 
 import pandas as pd
+pd.options.mode.chained_assignment = None  # default='warn'
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -33,9 +36,13 @@ from st_aggrid.shared import GridUpdateMode
 from stutil import custom_text, add_vertical_space, hline, m, init_state, mq
 
 try:
-    from bin.match import reconstruct_sequence
-except ModuleNotFoundError: 
-    from match import build_aligned_pair, reconstruct_sequence
+    from bin.match import reconstruct_sequence, run_msa
+except ModuleNotFoundError:
+    from match import build_aligned_pair, reconstruct_sequence, run_msa
+try:
+    from bin.generate import generate_pdf
+except ModuleNotFoundError:
+    from generate import generate_pdf
 try:
     from bin.experiment import Experiment, EXP_FN, load_experiment
 except ModuleNotFoundError:
@@ -54,8 +61,8 @@ except ModuleNotFoundError:
     from makehtml import generate_heatmap_html
 
 
-def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, hidden: list=[],editable: list=[], 
-        filtering: bool=False,key: int=1):
+def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, hidden: list=[],editable: list=[],
+        filtering: bool=False, key: int=1):
     """Creates an st-aggrid interactive table based on a dataframe.
 
     Args:
@@ -81,32 +88,24 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, hidden: lis
         df, enableRowGroup=True, enableValue=True, enablePivot=True)
 
     # params.data['report'] = kept_indices.map(i => raw_names[i]).join(';');
-    if filtering and 'otherCount' in cols and 'seqCount' in cols and \
-            'filtProportion' in cols: # and 'report' in cols:
-        print('Doing a thing!', flush=True)
-        # #if (params.data.otherCount && params.data.seqCount && params.data.filtProportion) {
+    if filtering and 'otherCount' in cols and 'mergeCount' in cols and \
+            'filtProportion' in cols:
         filt_js = JsCode("""
             function(params) {
-                params.data.report = 'A';
-                return 'A';
-                //raw_counts = params.data.otherCount.split(';').map(Number);
-                //raw_names = params.data.otherName.split(';');
-                //let kept_indices = new Array();
-                //for (let i = 0; i < raw_counts.length; i++) {
-                //    if (raw_counts[i] > Number(params.data.filtProportion) * Number(params.data.seqCount)) {
-                //        kept_indices.push(i);
-                //    }
-                //}
-                //params.data.report = kept_indices.map(i => raw_names[i]).join(';');
-                //return kept_indices.map(i => raw_names[i]).join(';');
+                let raw_counts = params.data.otherCount.split(';').map(Number);
+                let raw_names = params.data.otherName.split(';');
+                let kept_indices = new Array();
+                for (let i = 0; i < raw_counts.length; i++) {
+                    if (raw_counts[i] > Number(params.data.filtProportion) * Number(params.data.mergeCount)) {
+                        kept_indices.push(i);
+                    }
+                }
+                params.data.report = kept_indices.map(i => raw_names[i]).join(';');
+                return kept_indices.map(i => raw_names[i]).join(';');
             };""")
 
-        #set_js = JsCode("""
-        #    function set_filt(params) {
-        #        params.data.report = filt_counts(params);
-        #        return true;
-        #    };""")
-        options.configure_column('report', valueGetter=filt_js, oneValueSetter=filt_js)
+    
+        options.configure_column('report', valueGetter=filt_js)
 
     if 'Available Doses' in cols and 'Required Doses' in cols:
         cell_js = JsCode("""
@@ -163,10 +162,11 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, hidden: lis
 
     options.configure_side_bar()
 
-    options.configure_selection("multiple", use_checkbox=False, \
-                rowMultiSelectWithClick=False, suppressRowDeselection=False)
+    options.configure_selection("single", use_checkbox=False, \
+                rowMultiSelectWithClick=False, suppressRowDeselection=True)
 
     selection = None
+    #df = df.astype(str)
     selection = AgGrid(
         df,
         enable_enterprise_modules=True,
@@ -178,12 +178,13 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, hidden: lis
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.VALUE_CHANGED,
         key=key,
         reload_data=True,
-        allow_unsafe_jscode=True,
-        rowSelection='multiple',
-        selection_mode='multiple',
-        rowMultiSelectWithClick=True,
-        fit_columns_on_grid_load=True
+        allow_unsafe_jscode=True,   
+        fit_columns_on_grid_load=True,
+        rowSelection='single'
     )
+    #rowSelection='multiple',
+    #    selection_mode='multiple',
+    #    rowMultiSelectWithClick=True,
     return selection
 
 
@@ -364,8 +365,8 @@ def display_consumables(key, height=300, caller_id=None):
     summarise_consumables():
         d = {'taqwater_pids_pcr1':[], 'taqwater_pids_pcr2':[], 'taq_vol_pcr1':0, 'taq_vol_pcr2':0,'water_vol_pcr1':0,
                 'water_vol_pcr2':0, 'primer_pids':[], 'primer_count_ngs':0, 'primer_count_custom':0, 'unique_primers':set(),
-                'primer_well_count':0, 'assay_primer_mappings':0, 'rodentity_reference_files':[], 
-                'custom_reference_files':[], 'amplicon_reference_files':[], 
+                'primer_well_count':0, 'assay_primer_mappings':0, 'rodentity_reference_files':[],
+                'custom_reference_files':[], 'amplicon_reference_files':[],
                 'index_pids':[], 'unique_i7s':set(), 'unique_i5s':set()}
     """
     exp = st.session_state['experiment']
@@ -387,11 +388,11 @@ def display_consumables(key, height=300, caller_id=None):
         data_rows.append(['index', util.unguard_pbc(ip, silent=True), 384, util.PLATE_TYPES['Echo384'],
                 len(exp.plate_location_sample[ip]['wells'])])
     for f in consumables['rodentity_reference_files']:
-        data_rows.append(['Rodentity references', f, 0, 'File', exp.count_reference_sequences('rodentity_references')])
+        data_rows.append(['Rodentity references', f, 0, 'File', exp.count_reference_sequences('rodentity_references', silent=True)])
     for f in consumables['custom_reference_files']:
-        data_rows.append(['Custom references', f, 0, 'File', exp.count_reference_sequences('custom_references')])
+        data_rows.append(['Custom references', f, 0, 'File', exp.count_reference_sequences('custom_references', silent=True)])
     for f in consumables['amplicon_reference_files']:
-        data_rows.append(['Amplicon references', f, 0, 'File', exp.count_reference_sequences('amplicon_references')])
+        data_rows.append(['Amplicon references', f, 0, 'File', exp.count_reference_sequences('amplicon_references', silent=True)])
     for f in exp.uploaded_files:
         if exp.uploaded_files[f].get('purpose','') == 'assay_primer_map':
             data_rows.append(['assay-primer mappings', f, 0, 'File', consumables['assay_primer_mappings']])
@@ -1209,7 +1210,7 @@ def display_file_checklist(widget_key:str, inc_file_purposes:list, default_value
             cb_name = f'{str(widget_key)}_file_checkbox_^_{ift}_^_{fp}'
             val = checklist_cols[i].checkbox(util.fn_from_path(fp), key=cb_name, value=default_value)
             checkbox_keys.append(cb_name)
-    print(f"Checkbox keys for {widget_key}: {checkbox_keys}", file=sys.stderr)
+    #print(f"Checkbox keys for {widget_key}: {checkbox_keys}", file=sys.stderr)
     return checkbox_keys
 
 
@@ -1475,126 +1476,306 @@ def get_miseq_download_btn(exp):
         with miseq_col2:
             add_vertical_space(1)
             download_miseq = st.download_button(label='Download',
-                                                data=open(fp, 'rt'),
-                                                file_name=fp_name,
-                                                mime='text/csv',
-                                                key='dnld_samplesheet_'+str(fp),
-                                                type='secondary')
+                    data=open(fp, 'rt'), file_name=fp_name,
+                    mime='text/csv', key='dnld_samplesheet_'+str(fp),
+                    type='secondary')
 
 
-def _init_amplicon_table(exp):
+def show_results_table(hdr, amplicon_data, filter_dict, key):
     """
-    Open the amplicon_results.csv file and build a table
-    returns:
-        pandas DataFrame
-    Notes:
-        This is called once to initialise the amplicon table in session state
-        It removes the "other" item from otherName and otherCount columns
-    """
-    amplicon_data = []
-    plate_cols = set()
-    barcode_cols = set()
-    mod_cols = []
-    hdr = []
-    otherCount_col = None
-    otherName_col = None
-    with open(exp.get_exp_fn('amplicon_results.csv'), 'rt') as rfn:
-        for i, line in enumerate(rfn):
-            l = line.replace('"','')
-            cols = [c.strip() for c in l.split(',')]
-            if i == 0:
-                hdr = cols
-                # remove guards
-                for k,hc in enumerate(hdr):
-                    if 'plate' in hc.lower():
-                        plate_cols.add(k)
-                    elif 'barcode' in hc.lower():
-                        barcode_cols.add(k)
-                    elif 'othercount' in hc.lower():
-                        otherCount_col = k
-                    elif 'othername' in hc.lower():
-                        otherName_col = k
-                # add extra columns
-                hdr.append('filtProportion')
-                #hdr.append('report')
-                print(f'{otherCount_col=},{otherName_col=}', file=sys.stderr)
-            else:
-                mod_cols = []
-                other_index = None
-                tmp_count = None 
-                for k,c in enumerate(cols):
-                    if k in plate_cols:
-                        mod_cols.append(util.unguard_pbc(c, silent=True))
-                    elif k in barcode_cols:
-                        # could be any guard type
-                        mod_cols.append(util.unguard(c, silent=True))
-                    elif k == otherName_col: # find the "other" first and identify its index
-                        # remove the "other" count from the list
-                        new_names = []
-                        for j, item in enumerate(c.split(';')):
-                            if item.startswith('other'):
-                                other_index = j
-                                continue
-                            new_names.append(item)
-                        mod_cols.append(';'.join(new_names))
-                        new_counts = []
-                        if tmp_count is not None:
-                            for j, item in enumerate(tmp_count.split(';')):
-                                if j == other_index:
-                                    continue
-                                new_counts.append(item)
-                            mod_cols.append(';'.join(new_counts))
-                    elif k == otherCount_col:
-                        if other_index is None:
-                            tmp_count = c
-                        else:
-                            # remove the "other" count from the list
-                            new_counts = []
-                            for j, item in enumerate(c.split(';')):
-                                if j == other_index:
-                                    continue
-                                new_counts.append(item)
-                            mod_cols.append(';'.join(new_counts))
-                    else:
-                        mod_cols.append(c)
-                # extra columns for report
-                mod_cols.append(0.15)
-                #mod_cols.append('')
-                amplicon_data.append(mod_cols)
-    print(amplicon_data)
-    return hdr, amplicon_data
-
-
-def show_results_table(exp):
-    """
-    Open the amplicon_results.csv file and build an interactive table
+    build an interactive table for amplicon results
+    Args:
+        hdr (list): header for the amplicon data
+        amplicon_data (list of lists): the amplicon data
+        filter_dict (dict): dictionary of per-amplicon filter parameters
+        key (str): key (unique id) for the view component
     Returns:
         list of chosen variants
+    Notes:
+        We keep track of per-result filter parameters in a text file, which is handled by _init_amplicon_table()
     """
+    exp = st.session_state['experiment']
+    variant_info = []
     # hide these columns but keep them available for the user
     hidden_cols = ['sex','sampleNo','sampleName','strain','clientName','alleleSymbol',
                 'alleleKey','assayKey','assays','assayFamilies','primerPlate','primerWell',
                 'pcrPlate','pcrWell','index_plate','i7bc','i7well','i7name','i5bc','i5well',
                 'i5name','cleanCount','dnaPlate','dnaWell']
-    hdr, amplicon_data = _init_amplicon_table(exp)
-
-    #if 'amplicon_data' not in st.session_state:
-    #    hdr, amplicon_data = _init_amplicon_table(exp)
-    init_state('amplicon_data', (hdr, amplicon_data))
-    #hdr, amplicon_data = st.session_state['amplicon_data']
+    if not amplicon_data:
+        st.info('All amplicons reported')
+        return variant_info
+    #amplicon_data.insert(0,[' ' for col in amplicon_data[0]])
     amplicon_dataframe = pd.DataFrame(amplicon_data, columns=hdr)
-    amplicon_table = aggrid_interactive_table(amplicon_dataframe, key='amplicon_view_key',
-            hidden=hidden_cols, editable=['filtProportion'],filtering=True)
-
-    variant_info = []
+    amplicon_table = aggrid_interactive_table(amplicon_dataframe, key=key+'_key',
+            hidden=hidden_cols, editable=['filtProportion'])
+    
     if amplicon_table is not None and amplicon_table['selected_rows'] is not None:
-        print(f'{amplicon_table["selected_rows"]=}', flush=True, file=sys.stderr)
+        #print(f'{amplicon_table["selected_rows"]=}', flush=True, file=sys.stderr)
         if 'selected_rows' in amplicon_table and len(amplicon_table['selected_rows']) > 0:
-            for field in ['samplePlate','sampleWell','sampleBarcode','primer','otherCount','otherName','filtProportion']:
+            for field in ['samplePlate','sampleWell','sampleBarcode','primer','mergeCount','seqCount','otherCount','otherName','filtProportion']:
                 if field in amplicon_table['selected_rows']:
                     variant_info.append(amplicon_table['selected_rows'][field].iloc[0])
             #print(type(variant_info[-1]), file=sys.stderr)
-    return amplicon_table, variant_info
+        samplePlate = variant_info[0]
+        sampleWell = variant_info[1]
+        sampleBarcode = variant_info[2]
+        filtProportion = variant_info[-1]
+        new_id = f'{samplePlate}\t{sampleWell}\t{sampleBarcode}'
+        #print(f'variant_info={variant_info} {new_id=} {filtProportion=}', file=sys.stderr)
+        if new_id not in filter_dict or filter_dict[new_id] != filtProportion:
+            filter_dict[new_id] = filtProportion
+            filter_param_fn = exp.get_exp_fn('amplicon_table_filter_params.txt')
+            with open(filter_param_fn, 'wt') as f:
+                for id in filter_dict:
+                    sp, sw, sb = id.split('\t')
+                    f.write(f'{sp}\t{sw}\t{sb}\t{filter_dict[id]}\n')
+                if new_id not in filter_dict:
+                    f.write(f'{samplePlate}\t{sampleWell}\t{sampleBarcode}\t{filtProportion}\n')
+    return variant_info
+
+
+def make_summary_line_and_format(var_seqs, wt_seq):
+    """
+    Make a summary line for the chosen variant as well as a collection of formatting instructions
+    """
+    #print(f'make_summary_line_and_format {var_seqs=} {wt_seq=}', file=sys.stderr)
+    summary_line = []
+    formatting = []
+    seq_array = list(var_seqs.values())
+    for i in range(len(seq_array[0])):
+        char_set = set([seq_array[j][i] for j in range(len(seq_array)) if seq_array[j][i] == '-' or seq_array[j][i] != wt_seq[i]])
+        indel = False
+        if '-' in char_set:
+            indel = True
+            char_set.remove('-')
+        if len(char_set) == 2:
+            if 'A' and 'G' in char_set:
+                summary_line.append('R')
+            elif 'C' and 'T' in char_set:
+                summary_line.append('Y')
+            elif 'G' and 'C' in char_set:
+                summary_line.append('S')
+            elif 'A' and 'T' in char_set:
+                summary_line.append('W')
+            elif 'G' and 'T' in char_set:
+                summary_line.append('K')    
+            elif 'A' and 'C' in char_set:
+                summary_line.append('M')
+        elif len(char_set) == 3:
+            if 'C' in char_set and 'G' in char_set and 'T' in char_set:
+                summary_line.append('B')
+            elif 'A' in char_set and 'G' in char_set and 'T' in char_set:
+                summary_line.append('D')
+            elif 'A' in char_set and 'C' in char_set and 'T' in char_set:
+                summary_line.append('H')
+            elif 'A' in char_set and 'C' in char_set and 'G' in char_set:
+                summary_line.append('V')
+        elif len(char_set) == 4:
+            summary_line.append('N')
+        elif len(char_set) == 1:
+            summary_line.append(char_set.pop())
+        elif indel:
+            summary_line.append('-')
+        else:
+            summary_line.append('*')
+
+    return ''.join(summary_line), formatting
+
+
+# def show_unreported_amplicons(hdr, amplicon_data, filter_dict, reported_amps_fn, tmp_pdf_fn, amp_pdf_fn):
+#     """
+#     Show any amplicons that have not been reported in a results table
+#     Then show any amplicons that have been reported in their own table
+#     """
+#     exp = st.session_state['experiment']
+#     # keep track of amplicons already reported to avoid double-ups or missed results
+    
+#     if Path(reported_amps_fn).exists():
+#         with open(reported_amps_fn, 'rt') as f:
+#             amplicons_reported = set([line.strip() for line in f])
+#     else:
+#         amplicons_reported = set()  # plate\twell\tbarcode\tprimer
+    
+#     samplePlate_idx = hdr.index('samplePlate')
+#     sampleWell_idx = hdr.index('sampleWell')
+#     sampleBarcode_idx = hdr.index('sampleBarcode')
+#     primer_idx = hdr.index('primer')
+#     amplicons_unreported = set()
+#     for row in amplicon_data:
+#         amplicon_id = f'{row[samplePlate_idx]}\t{row[sampleWell_idx]}\t{row[sampleBarcode_idx]}\t{row[primer_idx]}'
+#         if amplicon_id not in amplicons_reported:
+#             amplicons_unreported.add(amplicon_id)
+
+#     st.write(f'Unreported amplicons: {len(amplicons_unreported)}')
+#     chosen_vars_unrep = show_results_table(hdr, amplicon_data, filter_dict, exclude_ids=amplicons_reported, key='unreported_amplicons')
+#     if chosen_vars_unrep:
+#         return chosen_vars_unrep
+#     else:
+#         return None
+        
+
+# def show_reported_amplicons(hdr, amplicon_data, filter_dict, reported_amps_fn):
+#     """
+#     Show any amplicons that have not been reported in a results table
+#     Then show any amplicons that have been reported in their own table
+#     """
+#     exp = st.session_state['experiment']
+#     # keep track of amplicons already reported to avoid double-ups or missed results
+#     samplePlate_idx = hdr.index('samplePlate')
+#     sampleWell_idx = hdr.index('sampleWell')
+#     sampleBarcode_idx = hdr.index('sampleBarcode')
+#     primer_idx = hdr.index('primer')
+#     if Path(reported_amps_fn).exists():
+#         with open(reported_amps_fn, 'rt') as f:
+#             amplicons_reported = set([line.strip() for line in f])
+#     else:
+#         amplicons_reported = set()  # plate\twell\tbarcode\tprimer
+#     amplicons_unreported = set()
+#     for row in amplicon_data:
+#         amplicon_id = f'{row[samplePlate_idx]}\t{row[sampleWell_idx]}\t{row[sampleBarcode_idx]}\t{row[primer_idx]}'
+#         if amplicon_id not in amplicons_reported:
+#             amplicons_unreported.add(amplicon_id)
+
+#     with st.expander(f'Show reported amplicons {len(amplicons_reported)}'):
+#         chosen_vars_rep = show_results_table(hdr, amplicon_data, filter_dict, exclude_ids=amplicons_unreported, key='reported_amplicons')
+
+
+def show_alignments(chosen_vars, tmp_fn, pdf_fn, key):
+    """
+    Show the alignments for the chosen variants
+    Run alignments against the reference sequence for the chosen primer, found in amplicon_targets.fa
+    Show whether the amplicon has been reported or not using amplicons_reported.csv
+    """
+    exp = st.session_state['experiment']
+    amplicons_reported = set()  # plate\twell\tbarcode\tprimer
+    if not chosen_vars:
+        st.empty()
+        return None
+    primer_chosen = chosen_vars[3]
+    try:
+        merged_counts = int(chosen_vars[4])
+    except ValueError:
+        merged_counts = 0
+    try:
+        wt_counts = int(chosen_vars[5])
+    except ValueError:
+        wt_counts = 0  
+    try:
+        min_prop = float(chosen_vars[-1])
+    except ValueError:
+        min_prop = 0.15
+    ref_seqs = {}
+    with open(exp.get_exp_fn('amplicon_targets.fa'), 'rt') as rfn:
+        for line in rfn:
+            if line.startswith('>'):
+                ref_name = line[1:].strip()
+                ref_seqs[ref_name] = ''
+            else:
+                ref_seqs[ref_name] += line.strip()
+    ref_chosen = None
+    if primer_chosen in ref_seqs:
+        ref_chosen = primer_chosen
+    else:
+        for r in ref_seqs:
+            if primer_chosen in r and 'wt' in r.lower():
+                ref_chosen = r
+                break
+    if ref_chosen:
+        #print(f'{chosen_vars=} {ref_chosen=}', file=sys.stderr)
+        vars_chosen = {cv.split('//')[1]:int(cc) for cv,cc in zip(chosen_vars[-2].split(';'),chosen_vars[-3].split(';')) if ref_chosen in cv and '//' in cv and int(cc)>=(merged_counts*min_prop)}
+        id = f'{chosen_vars[0]}\t{chosen_vars[1]}\t{chosen_vars[2]}\t{chosen_vars[3]}'
+        if vars_chosen:
+            var_list = list(vars_chosen.keys())
+            if len(var_list) == 0:
+                st.warning('No variant sequences found for this amplicon')
+                return
+            #print(f'{ref_chosen=} {ref_seqs[ref_chosen]=}, {var_list=}', file=sys.stderr)
+            aligned = run_msa((ref_chosen,ref_seqs[ref_chosen]),var_list)
+            var_df = pd.DataFrame({
+                'Report': [True for name in aligned.names],
+                'Variant': [name for name in aligned.names],
+                'Counts': [vars_chosen[name] if name != ref_chosen else wt_counts for name in aligned.names],
+                'Sequence': [str(aligned.get_gapped_seq(name)) for name in aligned.names]
+            })
+
+            var_de = st.data_editor(var_df, key='alignment_editor_'+key, hide_index=True, 
+                column_config={
+                    'Report': st.column_config.CheckboxColumn('Report', width=80,
+                            help='Check to include this variant in the PDF report', default=True),
+                    'Variant': st.column_config.TextColumn('Variant', width=250,
+                            help='Name of the variant sequence'),
+                    'Counts': st.column_config.NumberColumn('Counts', width=80,
+                            help='Number of reads supporting this variant'),
+                    'Sequence': st.column_config.TextColumn('Aligned sequence', width=1000,
+                            help='The aligned sequence of this variant')
+                }, 
+                disabled=['Variant','Counts','Sequence'])
+            
+            # aligned_names_seqs = {seq_id:str(aligned.get_gapped_seq(seq_id)) for seq_id in aligned.names}
+            # summary_line, formatting = make_summary_line_and_format(aligned_names_seqs, str(aligned_names_seqs[ref_chosen]))
+            # aligned_names_seqs['consensus'] = summary_line
+
+            # tick_col, name_col, count_col, seq_col = st.columns([2,6,3,20])
+            # checkbox_keys = []
+            # with tick_col:
+            #     st.write('Select:')
+            #     for seq_id in aligned_names_seqs.keys():
+            #         cb_name = f'{str(seq_id)}_seq_checkbox_{key}'
+            #         val = tick_col.checkbox('include me', label_visibility='collapsed', key=cb_name, value=True)
+            #         checkbox_keys.append(cb_name)
+            # with name_col:
+            #     st.write('Variant:')
+            #     ids = []
+            #     for seq_id in aligned_names_seqs.keys():
+            #         st.text(f'{seq_id}')
+            # with count_col:
+            #     st.write('Counts:')
+            #     for seq_id in aligned_names_seqs.keys():
+            #         if seq_id != ref_chosen and seq_id != 'consensus':
+            #             st.text(f'{vars_chosen[seq_id]}')
+            #         elif seq_id == ref_chosen:
+            #             st.text(f'{wt_counts}')
+            # with seq_col:
+            #     st.write('Alignment:')
+            #     for seq_id in aligned_names_seqs.keys():
+            #         st.text(f'{aligned_names_seqs[seq_id]}')
+
+            prefix = st.text_input(label='Enter any descriptive notes you wish to prefix to this alignment')
+            make_report_entry = st.button('Make report entry', key='build_pdfs_'+chosen_vars[0]+'_'+chosen_vars[1]+'_'+chosen_vars[2])
+            if make_report_entry:
+                if var_de is not None:
+                    aligned_stuff = [(n,f'{s}') for n,s,c in zip(var_de['Variant'], var_de['Sequence'], var_de['Report']) if c]
+                #valid_keys = [cb.split('_seq_checkbox')[0] for cb in checkbox_keys if cb in st.session_state and st.session_state[cb]]
+                #if valid_keys:
+                    #if not prefix:
+                    #    prefix = ''
+                    #aligned_stuff = {n:f'{s}' for n,s in aligned_names_seqs.items() if n in valid_keys}
+                    #aligned_stuff = [(n,f'{s}') for n,s in aligned_names_seqs.items() if n in valid_keys]
+                    if aligned_stuff:
+                        formatting = {'font':'Courier New', 'fontsize':10, 'lineheight':1.2, 'colour_changes':True}
+                        formatting = [(k,v) for k,v in formatting.items()]
+                        page = (prefix, tuple(aligned_stuff), tuple(formatting))
+                        if Path(tmp_fn).exists():
+                            with open(tmp_fn, 'rt') as f:
+                                pages = jsonpickle.decode(f.read(), keys=True, handle_readonly=True)
+                                #print(type(pages), pages)
+                                pages = set(pages)
+                                pages.add(page)
+                        else:
+                            pages = set()
+                            pages.add(page)
+                            
+                        json_pages = jsonpickle.encode(list(pages), indent=4, keys=True, warn=True, handle_readonly=True)
+                        with open(tmp_fn, 'wt') as fout:
+                            print(json_pages, file=fout)
+                        
+                        generate_pdf(pdf_fn, pages)
+                        st.success(f'Report entry made in {pdf_fn}')
+                        st.success(f'Adding {id} to reported amplicons list')
+                        return id
+    else:
+        st.empty()
+    return None
 
 
 def build_paired_sequence_views(ref_seq, var_anno, display_width=120, colour_all=False, colour_changes=True):
@@ -1609,7 +1790,7 @@ def build_paired_sequence_views(ref_seq, var_anno, display_width=120, colour_all
     Returns:
         outputs (list of tuples): each tuple contains four strings:
             ref_view, link_view, var_view, summary_view (str): the views for the reference sequences,
-            the link between the reference and variable sequences, 
+            the link between the reference and variable sequences,
             the variable sequence, and a summary of the variable sequence
     Notes:
         This function builds on the variant sequence generated in ngsmatch.get_variant_seq()
@@ -1619,7 +1800,7 @@ def build_paired_sequence_views(ref_seq, var_anno, display_width=120, colour_all
         return [('', '', '', '')]
 
     var_seq, mod_seq = build_aligned_pair(var_anno, ref_seq)
-    
+
     # link view shows direct matches between sequences
     link_view = ['|' if c1 == c2 else ' ' for c1, c2 in zip(mod_seq, var_seq)]
     summary_view = []  # summary of differences
@@ -1645,53 +1826,6 @@ def build_paired_sequence_views(ref_seq, var_anno, display_width=120, colour_all
                 summary_chrs[i:i+display_width]))
     return outputs
 
-
-def show_sequence_viewer(ref_id, ref_seq, var_annos_counts, display_width=120, colour_all=False, colour_changes=True):
-    """
-    Show the views for the reference sequences, sequence, variable and summary
-    Args:
-        ref_id (str): the identifier for the reference sequence
-        ref_seq (str): reference sequence
-        var_anno_group (list:[str,count]): a list of variant sequence annotations and counts
-        display_width (int): [120] width of the display in characters
-        colour_all (bool): False, whether to colour every position in the display
-        colour_changes (bool): True, whether to colour the changes of variable sites only
-    Returns:
-        ref_view, link_view, var_view, summary_view (str): the views for the reference sequences,
-        the link between the reference and variable sequences, the variable sequence and a summary of the variable sequence
-    """
-    alignment_views_counts = []
-    # for var_anno, count in var_annos_counts:
-    #     alignment_view = build_sequence_views(ref_seq, var_anno, display_width,
-    #         colour_all=colour_all, colour_changes=colour_changes)
-    #     ref_view, link_view, var_view, summary_view = alignment_view
-    #     alignment_views_counts.append((refview,count))
-    # var_string_parts = []
-    # for avc in alignment_views_counts:
-
-    # st.html(f'<p><b>Reference (Ref)</b>&nbsp;&nbsp;&nbsp;&nbsp;{ref_id}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Variant (V1)</b>&nbsp;&nbsp;&nbsp;&nbsp;{var_anno}</p>')
-    # title_col, display_col = st.columns([1,12])
-    # for i,view_group in enumerate(alignment_views):
-    #     ref_view, link_view, var_view, summary_view = view_group
-    #     st.write(f'ref len:{len(ref_view)} var len:{len(var_view)} link len:{len(link_view)} summary len:{len(summary_view)}')
-    #     offset = i * display_width
-    #     if colour_changes:
-    #         summary_view.replace('+', '<div style="color:violet;">+</div>')
-    #         #summary_view.replace(c, '<div style="color:black;">-</div>')
-    #         summary_view.replace('A', f'<div style="color:green;">A</div>')
-    #         summary_view.replace('C', f'<div style="color:blue;">C</div>')
-    #         summary_view.replace('G', f'<div style="color:orange;">G</div>')
-    #         summary_view.replace('T', f'<div style="color:red;">T</div>')
-    #     tbl_str = f'<table style="width:100%;">'+\
-    #             f'<tr><td style="width:10%;"><div style="font-family:monospace; font-weight: bold;">Ref</div></td>'+\
-    #             f'<td style="width:90%;"><div style="font-family:monospace; font-weight: light;">{ref_view}</div></td></tr>'+\
-    #             f'<tr><td style="width:10%;"><div style="font-family:monospace; font-weight: bold;">Var</div></td>'+\
-    #             f'<td style="width:90%;"><div style="font-family:monospace; font-weight: light;">{var_view}</div></td></tr>' +\
-    #             f'<tr><td style="width:10%;"><div style="font-family:monospace; font-weight: light;">'+\
-    #             f'{offset+1} - {offset + display_width}</div></td>'+\
-    #             f'<td style="width:90%;"><div style="font-family:monospace; font-weight: light;">{summary_view}</div></td></tr>'+\
-    #             f'</table>'
-    #     st.markdown(tbl_str, unsafe_allow_html=True)
 
 
 def add_css():

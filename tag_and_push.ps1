@@ -1,17 +1,22 @@
-$VER = "v2.01.000"
+$VER = "v2.02.000"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Incomplete: amplicon reporting, stable but unfinished
-* New: added amplicon matching - exact matching and variable region matching
-* New: multiple reference files are now supported, and users can select which ones they want to use for given samples
-* New: updates older reference sequences format to new format exp.reference_sequences[(source_fn, purpose)]=[(id, seq), ...]
-* New: amplicon reports in rich text (RTF) using rich
-* New: multiple sequence alignment in variant viewer using cogent3
-* Changed: info viewer is now enabled by default
-* Changed: read counts now include comma separator for thousands
-* Removed: miss-cache user options
-* Removed: miss-cache
+* Fixed: retained parameter in match calling function caused crashed subprocesses
+* Fixed: amplicon matching was looking for primers
+* Fixed: debugging parameters weren't guarded against being absent
+* Fixed: amplicon inexact matching was using incorrectly named variable
+* Fixed: mixed types in view columns causing pyarrow error
+* Fixed: genotyping error messages for unknown sequences
+* Fixed: borked call to generate primer information
+* New: unreported/reported amplicon lists
+* New: tables being migrated to new Streamlit 1.49.0 style tables
+* Changed: identity limits now restricted to 0.0-1.0 with warnings
+* Changed: Streamlit updated to 1.49.1
+* Changed: streamlit.aggrid updated 1.1.8
+* Changed: Now reporting amplicons in PDF rather than rich text with fpdf2 v2.8.4
+* Changed: Report page removes expanding sections for clarity
+* TODO: coloured text in PDF report
 "@
 
 Move-Item -Path "changelog.txt" -Destination "changelog_old.txt"

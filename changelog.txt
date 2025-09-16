@@ -1,3 +1,21 @@
+v2.02.000
+Date: 16/09/2025 2:03:15 PM
+* Fixed: retained parameter in match calling function caused crashed subprocesses
+* Fixed: amplicon matching was looking for primers
+* Fixed: debugging parameters weren't guarded against being absent
+* Fixed: amplicon inexact matching was using incorrectly named variable
+* Fixed: mixed types in view columns causing pyarrow error
+* Fixed: genotyping error messages for unknown sequences
+* Fixed: borked call to generate primer information
+* New: unreported/reported amplicon lists
+* New: tables being migrated to new Streamlit 1.49.0 style tables
+* Changed: identity limits now restricted to 0.0-1.0 with warnings
+* Changed: Streamlit updated to 1.49.1
+* Changed: streamlit.aggrid updated 1.1.8
+* Changed: Now reporting amplicons in PDF rather than rich text with fpdf2 v2.8.4
+* Changed: Report page removes expanding sections for clarity
+* TODO: coloured text in PDF report
+
 v2.01.000
 Date: 28/08/2025 9:25:35 AM
 * Incomplete: amplicon reporting, stable but unfinished

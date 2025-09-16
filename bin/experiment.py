@@ -486,8 +486,8 @@ class Experiment():
             for j in range(4-pid_count):
                 plate_set_details.append('')
 
-            plate_set_details.append(str(custom_wells))
-            plate_set_details.append(str(rodentity_wells))
+            plate_set_details.append(custom_wells)
+            plate_set_details.append(rodentity_wells)
             # print(f'{plate_set_details=}', file=sys.stderr)
             plate_set_summary.append(plate_set_details)
 
@@ -511,7 +511,7 @@ class Experiment():
                             total_well_counts['r'] += 1   
                     
                         total_unique_samples.add(barcode)
-            plate_set_summary.append([dpid,'','','','',str(custom_wells),str(rodentity_wells)])
+            plate_set_summary.append([dpid,'','','','',custom_wells,rodentity_wells])
 
         if len(plate_set_summary) > 0:
             plate_set_summary.append(['Total','','','','',total_well_counts['c']+total_well_counts['a'], total_well_counts['r']])
@@ -1027,6 +1027,131 @@ class Experiment():
         nimbus_input_filepaths, echo_input_paths, xbc = generate.match_nimbus_to_echo_files(self)
         return nimbus_input_filepaths, echo_input_paths, xbc
 
+
+    def gather_amplicon_results(self, reported_amps_fn):
+        """
+        Open the amplicon_results.csv file and build a table, also retrieve any filter parameters
+        returns:
+            headers, list of lists (rows), dict of filter parameters {id:filtProportion}
+        Notes:
+            This is called once to initialise the amplicon table in session state
+            It removes the "other" item from otherName and otherCount columns
+        """
+        amplicons_reported = set()
+        if Path(reported_amps_fn).exists():
+            with open(reported_amps_fn, 'rt') as f:
+                for line in f:
+                    amplicons_reported.add(line.strip())
+        amplicon_data = []
+        amplicon_data_reported = []
+        amplicon_data_unreported = []
+        plate_cols = set()
+        barcode_cols = set()
+        mod_cols = []
+        hdr = []
+        # we need to find these columns, modify them and preserve order
+        otherCount_col = None
+        otherName_col = None
+        
+        # grab these column numbers for rapid identification
+        samplePlate_col = None
+        sampleWell_col = None
+        sampleBarcode_col = None
+        primer_col = None
+        with open(self.get_exp_fn('amplicon_results.csv'), 'rt') as rfn:
+            for i, line in enumerate(rfn):
+                new_names = []
+                new_counts = []
+                l = line.replace('"','')
+                cols = [c.strip() for c in l.split(',')]
+                if i == 0:
+                    hdr = cols
+                    # remove guards
+                    for k,hc in enumerate(hdr):
+                        if hc == 'samplePlate':
+                            samplePlate_col = k
+                        elif hc == 'sampleWell':
+                            sampleWell_col = k
+                        elif hc == 'sampleBarcode':
+                            sampleBarcode_col = k
+                        elif hc == 'primer':
+                            primer_col = k
+
+                        if 'plate' in hc.lower():
+                            plate_cols.add(k)
+                        elif 'barcode' in hc.lower():
+                            barcode_cols.add(k)
+                        elif 'othercount' in hc.lower():
+                            otherCount_col = k
+                        elif 'othername' in hc.lower():
+                            otherName_col = k
+                    # add extra columns
+                    hdr.append('filtProportion')
+                else:
+                    mod_cols = []
+                    other_index = None
+                    tmp_count = None
+                    for k,c in enumerate(cols):
+                        if k in plate_cols:
+                            mod_cols.append(util.unguard_pbc(c, silent=True))
+                        elif k in barcode_cols:
+                            # could be any guard type
+                            mod_cols.append(util.unguard(c, silent=True))
+                        elif k == otherName_col: # find the "other" first and identify its index
+                            # remove the "other" count from the list
+                            for j, item in enumerate(c.split(';')):
+                                if item.startswith('other'):
+                                    other_index = j
+                                    continue
+                                new_names.append(item)
+                            if tmp_count is not None:
+                                for j, item in enumerate(tmp_count.split(';')):
+                                    if j == other_index:
+                                        continue
+                                    new_counts.append(item)
+                                mod_cols.append(';'.join(new_counts))
+                                mod_cols.append(';'.join(new_names))
+                        elif k == otherCount_col:
+                            if other_index is None:
+                                tmp_count = c
+                            else:
+                                # remove the "other" count from the list
+                                for j, item in enumerate(c.split(';')):
+                                    if j == other_index:
+                                        continue
+                                    new_counts.append(item)
+                                mod_cols.append(';'.join(new_counts))
+                                mod_cols.append(';'.join(new_names))
+                        else:
+                            mod_cols.append(c)
+                    # extra columns for report
+                    mod_cols.append(0.15)
+                    amplicon_id = f'{mod_cols[samplePlate_col]}\t{mod_cols[sampleWell_col]}\t{mod_cols[sampleBarcode_col]}\t{mod_cols[primer_col]}'
+                    if amplicon_id in amplicons_reported:
+                        amplicon_data_reported.append(mod_cols)
+                    else:
+                        amplicon_data_unreported.append(mod_cols)
+                    amplicon_data.append(mod_cols)
+        # read any existing filter parameters
+        filter_param_fn = self.get_exp_fn('amplicon_table_filter_params.txt')
+        id_filt = {}
+        if os.path.exists(filter_param_fn):
+            with open(filter_param_fn, 'rt') as f:
+                for line in f:
+                    # should be samplePlate\tsampleWell\tsampleBarcode\tfiltProportion
+                    cols = line.strip().split('\t')
+                    if len(cols) == 4:
+                        id = f'{cols[0]}\t{cols[1]}\t{cols[2]}'
+                        try:
+                            id_filt[id] = float(cols[3])
+                        except ValueError:
+                            id_filt[id] = 0.15
+            for i,ad in enumerate(amplicon_data):
+                id = f'{ad[samplePlate_col]}\t{ad[sampleWell_col]}\t{ad[sampleBarcode_col]}'
+                if id in id_filt:
+                    amplicon_data[i][-1] = id_filt[id]
+        return hdr, amplicon_data, id_filt, amplicon_data_reported, amplicon_data_unreported
+
     
     def get_amplicon_pids(self, caller_id=None):
         """ return a list of user supplied amplicon plate ids """
@@ -1538,16 +1663,19 @@ class Experiment():
         return miseq_fps  
 
 
-    def count_reference_sequences(self, reference_type, caller_id=None):
+    def count_reference_sequences(self, reference_type, silent=False, caller_id=None):
         """
         Count the number of reference sequences of a given type
         Args:
             reference_type: 'allele', 'primer', 'index'
+            silent: if True, do not log a message if no reference sequences of the given type are found
+            caller_id: calling function for logging purposes
         Returns:
             int: number of reference sequences of the given type
         """
         if reference_type not in self.reference_sequences:
-            m(f'No reference sequences of type {reference_type} found', level='critical', caller_id=caller_id)
+            if not silent:
+                m(f'No reference sequences of type {reference_type} found', level='critical', caller_id=caller_id)
             return 0
         return sum((len(self.reference_sequences[(fn,ref_purp)]) for fn,ref_purp in \
                 self.reference_sequences if ref_purp == reference_type))

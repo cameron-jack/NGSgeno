@@ -24,6 +24,7 @@ import queue
 import threading
 #import concurrent.futures
 import multiprocessing as mp
+import warnings
 
 import collections
 from collections import Counter, OrderedDict
@@ -37,7 +38,8 @@ from math import ceil, floor
 import Bio.SeqIO
 import Bio.Align as Align
 
-from cogent3 import get_app, make_unaligned_seqs
+from cogent3 import get_app, make_unaligned_seqs, make_tree
+from cogent3.align.progressive import tree_align
 
 try:
     from bin.util import unguard, padwell
@@ -1574,16 +1576,15 @@ def run_msa(ref_id_seq, var_list):
     returns:
         aligned (cogent3 alignment object)
     """
-    #print(f'{ref_id_seq=} {var_list=}', flush=True)
     # need to reconstruct the full sequences from the annotations
     reconstructed_seqs = {ref_id_seq[0]:ref_id_seq[1].replace('-','')}  # start with the reference sequence
     for var_anno in var_list:
         reconstructed_seqs[var_anno] = reconstruct_sequence(var_anno, ref_id_seq[1]).replace('-','')  # remove gaps for alignment
-    #print(f'{reconstructed_seqs=}', flush=True)
+    no_tree = make_tree(tip_names=list(reconstructed_seqs.keys()), underscore_unmunge=True)
     unaligned_seqs = make_unaligned_seqs(reconstructed_seqs, moltype='dna')
-    nt_aligner = get_app("progressive_align", "nucleotide")
-    aligned = nt_aligner(unaligned_seqs)
-    return aligned
+    with warnings.catch_warnings(action="ignore"):
+        aln, tree = tree_align("HKY85", unaligned_seqs, tree=no_tree, show_progress=False)
+    return aln
 
 
 class PrepManager(object):

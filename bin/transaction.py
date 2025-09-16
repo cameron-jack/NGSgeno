@@ -30,8 +30,8 @@ to replace an existing file or plate that is prefixed as "pending". These entrie
 
 def transact(id, is_plate=False):
     """
-    take a file path or plate_id e.g. \example\myfile.csv and convert to 
-    pending name eg \example\pending_myfile.csv
+    take a file path or plate_id e.g. /example/myfile.csv and convert to 
+    pending name eg /example/pending_myfile.csv
     """
     #print("convert id to pending id", file=sys.stderr)
     #print(f"{id=}", file=sys.stderr)
@@ -50,8 +50,8 @@ def transact(id, is_plate=False):
 
 def untransact(pending_id, is_plate=False):
     """
-    take a pending path \example\pending_myfile.csv and convert to final name
-    eg \example\myfile.csv
+    take a pending path /example/pending_myfile.csv and convert to final name
+    eg /example/myfile.csv
     """
     #print(f"{id=}", file=sys.stderr)
     if is_plate:
@@ -121,8 +121,8 @@ def add_pending_transactions(exp, transactions):
 
 def convert_pending_to_final(exp, pending_name):
     """
-    take a pending path \example\pending_myfile.csv and convert to final name
-    eg \example\myfile.csv
+    take a pending path /example/pending_myfile.csv and convert to final name
+    eg /example/myfile.csv
     """
     #print(f"{pending_name=}", file=sys.stderr)
     p = Path(pending_name)
@@ -135,8 +135,8 @@ def convert_pending_to_final(exp, pending_name):
 
 def convert_final_to_pending(exp, final_name):
     """
-    take a final path \example\myfile.csv and convert to pending name
-    eg \example\pending_myfile.csv
+    take a final path /example/myfile.csv and convert to pending name
+    eg /example/pending_myfile.csv
     """
     #print("convert final to pending", file=sys.stderr)
     #print(f"{final_name=}", file=sys.stderr)

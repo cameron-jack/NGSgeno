@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+__version__ = "2.02.000"
 
 """
 @created: 1 May 2022
@@ -1023,6 +1024,10 @@ def main():
                                     st.error(f'{fn} appears to be in use. Please close this file before continuing')
                             
                         with st.form('allele_calling_form', clear_on_submit=True):
+                            all_fns = [fp for fp in exp.uploaded_files.keys() if fp not in {'_upload_queue','_upload_pending'}]
+                            ref_fns = [fp for fp in all_fns if exp.uploaded_files[fp]['purpose'] \
+                                    in ['rodentity_reference','custom_reference']]
+                            ref = st.selectbox('Select references to match against', options=ref_fns)
                             #num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
                             cpus_avail = os.cpu_count() -1
                             num_cpus = st.number_input(\
@@ -1047,17 +1052,18 @@ def main():
                         if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
                             st.info('Analysis in progress')
                         elif do_matching:
-                            success = generate.generate_targets(exp)
+                            success = generate.generate_targets(exp, ref, caller_id=caller_id)
                             if not success:
                                 m('failed to save reference sequences to target file', level='critical')
                                 sleep(0.5)
-                            success = generate.generate_primer_assayfams(exp)
+                            success = generate.generate_primer_assayfams(exp, caller_id=caller_id)
                             if not success:
                                 m('failed to save primers and assay families to file', level='critical')
                                 sleep(0.5)
                             else:
                                 matching_prog = os.path.join('bin','ngsmatch.py')
-                                cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} '+\
+                                cmd_str = f'{sys.executable} {matching_prog} ' +\
+                                        f'--ncpus {num_cpus} --rundir {rundir} '+\
                                         f'--margin {margin} --identity {identity} --mincov {mincov} '+\
                                         f'--minprop {minprop}'
                                 if inexact_mode:
@@ -1145,8 +1151,8 @@ def main():
                             m('failed to save reference sequences to target file', level='critical')
                             sleep(0.5)
                         else:
-                            matching_prog = os.path.join('bin','ngsmatch.py')
-                            cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} '+\
+                            matching_prog = Path('bin/ngsmatch.py')
+                            cmd_str = f'{sys.executable} {matching_prog} --ncpus {num_cpus} --rundir {rundir} '+\
                                     f'--mincov {mincov} --minprop {minprop}'
                             if exhaustive_mode:
                                 cmd_str += ' --exhaustive'
@@ -1157,8 +1163,9 @@ def main():
                                     cmd_str += f' --amplicon {",".join(selected_pids["amplicon"])}'
                                 cmd_str += f' --targets amplicon_targets.fa'
                                 m(f'{cmd_str}', level='info')
-                                subprocess.Popen(cmd_str.split(' '))
                                 st.write(f'Calling {cmd_str}')
+                                cp = subprocess.run(cmd_str.split(' '))
+                                #print(f'{cp.stdout=} {cp.stderr=}', flush=True)
                                 sleep(1.0)
 
                     if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
@@ -1209,10 +1216,13 @@ def main():
                                         other_results.append(cols)
                         #m(f'{len(custom_results)=} {len(rodentity_results)=} {len(other_results)=}', 
                         #        level='display', dest=('css',))
-                        rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
-                        with rodentity_view:
-                            dfr = pd.DataFrame(rodentity_results, columns=hdr)
-                            dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
+                        st.write(f'Rodentity results: {len(rodentity_results)}')
+                        dfr = pd.DataFrame(rodentity_results, columns=hdr)
+                        dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
+                        #rodentity_view = st.expander('Rodentity results: '+str(len(rodentity_results)))
+                        #with rodentity_view:
+                        #    dfr = pd.DataFrame(rodentity_results, columns=hdr)
+                        #    dc.aggrid_interactive_table(dfr, key='rodentity_view_key')
 
                         custom_view = st.expander('Custom results: '+str(len(custom_results)))
                         with custom_view:
@@ -1226,55 +1236,73 @@ def main():
                     if not Path(exp.get_exp_fn('amplicon_results.csv')).exists():
                         m('**No amplicon calling results available**', level='display', dest=('mkdn'))
                     else:
-                        amplicon_table, chosen_vars = dc.show_results_table(exp)
-                        if chosen_vars:
-                            primer_chosen = chosen_vars[3]
-                            wt_counts = int(chosen_vars[6])
+                        if not Path(exp.get_exp_fn('amplicon_targets.fa')).exists():
+                            m('**No amplicon targets available**', level='display', dest=('mkdn'))
+                        else:
+                            perform_reset = False
+                            amp_pdf_fn = exp.get_exp_fn('amplicon_alignments.pdf')
+                            tmp_pdf_fn = exp.get_exp_fn('amplicon_alignments.json')
+                            reported_amps_fn = exp.get_exp_fn('amplicons_reported.txt')
+                            hdr, amplicon_data, filter_dict, amplicon_data_reported, amplicon_data_unreported = exp.gather_amplicon_results(reported_amps_fn)
+                            unreported_container = st.container()
+                            alignment_container = st.container()
+                            reported_container = st.container()
                             
-                            #for index,row in amplicon_table.iterrows():
-                            #    print(row, file=sys.stderr)
-                            print(amplicon_table, file=sys.stderr)
-                            print(chosen_vars, file=sys.stderr)
-                            ref_seqs = {}
-                            with open(exp.get_exp_fn('amplicon_targets.fa'), 'rt') as rfn:
-                                for line in rfn:
-                                    if line.startswith('>'):
-                                        ref_name = line[1:].strip()
-                                        ref_seqs[ref_name] = ''
-                                    else:
-                                        ref_seqs[ref_name] += line.strip()
-                            ref_chosen = None
-                            if primer_chosen in ref_seqs:
-                                ref_chosen = primer_chosen
-                            else:
-                                for r in ref_seqs:
-                                    if primer_chosen in r and 'wt' in r.lower():
-                                        ref_chosen = r
-                                        break   
-                            if ref_chosen:
-                                vars_chosen = {cv.split('//')[1]:int(cc) for cv,cc in zip(chosen_vars[-2].split(';'),chosen_vars[-3].split(';')) if ref_chosen in cv and '//' in cv}
-                                if vars_chosen:
-                                    var_list = list(vars_chosen.keys())
-                                    aligned = match.run_msa((ref_chosen,ref_seqs[ref_chosen]),var_list)
-                                    align_cols = st.columns([2,7])
-                                    with align_cols[0]:
-                                        st.write('Variant:')
-                                        ids = []
-                                        for seq_id in aligned.names:
-                                            if seq_id != ref_chosen:
-                                                ids.append(f'{seq_id} ({vars_chosen[seq_id]})')
-                                            elif seq_id == ref_chosen:
-                                                ids.append(f'{seq_id} ({wt_counts})')
-                                        #ids = [f'{seq_id}' for seq_id in aligned.names]
-                                        st.code('\n'.join(ids))
-                                    with align_cols[1]:
-                                        st.write('Alignment:')
-                                        seqs = [f'{aligned.get_gapped_seq(seq_id)}' for seq_id in aligned.names]
-                                        st.code('\n'.join(seqs))
-                                
-                        
-
-                                    
+                            with unreported_container:
+                                if amplicon_data_unreported:
+                                    st.write('Unreported amplicons:')
+                                    st.session_state['chosen_vars'] = dc.show_results_table(hdr, amplicon_data_unreported, filter_dict, 'unreported_amps')
+                            with reported_container:
+                                if amplicon_data_reported:
+                                    st.write('Reported amplicons:')
+                                    dc.show_results_table(hdr, amplicon_data_reported, filter_dict, 'reported_amps')
+                                    wipe_report = st.button('Reset amplicon report', key='reset_amplicon_report_button')
+                                    if wipe_report:
+                                        success = True
+                                        if Path(reported_amps_fn).exists():
+                                            try:
+                                                Path(reported_amps_fn).unlink()
+                                            except Exception as exc:
+                                                st.failure(f'Could not delete {reported_amps_fn}, perhaps you have it open? {exc}')
+                                                success = False
+                                        if Path(tmp_pdf_fn).exists():
+                                            try:
+                                                Path(tmp_pdf_fn).unlink()
+                                            except Exception as exc:
+                                                st.failure(f'Coould not delete {tmp_pdf_fn}, perhaps you have it open {exc}')
+                                                success = False
+                                        if Path(amp_pdf_fn).exists():
+                                            try:
+                                                Path(amp_pdf_fn).unlink()
+                                            except Exception as exc:
+                                                st.failure(f'Could not delete {amp_pdf_fn}, perhaps you have it open? {exc}')
+                                                success = False
+                                        if success:
+                                            st.success('Amplicon report reset to empty')
+                                            perform_reset = True   
+                            with alignment_container:
+                                if 'chosen_vars' in st.session_state and st.session_state['chosen_vars']:
+                                    st.session_state['chosen_id'] = dc.show_alignments(st.session_state['chosen_vars'], tmp_pdf_fn, amp_pdf_fn,'alignment_viewer')
+                                else:
+                                    st.session_state['chosen_id'] = dc.show_alignments(None, tmp_pdf_fn, amp_pdf_fn,'alignment_viewer')
+                                if 'chosen_id' in st.session_state and st.session_state['chosen_id']:
+                                    amplicons_reported = set()
+                                    if Path(reported_amps_fn).exists():
+                                        with open(reported_amps_fn, 'rt') as f:
+                                            for line in f:
+                                                amplicons_reported.add(line.strip())
+                                    amplicons_reported.add(st.session_state['chosen_id'])
+                                    with open(reported_amps_fn, 'wt') as fout:
+                                        for ar in amplicons_reported:
+                                            print(ar, file=fout)
+                                    perform_reset = True
+                                else:
+                                    st.empty()
+                            if perform_reset:
+                                st.session_state['chosen_vars'] = None
+                                st.session_state['chosen_id'] = None
+                                sleep(0.4)
+                                st.rerun()
 
             # ** Info viewer **
             upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Files', 

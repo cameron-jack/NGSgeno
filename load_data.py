@@ -699,7 +699,7 @@ def custom_volumes(key):
     
     custom_vol_editor = st.data_editor(transfer_vol_df.T,
                                                     height=80,
-                                                    use_container_width=True, 
+                                                    width="stretch", 
                                                     key="volume_df", 
                                                     disabled=not allow_edit)
     if allow_edit:

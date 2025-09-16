@@ -22,10 +22,10 @@ Note: logging module was removed because it is incompatible with the multiproces
 
 #from ast import Str
 from timeit import default_timer as timer
-from ast import Bytes, Str
+#from ast import Bytes, Str
 import os
 from pathlib import Path
-from pickletools import bytes1
+#from pickletools import bytes1
 import sys
 import argparse
 import datetime
@@ -363,13 +363,14 @@ def myopen(fn):
     return open(fn, errors="ignore")
 
 
-def exact_match(seq, refseqs, margin=0.9):
+def exact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, margin=0.9):
     """
     Exact matching a merged read with a set of reference target sequences
     
     args:
     seq: the read sequence to match
     refseqs: list of reference target sequences
+    rundir, debug, lock_d: used for logging debug messages (optional)
     margin: seq and refseq must be within this factor of each other in length
 
     returns:
@@ -396,11 +397,19 @@ def exact_match(seq, refseqs, margin=0.9):
     2. for each unmasked reference region, match this to the sequence
     3. if all unmasked regions match, then we have a match
     """
-    for rs in refseqs:
+    if rundir and debug and lock_d:
+        msg = f"debug: exact_match() {seq=} {refseqs=}"
+        wdb(msg, rundir, debug, lock_d)
+    for refseq in refseqs:
+        if rundir and debug and lock_d:
+            msg = f'debug: exact_match() Trying to match {seq=} to {refseq=}'
+            wdb(msg, rundir, debug, lock_d)
+        
         found_match = False
         # compare length of sequenced region to reference seq
-        rs = rs.replace('[','(').replace(']',')')
+        rs = refseq.replace('[','(').replace(']',')')
         if '(' not in rs:
+            msg = f"debug: exact_match() unmasked {rs=}"
             if len(seq) > len(rs):
                 if len(seq)*margin > len(rs):
                     continue  # skip matching when length is too mismatched
@@ -411,13 +420,22 @@ def exact_match(seq, refseqs, margin=0.9):
         if rs.count('(') == 0 and rs.count(')') == 0:
             if len(seq) < len(rs):
                 if seq in rs:
+                    if rundir and debug and lock_d:
+                        msg = f"debug: exact_match() no masking {seq=} found in {rs=}"
+                        wdb(msg, rundir, debug, lock_d) 
                     return True, rs
             else:
                 if rs in seq:
+                    if rundir and debug and lock_d:
+                        msg = f"debug: exact_match() no masking {rs=} found in {seq=}"
+                        wdb(msg, rundir, debug, lock_d)
                     return True, rs
         # two bracket type - DEPRECATED
         elif rs.count('(') == 1 and rs.count('[') == 1 and \
                 rs.count(')') == 1 and rs.count(']') == 1:
+            if rundir and debug and lock_d:
+                msg = f"debug: exact_match() two types of masking (deprecated) {rs=}"
+                wdb(msg, rundir, debug, lock_d)
             left_flank = rs.split('(')[0].replace('[','').replace('[','')
             right_flank = rs.split(')')[1].replace('[','').replace('[','')
             if left_flank in seq:
@@ -433,6 +451,9 @@ def exact_match(seq, refseqs, margin=0.9):
                         return True, rs
         # simple masked case
         elif rs.count('(') == 1 and rs.count(')') == 1:
+            if rundir and debug and lock_d:
+                msg = f"debug: exact_match() single type of masking (simple) {rs=}"
+                wdb(msg, rundir, debug, lock_d)
             left_flank = rs.split('(')[0]
             right_flank = rs.split(')')[1]
             if left_flank in seq:
@@ -441,6 +462,9 @@ def exact_match(seq, refseqs, margin=0.9):
                     return True, rs
         # general masked case with multiple masked regions    
         elif rs.count('(') > 1 and rs.count(')') == rs.count('('):
+            if rundir and debug and lock_d:
+                msg = f"debug: exact_match() multiple masked regions {rs=}"
+                wdb(msg, rundir, debug, lock_d)
             seq_index = 0
             failed_rs = False
             for section in rs.split('('):
@@ -454,7 +478,10 @@ def exact_match(seq, refseqs, margin=0.9):
                     break
                 seq_index += len(non_variable_seq)  # move past the non-variable sequence
             if not failed_rs:
-                return True, rs        
+                return True, rs
+    if rundir and debug and lock_d:
+        msg = f"debug: exact_match() no match found for {seq=}"
+        wdb(msg, rundir, debug, lock_d)        
     return False, None
 
 
@@ -523,13 +550,9 @@ def annotate_seq(alnref, alnalt):
     """
     Return a string of PosRef/Alt e.g. 8-ATG11+TGC14A/G
     Ignore leading and trailing unmatched positions (ref or alt ---), only for global alignments
-    TODO: handle brackets from variable sections in reference sequences
     """
-    #print(f'Ref: {alnref}', flush=True)
-    #print(f'Alt: {alnalt}', flush=True)
     lmargin = max(len(alnref)-len(alnref.lstrip('-')),len(alnalt)-len(alnalt.lstrip('-')))
     rmargin = max(len(alnref)-len(alnref.rstrip('-')),len(alnalt)-len(alnalt.rstrip('-')))
-    #print(f'{lmargin=} {rmargin=}', flush=True)
     all_diffs = []
     last_diffs = []  # contiguous diffs of the same type: substitution, deletion, insertion
     for i,(rc, ac) in enumerate(zip(alnref, alnalt)):
@@ -571,7 +594,6 @@ def annotate_seq(alnref, alnalt):
                 last_diffs = []
     if last_diffs:
         all_diffs.append(join_diffs(last_diffs))
-
     return ''.join(all_diffs)
 
 
@@ -609,7 +631,7 @@ def test_annotation():
     return True
 
 
-def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.90):
+def inexact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, identity=0.90):
     """
     Inexact matching of a merged sequence with a set of reference target sequences
     Declare a match if we have 90% sequence identity over the matched length or better
@@ -618,15 +640,23 @@ def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.90):
     Return True/False, and matching reference sequence/None
     rundir, debug, lock_d are used for logging debug messages
     """
-    msg = f"debug: inexact match {seq=}"
-    wdb(msg, rundir, debug, lock_d)
-    #print(msg, flush=True)
+    if rundir and debug and lock_d:
+        msg = f"debug: inexact match {seq=}"
+        wdb(msg, rundir, debug, lock_d)
     if len(refseqs) == 0:
-        wdb('Warning: No reference sequences to align to', rundir, debug, lock_d)
+        if rundir and debug and lock_d:
+            wdb('Warning: No reference sequences to align to', rundir, debug, lock_d)
         return False, None, None
 
-    if identity < 0 or identity > 1.0:
-        return False, None, None
+    if identity < 0:
+        identity = 0.0
+        if rundir and debug and lock_d:
+            wdb('Warning: identity < 0, setting to 0.0', rundir, debug, lock_d)
+    elif identity > 1.0:
+        identity = 1.0
+        if rundir and debug and lock_d:
+            wdb('Warning: identity > 1.0, setting to 1.0', rundir, debug, lock_d)
+        
     aligner = Align.PairwiseAligner()
     aligner.mode = 'global'
     aligner.open_gap_score = -2.0
@@ -640,21 +670,21 @@ def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.90):
     #aligner.end_gap_score = -1.0
     #aligner.match_score = 1
     #aligner.mismatch_score = -1.0
-    #print('beginning alignment', flush=True)
     try:
         # do alignment against a reference sequence if they aren't too different in length
         # order is align(Target, Query)
         all_alignments = [(aligner.align(rs, seq)[0], rs) for rs in refseqs]
     except Exception as exc:
-        msg = f'alignment failed with exception {exc}'
-        print(msg, flush=True)
-        wdb(msg, rundir, debug, lock_d)
+        if rundir and debug and lock_d:
+            msg = f'critical: inexact_match() alignment failed with exception {exc}'
+            print(msg, flush=True)
+            wdb(msg, rundir, debug, lock_d)
         return False, None, None
 
     if len(all_alignments) == 0:
-        wdb(f'No alignments found {seq=}', rundir, debug, lock_d)
+        if rundir and debug and lock_d:
+            wdb(f'critical: inexact_match() No alignments found {seq=}', rundir, debug, lock_d)
         return False, None, None
-    #print(f"{len(all_alignments)} alignments completed", flush=True)
     best_score = 0
     best_algn = None
     best_rs = None
@@ -673,12 +703,10 @@ def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.90):
         if segment.startswith('target'):
             tokens = [s for s in segment.split(' ') if s != '']
             if len(tokens) > 2:
-                #print('target', tokens[2], flush=True)
                 target_sections.append(tokens[2])
         elif segment.startswith('query'):
             tokens = [s for s in segment.split(' ') if s != '']
             if len(tokens) > 2:
-                #print('query', tokens[2], flush=True)
                 query_sections.append(tokens[2])
     aligned_rs = ''.join(target_sections)
     aligned_seq = ''.join(query_sections)
@@ -688,12 +716,9 @@ def inexact_match(seq, refseqs, rundir, debug, lock_d, identity=0.90):
 
     identities = best_algn.counts().identities
     cutoff = match_length * identity
-    #print(f'{best_algn.score=} {best_rs=} {identities=} {cutoff=} {aligned_rs=} {aligned_seq=}', flush=True)
     if identities > cutoff:
         # Annotate match
-        #print(f'Matched! {best_rs=}', flush=True)
         seq_anno = annotate_seq(aligned_rs, aligned_seq)
-        #print(f"{seq_anno=} {best_rs=}", flush=True)
         return True, best_rs, seq_anno
     msg = f'Best alignment identity worse than {identity*100}% {aligned_rs=} {aligned_seq=} {best_rs=} {seq=}'
     wdb(msg, rundir, debug, lock_d)
@@ -937,6 +962,8 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     Writes back result (seqCount,seqName,Efficiency,otherCount,otherName) to result thread
     """
     PID = os.getpid()
+    msg = f"Info: {PID} Starting work block {work_block} for {wr}"
+    wdb(msg, rundir, debug, lock_d)
     lrecs = [] # log records, lock and write on exit/return
     amplicon_run = False
     if not primer_assayfam or not assayfam_primers:
@@ -992,7 +1019,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 
     # if we get an unknown primer then we should run archetypes and call it a day?
     primer = wr.get('primer', 'No_primer')
-    if primer not in primer_assayfam:
+    if not amplicon_run and primer not in primer_assayfam:
         msg = f'Warning: primer {primer} unknown'
         lrecs.append(msg)
         wdb(msg, rundir, debug, lock_d)
@@ -1005,7 +1032,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
    
     if amplicon_run:
         for name in id_seq:
-            if primer.lower() in name.lower()
+            if primer.lower() in name.lower():
                 # no worrying about splitting names here
                 on_target_ids.add(name)
                 on_target_seqs.add(id_seq[name])
@@ -1051,14 +1078,19 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     original_match_cache_size = len(mtc)
     anc = dict(anno_cache)  # force copy of shared object
     original_anno_cache_size = len(anc)
+    msg = f"Info: Matching {len(seqcnt)} sequences for {pcrPlate} {pcrWell} "+\
+            f"with {family_exact_counts=} {low_cov_cutoff=}"
+    wdb(msg, rundir, debug, lock_d)
 
     for seq, num in seqcnt.most_common():
         if (num >= low_cov_cutoff) or exhaustive:
-            msg = f"Info: Processing {pcrPlate} {pcrWell} on process {PID} with counts {num} and {seq}"
+            msg = f"debug: Matching {pcrPlate} {pcrWell} on process {PID} with counts {num} and {seq=}"
             wdb(msg, rundir, debug, lock_d)      
             
             # check if we already have this on record
             if seq in mtc:
+                msg = f"debug: hit to match cache with {seq=} and counts {num}"
+                wdb(msg, rundir, debug, lock_d)
                 ref_seq = mtc[seq]
                 match_cnt[ref_seq] += num
                 if seq in anc:
@@ -1070,23 +1102,29 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 # match against on_target_seqs exactly, then exact vs off-target (filter), then do inexact against on-target
 
                 # substring or superstring
-                is_match, ref_seq = exact_match(seq, on_target_seqs, margin=margin)
+                msg = f"debug: amplicon matching {seq=} with {num=} counts to {on_target_seqs=}"
+                wdb(msg, rundir, debug, lock_d)
+                is_match, ref_seq = exact_match(seq, on_target_seqs, rundir, debug, lock_d, margin=margin)
                 if is_match:
-                    msg = f"Info: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+                    msg = f"debug: Amplicon exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
                     wdb(msg, rundir, debug, lock_d)
                     match_cnt[ref_seq] += num
                     continue     
 
-                # filter targets
-                is_match, ref_seq = exact_match(seq, off_target_seqs, margin=margin)
+                # filter targets - exact match against off-targets
+                is_match, ref_seq = exact_match(seq, off_target_seqs, rundir, debug, lock_d, margin=margin)
                 if is_match:
+                    msg = f"debug: Amplicon exact match against off-target {seq_ids[ref_seq]} with {seq} and counts {num}"
+                    wdb(msg, rundir, debug, lock_d)
                     match_cnt[ref_seq] += num
                     continue
                 
                 # look for variants
-                is_match2, ref_seq2, seq_anno2 = inexact_match(seq, [target_seq], rundir, debug, 
+                is_match2, ref_seq2, seq_anno2 = inexact_match(seq, [on_target_seq], rundir, debug, 
                     lock_d, identity=0.0)
                 if is_match2:
+                    msg = f"debug: Amplicon inexact match against {ref_seq2=} {seq_anno2=} {num=} {seq=}\n"
+                    wdb(msg, rundir, debug, lock_d)  
                     mtc[seq] = ref_seq2
                     if seq_anno2:
                         anc[seq] = seq_anno2
@@ -1094,9 +1132,9 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 continue
 
             else:  # genotyping
-                is_match, ref_seq = exact_match(seq, off_target_seqs, margin=margin)
+                is_match, ref_seq = exact_match(seq, off_target_seqs, rundir, debug, lock_d, margin=margin)
                 if is_match:
-                    msg = f"Info: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+                    msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
                     wdb(msg, rundir, debug, lock_d)
                     match_cnt[ref_seq] += num
                     continue
@@ -1107,7 +1145,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                             lock_d, identity=identity)
 
                     if is_match:
-                        msg = f"Info: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']}"+\
+                        msg = f"debug: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']}"+\
                                 f" {wr['pcrWell']} {num} {seq}\n"
                         wdb(msg, rundir, debug, lock_d)
                         mtc[seq] = ref_seq
@@ -1116,13 +1154,11 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                             anc[seq] = seq_anno
                             match_cnt[ref_seq+'//'+seq_anno] += num
                         continue
-            
-            # record missing sequence as unique
             match_cnt[seq] += num
-                    
+ 
         else:
-            #msg = f"Debug: too few reads {num} for matching {seq}"
-            #wdb(msg, rundir, debug, lock_d)
+            msg = f"Debug: too few reads {num} for matching {seq}"
+            wdb(msg, rundir, debug, lock_d)
             match_cnt['other'] += num
             other_count += 1
         # try another sequence
@@ -1150,12 +1186,12 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     for seq, count in match_cnt.most_common():
         if seq == 'other':
             continue
-        if (seq.startswith('other') and seq != 'other'):
+        if seq.startswith('other') and seq != 'other':
             otherNames.append(seq)
             otherCounts.append(count)
             continue
 
-        if '//' not in seq:
+        if '//' not in seq:  # includes novel sequences
             if seq in mtc:
                 refseq = mtc[seq]
                 if refseq in on_target_seqs:
@@ -1170,15 +1206,13 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                         otherCounts.append(count)
                         otherNames.append(name)
                 continue
-            else:
-                msg = f'Critical: {seq=} not found in match cache {mtc=}'
-                print(msg, flush=True)
-                wdb(msg, rundir, debug, lock_d)
         else:
             ref_seq = seq.split('//')[0]
             anno = seq.split('//')[1]
             if ref_seq not in seq_ids:
                 msg = f'Critical: {ref_seq=} not found in sequence to ID mapping {seq_ids=}'
+                print(msg, flush=True)
+                msg = f'Critical: {ref_seq=} not found in sequence to ID mapping'
                 print(msg, flush=True)
                 wdb(msg, rundir, debug, lock_d)
             else:
@@ -1374,7 +1408,6 @@ def get_variant_seq(var_name, id_seq):
             except Exception as e:
                 print(f'Error: could not convert position {rev_parts[i+1]=} to integer', flush=True)
                 return ''
-            #print(f'{rev_parts=} {i=} {p=} {pos=} {new_seq=}',flush=True)
             if '+' in change:
                 new_seq = new_seq[:pos] + change[1:] + new_seq[pos:]
             if '-' in change:
@@ -1382,9 +1415,6 @@ def get_variant_seq(var_name, id_seq):
             if '/' in change:
                 repl_bases = change.split('/')[1] 
                 new_seq = new_seq[:pos] + repl_bases +new_seq[pos+len(repl_bases):]
-            
-    #print(f'{original_seq=}', flush=True)
-    #print(f'{new_seq=}', flush=True)
     return new_seq
 
 
@@ -1446,10 +1476,10 @@ def main(args):
         log.append(f"Begin: {start_time}")
         raw_pair_list = get_raw_fastq_pairs(os.path.join(args.rundir, 'raw'))
         if args.amplicons:
-            print(f'{args.amplicons=}', file=sys.stderr)
+            #print(f'{args.amplicons=}', file=sys.stderr)
             amplicon_plates = set([unguard_pbc(a, silent=True) for a in args.amplicons])
-            print(f'Using amplicon plates {amplicon_plates}', file=sys.stderr)
-            print(f'{raw_pair_list=} {[str(f[0].name).split("_")[0] for f in raw_pair_list]}', file=sys.stderr)
+            #print(f'Using amplicon plates {amplicon_plates}', file=sys.stderr)
+            #print(f'{raw_pair_list=} {[str(f[0].name).split("_")[0] for f in raw_pair_list]}', file=sys.stderr)
             raw_pair_list = [f for f in raw_pair_list if str(f[0].name).split('_')[0] in amplicon_plates]
         raw_file_identifiers = [str(f[0].name).split('_')[0] for f in raw_pair_list]
         if len(raw_file_identifiers) == 0:
@@ -1473,21 +1503,21 @@ def main(args):
             # select only those wells that have no amplicon guards on the sample barcodes
             wdata = [rec for rec in wdata if not is_guarded_abc(rec.sampleBarcode)]
         wdata = [rec for rec in wdata if unguard(rec.pcrPlate, silent=True) +'-'+ padwell(rec.pcrWell) in raw_file_identifiers]
-        print(f'After filtering by available files {wdata=}', file=sys.stderr)
+        #print(f'After filtering by available files {wdata=}', file=sys.stderr)
         log.append(f"Info: {len(wdata)} sample wells to process.")
         if len(wdata) == 0:
             return
                     
         # read the target sequence file into dictionaries [seq] = set([ids]), and [id] = seq             
         seq_ids, id_seq = parse_targets(args.rundir, args.targets, log, args.debug)
-        print('Parsed targets', flush=True)
+        print(f'Parsed {len(seq_ids)} targets from reference', flush=True)
 
         # get relationship of primers to assay family for genotyping
         #print(f'{args.primer_assayfam=}')
         if not args.amplicons:
             primer_assayfam, assayfam_primers = parse_primer_assayfams(args.rundir, args.primer_assayfam)
             #primer_assayfam, assayfam_primers = parse_primer_file(os.path.join(args.rundir, args.primer_assayfam))
-            print(f'Parsed primers/assays', flush=True) # {primer_assayfam=} {assayfam_primers=}')
+            print(f'Parsed {len(primer_assayfam)} primers/assays', flush=True) # {primer_assayfam=} {assayfam_primers=}')
         else:
             primer_assayfam = {}
             assayfam_primers = {}
@@ -1537,10 +1567,11 @@ def main(args):
             # multiprocessing pool counter from https://superfastpython.com/multiprocessing-pool-asyncresult/
             reports = []
             for i, wr in enumerate(wrs):
+                print(f'Launching process for sampleNo {wr.get("sampleNo", "")} {i+1} of {total_jobs}', flush=True)
                 r = pool.apply_async(process_well, args=(i, wr, args.rundir, seq_ids, id_seq, primer_assayfam, 
                     assayfam_primers, match_cache, anno_cache, reps, logm, lock_mtc, 
                     lock_r, lock_l, lock_d, args.margin, args.identity, args.mincov, args.minprop, 
-                    args.inexact, True, args.exhaustive, args.debug))
+                    args.inexact, args.exhaustive, args.debug))
                 reports.append(r)
                 if i % 3 == 0:
                     launch_progress = ceil(100*i/total_jobs)

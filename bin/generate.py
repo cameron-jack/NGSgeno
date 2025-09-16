@@ -16,6 +16,8 @@ from io import StringIO, BytesIO
 from shutil import copyfileobj
 from string import ascii_uppercase
 import functools
+from fpdf import FPDF
+from fpdf.enums import TableBordersLayout
 
 import openpyxl
 from Bio.SeqIO.FastaIO import SimpleFastaParser
@@ -1178,6 +1180,87 @@ def generate_primer_assayfams(exp, caller_id=None):
         return False
     m(f'created primer assay families file {primer_fn}', level='success', caller_id=caller_id)
     return True
+
+
+### PDF ###
+class PDF(FPDF):
+    def header(self):
+        # Rendering logo:
+        self.image('ngsg_icon.png', x=10,y=10,w=10,h=10, keep_aspect_ratio=True)
+        # Setting font: helvetica bold 15
+        self.set_font("helvetica", style="B", size=15)
+        # Moving cursor to the right:
+        #self.cell(80)
+        # Printing title:
+        self.cell(20)
+        self.cell(40, 10, "Amplicon Report", border=0) # , align="L")
+        # Performing a line break:
+        self.ln(20)
+
+    def footer(self):
+        # Position cursor at 1.5 cm from bottom:
+        self.set_y(-15)
+        # Setting font: helvetica italic 8
+        self.set_font("helvetica", style="I", size=8)
+        # Printing page number:
+        self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="R")
+
+
+def generate_pdf(fp, pages, seq_width=100):
+    """ 
+    Use fpdf2 to generate a PDF report of aligned sequences
+    Args:
+        fp: the file path to write the PDF file to
+        pages (list of tuples(prefix, aligned_names_seqs, formatting=None))
+            prefix: a string to print at the start of the entry
+            aligned_names_seqs: a tuple of tuples (name, aligned sequence)
+            formatting: a tuple of tuples of formatting options - currently unused
+        seq_width: number of bases to show per line
+    Returns:
+        None - writes a file with path fp 
+    """
+    # Instantiation of inherited class
+    pdf = PDF()
+    for page in pages:
+        prefix, aligned_names_seqs, formatting = page
+        pdf.add_page()
+        pdf.set_font("helvetica", size=11)
+        pdf.cell(0, 10, prefix, new_x="LMARGIN", new_y="NEXT")
+            
+        pdf.set_font("Courier", size=10)
+        with pdf.table(line_height=1.4 * pdf.font_size, col_widths=(1,25), borders_layout=TableBordersLayout.SINGLE_TOP_LINE) as table:
+            row = table.row()
+            row.cell("#")
+            row.cell("Sequence variant")
+            for i,(n,s) in enumerate(aligned_names_seqs):
+                row = table.row()
+                row.cell(f'{i}')
+                row.cell(f'{n}')
+        pdf.ln(10)
+        pdf.set_font("Courier", size=8)
+        with pdf.table(line_height=1.4 * pdf.font_size, col_widths=(1,25), borders_layout=TableBordersLayout.SINGLE_TOP_LINE) as table:
+            row = table.row()
+            row.cell('#')
+            row.cell('Sequence')
+            num_chunks = len(aligned_names_seqs[0][1]) // seq_width + 1
+            for chunk in range(num_chunks):
+                for i,(n,s) in enumerate(aligned_names_seqs):
+                    row = table.row()
+                    row.cell(f'{i}')
+                    row.cell(f'{s[chunk*seq_width:(chunk+1)*seq_width]}')
+                row = table.row()
+                row.cell('')
+                pointer_text = '^'+str((chunk*seq_width)+1)
+                for i in range(seq_width//20):
+                    pointer_text += ' '*(((i+1)*20)-len(pointer_text)-1) + '^'+str(chunk*seq_width+((i+1)*20))
+                row.cell(pointer_text)
+                row = table.row()
+        
+        # for i,(n,s) in enumerate(aligned_names_seqs.items()):    
+        #     pdf.cell(30, 10, f'{i}: {s}', new_x="LMARGIN", new_y="NEXT")
+        #for i in range(1, 41):
+        #    pdf.cell(0, 10, f"Printing line number {i}", new_x="LMARGIN", new_y="NEXT")
+    pdf.output(fp)
 
 
 if __name__ == '__main__':

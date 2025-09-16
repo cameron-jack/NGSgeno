@@ -1,0 +1,24 @@
+# pyproject.toml
+[project]
+name = "NGSgeno"
+authors = [
+    {name = "Cameron Jack", email = "cameron.jack@anu.edu.au"},
+]
+
+version = "2.02.000"
+requires-python = "==3.13" # Specifies Python 3.13
+readme = "README.md"
+classifiers = ["License :: OSI Approved :: MIT License"]
+
+dependencies = [
+    "openpyxl==3.1.5",
+    "biopython==1.85",
+    "jsonpickle==4.1.1",
+    "streamlit==1.49.1",
+    "streamlit_aggrid==1.1.8",
+    "pandas==2.3.2",
+    "extra_streamlit_components==0.1.81",
+    "chardet==5.2.0",
+    "cogent3==2025.9.8",
+    "fpdf2==2.8.4",
+]
