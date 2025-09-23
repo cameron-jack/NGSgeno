@@ -1132,6 +1132,13 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 continue
 
             else:  # genotyping
+                is_match, ref_seq = exact_match(seq, on_target_seqs, rundir, debug, lock_d, margin=margin)
+                if is_match:
+                    msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+                    wdb(msg, rundir, debug, lock_d)
+                    match_cnt[ref_seq] += num
+                    continue   
+
                 is_match, ref_seq = exact_match(seq, off_target_seqs, rundir, debug, lock_d, margin=margin)
                 if is_match:
                     msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
@@ -1154,6 +1161,8 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                             anc[seq] = seq_anno
                             match_cnt[ref_seq+'//'+seq_anno] += num
                         continue
+            # no match
+            mtc[seq] = seq  # map to itself
             match_cnt[seq] += num
  
         else:

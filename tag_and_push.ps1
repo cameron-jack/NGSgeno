@@ -1,8 +1,9 @@
-$VER = "v2.02.001"
+$VER = "v2.02.002"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: Finished new tables in genotyping report page
+* Fixed: Exact matching of on-target genotyping references put back in
+* Fixed: Unknown sequences not being reported in genotyping report
 * TODO: coloured text in PDF report
 * TODO: add multiple sequence alignmnent to genotyping report screen
 "@
