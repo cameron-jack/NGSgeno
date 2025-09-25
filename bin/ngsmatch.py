@@ -1161,8 +1161,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                             anc[seq] = seq_anno
                             match_cnt[ref_seq+'//'+seq_anno] += num
                         continue
-            # no match
-            mtc[seq] = seq  # map to itself
+            # no match, map to itself
             match_cnt[seq] += num
  
         else:
@@ -1215,6 +1214,10 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                         otherCounts.append(count)
                         otherNames.append(name)
                 continue
+            else:  # novel sequences
+                otherCounts.append(count)
+                otherNames.append(seq)
+
         else:
             ref_seq = seq.split('//')[0]
             anno = seq.split('//')[1]
