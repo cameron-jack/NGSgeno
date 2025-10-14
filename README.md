@@ -2,7 +2,7 @@
 
 Integrates robotic sample preparation and Illumina Miseq DNA sequencing of amplicons with the APF's Rodentity database.
 
-# To do
+# To do - wishlist
 * Documentation! Sphinx docs of code. Need proper docstrings and type definitions
 * Modular indexing code
 * New file generation/transaction code
@@ -13,20 +13,7 @@ Integrates robotic sample preparation and Illumina Miseq DNA sequencing of ampli
 
 ## Dependencies
 
-BBtools https://jgi.doe.gov/data-and-tools/bbtools/
-Java https://www.java.com/en/download/manual.jsp
-Python 3.8 or newer (3.10+ recommended)
-Microsoft Edge is the default browser but this can be changed in ngsrun.bat
-
-Python modules: (see requirements.txt)
-openpyxl - for reading/writing excel files
-biopython==1.81 - sequence matching 
-requests - connecting to DBs
-jsonpickle - save/load experiment info
-streamlit==1.31.1 - web interface
-st_aggrid - interactive web tables
-extra_streamlit_components - advanced GUI widgets
-pandas - dataframes to support web tables
+See pyproject.toml
 
 ## Changelog:
 
@@ -50,13 +37,13 @@ This software (product) is issued with the MIT license
 Copyright 2018 The Australian National University
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated 
-documentation files (the “Software”), to deal in the Software without restriction, including without 
+documentation files (the ï¿½Softwareï¿½), to deal in the Software without restriction, including without 
 limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies 
 of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE 
+THE SOFTWARE IS PROVIDED ï¿½AS ISï¿½, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE 
 WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS 
 OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT 
 OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

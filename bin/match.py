@@ -1495,13 +1495,14 @@ def reconstruct_sequence(var_anno, ref_seq):
     mod_seq = ref_seq  # modified sequence to be built up
     # need to go through changes in reverse order to avoid length changes from affecting position
     for i, p in enumerate(rev_parts):
+        print(f'reconstruct_sequence() {i=} {p=}', flush=True)
         if i % 2 == 0:
             if p == '':
                 break  # we've reached the end
             change = p
             if len(parts) <= i+1:
-                print(f'Error: no matching change for position: {pos} in {parts} from {var_name}', flush=True)
-                return ''
+                 print(f'Error: no matching change for position: {pos} in {parts}', flush=True)
+                 return ''
             try:
                 pos = int(rev_parts[i+1]) -1  # 1-based
             except Exception as e:

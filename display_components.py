@@ -104,7 +104,7 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, hidden: lis
                 return kept_indices.map(i => raw_names[i]).join(';');
             };""")
 
-    
+
         options.configure_column('report', valueGetter=filt_js)
 
     if 'Available Doses' in cols and 'Required Doses' in cols:
@@ -178,7 +178,7 @@ def aggrid_interactive_table(df: pd.DataFrame, grid_height: int=250, hidden: lis
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.VALUE_CHANGED,
         key=key,
         reload_data=True,
-        allow_unsafe_jscode=True,   
+        allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
         rowSelection='single'
     )
@@ -1481,56 +1481,65 @@ def get_miseq_download_btn(exp):
                     type='secondary')
 
 
-def show_results_table(hdr, amplicon_data, filter_dict, key):
+def show_results_table(hdr, well_data, rtype, filter_dict, filter_param_fn, key):
     """
     build an interactive table for amplicon results
     Args:
         hdr (list): header for the amplicon data
-        amplicon_data (list of lists): the amplicon data
-        filter_dict (dict): dictionary of per-amplicon filter parameters
+        well_data (list of lists): table of data, one row per well
+        rtype (str): type of results, in ['rodentity','custom','other','amplicon']
+        filter_dict (dict): dictionary of existing filter parameters
+        filter_param_fn (str): file path to the filter parameters file
         key (str): key (unique id) for the view component
     Returns:
         list of chosen variants
-    Notes:
-        We keep track of per-result filter parameters in a text file, which is handled by _init_amplicon_table()
     """
-    exp = st.session_state['experiment']
-    variant_info = []
     # hide these columns but keep them available for the user
     hidden_cols = ['sex','sampleNo','sampleName','strain','clientName','alleleSymbol',
                 'alleleKey','assayKey','assays','assayFamilies','primerPlate','primerWell',
                 'pcrPlate','pcrWell','index_plate','i7bc','i7well','i7name','i5bc','i5well',
                 'i5name','cleanCount','dnaPlate','dnaWell']
-    if not amplicon_data:
-        st.info('All amplicons reported')
+    if not well_data:
+        st.info('All wells reported')
         return variant_info
-    #amplicon_data.insert(0,[' ' for col in amplicon_data[0]])
-    amplicon_dataframe = pd.DataFrame(amplicon_data, columns=hdr)
-    amplicon_table = aggrid_interactive_table(amplicon_dataframe, key=key+'_key',
+
+    well_dataframe = pd.DataFrame(well_data, columns=hdr)
+    well_table = aggrid_interactive_table(well_dataframe, key=key+'_key',
             hidden=hidden_cols, editable=['filtProportion'])
-    
-    if amplicon_table is not None and amplicon_table['selected_rows'] is not None:
-        #print(f'{amplicon_table["selected_rows"]=}', flush=True, file=sys.stderr)
-        if 'selected_rows' in amplicon_table and len(amplicon_table['selected_rows']) > 0:
-            for field in ['samplePlate','sampleWell','sampleBarcode','primer','mergeCount','seqCount','otherCount','otherName','filtProportion']:
-                if field in amplicon_table['selected_rows']:
-                    variant_info.append(amplicon_table['selected_rows'][field].iloc[0])
-            #print(type(variant_info[-1]), file=sys.stderr)
-        samplePlate = variant_info[0]
-        sampleWell = variant_info[1]
-        sampleBarcode = variant_info[2]
-        filtProportion = variant_info[-1]
-        new_id = f'{samplePlate}\t{sampleWell}\t{sampleBarcode}'
-        #print(f'variant_info={variant_info} {new_id=} {filtProportion=}', file=sys.stderr)
-        if new_id not in filter_dict or filter_dict[new_id] != filtProportion:
-            filter_dict[new_id] = filtProportion
-            filter_param_fn = exp.get_exp_fn('amplicon_table_filter_params.txt')
-            with open(filter_param_fn, 'wt') as f:
-                for id in filter_dict:
-                    sp, sw, sb = id.split('\t')
-                    f.write(f'{sp}\t{sw}\t{sb}\t{filter_dict[id]}\n')
-                if new_id not in filter_dict:
-                    f.write(f'{samplePlate}\t{sampleWell}\t{sampleBarcode}\t{filtProportion}\n')
+    if well_table and 'selected_rows' in well_table and well_table['selected_rows'] is not None:
+        selected_rows = well_table['selected_rows'].to_dict(orient='records')
+        st.session_state[f'{rtype}_chosen_vars'] = get_variants_from_table(selected_rows, filter_dict, filter_param_fn)
+
+
+def get_variants_from_table(well_table, filter_dict, filter_param_fn):
+    """
+    Get the chosen variant from the interactive table
+    args:
+        well_table is a list of dicts, one per selected row
+        filter_dict (dict): dictionary of existing filter parameters
+        filter_param_fn (str): file path to the filter parameters file
+    """
+    exp = st.session_state['experiment']
+    variant_info = []
+    first_variant = well_table[0]
+    for field in ['samplePlate','sampleWell','sampleBarcode','primer','mergeCount','seqCount','otherCount','otherName','filtProportion']:
+        if field in first_variant:
+            variant_info.append(first_variant[field])
+        else:
+            variant_info.append('')
+    samplePlate = variant_info[0]
+    sampleWell = variant_info[1]
+    sampleBarcode = variant_info[2]
+    filtProportion = variant_info[-1]
+    new_id = f'{samplePlate}\t{sampleWell}\t{sampleBarcode}'
+    if new_id not in filter_dict or filter_dict[new_id] != filtProportion:
+        filter_dict[new_id] = filtProportion
+        with open(filter_param_fn, 'wt') as f:
+            for id in filter_dict:
+                sp, sw, sb = id.split('\t')
+                f.write(f'{sp}\t{sw}\t{sb}\t{filter_dict[id]}\n')
+            if new_id not in filter_dict:
+                f.write(f'{samplePlate}\t{sampleWell}\t{sampleBarcode}\t{filtProportion}\n')
     return variant_info
 
 
@@ -1558,7 +1567,7 @@ def make_summary_line_and_format(var_seqs, wt_seq):
             elif 'A' and 'T' in char_set:
                 summary_line.append('W')
             elif 'G' and 'T' in char_set:
-                summary_line.append('K')    
+                summary_line.append('K')
             elif 'A' and 'C' in char_set:
                 summary_line.append('M')
         elif len(char_set) == 3:
@@ -1589,13 +1598,13 @@ def make_summary_line_and_format(var_seqs, wt_seq):
 #     """
 #     exp = st.session_state['experiment']
 #     # keep track of amplicons already reported to avoid double-ups or missed results
-    
+
 #     if Path(reported_amps_fn).exists():
 #         with open(reported_amps_fn, 'rt') as f:
 #             amplicons_reported = set([line.strip() for line in f])
 #     else:
 #         amplicons_reported = set()  # plate\twell\tbarcode\tprimer
-    
+
 #     samplePlate_idx = hdr.index('samplePlate')
 #     sampleWell_idx = hdr.index('sampleWell')
 #     sampleBarcode_idx = hdr.index('sampleBarcode')
@@ -1612,7 +1621,7 @@ def make_summary_line_and_format(var_seqs, wt_seq):
 #         return chosen_vars_unrep
 #     else:
 #         return None
-        
+
 
 # def show_reported_amplicons(hdr, amplicon_data, filter_dict, reported_amps_fn):
 #     """
@@ -1640,7 +1649,7 @@ def make_summary_line_and_format(var_seqs, wt_seq):
 #         chosen_vars_rep = show_results_table(hdr, amplicon_data, filter_dict, exclude_ids=amplicons_unreported, key='reported_amplicons')
 
 
-def show_alignments(chosen_vars, tmp_fn, pdf_fn, key):
+def show_alignments(chosen_vars, tmp_fn, pdf_fn, target_fn, key):
     """
     Show the alignments for the chosen variants
     Run alignments against the reference sequence for the chosen primer, found in amplicon_targets.fa
@@ -1659,13 +1668,13 @@ def show_alignments(chosen_vars, tmp_fn, pdf_fn, key):
     try:
         wt_counts = int(chosen_vars[5])
     except ValueError:
-        wt_counts = 0  
+        wt_counts = 0
     try:
         min_prop = float(chosen_vars[-1])
     except ValueError:
         min_prop = 0.15
     ref_seqs = {}
-    with open(exp.get_exp_fn('amplicon_targets.fa'), 'rt') as rfn:
+    with open(exp.get_exp_fn(target_fn), 'rt') as rfn:
         for line in rfn:
             if line.startswith('>'):
                 ref_name = line[1:].strip()
@@ -1680,101 +1689,94 @@ def show_alignments(chosen_vars, tmp_fn, pdf_fn, key):
             if primer_chosen in r and 'wt' in r.lower():
                 ref_chosen = r
                 break
-    if ref_chosen:
-        #print(f'{chosen_vars=} {ref_chosen=}', file=sys.stderr)
-        vars_chosen = {cv.split('//')[1]:int(cc) for cv,cc in zip(chosen_vars[-2].split(';'),chosen_vars[-3].split(';')) if ref_chosen in cv and '//' in cv and int(cc)>=(merged_counts*min_prop)}
-        id = f'{chosen_vars[0]}\t{chosen_vars[1]}\t{chosen_vars[2]}\t{chosen_vars[3]}'
-        if vars_chosen:
-            var_list = list(vars_chosen.keys())
-            if len(var_list) == 0:
-                st.warning('No variant sequences found for this amplicon')
-                return
-            #print(f'{ref_chosen=} {ref_seqs[ref_chosen]=}, {var_list=}', file=sys.stderr)
-            aligned = run_msa((ref_chosen,ref_seqs[ref_chosen]),var_list)
-            var_df = pd.DataFrame({
-                'Report': [True for name in aligned.names],
-                'Variant': [name for name in aligned.names],
-                'Counts': [vars_chosen[name] if name != ref_chosen else wt_counts for name in aligned.names],
-                'Sequence': [str(aligned.get_gapped_seq(name)) for name in aligned.names]
-            })
+    if not ref_chosen:
+        return None
+    
+    #print(f'{chosen_vars=} {ref_chosen=}', file=sys.stderr)
+    var_list = []
+    var_list_counts = {}
+    for cv,cc in zip(chosen_vars[-2].split(';'),chosen_vars[-3].split(';')):
+        if '//' in cv and ref_chosen in cv:
+            if int(cc) >= (merged_counts * min_prop):
+                var_list.append(cv.split('//')[1])
+                var_list_counts[cv.split('//')[1]] = int(cc)
 
-            var_de = st.data_editor(var_df, key='alignment_editor_'+key, hide_index=True, 
-                column_config={
-                    'Report': st.column_config.CheckboxColumn('Report', width=80,
-                            help='Check to include this variant in the PDF report', default=True),
-                    'Variant': st.column_config.TextColumn('Variant', width=250,
-                            help='Name of the variant sequence'),
-                    'Counts': st.column_config.NumberColumn('Counts', width=80,
-                            help='Number of reads supporting this variant'),
-                    'Sequence': st.column_config.TextColumn('Aligned sequence', width=1000,
-                            help='The aligned sequence of this variant')
-                }, 
-                disabled=['Variant','Counts','Sequence'])
-            
-            # aligned_names_seqs = {seq_id:str(aligned.get_gapped_seq(seq_id)) for seq_id in aligned.names}
-            # summary_line, formatting = make_summary_line_and_format(aligned_names_seqs, str(aligned_names_seqs[ref_chosen]))
-            # aligned_names_seqs['consensus'] = summary_line
+    print(var_list, file=sys.stderr)
+    if not var_list:
+        #st.warning('No variant sequences found for this amplicon')
+        return None
 
-            # tick_col, name_col, count_col, seq_col = st.columns([2,6,3,20])
-            # checkbox_keys = []
-            # with tick_col:
-            #     st.write('Select:')
-            #     for seq_id in aligned_names_seqs.keys():
-            #         cb_name = f'{str(seq_id)}_seq_checkbox_{key}'
-            #         val = tick_col.checkbox('include me', label_visibility='collapsed', key=cb_name, value=True)
-            #         checkbox_keys.append(cb_name)
-            # with name_col:
-            #     st.write('Variant:')
-            #     ids = []
-            #     for seq_id in aligned_names_seqs.keys():
-            #         st.text(f'{seq_id}')
-            # with count_col:
-            #     st.write('Counts:')
-            #     for seq_id in aligned_names_seqs.keys():
-            #         if seq_id != ref_chosen and seq_id != 'consensus':
-            #             st.text(f'{vars_chosen[seq_id]}')
-            #         elif seq_id == ref_chosen:
-            #             st.text(f'{wt_counts}')
-            # with seq_col:
-            #     st.write('Alignment:')
-            #     for seq_id in aligned_names_seqs.keys():
-            #         st.text(f'{aligned_names_seqs[seq_id]}')
+    #vars_chosen = {cv.split('//')[1]:int(cc) for cv,cc in zip(chosen_vars[-2].split(';'),chosen_vars[-3].split(';')) if ref_chosen in cv and '//' in cv and int(cc)>=(merged_counts*min_prop)}
+    id = f'{chosen_vars[0]}\t{chosen_vars[1]}\t{chosen_vars[2]}\t{chosen_vars[3]}'
+    print(f'show_alignments() {ref_chosen=} {ref_seqs[ref_chosen]=}, {var_list=}', file=sys.stderr)
+    ref_seq_id = (ref_chosen, ref_seqs[ref_chosen])
+    aligned = run_msa((ref_chosen,ref_seqs[ref_chosen]),var_list)
+    var_df = pd.DataFrame({
+        'Report': [True for name in aligned.names],
+        'Variant': [name for name in aligned.names],
+        'Counts': [var_list_counts[name] if name != ref_chosen else wt_counts for name in aligned.names],
+        'Sequence': [str(aligned.get_gapped_seq(name)) for name in aligned.names]
+    })
+    st.markdown(
+        """
+        <style>
+        /* Apply monospace to all text within the main content area */
+        [class^=dvn-scroller] {
+            font-family: Courier New", Courier, monospace;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-            prefix = st.text_input(label='Enter any descriptive notes you wish to prefix to this alignment')
-            make_report_entry = st.button('Make report entry', key='build_pdfs_'+chosen_vars[0]+'_'+chosen_vars[1]+'_'+chosen_vars[2])
-            if make_report_entry:
-                if var_de is not None:
-                    aligned_stuff = [(n,f'{s}') for n,s,c in zip(var_de['Variant'], var_de['Sequence'], var_de['Report']) if c]
-                #valid_keys = [cb.split('_seq_checkbox')[0] for cb in checkbox_keys if cb in st.session_state and st.session_state[cb]]
-                #if valid_keys:
-                    #if not prefix:
-                    #    prefix = ''
-                    #aligned_stuff = {n:f'{s}' for n,s in aligned_names_seqs.items() if n in valid_keys}
-                    #aligned_stuff = [(n,f'{s}') for n,s in aligned_names_seqs.items() if n in valid_keys]
-                    if aligned_stuff:
-                        formatting = {'font':'Courier New', 'fontsize':10, 'lineheight':1.2, 'colour_changes':True}
-                        formatting = [(k,v) for k,v in formatting.items()]
-                        page = (prefix, tuple(aligned_stuff), tuple(formatting))
-                        if Path(tmp_fn).exists():
-                            with open(tmp_fn, 'rt') as f:
-                                pages = jsonpickle.decode(f.read(), keys=True, handle_readonly=True)
-                                #print(type(pages), pages)
-                                pages = set(pages)
-                                pages.add(page)
-                        else:
-                            pages = set()
-                            pages.add(page)
-                            
-                        json_pages = jsonpickle.encode(list(pages), indent=4, keys=True, warn=True, handle_readonly=True)
-                        with open(tmp_fn, 'wt') as fout:
-                            print(json_pages, file=fout)
-                        
-                        generate_pdf(pdf_fn, pages)
-                        st.success(f'Report entry made in {pdf_fn}')
-                        st.success(f'Adding {id} to reported amplicons list')
-                        return id
-    else:
-        st.empty()
+    # Apply the style to the DataFrame
+    var_de = st.data_editor(var_df, key='alignment_editor_'+key, hide_index=True,
+        column_config={
+            'Report': st.column_config.CheckboxColumn('Report', width=40,
+                    help='Check to include this variant in the PDF report', default=True),
+            'Variant': st.column_config.TextColumn('Variant', width=150, disabled=True,
+                    help='Name of the variant sequence'),
+            'Counts': st.column_config.NumberColumn('Counts', width=80, disabled=True,
+                    help='Number of reads supporting this variant'),
+            'Sequence': st.column_config.TextColumn('Aligned sequence', width=1000, disabled=True,
+                    help='The aligned sequence of this variant')
+        },
+        disabled=['Variant','Counts','Sequence'])
+
+    prefix = st.text_input(label='Enter any descriptive notes you wish to prefix to this alignment')
+    make_report_entry = st.button('Make report entry', key='build_pdfs_'+chosen_vars[0]+'_'+chosen_vars[1]+'_'+chosen_vars[2])
+    if make_report_entry:
+        if var_de is not None:
+            aligned_stuff = [(n,f'{s}') for n,s,c in zip(var_de['Variant'], var_de['Sequence'], var_de['Report']) if c]
+        #valid_keys = [cb.split('_seq_checkbox')[0] for cb in checkbox_keys if cb in st.session_state and st.session_state[cb]]
+        #if valid_keys:
+            #if not prefix:
+            #    prefix = ''
+            #aligned_stuff = {n:f'{s}' for n,s in aligned_names_seqs.items() if n in valid_keys}
+            #aligned_stuff = [(n,f'{s}') for n,s in aligned_names_seqs.items() if n in valid_keys]
+            if aligned_stuff:
+                formatting = {'font':'Courier New', 'fontsize':10, 'lineheight':1.2, 'colour_changes':True}
+                formatting = [(k,v) for k,v in formatting.items()]
+                page = (prefix, tuple(aligned_stuff), tuple(formatting))
+                if Path(tmp_fn).exists():
+                    with open(tmp_fn, 'rt') as f:
+                        pages = jsonpickle.decode(f.read(), keys=True, handle_readonly=True)
+                        #print(type(pages), pages)
+                        pages = set(pages)
+                        pages.add(page)
+                else:
+                    pages = set()
+                    pages.add(page)
+
+                json_pages = jsonpickle.encode(list(pages), indent=4, keys=True, warn=True, handle_readonly=True)
+                with open(tmp_fn, 'wt') as fout:
+                    print(json_pages, file=fout)
+
+                generate_pdf(pdf_fn, pages)
+                st.success(f'Report entry made in {pdf_fn}')
+                st.success(f'Adding {id} to reported amplicons list')
+                return id
+    
     return None
 
 
@@ -1825,6 +1827,108 @@ def build_paired_sequence_views(ref_seq, var_anno, display_width=120, colour_all
                 var_seq[i:i+display_width],
                 summary_chrs[i:i+display_width]))
     return outputs
+
+
+def show_results_display(results_type, key, caller_id=None):
+    """
+    Show the results display for the chosen variants
+    Args:
+        hdr (list): header for the amplicon data
+        amplicon_data (list of lists): the amplicon data
+        filter_dict (dict): dictionary of per-amplicon filter parameters
+        key (str): key (unique id) for the view component
+    """
+    exp = st.session_state['experiment']
+    if results_type not in ['rodentity','custom','other','amplicon']:
+        m(f'Unknown results type {results_type} in show_results_display()', caller_id=caller_id, level='critical')
+        return
+    rtype = results_type
+    perform_reset = False
+    pdf_fn = exp.get_exp_fn(f'{rtype}_alignments.pdf')
+    tmp_fn = exp.get_exp_fn(f'{rtype}_alignments.json')
+    reported_fn = exp.get_exp_fn(f'{rtype}_reported.txt')
+    filter_param_fn = exp.get_exp_fn(f'{rtype}_table_filter_params.txt')
+    if results_type == 'amplicon':
+        results_fn = exp.get_exp_fn('amplicon_results.csv')
+        target_fn = 'amplicon_targets.fa'
+    else:
+        results_fn = exp.get_exp_fn('results.csv')
+        target_fn = 'targets.fa'
+    # if rtype == 'amplicon':
+    #     hdr, data, filter_dict, data_reported, data_unreported = exp.gather_amplicon_results(reported_amps_fn)
+    # else:
+    hdr, data, filter_dict, data_reported, data_unreported = exp.gather_results(rtype, reported_fn, results_fn)
+    unreported_container = st.container(key=f'{rtype}_unreported_container')
+    alignment_container = st.container(key=f'{rtype}_alignment_container')
+    reported_container = st.container(key=f'{rtype}_reported_container')
+
+    with unreported_container:
+        if data_unreported:
+            st.write(f'Unreported {rtype}:')
+            show_results_table(hdr, data_unreported, rtype, filter_dict, filter_param_fn, f'unreported_{rtype}')
+    with reported_container:
+        if data_reported:
+            st.write(f'Reported {rtype}:')
+            show_results_table(hdr, data_reported, rtype, filter_dict, filter_param_fn, f'reported_{rtype}')
+            wipe_report = st.button(f'Reset {rtype} report', key=f'reset_{rtype}_report_button')
+            if wipe_report:
+                success = True
+                if Path(reported_fn).exists():
+                    try:
+                        Path(reported_fn).unlink()
+                    except Exception as exc:
+                        st.failure(f'Could not delete {reported_fn}, perhaps you have it open? {exc}')
+                        success = False
+                if Path(tmp_fn).exists():
+                    try:
+                        Path(tmp_fn).unlink()
+                    except Exception as exc:
+                        st.failure(f'Could not delete {tmp_fn}, perhaps you have it open {exc}')
+                        success = False
+                if Path(pdf_fn).exists():
+                    try:
+                        Path(pdf_fn).unlink()
+                    except Exception as exc:
+                        st.failure(f'Could not delete {pdf_fn}, perhaps you have it open? {exc}')
+                        success = False
+                if success:
+                    st.success(f'{rtype} report reset to empty')
+                    perform_reset = True
+
+    with alignment_container:
+        if f'{rtype}_chosen_vars' in st.session_state and st.session_state[f'{rtype}_chosen_vars']:
+            #well_variants = get_variants_from_table(st.session_state[f'{rtype}_chosen_vars'], filter_dict, filter_param_fn)
+            print('Ready to do alignments', st.session_state[f'{rtype}_chosen_vars'], file=sys.stderr)
+            st.session_state[f'{rtype}_chosen_id'] = show_alignments(st.session_state[f'{rtype}_chosen_vars'], tmp_fn, pdf_fn, target_fn, f'{rtype}_alignment_viewer')
+        else:
+            st.session_state[f'{rtype}_chosen_id'] = show_alignments(None, tmp_fn, pdf_fn, target_fn, f'{rtype}_alignment_viewer')
+        if f'{rtype}_chosen_id' in st.session_state and st.session_state[f'{rtype}_chosen_id']:
+            entries_reported = set()
+            if Path(reported_fn).exists():
+                with open(reported_fn, 'rt') as f:
+                    for line in f:
+                        entries_reported.add(line.strip())
+            entries_reported.add(st.session_state[f'{rtype}_chosen_id'])
+            with open(reported_fn, 'wt') as fout:
+                for er in entries_reported:
+                    print(er, file=fout)
+            perform_reset = True
+        else:
+            st.empty()
+
+
+
+    if caller_id in mq:
+        for msg, lvl in mq[caller_id]:
+            m(msg, level=lvl, no_log=True)
+        sleep(0.3)
+        mq[caller_id] = set()
+
+    if perform_reset:
+        st.session_state[f'{rtype}_chosen_vars'] = None
+        st.session_state[f'{rtype}_chosen_id'] = None
+        sleep(0.4)
+        st.rerun()
 
 
 

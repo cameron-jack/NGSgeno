@@ -1196,48 +1196,16 @@ def main():
                     if not Path(results_fp).exists():
                         m('**No allele calling results available**', level='display', dest=('mkdn'))
                     else:
-                        rodentity_results = []
-                        custom_results = []
-                        other_results = []
-                        with open(results_fp, 'rt') as rfn:
-                            for i, line in enumerate(rfn):
-                                l = line.replace('"','')
-                                cols = [c.strip() for c in l.split(',')]
-                                if i == 0:
-                                    hdr = cols
-                                else:
-                                    sample = cols[3]
-                                
-                                    if util.is_guarded_cbc(sample):
-                                        custom_results.append(cols)
-                                    elif util.is_guarded_rbc(sample):
-                                        rodentity_results.append(cols)
-                                    else:
-                                        other_results.append(cols)
-                        # Display Rodentity results first, then custom, then other
-                        hidden_cols = ['clientName','sampleName','alleleSymbol',
-                                'alleleKey','assayKey','assays','assayFamilies','primerPlate','primerWell',
-                                'pcrPlate','pcrWell','index_plate','i7bc','i7well','i7name','i5bc','i5well',
-                                'i5name','cleanCount','dnaPlate','dnaWell']
-                        st.write(f'Rodentity results: {len(rodentity_results)}')
-                        dfr = pd.DataFrame(rodentity_results, columns=hdr)
-                        dc.aggrid_interactive_table(dfr, hidden=hidden_cols, key='rodentity_view_key')
-                        
-                        hidden_cols = ['clientName','alleleSymbol',
-                                'alleleKey','assayKey','assays','assayFamilies','primerPlate','primerWell',
-                                'pcrPlate','pcrWell','index_plate','i7bc','i7well','i7name','i5bc','i5well',
-                                'i5name','cleanCount','dnaPlate','dnaWell']
-                        st.write(f'Custom results: {len(custom_results)}')
-                        dfc = pd.DataFrame(custom_results, columns=hdr)
-                        dc.aggrid_interactive_table(dfc, hidden=hidden_cols,key='custom_view_key')
-                        
-                        hidden_cols = ['clientName','alleleSymbol',
-                                'alleleKey','assayKey','assays','assayFamilies','primerPlate','primerWell',
-                                'pcrPlate','pcrWell','index_plate','i7bc','i7well','i7name','i5bc','i5well',
-                                'i5name','cleanCount','dnaPlate','dnaWell']
-                        st.write(f'Other results: {len(other_results)}')
-                        dfo = pd.DataFrame(other_results, columns=hdr)
-                        dc.aggrid_interactive_table(dfo, hidden=hidden_cols, key='other_view_key')
+                        if not Path(exp.get_exp_fn('amplicon_targets.fa')).exists():
+                            m('**No amplicon targets available**', level='display', dest=('mkdn'))
+                        else:
+                            # Three displays for Rodentity, custom, and other results
+                            key = 'rodentity_results_display'
+                            dc.show_results_display('rodentity', key, caller_id=key)
+                            key = 'custom_results_display'
+                            dc.show_results_display('custom', key, caller_id=key)
+                            key = 'other_results_display'
+                            dc.show_results_display('other', key, caller_id=key)
 
                 elif allele_tab == 2:
                     if not Path(exp.get_exp_fn('amplicon_results.csv')).exists():
@@ -1246,70 +1214,72 @@ def main():
                         if not Path(exp.get_exp_fn('amplicon_targets.fa')).exists():
                             m('**No amplicon targets available**', level='display', dest=('mkdn'))
                         else:
-                            perform_reset = False
-                            amp_pdf_fn = exp.get_exp_fn('amplicon_alignments.pdf')
-                            tmp_pdf_fn = exp.get_exp_fn('amplicon_alignments.json')
-                            reported_amps_fn = exp.get_exp_fn('amplicons_reported.txt')
-                            hdr, amplicon_data, filter_dict, amplicon_data_reported, amplicon_data_unreported = exp.gather_amplicon_results(reported_amps_fn)
-                            unreported_container = st.container()
-                            alignment_container = st.container()
-                            reported_container = st.container()
+                            key = 'amplicon_results_display'
+                            dc.show_results_display('amplicon', key, caller_id=key)
+                            # perform_reset = False
+                            # amp_pdf_fn = exp.get_exp_fn('amplicon_alignments.pdf')
+                            # tmp_pdf_fn = exp.get_exp_fn('amplicon_alignments.json')
+                            # reported_amps_fn = exp.get_exp_fn('amplicons_reported.txt')
+                            # hdr, amplicon_data, filter_dict, amplicon_data_reported, amplicon_data_unreported = exp.gather_amplicon_results(reported_amps_fn)
+                            # unreported_container = st.container()
+                            # alignment_container = st.container()
+                            # reported_container = st.container()
                             
-                            with unreported_container:
-                                if amplicon_data_unreported:
-                                    st.write('Unreported amplicons:')
-                                    st.session_state['chosen_vars'] = dc.show_results_table(hdr, amplicon_data_unreported, filter_dict, 'unreported_amps')
-                            with reported_container:
-                                if amplicon_data_reported:
-                                    st.write('Reported amplicons:')
-                                    dc.show_results_table(hdr, amplicon_data_reported, filter_dict, 'reported_amps')
-                                    wipe_report = st.button('Reset amplicon report', key='reset_amplicon_report_button')
-                                    if wipe_report:
-                                        success = True
-                                        if Path(reported_amps_fn).exists():
-                                            try:
-                                                Path(reported_amps_fn).unlink()
-                                            except Exception as exc:
-                                                st.failure(f'Could not delete {reported_amps_fn}, perhaps you have it open? {exc}')
-                                                success = False
-                                        if Path(tmp_pdf_fn).exists():
-                                            try:
-                                                Path(tmp_pdf_fn).unlink()
-                                            except Exception as exc:
-                                                st.failure(f'Coould not delete {tmp_pdf_fn}, perhaps you have it open {exc}')
-                                                success = False
-                                        if Path(amp_pdf_fn).exists():
-                                            try:
-                                                Path(amp_pdf_fn).unlink()
-                                            except Exception as exc:
-                                                st.failure(f'Could not delete {amp_pdf_fn}, perhaps you have it open? {exc}')
-                                                success = False
-                                        if success:
-                                            st.success('Amplicon report reset to empty')
-                                            perform_reset = True   
-                            with alignment_container:
-                                if 'chosen_vars' in st.session_state and st.session_state['chosen_vars']:
-                                    st.session_state['chosen_id'] = dc.show_alignments(st.session_state['chosen_vars'], tmp_pdf_fn, amp_pdf_fn,'alignment_viewer')
-                                else:
-                                    st.session_state['chosen_id'] = dc.show_alignments(None, tmp_pdf_fn, amp_pdf_fn,'alignment_viewer')
-                                if 'chosen_id' in st.session_state and st.session_state['chosen_id']:
-                                    amplicons_reported = set()
-                                    if Path(reported_amps_fn).exists():
-                                        with open(reported_amps_fn, 'rt') as f:
-                                            for line in f:
-                                                amplicons_reported.add(line.strip())
-                                    amplicons_reported.add(st.session_state['chosen_id'])
-                                    with open(reported_amps_fn, 'wt') as fout:
-                                        for ar in amplicons_reported:
-                                            print(ar, file=fout)
-                                    perform_reset = True
-                                else:
-                                    st.empty()
-                            if perform_reset:
-                                st.session_state['chosen_vars'] = None
-                                st.session_state['chosen_id'] = None
-                                sleep(0.4)
-                                st.rerun()
+                            # with unreported_container:
+                            #     if amplicon_data_unreported:
+                            #         st.write('Unreported amplicons:')
+                            #         st.session_state['chosen_vars'] = dc.show_results_table(hdr, amplicon_data_unreported, filter_dict, 'unreported_amps')
+                            # with reported_container:
+                            #     if amplicon_data_reported:
+                            #         st.write('Reported amplicons:')
+                            #         dc.show_results_table(hdr, amplicon_data_reported, filter_dict, 'reported_amps')
+                            #         wipe_report = st.button('Reset amplicon report', key='reset_amplicon_report_button')
+                            #         if wipe_report:
+                            #             success = True
+                            #             if Path(reported_amps_fn).exists():
+                            #                 try:
+                            #                     Path(reported_amps_fn).unlink()
+                            #                 except Exception as exc:
+                            #                     st.failure(f'Could not delete {reported_amps_fn}, perhaps you have it open? {exc}')
+                            #                     success = False
+                            #             if Path(tmp_pdf_fn).exists():
+                            #                 try:
+                            #                     Path(tmp_pdf_fn).unlink()
+                            #                 except Exception as exc:
+                            #                     st.failure(f'Coould not delete {tmp_pdf_fn}, perhaps you have it open {exc}')
+                            #                     success = False
+                            #             if Path(amp_pdf_fn).exists():
+                            #                 try:
+                            #                     Path(amp_pdf_fn).unlink()
+                            #                 except Exception as exc:
+                            #                     st.failure(f'Could not delete {amp_pdf_fn}, perhaps you have it open? {exc}')
+                            #                     success = False
+                            #             if success:
+                            #                 st.success('Amplicon report reset to empty')
+                            #                 perform_reset = True   
+                            # with alignment_container:
+                            #     if 'chosen_vars' in st.session_state and st.session_state['chosen_vars']:
+                            #         st.session_state['chosen_id'] = dc.show_alignments(st.session_state['chosen_vars'], tmp_pdf_fn, amp_pdf_fn,'alignment_viewer')
+                            #     else:
+                            #         st.session_state['chosen_id'] = dc.show_alignments(None, tmp_pdf_fn, amp_pdf_fn,'alignment_viewer')
+                            #     if 'chosen_id' in st.session_state and st.session_state['chosen_id']:
+                            #         amplicons_reported = set()
+                            #         if Path(reported_amps_fn).exists():
+                            #             with open(reported_amps_fn, 'rt') as f:
+                            #                 for line in f:
+                            #                     amplicons_reported.add(line.strip())
+                            #         amplicons_reported.add(st.session_state['chosen_id'])
+                            #         with open(reported_amps_fn, 'wt') as fout:
+                            #             for ar in amplicons_reported:
+                            #                 print(ar, file=fout)
+                            #         perform_reset = True
+                            #     else:
+                            #         st.empty()
+                            # if perform_reset:
+                            #     st.session_state['chosen_vars'] = None
+                            #     st.session_state['chosen_id'] = None
+                            #     sleep(0.4)
+                            #     st.rerun()
 
             # ** Info viewer **
             upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Files', 

@@ -1,3 +1,11 @@
+v2.03.000
+Date: 15/10/2025 10:17:46 AM
+* Fixed: obsolete code in FASTA parser only observed when files had errors
+* New: multiple sequence alignment added to genotyping report PDF
+* Changed: default font changed to Inconsolata monospace for better alignment viewing
+* TODO: coloured text in PDF report
+* TODO: changing included variants in the alignment table does not redo the alignment
+
 v2.02.003
 Date: 25/09/2025 10:59:32 AM
 * Fixed: Unknown sequences not being reported in genotyping report (accidentally skipped in v2.02.002)

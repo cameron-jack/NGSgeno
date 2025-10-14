@@ -1,0 +1,13 @@
+@font-face {
+  font-family: 'Inconsolata';
+  src: url('static/Inconsolata-VariableFont_wdth_wght.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+}
+
+html, body, [class*="css"] {
+  font-family: 'My Custom Font', monospace;
+  font-size: 18px;
+  color:#091747;
+}
+

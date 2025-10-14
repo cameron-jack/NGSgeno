@@ -1169,13 +1169,12 @@ def read_csv_or_excel_from_stream(multi_stream):
     return manifest_names, manifest_tables
 
 
-def check_non_ascii(file_content):
+def check_non_ascii(file_content, issue_num):
     """
     A function to check for non-ASCII characters.
     Inputs: character stream
     Outputs: list of dictionaries
     """
-    issue_num = 0
     issues = []
     lines = file_content.splitlines()
     line_num = 1  # Start with the first line
@@ -1193,7 +1192,7 @@ def check_non_ascii(file_content):
     return issues  
 
 
-def check_valid_sequence(file_content):
+def check_valid_sequence(file_content, issue_num):
     """
     Function to check that sequences contain only A, T, C, G, N, (, ), [, ]
         brackets and parentheses are allowed for reference sequences to denote variable regions
@@ -1214,7 +1213,6 @@ def check_valid_sequence(file_content):
 
         for idx, char in enumerate(sequence):
             if char not in "AaTtCcGgNn()[]":  # Check for valid characters
-                global issue_num
                 issue_num += 1
                 issues.append({
                     'Issue Number': issue_num,
@@ -1227,7 +1225,7 @@ def check_valid_sequence(file_content):
     return issues
 
 
-def check_gaps(file_content):
+def check_gaps(file_content, issue_num):
     """
     Function to check for gaps (spaces or tabs) within sequences.
     Inputs: character stream
@@ -1243,7 +1241,6 @@ def check_gaps(file_content):
             continue
 
         if " " in line or "\t" in line:
-            global issue_num
             issue_num += 1
             issues.append({
                 'Issue Number': issue_num,
@@ -1257,7 +1254,7 @@ def check_gaps(file_content):
 
 ### FASTA parsing/checking funtions below ###
 
-def check_blank_lines(file_content):
+def check_blank_lines(file_content, issue_num):
     """
     FASTA files should not contain blank lines
     Inputs: character stream
@@ -1269,7 +1266,6 @@ def check_blank_lines(file_content):
 
     for line in lines:
         if not line.strip():  # Blank line
-            global issue_num
             issue_num += 1
             issues.append({
                 'Issue Number': issue_num,
@@ -1287,10 +1283,10 @@ def check_fasta_file(file_content):
     Outputs: issues as a list of dictionaries
     """
     issues = []
-    issues.extend(check_non_ascii(file_content))
-    issues.extend(check_valid_sequence(file_content))
-    issues.extend(check_gaps(file_content))
-    issues.extend(check_blank_lines(file_content))
+    issues.extend(check_non_ascii(file_content, len(issues)))
+    issues.extend(check_valid_sequence(file_content, len(issues)))
+    issues.extend(check_gaps(file_content, len(issues)))
+    issues.extend(check_blank_lines(file_content, len(issues)))
     return issues   
 
 
@@ -1323,7 +1319,7 @@ def read_text_file(file_stream, caller_id=None):
     file_content = rawfile.decode(charenc)
     
     # Check for issues in the file content
-    issues = check_non_ascii(file_content)
+    issues = check_non_ascii(file_content,0)
     if issues:
         _report_issues(issues)
         return None

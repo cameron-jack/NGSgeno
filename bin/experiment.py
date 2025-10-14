@@ -1028,6 +1028,165 @@ class Experiment():
         return nimbus_input_filepaths, echo_input_paths, xbc
 
 
+    def gather_results(self, report_type, reported_entries_fn, results_fn):
+        """
+        Gather results from the specified report_type
+        args:
+            report_type: 'rodentity', 'custom', 'other' or 'amplicon'
+            reported_entries_fn: filename containing list of previously reported entries
+            results_fn: filename containing the results table (either results.csv or amplicon_results.csv)
+        returns:
+            headers, list of lists (rows), dict of filter parameters {id:filtProportion}
+        Notes:
+            Open the results.csv or amplicon_results.csv file and build a table, also retrieve any filter parameters
+            Previously reported entries are read from reported_entries_fn
+            Per-entry proportion filters are stored in <type>_table_filter_params.txt
+            We remove the "other" item from otherName and otherCount columns
+        """
+        if report_type not in ['rodentity', 'custom', 'other', 'amplicon']:
+            m(f'Invalid report type {report_type} in gather_results', level='critical')
+            return None, None, None, None, None
+        entries_reported = set()
+        if Path(reported_entries_fn).exists():
+            with open(reported_entries_fn, 'rt') as f:
+                for line in f:
+                    entries_reported.add(line.strip())
+        data = []
+        data_reported = []
+        data_unreported = []
+        plate_cols = set()
+        barcode_cols = set()
+        mod_cols = []
+        hdr = []
+        # we need to find these columns, modify them and preserve order
+        otherCount_col = None
+        otherName_col = None
+        
+        # grab these column numbers for rapid identification
+        samplePlate_col = None
+        sampleWell_col = None
+        sampleBarcode_col = None
+        primer_col = None
+        with open(results_fn, 'rt') as rfn:
+            for i, line in enumerate(rfn):
+                new_names = []
+                new_counts = []
+                l = line.replace('"','')
+                cols = [c.strip() for c in l.split(',')]
+                if i == 0:
+                    hdr = cols
+                    # remove guards
+                    for k,hc in enumerate(hdr):
+                        if hc == 'samplePlate':
+                            samplePlate_col = k
+                        elif hc == 'sampleWell':
+                            sampleWell_col = k
+                        elif hc == 'sampleBarcode':
+                            sampleBarcode_col = k
+                        elif hc == 'primer':
+                            primer_col = k
+
+                        if 'plate' in hc.lower():
+                            plate_cols.add(k)
+                        elif 'barcode' in hc.lower():
+                            barcode_cols.add(k)
+                        elif 'othercount' in hc.lower():
+                            otherCount_col = k
+                        elif 'othername' in hc.lower():
+                            otherName_col = k
+                    # add extra columns
+                    hdr.append('filtProportion')
+                else:
+                    mod_cols = []
+                    other_index = None
+                    tmp_count = None
+                    skip_entry = False
+                    for k,c in enumerate(cols):
+                        if k in plate_cols:
+                            mod_cols.append(util.unguard_pbc(c, silent=True))
+                        elif k in barcode_cols:
+                            # could be any guard type
+                            if k == sampleBarcode_col:
+                                if report_type == 'rodentity':
+                                    if util.is_guarded_rbc(c):
+                                        mod_cols.append(util.unguard_rbc(c, silent=True))
+                                    else:
+                                        skip_entry = True
+                                        break
+                                elif report_type == 'custom':
+                                    if util.is_guarded_cbc(c):
+                                        mod_cols.append(util.unguard_cbc(c, silent=True))
+                                    else:
+                                        skip_entry = True
+                                        break
+                                elif report_type == 'other':
+                                    if util.is_guarded_abc(c):
+                                        mod_cols.append(util.unguard_obc(c, silent=True))
+                                    else:
+                                        skip_entry = True
+                                        break
+                                elif report_type == 'amplicon':  # any guard type is possible
+                                    mod_cols.append(util.unguard(c, silent=True))
+                            else:
+                                mod_cols.append(util.unguard(c, silent=True))  # just remove guards
+                        elif k == otherName_col: # find the "other" first and identify its index
+                            # remove the "other" count from the list
+                            for j, item in enumerate(c.split(';')):
+                                if item.startswith('other'):
+                                    other_index = j
+                                    continue
+                                new_names.append(item)
+                            if tmp_count is not None:
+                                for j, item in enumerate(tmp_count.split(';')):
+                                    if j == other_index:
+                                        continue
+                                    new_counts.append(item)
+                                mod_cols.append(';'.join(new_counts))
+                                mod_cols.append(';'.join(new_names))
+                        elif k == otherCount_col:
+                            if other_index is None:
+                                tmp_count = c
+                            else:
+                                # remove the "other" count from the list
+                                for j, item in enumerate(c.split(';')):
+                                    if j == other_index:
+                                        continue
+                                    new_counts.append(item)
+                                mod_cols.append(';'.join(new_counts))
+                                mod_cols.append(';'.join(new_names))
+                        else:
+                            mod_cols.append(c)
+                    if skip_entry:
+                        continue
+                    # extra columns for report
+                    mod_cols.append(0.15)
+                    entry_id = f'{mod_cols[samplePlate_col]}\t{mod_cols[sampleWell_col]}\t{mod_cols[sampleBarcode_col]}\t{mod_cols[primer_col]}'
+                    if entry_id in data_reported:
+                        data_reported.append(mod_cols)
+                    else:
+                        data_unreported.append(mod_cols)
+                    data.append(mod_cols)
+        # read any existing filter parameters
+        filter_param_fn = self.get_exp_fn(f'{report_type}_table_filter_params.txt')
+        id_filt = {}
+        if os.path.exists(filter_param_fn):
+            with open(filter_param_fn, 'rt') as f:
+                for line in f:
+                    # should be samplePlate\tsampleWell\tsampleBarcode\tfiltProportion
+                    cols = line.strip().split('\t')
+                    if len(cols) == 4:
+                        id = f'{cols[0]}\t{cols[1]}\t{cols[2]}'
+                        try:
+                            id_filt[id] = float(cols[3])
+                        except ValueError:
+                            id_filt[id] = 0.15
+            for i,ad in enumerate(data):
+                id = f'{ad[samplePlate_col]}\t{ad[sampleWell_col]}\t{ad[sampleBarcode_col]}'
+                if id in id_filt:
+                    data[i][-1] = id_filt[id]
+        return hdr, data, id_filt, data_reported, data_unreported
+
+
     def gather_amplicon_results(self, reported_amps_fn):
         """
         Open the amplicon_results.csv file and build a table, also retrieve any filter parameters
