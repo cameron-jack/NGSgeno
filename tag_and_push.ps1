@@ -1,10 +1,11 @@
-$VER = "v2.03.000"
+$VER = "v2.03.001"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: obsolete code in FASTA parser only observed when files had errors
-* New: multiple sequence alignment added to genotyping report PDF
-* Changed: default font changed to Inconsolata monospace for better alignment viewing
+* Changed: amplicons now use the same matching logic as variants (i.e. allowing mismatches)
+* Fixed: Asyncio run method updated for Python 3.13 compatibility
+* Fixed: Amplicon matching was being launched with block .run instead of Popen, causing interface to hang
+* TODO: User reports that amplicon matching progress was not being shown, grey screen only
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment
 "@

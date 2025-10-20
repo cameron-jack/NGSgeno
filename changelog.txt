@@ -1,3 +1,12 @@
+v2.03.001
+Date: 20/10/2025 12:43:48 PM
+* Changed: amplicons now use the same matching logic as variants (i.e. allowing mismatches)
+* Fixed: Asyncio run method updated for Python 3.13 compatibility
+* Fixed: Amplicon matching was being launched with block .run instead of Popen, causing interface to hang
+* TODO: User reports that amplicon matching progress was not being shown, grey screen only
+* TODO: coloured text in PDF report
+* TODO: changing included variants in the alignment table does not redo the alignment
+
 v2.03.000
 Date: 15/10/2025 10:17:46 AM
 * Fixed: obsolete code in FASTA parser only observed when files had errors

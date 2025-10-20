@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-__version__ = "2.02.003"
+__version__ = "2.03.001"
 
 """
 @created: 1 May 2022
@@ -127,11 +127,10 @@ async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match
     Allows the interface to keep running while a background process (ngsmatch.py) progress is tracked
     """
     while True:
+        launch_progress = 0
+        match_progress = 0
         progress_files = list(Path(rundir).glob('match_progress_*'))
-        if len(progress_files) == 0:
-            launch_progress = 0
-            match_progress = 0
-        elif len(progress_files) == 1:
+        if len(progress_files) == 1:
             launch_progress = int(str(progress_files[0]).split('_')[-2])
             match_progress = int(str(progress_files[0]).split('_')[-1])
         
@@ -148,7 +147,40 @@ async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match
             m('Analysis completed', level='info')
             st.session_state['match_running'] = False
             return
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.6)
+
+
+def run_async_task(async_func, *args):
+    """
+    Run an asynchronous function in a new event loop.
+
+    Args:
+    async_func (coroutine): The asynchronous function to execute.
+    *args: Arguments to pass to the asynchronous function.
+
+    Returns:
+    None
+
+    https://discuss.streamlit.io/t/issues-with-asyncio-and-streamlit-event-bound-to-a-different-event-loop/66976/3
+    """
+    
+    loop = None
+
+    try:
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(async_func(*args))
+    except:
+        # Close the existing loop if open
+        if loop is not None:
+            loop.close()
+
+        # Create a new loop for retry
+        loop = asyncio.new_event_loop()
+
+        loop.run_until_complete(async_func(*args))
+    finally:
+        if loop is not None:
+            loop.close()
 
 
 def run_generate(exp, target_func, *args, **kwargs):
@@ -1073,16 +1105,18 @@ def main():
                                 if debug_mode:
                                     cmd_str += ' --debug'
                                 m(f'{cmd_str}', level='info')
-                                subprocess.Popen(cmd_str.split(' '))
+                                subprocess.Popen(cmd_str.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                                 st.write(f'Calling {cmd_str}')
-                                sleep(1.0)
+                                launch_msg = st.empty()
+                                launch_prog = st.progress(0)
+                                completion_msg = st.empty()
+                                match_prog = st.progress(0)
+                                run_async_task(report_progress, rundir, launch_msg, launch_prog, completion_msg, match_prog)
+                                st.rerun()  # Rerun to show progress
 
                     if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
-                        launch_msg = st.empty()
-                        launch_prog = st.progress(0)
-                        completion_msg = st.empty()
-                        match_prog = st.progress(0)
-                        asyncio.run(report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog))
+                        sleep(1.0)
+                        st.rerun()
                         
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele1', default_view1='Files', 
@@ -1139,6 +1173,13 @@ def main():
                         minprop = st.number_input(label="Do not match unique sequences with less than this "+\
                                 "proportion of the reads seen for the most observed (expected) allele, default 0.1. Must be between 0.0 and 1.0",
                                 format='%f',min_value=0.0, max_value=1.0, value=0.1, step=0.05)
+                        margin = st.number_input(label="Require lengths of read sequences and target "+\
+                                "references to be proportionally similar by this amount. Value must be between 0.0 and 1.0 "+\
+                                "default 0.9", format='%f',min_value=0.0, step=0.05,value=0.9)
+                        identity = st.number_input(label="Proportion of identity required for inexact match "+\
+                                ", default 0.9. Must be between 0.0 and 1.0",
+                                format='%f',min_value=0.0, max_value=1.0, value=0.9, step=0.05)
+                        inexact_mode = st.checkbox("Enable inexact matching")
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
                         debug_mode = st.checkbox('Turn on debugging for allele calling')
                         do_matching = st.form_submit_button("Run amplicon calling")
@@ -1154,6 +1195,8 @@ def main():
                             matching_prog = Path('bin/ngsmatch.py')
                             cmd_str = f'{sys.executable} {matching_prog} --ncpus {num_cpus} --rundir {rundir} '+\
                                     f'--mincov {mincov} --minprop {minprop}'
+                            if inexact_mode:
+                                cmd_str += ' --inexact'
                             if exhaustive_mode:
                                 cmd_str += ' --exhaustive'
                             if debug_mode:
@@ -1164,18 +1207,18 @@ def main():
                                 cmd_str += f' --targets amplicon_targets.fa'
                                 m(f'{cmd_str}', level='info')
                                 st.write(f'Calling {cmd_str}')
-                                cp = subprocess.run(cmd_str.split(' '))
+                                cp = subprocess.Popen(cmd_str.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                                 #print(f'{cp.stdout=} {cp.stderr=}', flush=True)
-                                sleep(1.0)
+                                launch_msg = st.empty()
+                                launch_prog = st.progress(0)
+                                completion_msg = st.empty()
+                                match_prog = st.progress(0)
+                                run_async_task(report_progress, rundir, launch_msg, launch_prog, completion_msg, match_prog)
+                                st.rerun()  # Rerun to show progress
 
                     if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
-                        launch_msg = st.empty()
-                        launch_prog = st.progress(0)
-                        completion_msg = st.empty()
-                        match_prog = st.progress(0)
-                        asyncio.run(report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog))
-
-                 
+                        sleep(1.0)
+                        st.rerun()
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele2', default_view1='Files', 

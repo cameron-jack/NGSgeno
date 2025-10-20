@@ -1098,69 +1098,69 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                     match_cnt[ref_seq + '//' + seq_anno] += num
                 continue
 
-            if amplicon_run:
-                # match against on_target_seqs exactly, then exact vs off-target (filter), then do inexact against on-target
+            # if amplicon_run:
+            #     # match against on_target_seqs exactly, then exact vs off-target (filter), then do inexact against on-target
 
-                # substring or superstring
-                msg = f"debug: amplicon matching {seq=} with {num=} counts to {on_target_seqs=}"
+            #     # substring or superstring
+            #     msg = f"debug: amplicon matching {seq=} with {num=} counts to {on_target_seqs=}"
+            #     wdb(msg, rundir, debug, lock_d)
+            #     is_match, ref_seq = exact_match(seq, on_target_seqs, rundir, debug, lock_d, margin=margin)
+            #     if is_match:
+            #         msg = f"debug: Amplicon exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+            #         wdb(msg, rundir, debug, lock_d)
+            #         match_cnt[ref_seq] += num
+            #         continue     
+
+            #     # filter targets - exact match against off-targets
+            #     is_match, ref_seq = exact_match(seq, off_target_seqs, rundir, debug, lock_d, margin=margin)
+            #     if is_match:
+            #         msg = f"debug: Amplicon exact match against off-target {seq_ids[ref_seq]} with {seq} and counts {num}"
+            #         wdb(msg, rundir, debug, lock_d)
+            #         match_cnt[ref_seq] += num
+            #         continue
+                
+            #     # look for variants
+            #     is_match2, ref_seq2, seq_anno2 = inexact_match(seq, [on_target_seq], rundir, debug, 
+            #         lock_d, identity=0.0)
+            #     if is_match2:
+            #         msg = f"debug: Amplicon inexact match against {ref_seq2=} {seq_anno2=} {num=} {seq=}\n"
+            #         wdb(msg, rundir, debug, lock_d)  
+            #         mtc[seq] = ref_seq2
+            #         if seq_anno2:
+            #             anc[seq] = seq_anno2
+            #             match_cnt[ref_seq2+'//'+seq_anno2] += num
+            #     continue
+
+            # else:  # genotyping
+            is_match, ref_seq = exact_match(seq, on_target_seqs, rundir, debug, lock_d, margin=margin)
+            if is_match:
+                msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
                 wdb(msg, rundir, debug, lock_d)
-                is_match, ref_seq = exact_match(seq, on_target_seqs, rundir, debug, lock_d, margin=margin)
-                if is_match:
-                    msg = f"debug: Amplicon exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
-                    wdb(msg, rundir, debug, lock_d)
-                    match_cnt[ref_seq] += num
-                    continue     
+                match_cnt[ref_seq] += num
+                continue   
 
-                # filter targets - exact match against off-targets
-                is_match, ref_seq = exact_match(seq, off_target_seqs, rundir, debug, lock_d, margin=margin)
-                if is_match:
-                    msg = f"debug: Amplicon exact match against off-target {seq_ids[ref_seq]} with {seq} and counts {num}"
-                    wdb(msg, rundir, debug, lock_d)
-                    match_cnt[ref_seq] += num
-                    continue
-                
-                # look for variants
-                is_match2, ref_seq2, seq_anno2 = inexact_match(seq, [on_target_seq], rundir, debug, 
-                    lock_d, identity=0.0)
-                if is_match2:
-                    msg = f"debug: Amplicon inexact match against {ref_seq2=} {seq_anno2=} {num=} {seq=}\n"
-                    wdb(msg, rundir, debug, lock_d)  
-                    mtc[seq] = ref_seq2
-                    if seq_anno2:
-                        anc[seq] = seq_anno2
-                        match_cnt[ref_seq2+'//'+seq_anno2] += num
+            is_match, ref_seq = exact_match(seq, off_target_seqs, rundir, debug, lock_d, margin=margin)
+            if is_match:
+                msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+                wdb(msg, rundir, debug, lock_d)
+                match_cnt[ref_seq] += num
                 continue
+            
+            if inexact:
+                # inexact matching must be done against all known sequences at once or it risks false association
+                is_match, ref_seq, seq_anno = inexact_match(seq, on_target_seqs.union(off_target_seqs),rundir, debug, 
+                        lock_d, identity=identity)
 
-            else:  # genotyping
-                is_match, ref_seq = exact_match(seq, on_target_seqs, rundir, debug, lock_d, margin=margin)
                 if is_match:
-                    msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+                    msg = f"debug: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']}"+\
+                            f" {wr['pcrWell']} {num} {seq}\n"
                     wdb(msg, rundir, debug, lock_d)
+                    mtc[seq] = ref_seq
                     match_cnt[ref_seq] += num
-                    continue   
-
-                is_match, ref_seq = exact_match(seq, off_target_seqs, rundir, debug, lock_d, margin=margin)
-                if is_match:
-                    msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
-                    wdb(msg, rundir, debug, lock_d)
-                    match_cnt[ref_seq] += num
+                    if seq_anno:
+                        anc[seq] = seq_anno
+                        match_cnt[ref_seq+'//'+seq_anno] += num
                     continue
-                
-                if inexact:
-                    # inexact matching must be done against all known sequences at once or it risks false association
-                    is_match, ref_seq, seq_anno = inexact_match(seq, on_target_seqs.union(off_target_seqs),rundir, debug, 
-                            lock_d, identity=identity)
-
-                    if is_match:
-                        msg = f"debug: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']}"+\
-                                f" {wr['pcrWell']} {num} {seq}\n"
-                        wdb(msg, rundir, debug, lock_d)
-                        mtc[seq] = ref_seq
-                        match_cnt[ref_seq] += num
-                        if seq_anno:
-                            anc[seq] = seq_anno
-                            match_cnt[ref_seq+'//'+seq_anno] += num
-                        continue
             # no match, map to itself
             match_cnt[seq] += num
  
