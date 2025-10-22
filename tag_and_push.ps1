@@ -1,10 +1,9 @@
-$VER = "v2.03.001"
+$VER = "v2.03.002"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Changed: amplicons now use the same matching logic as variants (i.e. allowing mismatches)
-* Fixed: Asyncio run method updated for Python 3.13 compatibility
-* Fixed: Amplicon matching was being launched with block .run instead of Popen, causing interface to hang
+* Fixed: non-blocking matching processes correctly closed and cleaned up
+* Fixed: incorrect path to style.css
 * TODO: User reports that amplicon matching progress was not being shown, grey screen only
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment

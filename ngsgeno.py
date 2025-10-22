@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-__version__ = "2.03.001"
+__version__ = "2.03.002"
 
 """
 @created: 1 May 2022
@@ -21,7 +21,7 @@ import jsonpickle
 import os
 #from ssl import SSLSession  # We may want this for secure logins in future
 import sys
-from pathlib import Path  
+from pathlib import Path
 from math import fabs, floor, ceil  # leave these incase they're needed later
 from subprocess import check_output, CalledProcessError, STDOUT
 import subprocess
@@ -77,8 +77,8 @@ if 'experiment' in st.session_state and st.session_state['experiment']:
     unsaved_exp = st.session_state['experiment']
 else:
     unsaved_exp = None
-    
-   
+
+
 def get_status_output(cmd):
     """ calls a process and returns the run status and any output """
     try:
@@ -94,7 +94,7 @@ def get_status_output(cmd):
 
 def get_run_folders():
     """ return an alphabetically sorted list of run folders, without their run_ prefix """
-        
+
     # get run folder names without 'run_'
     run_folders = [d[4:] for d in os.listdir('.') if d.startswith('run_') and os.path.isdir(d)]
     #sort by date modified
@@ -122,18 +122,50 @@ def create_run_folder(newpath):
     return exp, ''
 
 
+def clean_up_match_files():
+    """
+    Remove any existing match progress files to ensure a clean start
+    """
+    exp = st.session_state['experiment']
+    lock_path = exp.get_exp_fn('ngsgeno_lock')
+    if os.path.exists(lock_path):
+        try:
+            os.remove(lock_path)
+        except Exception as exc:
+            m(f'Could not remove lock file: {exc}', level='error', dest='noGUI')
+    rundir = exp.get_exp_dn()
+    progress_files = list(Path(rundir).glob('match_progress_*'))
+    for pf in progress_files:
+        try:
+            os.remove(pf)
+        except Exception as exc:
+            m(f'Could not remove progress file: {exc}', level='error', dest='noGUI')
+
+
 async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog):
     """
     Allows the interface to keep running while a background process (ngsmatch.py) progress is tracked
     """
     while True:
+        if 'matching_process' in st.session_state:
+            cp = st.session_state['matching_process']
+            if cp.poll() is not None:
+                # process finished
+                del st.session_state['matching_process']
+                m('Analysis completed', level='info')
+                st.session_state['match_running'] = False
+                clean_up_match_files()
+                return
+        else:
+            clean_up_match_files()
+            return
         launch_progress = 0
         match_progress = 0
         progress_files = list(Path(rundir).glob('match_progress_*'))
         if len(progress_files) == 1:
             launch_progress = int(str(progress_files[0]).split('_')[-2])
             match_progress = int(str(progress_files[0]).split('_')[-1])
-        
+
         if launch_progress > 100:
             launch_progress = 100
         if match_progress > 100:
@@ -145,8 +177,11 @@ async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match
 
         if launch_progress == 100 and match_progress == 100:
             m('Analysis completed', level='info')
-            st.session_state['match_running'] = False
-            return
+            if 'matching_process' in st.session_state:
+                cp = st.session_state['matching_process']
+                stdout, stderr = cp.communicate()
+                clean_up_match_files()
+                return
         await asyncio.sleep(0.6)
 
 
@@ -163,7 +198,7 @@ def run_async_task(async_func, *args):
 
     https://discuss.streamlit.io/t/issues-with-asyncio-and-streamlit-event-bound-to-a-different-event-loop/66976/3
     """
-    
+
     loop = None
 
     try:
@@ -215,11 +250,11 @@ def load_experiment_screen():
     experiment_title = 'Current Experiment: None'
     logo_col, ver_col,_, new_folder_col, create_button_col, ex_folder_col, _ = st.columns([2,2,2,2,1,2,1])
     current_status, current_ver = get_status_output("git describe")
-    ver_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', 
+    ver_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>',
             unsafe_allow_html=True)
 
     logo_col.image('ngsg_explorer.png', caption=f'{experiment_title}')
-        
+
     add_run_folder = new_folder_col.text_input('Create new run folder')
     with create_button_col:
         add_vertical_space(2)
@@ -250,10 +285,10 @@ def load_experiment_screen():
                 error_msg = "Folder name already exists"
             else:
                 error_msg = "Fatal path error: " + msg
-                    
+
     if run_folder:
         if st.session_state['experiment'] == None or st.session_state['experiment'].name != run_folder:
-            
+
             ch_run_path = 'run_' + run_folder
             if os.path.exists(ch_run_path):
                 exp = load_experiment(ch_run_path)
@@ -288,7 +323,7 @@ def save_button(exp, key):
             exp.save()
         except Exception as exc:
             m(f'Saving experiment failed! {exc}', level='error')
-            
+
 
 def home_button(exp):
     unload_button = st.button('🏠', type='primary', help='Go back and change experiment')
@@ -297,7 +332,7 @@ def home_button(exp):
             st.session_state['experiment'].save()
         st.session_state['experiment'] = None
         st.rerun()
-        
+
 
 def save_message(exp, key):
     _, col1, col2 = st.columns([9, 3, 1])
@@ -316,7 +351,7 @@ def var_select_cb():
 
 
 def ref_select_cb():
-    """ 
+    """
     Callback for reference selection
     """
     st.session_state['ref_chosen'] = st.session_state.get('amplicon_select1', None)
@@ -337,7 +372,7 @@ async def report_match_progress(exp, preprocess_prog, match_prog):
             elif len(progress_files) == 1:
                 launch_progress = int(str(progress_files[0]).split('_')[-2])
                 match_progress = int(str(progress_files[0]).split('_')[-1])
-            
+
             if launch_progress > 100:
                 launch_progress = 100
             if match_progress > 100:
@@ -360,7 +395,7 @@ async def report_match_progress(exp, preprocess_prog, match_prog):
         elif len(progress_files) == 1:
             launch_progress = int(str(progress_files[0]).split('_')[-2])
             match_progress = int(str(progress_files[0]).split('_')[-1])
-        
+
         if launch_progress > 100:
             launch_progress = 100
         if match_progress > 100:
@@ -376,7 +411,7 @@ async def report_match_progress(exp, preprocess_prog, match_prog):
             return
         await asyncio.sleep(1)
 
-def manage_matching(exp: Experiment, lock_path: Path, targets: Path, primer_assayfam: Path, outfn: Path, 
+def manage_matching(exp: Experiment, lock_path: Path, targets: Path, primer_assayfam: Path, outfn: Path,
         variants: Path, ncpus: int, mincov: int, minprop: float, exhaustive: bool, debug: bool) -> None:
     """
     Manage the NGS match process
@@ -390,7 +425,7 @@ def manage_matching(exp: Experiment, lock_path: Path, targets: Path, primer_assa
             except Exception as exc:
                 m(f'Removing lock file: {exc}', level='error')
             return
-        
+
 
         # report on progress - NGSMatch object already exists
         print("Analysis already running", file=sys.stderr)
@@ -399,7 +434,7 @@ def manage_matching(exp: Experiment, lock_path: Path, targets: Path, primer_assa
         try:
             with open(lock_path,"wt"):
                 rundir = exp.get_exp_dn()
-                MM = MatchManager(rundir, targets, primer_assayfam, outfn, variants, ncpus, mincov, minprop, 
+                MM = MatchManager(rundir, targets, primer_assayfam, outfn, variants, ncpus, mincov, minprop,
                         exhaustive, debug)
                 init_state('match_manager', MM)
                 report_progress(rundir, 0, 0)  # set this up asap
@@ -417,12 +452,12 @@ def display_pipeline_header(exp):
     logo_col, info_col, pipe_col = st.columns([1,2,9])
     logo_col.image('ngsg_icon.png')
     current_status, current_ver = get_status_output("git describe")
-    
-    info_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>', 
+
+    info_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {current_ver}</p>',
             unsafe_allow_html=True)
-    info_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {experiment_title}</p>', 
+    info_col.markdown(f'<p style="color:#83b3c9; font-size: 90%"> {experiment_title}</p>',
             unsafe_allow_html=True)
-    
+
     home_col, save_col, _ = info_col.columns(3)
     with home_col:
         home_button(exp)
@@ -431,7 +466,7 @@ def display_pipeline_header(exp):
 
     if 'stage' not in st.session_state:
         st.session_state['stage'] = None
-            
+
     exp = st.session_state['experiment']
     pipeline_stages=["Load", "Nimbus", "Primers", "Index", "Miseq", "Alleles", "Reports"]
     pipe_stage = None
@@ -444,7 +479,7 @@ def display_pipeline_header(exp):
 def unlocked(exp):
     """
     Checks whether the experiment is locked. An experiment will be locked if it the user has uploaded sequence files
-    from Miseq. 
+    from Miseq.
     Args:
         exp (st.session_state['experiment']):
     Returns:
@@ -460,7 +495,7 @@ def main():
     """
     The NGSgeno "Xplorer" application. Allows full control of all sections of the pipeline,
     and displays all aspects of the experiment state at any time.
-    """    
+    """
     st.set_page_config(
         page_title="NGS Genotyping",
         page_icon="ngsg_icon.png",
@@ -473,13 +508,13 @@ def main():
 
     if 'experiment' not in st.session_state or st.session_state['experiment'] is None:
         load_experiment_screen()
-        
+
     #================================================ START EXPERIMENT =================================================
     else:  # main program
         exp = st.session_state['experiment']
         if not hasattr(exp, '_finalizer'):
             exp._finalizer = weakref.finalize(exp, exp.save)
-        
+
         pipeline_stage = display_pipeline_header(exp)
         if pipeline_stage:
             st.session_state['info_expand'] = False
@@ -491,7 +526,7 @@ def main():
                 else:
                     st.session_state['pipeline_stage'] = 0
             pipeline_stage = st.session_state['pipeline_stage']
-        
+
         init_state('info_expand', False)
         upper_container = st.container()
         message_container = st.container()
@@ -501,24 +536,24 @@ def main():
         add_vertical_space(2)
         #hline()
         lower_container = st.container(border = True)
-        
+
         # required for interactive content
         st.session_state['message_container'] = message_container
-        
+
         # callbacks can't write directly as the callbacks go out of scope
         init_state('messages_temp', [])  # messages are tuples of (message, level:info/warning/error/None)
         init_state('messages_persist', [])
-        
+
         # define four info panels, two upper, two lower
         init_state('info_panel1', 'None')
         init_state('info_panel2', 'None')
         init_state('info_panel3', 'Files')
         init_state('info_panel4', 'Log')
-        
+
         # define default heights for these panels
         init_state('upper_panel_height', 250)
         init_state('lower_panel_height', 350)
-        
+
         # standard upper info viewer code for each tab
         def upper_info_viewer_code(tab_col3, tab_col2, widget_key, default_view1='None', default_view2='None', checked=True):
             with tab_col3:
@@ -526,8 +561,8 @@ def main():
                 dc.show_upper_info_viewer_checkbox(widget_key, value=checked)
             if st.session_state['show_upper_info_viewer']:
                 with tab_col2:
-                    ignore = dc.info_selection(widget_key+"top_viewer", 'info_panel1', 'info_panel2', 
-                            'upper_panel_height', default_view1=default_view1, default_view2=default_view2, 
+                    ignore = dc.info_selection(widget_key+"top_viewer", 'info_panel1', 'info_panel2',
+                            'upper_panel_height', default_view1=default_view1, default_view2=default_view2,
                             default_height=st.session_state.get('upper_panel_height',250))
             caller_id = 'display_feedback'
             # display any messages for this widget
@@ -536,30 +571,30 @@ def main():
                     m(msg, level=lvl, no_log=True)
                 sleep(0.3)
                 mq[caller_id] = set()
-                
+
         # attempt to parse any files that are set for upload
         parse.process_upload_queue(exp)
         if '_upload_pending' not in exp.uploaded_files:
             exp.uploaded_files['_upload_pending'] = {}
-        
+
         with save_container:
             save_message(exp, key = 'save1')
 
         # info panel displays are updated at the bottom of the script, so that they reflect any changes
         with lower_container:
-            success = dc.info_selection("bottom_viewer", 'info_panel3', 'info_panel4', 
-                    'lower_panel_height', default_view1='Log', default_view2='None', 
+            success = dc.info_selection("bottom_viewer", 'info_panel3', 'info_panel4',
+                    'lower_panel_height', default_view1='Log', default_view2='None',
                     default_height=st.session_state.get('lower_panel_height',350))
-            
+
         #============================================== STAGE 1: Load data =============================================
         if pipeline_stage == 0:
-                    
+
             tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
             with tab_col1:
                 #load_data_tab = dc.create_tabs([("Load Samples", "Rodentity or custom samples for the complete pipeline"),
                 #        ("Load Consumables", "Additional plates and information"),
-                #        ("Load Amplicons","Additional amplicons to be sequenced")])   
-                load_data_tab = dc.create_tabs([("Load Samples", ""),("Load Consumables", ""), 
+                #        ("Load Amplicons","Additional amplicons to be sequenced")])
+                load_data_tab = dc.create_tabs([("Load Samples", ""),("Load Consumables", ""),
                         ("Load Amplicons", "")])
             if not load_data_tab:
                 init_state('load_tab', 1)
@@ -583,7 +618,7 @@ def main():
                         hline()
 
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_load', default_view1='Samples', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_load', default_view1='Samples',
                         default_view2='Files')
 
             #------------------------------------ Load ~ TAB 2: Load consumables ---------------------------------------
@@ -603,7 +638,7 @@ def main():
                         ld.custom_volumes('custom1')
                         hline()
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_consumables', default_view1='Consumables', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_consumables', default_view1='Consumables',
                         default_view2='Samples')
 
             #------------------------------------ Load ~ TAB 3: Load amplicons ---------------------------------------
@@ -619,13 +654,13 @@ def main():
                         ld.load_amplicon_references('ref_load3')
                         hline()
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_consumables', default_view1='Files', 
-                        default_view2='Samples')        
-        
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_consumables', default_view1='Files',
+                        default_view2='Samples')
+
         #=============================================== STAGE 2: Nimbus ===============================================
         if pipeline_stage == 1:
             tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
-              
+
             with tab_col1:
                 nimbus_tab = dc.create_tabs([("Download", "Nimbus input files"),("Upload", "Echo input files")])
             if not nimbus_tab:
@@ -659,19 +694,19 @@ def main():
 
                                 #Generate files
                                 if run_gen_nimbus:
-                                    success = run_generate(exp, exp.generate_nimbus_inputs)    
+                                    success = run_generate(exp, exp.generate_nimbus_inputs)
                                     if not success:
-                                        m('Failed to generate the Nimbus files. See the log for details', 
+                                        m('Failed to generate the Nimbus files. See the log for details',
                                                 level='error')
                                     else:
                                         add_vertical_space(2)
                                         nfs, efs, xbcs = exp.get_nimbus_filepaths()
-                    
+
                         add_vertical_space(3)
                         dc.get_echo_download_buttons(nfs)
-                
+
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_nimbus1', default_view1='Status', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_nimbus1', default_view1='Status',
                         default_view2='Files')
 
             #---------------------------------- Nimbus ~ TAB 2: Upload echo input files --------------------------------
@@ -680,28 +715,28 @@ def main():
                 if unlocked(exp):
                     with main_body_container:
                         _, header_col, _ = st.columns([2,2,1])
-                    
+
                         header_col.subheader('Upload Echo Input Files')
                         ld.load_echo_inputs('1')
 
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_nimbus2', default_view1='Status', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_nimbus2', default_view1='Status',
                         default_view2='Files')
 
         #=========================================== STAGE 3: PCR 1 Primers ============================================
         if pipeline_stage == 2:
             st.session_state['assay_filter'] = True
             pcr_stage = 1
-            
+
             tab_col1, tab_col2, tab_col3 = upper_container.columns([5,5,1])
-    
+
             #Tabs
             with tab_col1:
                 primer_tab = dc.create_tabs([("PCR 1", "Components"), ("Generate", "Picklists")])
             if not primer_tab:
                 init_state("primer_tab", 1)
                 primer_tab = st.session_state['primer_tab']
-            
+
             #nimbus fp, echo fp, barcodesnot in echo
             nfs, efs, xbcs = exp.get_nimbus_filepaths()
             missing_nims = ['Echo_384_COC_0001_'+util.unguard(xbc, silent=True)+'_0.csv' for xbc in xbcs]
@@ -717,10 +752,10 @@ def main():
                                     'upload primer layouts and volumes here, then move to the *Generate Picklists* tab')
                         else:
                             st.warning('Do you need to upload Echo input files (output from Nimbus)?')
-                        
+
                         checkbox_cont = st.container()
-                        hline()   
-                        add_vertical_space(1) 
+                        hline()
+                        add_vertical_space(1)
 
                         display_cont = st.container()
                         hline()
@@ -737,21 +772,21 @@ def main():
                         ld.custom_volumes('cust_vol')
                         selected_pids = {}
                         with checkbox_cont:
-                            checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
+                            checkbox_keys = dc.display_plate_checklist('pmr1_checklist',
                                 ['dna','pcr','taqwater1','primer'])
-                        
+
                             selected_pids = dc.collect_plate_checklist(checkbox_keys)
                             if not selected_pids['pcr']:
-                                m('No PCR plates selected/available', level='display', dest=('css',), color='red',size='p')            
+                                m('No PCR plates selected/available', level='display', dest=('css',), color='red',size='p')
 
                         with pcr_col:
                             ld.add_pcr_barcodes('pcr_bc_tab1')
                         with taqwater_col:
                             ld.add_taqwater_barcodes('tw_bc_tab1', pcr_stage=pcr_stage)
-                        
+
                         with display_cont:
                             dc.display_pcr1_components(selected_pids)
-                            
+
                             add_vertical_space(1)
                             if selected_pids['dna']:
                                 primer_max_vol = util.CAP_VOLS[util.PLATE_TYPES['Echo384']]
@@ -759,14 +794,14 @@ def main():
                                 if not selected_pids['primer']:
                                     st.warning(f'Primers will appear highlighted red if no primer plate files have been loaded')
                                 st.write(f'Available volumes equal the measured volume - dead volume ({primer_dead_vol/1000}ul). Max primer volume is {primer_max_vol/1000}ul.')
-                                dc.display_primers('pcr_tab1', dna_pids=selected_pids['dna'], 
+                                dc.display_primers('pcr_tab1', dna_pids=selected_pids['dna'],
                                         primer_pids=selected_pids['primer'], save_buttons=True)
-                                
+
                         add_vertical_space(1)
 
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr1', default_view1='Primers', 
-                        default_view2='Files')   
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr1', default_view1='Primers',
+                        default_view2='Files')
 
             #-------------------------------- Primers ~ TAB 2: Generate PCR 1 picklists --------------------------------
             if primer_tab == 2:
@@ -777,16 +812,16 @@ def main():
                         st.subheader('Generate Primer (PCR 1) Echo Picklists')
                         st.info('Select the resources you wish to include for primer PCR and then click on the '+\
                                 '**Generate Echo Picklists** button below, to create Echo picklist files')
-                        checkbox_keys = dc.display_plate_checklist('pmr1_checklist', 
+                        checkbox_keys = dc.display_plate_checklist('pmr1_checklist',
                                 ['dna','pcr','taqwater1','primer'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         if not selected_pids['pcr'] and not selected_pids['amplicon']:
                             m('No PCR or amplicon plates selected/added yet', level='display', dest=('css',), color='red',size='p')
-                        hline()    
+                        hline()
                         #dc.display_pcr_common_components(selected_pids)
                         dc.display_pcr1_components(selected_pids)
                         hline()
-                        
+
                         if selected_pids['dna']:
                             if exp.check_ready_pcr1(selected_pids, caller_id=caller_id):
                                 _,button_col,cb_col,_ = st.columns([5, 2, 2, 4])
@@ -801,22 +836,22 @@ def main():
                                         st.error('Picklist generation failed. Please see the log')
                                     else:
                                         exp.add_pcr_wells(exp, selected_pids['pcr'], selected_pids['dna'])
-                                        
+
                         for msg,lvl in mq[caller_id]:
                             m(msg, lvl)
                         mq[caller_id] = set()
 
                         if generate.pcr1_picklists_exist(exp):
                             dc.get_echo1_download_btns()
-                
+
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr2', default_view1='Primers', 
-                        default_view2='Consumables') 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_pcr2', default_view1='Primers',
+                        default_view2='Consumables')
 
         #============================================ STAGE 4: PCR 2 Index =============================================
         if pipeline_stage == 3:
             pcr_stage = 2
-            
+
             tab_col1, tab_col2,tab_col3 = upper_container.columns([5,5,1])
 
             #Tab setup
@@ -825,7 +860,7 @@ def main():
             if not index_tab:
                 init_state('index_tab', 1)
                 index_tab = st.session_state['index_tab']
-            
+
             #------------------------------------- Index ~ TAB 1: PCR 2 Components -------------------------------------
             if index_tab == 1:
                 st.session_state['index_tab'] = 1
@@ -834,7 +869,7 @@ def main():
                         st.subheader('Indexing (PCR 2) Components')
                         st.info('Provide the resources needed to perform a sufficient number of indexing reactions '+\
                                 'for your experiment, then move to the *Generate Picklists* tab')
-                        
+
                         checkbox_cont = st.container()
                         hline()
                         add_vertical_space(1)
@@ -845,7 +880,7 @@ def main():
 
                         st.info('Indexing (PCR 2) requires index index plates, taq/water plates, '+\
                                 'and either Echo plates (prepared by the Nimbus) or amplicon plates')
-                        
+
                         st.subheader('Add Barcodes', help='Add barcodes for plates')
                         pcr_col, taqwater_col = st.columns(2)
 
@@ -859,12 +894,12 @@ def main():
                         with checkbox_cont:
                             checkbox_keys = dc.display_plate_checklist('idx_checklist1',
                                     ['pcr','taqwater2','amplicon','index'])
-                        
+
                             selected_pids = dc.collect_plate_checklist(checkbox_keys)
                             if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                                m('No PCR or amplicon plates selected', level='display', 
+                                m('No PCR or amplicon plates selected', level='display',
                                         dest=('css',), color='red',size='p')
-                       
+
                         with display_cont:
                             dc.display_pcr2_components(selected_pids)
 
@@ -873,14 +908,14 @@ def main():
                         with taqwater_col:
                             ld.add_taqwater_barcodes('tw_bc_tab2', pcr_stage=pcr_stage)
                         add_vertical_space(1)
-                
+
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_index1', default_view1='Indexes', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_index1', default_view1='Indexes',
                         default_view2='Consumables')
 
             #--------------------------------- Index ~ TAB 2: Generate PCR 2 picklists ---------------------------------
-            if index_tab == 2:                
-                st.session_state['index_tab'] = 2 
+            if index_tab == 2:
+                st.session_state['index_tab'] = 2
                 init_state('run_index', False)
                 if unlocked(exp):
                     with main_body_container:
@@ -889,11 +924,11 @@ def main():
                         st.info('Select the resources you wish to include for indexing PCR and then click on the '+\
                                 '**Generate Echo Picklists** button below, to create Echo picklist files')
                         do_generate = False
-                        checkbox_keys = dc.display_plate_checklist('idx_checklist2', 
+                        checkbox_keys = dc.display_plate_checklist('idx_checklist2',
                                 ['pcr','taqwater2','amplicon','index'])
                         selected_pids = dc.collect_plate_checklist(checkbox_keys)
                         if not selected_pids['pcr'] and not selected_pids['amplicon']:
-                            m('No PCR or amplicon plates selected', 
+                            m('No PCR or amplicon plates selected',
                                     level='display', dest=('css',), color='red',size='p')
                         hline()
                         print(f'{selected_pids=}', flush=True)
@@ -902,7 +937,7 @@ def main():
                         print(f'{selected_pids=}', flush=True)
                         hline()
                         add_vertical_space(1)
-                                                
+
                         if selected_pids['pcr']:
                             success = exp.check_ready_pcr2(selected_pids, caller_id=caller_id)
                             if success:
@@ -914,7 +949,7 @@ def main():
                         else:
                             m('Either PCR plates or Amplicon plates must exist for indexing to begin',
                                     level='display')
-                                    
+
                         for msg,lvl in mq[caller_id]:
                             m(msg, lvl)
                         mq[caller_id] = set()
@@ -932,19 +967,19 @@ def main():
                                     amp1.warning('Create picklists with only amplicons?')
                                     amp2.button('Yes', on_click=set_state, args=('run_index', True))
                                     amp3.button('No', on_click=set_state, args=('run_index', False))
-                        
+
                         if st.session_state['run_index']:
                             success = run_generate(exp, exp.generate_echo_PCR2_picklists,
                                     selected_pids)
                             set_state('run_index', False)
                             if not success:
                                 m('Picklist generation failed. Please see the log', level='display')
-                                    
+
                         if generate.pcr2_picklists_exist(exp):
-                            dc.show_echo2_outputs() 
-                
+                            dc.show_echo2_outputs()
+
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_index2', default_view1='Files', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_index2', default_view1='Files',
                         default_view2='Files')
 
         #=============================================== STAGE 5: Miseq ================================================
@@ -961,7 +996,7 @@ def main():
                     miseq_tab = st.session_state['miseq_tab']
 
             add_vertical_space(1)
-            
+
             #-------------------------------- Miseq ~ TAB 1: Download Miseq Samplesheet --------------------------------
             if miseq_tab == 1:
                 st.session_state['miseq_tab'] = 1
@@ -970,7 +1005,7 @@ def main():
 
                     if exp.locked:
                         st.warning(f'Experiment {exp.name} locked from further modification')
-                
+
                     with header_col:
                         st.subheader('Download MiSeq File')
                         add_vertical_space(1)
@@ -980,12 +1015,12 @@ def main():
                     if exp.get_miseq_samplesheets():
                         dc.get_miseq_download_btn(exp)
                         add_vertical_space(4)
-                    
+
                     else:
                         st.warning(f'No MiSeq Samplesheet available for download')
-                
+
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq1', default_view1='Files', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq1', default_view1='Files',
                         default_view2='Plates')
 
             #------------------------ Miseq ~ TAB 2: Upload Reference File and Miseq Sequences -------------------------
@@ -995,7 +1030,7 @@ def main():
                     st.subheader('Upload Custom Reference Files')
                     ld.load_rodentity_references('reference_miseq2')
                     add_vertical_space(2)
-                
+
                     caller_id = 'seq_upload_ready'
                     success = exp.check_sequence_upload_ready(caller_id)
                     if caller_id in mq:
@@ -1007,10 +1042,10 @@ def main():
                         st.warning('Resources are required for allele calling and must be present before FASTQs can be uploaded')
                     else:
                         ld.load_miseq_fastqs('miseq_tab1')
-                    
+
 
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq2', default_view1='Files', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_miseq2', default_view1='Files',
                         default_view2='Plates')
 
         #=========================================== STAGE 6: Allele Calling ===========================================
@@ -1029,7 +1064,7 @@ def main():
                 st.session_state['allele_tab'] = 1
                 with main_body_container:
                     rundir = exp.get_exp_dn()
-                    caller_id = 'pre-execute-gt-analysis'    
+                    caller_id = 'pre-execute-gt-analysis'
                     success = exp.check_sequence_upload_ready(caller_id)
                     for msg,lvl in mq[caller_id]:
                         m(msg, level=lvl, no_log=True)
@@ -1054,7 +1089,7 @@ def main():
                                     os.rename(fn.replace('.','_tmp_swap.'), fn)
                                 except PermissionError:
                                     st.error(f'{fn} appears to be in use. Please close this file before continuing')
-                            
+
                         with st.form('allele_calling_form', clear_on_submit=True):
                             all_fns = [fp for fp in exp.uploaded_files.keys() if fp not in {'_upload_queue','_upload_pending'}]
                             ref_fns = [fp for fp in all_fns if exp.uploaded_files[fp]['purpose'] \
@@ -1082,7 +1117,11 @@ def main():
                             do_matching = st.form_submit_button("Run allele calling")
 
                         if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
-                            st.info('Analysis in progress')
+                            match_fn = exp.get_exp_fn('match_progress_100_100')
+                            if Path(match_fn).exists():
+                                clean_up_match_files()
+                                st.rerun()
+                            
                         elif do_matching:
                             success = generate.generate_targets(exp, ref, caller_id=caller_id)
                             if not success:
@@ -1105,21 +1144,23 @@ def main():
                                 if debug_mode:
                                     cmd_str += ' --debug'
                                 m(f'{cmd_str}', level='info')
-                                subprocess.Popen(cmd_str.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                                 st.write(f'Calling {cmd_str}')
+                                cp = subprocess.Popen(cmd_str.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                st.session_state['matching_process'] = cp
                                 launch_msg = st.empty()
                                 launch_prog = st.progress(0)
                                 completion_msg = st.empty()
                                 match_prog = st.progress(0)
+                                clean_up_match_files()
                                 run_async_task(report_progress, rundir, launch_msg, launch_prog, completion_msg, match_prog)
                                 st.rerun()  # Rerun to show progress
 
                     if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
                         sleep(1.0)
                         st.rerun()
-                        
+
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele1', default_view1='Files', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele1', default_view1='Files',
                         default_view2='Plates')
 
             #-------------------------------- Allele ~ TAB 2: Amplicon calling --------------------------------
@@ -1132,7 +1173,7 @@ def main():
                     st.info('This section is for custom amplicon calling. Please choose the amplicon '+\
                             'reference you wish to use or upload a new one')
                     ld.load_amplicon_references('amplicon_ref1')
-                    
+
                     targets_fn = exp.get_exp_fn('amplicon_targets.fa')
                     results_fn = exp.get_exp_fn('amplicon_results.csv')
                     matchlog_fn = exp.get_exp_fn('amplicon_match.log')
@@ -1162,7 +1203,7 @@ def main():
                             m('No amplicon references selected', level='display', dest=('css',), color='red',size='p')
                         else:
                             st.write(f'Selected amplicon references: {", ".join(dc.fns_from_checklist(selected_refs))}')
-                                   
+
                     with st.form('amplicon_calling_form', clear_on_submit=True):
                         cpus_avail = os.cpu_count() -1
                         num_cpus = st.number_input(\
@@ -1208,11 +1249,12 @@ def main():
                                 m(f'{cmd_str}', level='info')
                                 st.write(f'Calling {cmd_str}')
                                 cp = subprocess.Popen(cmd_str.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                                #print(f'{cp.stdout=} {cp.stderr=}', flush=True)
+                                st.session_state['matching_process'] = cp
                                 launch_msg = st.empty()
                                 launch_prog = st.progress(0)
                                 completion_msg = st.empty()
                                 match_prog = st.progress(0)
+                                clean_up_match_files()
                                 run_async_task(report_progress, rundir, launch_msg, launch_prog, completion_msg, match_prog)
                                 st.rerun()  # Rerun to show progress
 
@@ -1221,9 +1263,9 @@ def main():
                         st.rerun()
 
                 # ** Info viewer **
-                upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele2', default_view1='Files', 
+                upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele2', default_view1='Files',
                         default_view2='Plates')
-        
+
         #=============================================== STAGE 7: Reports ==============================================
         if pipeline_stage == 6:
             results_fp = exp.get_exp_fn('results.csv')
@@ -1233,7 +1275,7 @@ def main():
             if not allele_tab:
                 init_state('results_tab', 1)
                 allele_tab = st.session_state['results_tab']
-                
+
             with main_body_container:
                 if allele_tab == 1:
                     if not Path(results_fp).exists():
@@ -1267,7 +1309,7 @@ def main():
                             # unreported_container = st.container()
                             # alignment_container = st.container()
                             # reported_container = st.container()
-                            
+
                             # with unreported_container:
                             #     if amplicon_data_unreported:
                             #         st.write('Unreported amplicons:')
@@ -1299,7 +1341,7 @@ def main():
                             #                     success = False
                             #             if success:
                             #                 st.success('Amplicon report reset to empty')
-                            #                 perform_reset = True   
+                            #                 perform_reset = True
                             # with alignment_container:
                             #     if 'chosen_vars' in st.session_state and st.session_state['chosen_vars']:
                             #         st.session_state['chosen_id'] = dc.show_alignments(st.session_state['chosen_vars'], tmp_pdf_fn, amp_pdf_fn,'alignment_viewer')
@@ -1325,19 +1367,19 @@ def main():
                             #     st.rerun()
 
             # ** Info viewer **
-            upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Files', 
+            upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Files',
                     default_view2='Plates')
 
         #=============================================== UPPER INFO SECTION ============================================
-        
-        upper_panels = [v for v in (st.session_state.get('info_panel1', 'None'), 
+
+        upper_panels = [v for v in (st.session_state.get('info_panel1', 'None'),
                 st.session_state.get('info_panel2', 'None')) if v != 'None']
         if any(upper_panels) and st.session_state.get('show_upper_info_viewer'):
             with upper_container:
-                dc.show_info_viewer(upper_panels, st.session_state.get('upper_panel_height',250), 'upper_view_panels')  
-        
+                dc.show_info_viewer(upper_panels, st.session_state.get('upper_panel_height',250), 'upper_view_panels')
+
         #=============================================== LOWER INFO SECTION ============================================
-        
+
         lower_panels = [v for v in (st.session_state.get('info_panel3','None'),
                 st.session_state.get('info_panel4','None')) if v != "None"]
         if any(lower_panels):
@@ -1357,7 +1399,7 @@ def main():
             st.session_state['pipeline_stage'] = pipeline_stage
         elif st.session_state['pipeline_stage'] != pipeline_stage:
             st.session_state['pipeline_stage'] = pipeline_stage
-            
+
 
 if __name__ == '__main__':
     main()

@@ -1933,6 +1933,8 @@ def show_results_display(results_type, key, caller_id=None):
 
 
 def add_css():
+    with open( "style.css" ) as css:
+        st.markdown( f'<style>{css.read()}</style>' , unsafe_allow_html= True)
     #CSS
     st.markdown('''
     <style>
