@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-__version__ = "2.03.002"
+__version__ = "2.03.003"
 
 """
 @created: 1 May 2022
@@ -13,6 +13,7 @@ Needs load_data.py for GUI functions that are responsible for incorporating data
 experiment, and display_components.py for functions dedicated to the presentation of GUI
 elements
 """
+from threading import Thread
 from re import S
 import re
 import select
@@ -29,6 +30,7 @@ import queue
 import threading
 from copy import deepcopy
 import weakref
+from io import StringIO
 
 import pandas as pd
 
@@ -62,6 +64,11 @@ try:
     import bin.match as match
 except ModuleNotFoundError:
     import match
+
+try:
+    import bin.ngsmatch as ngsmatch
+except ModuleNotFoundError:
+    import ngsmatch
 
 #import bin.file_io as file_io
 #import bin.db_io as db_io
@@ -122,43 +129,31 @@ def create_run_folder(newpath):
     return exp, ''
 
 
-def clean_up_match_files():
+def clean_up_match_files(rundir):
     """
     Remove any existing match progress files to ensure a clean start
     """
-    exp = st.session_state['experiment']
-    lock_path = exp.get_exp_fn('ngsgeno_lock')
+    lock_path = Path(rundir+'/ngsgeno_lock')
     if os.path.exists(lock_path):
         try:
             os.remove(lock_path)
         except Exception as exc:
-            m(f'Could not remove lock file: {exc}', level='error', dest='noGUI')
-    rundir = exp.get_exp_dn()
+            print(f'Could not remove lock file: {exc}', file=sys.stderr)
+            #m(f'Could not remove lock file: {exc}', level='error', dest='noGUI')
     progress_files = list(Path(rundir).glob('match_progress_*'))
     for pf in progress_files:
         try:
             os.remove(pf)
         except Exception as exc:
-            m(f'Could not remove progress file: {exc}', level='error', dest='noGUI')
+            #m(f'Could not remove progress file: {exc}', level='error', dest='noGUI')
+            print(f'Could not remove progress file: {exc}', file=sys.stderr)
 
 
-async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog):
+def report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog):
     """
     Allows the interface to keep running while a background process (ngsmatch.py) progress is tracked
     """
     while True:
-        if 'matching_process' in st.session_state:
-            cp = st.session_state['matching_process']
-            if cp.poll() is not None:
-                # process finished
-                del st.session_state['matching_process']
-                m('Analysis completed', level='info')
-                st.session_state['match_running'] = False
-                clean_up_match_files()
-                return
-        else:
-            clean_up_match_files()
-            return
         launch_progress = 0
         match_progress = 0
         progress_files = list(Path(rundir).glob('match_progress_*'))
@@ -174,48 +169,11 @@ async def report_progress(rundir, launch_msg, launch_prog, completion_msg, match
         launch_prog.progress(launch_progress)
         completion_msg.write('Allele calling task completion progress: '+str(match_progress)+'%')
         match_prog.progress(match_progress)
-
-        if launch_progress == 100 and match_progress == 100:
-            m('Analysis completed', level='info')
-            if 'matching_process' in st.session_state:
-                cp = st.session_state['matching_process']
-                stdout, stderr = cp.communicate()
-                clean_up_match_files()
-                return
-        await asyncio.sleep(0.6)
-
-
-def run_async_task(async_func, *args):
-    """
-    Run an asynchronous function in a new event loop.
-
-    Args:
-    async_func (coroutine): The asynchronous function to execute.
-    *args: Arguments to pass to the asynchronous function.
-
-    Returns:
-    None
-
-    https://discuss.streamlit.io/t/issues-with-asyncio-and-streamlit-event-bound-to-a-different-event-loop/66976/3
-    """
-
-    loop = None
-
-    try:
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(async_func(*args))
-    except:
-        # Close the existing loop if open
-        if loop is not None:
-            loop.close()
-
-        # Create a new loop for retry
-        loop = asyncio.new_event_loop()
-
-        loop.run_until_complete(async_func(*args))
-    finally:
-        if loop is not None:
-            loop.close()
+        sleep(0.3)
+        if match_progress == 100:
+            launch_msg.write('Allele calling task launch progress: Done')
+            completion_msg.write('Allele calling task completion progress: Done')
+            return
 
 
 def run_generate(exp, target_func, *args, **kwargs):
@@ -1096,10 +1054,10 @@ def main():
                                     in ['rodentity_reference','custom_reference']]
                             ref = st.selectbox('Select references to match against', options=ref_fns)
                             #num_unique_seq = st.number_input("Number of unique sequences per work unit", value=1)
-                            cpus_avail = os.cpu_count() -1
+                            cpus_avail = max(1, os.cpu_count()-2)
                             num_cpus = st.number_input(\
                                     label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
-                                            value=cpus_avail)
+                                            value=cpus_avail, min_value=1)
                             margin = st.number_input(label="Require lengths of read sequences and target "+\
                                     "references to be proportionally similar by this amount. Value must be between 0.0 and 1.0 "+\
                                     "default 0.9", format='%f',min_value=0.0, step=0.05,value=0.9)
@@ -1121,7 +1079,7 @@ def main():
                             if Path(match_fn).exists():
                                 clean_up_match_files()
                                 st.rerun()
-                            
+
                         elif do_matching:
                             success = generate.generate_targets(exp, ref, caller_id=caller_id)
                             if not success:
@@ -1134,9 +1092,9 @@ def main():
                             else:
                                 matching_prog = os.path.join('bin','ngsmatch.py')
                                 cmd_str = f'{sys.executable} {matching_prog} ' +\
-                                        f'--ncpus {num_cpus} --rundir {rundir} '+\
-                                        f'--margin {margin} --identity {identity} --mincov {mincov} '+\
-                                        f'--minprop {minprop}'
+                                         f'--ncpus {num_cpus} --rundir {rundir} '+\
+                                         f'--margin {margin} --identity {identity} --mincov {mincov} '+\
+                                         f'--minprop {minprop}'
                                 if inexact_mode:
                                     cmd_str += ' --inexact'
                                 if exhaustive_mode:
@@ -1145,19 +1103,31 @@ def main():
                                     cmd_str += ' --debug'
                                 m(f'{cmd_str}', level='info')
                                 st.write(f'Calling {cmd_str}')
-                                cp = subprocess.Popen(cmd_str.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                                st.session_state['matching_process'] = cp
+
                                 launch_msg = st.empty()
                                 launch_prog = st.progress(0)
                                 completion_msg = st.empty()
                                 match_prog = st.progress(0)
-                                clean_up_match_files()
-                                run_async_task(report_progress, rundir, launch_msg, launch_prog, completion_msg, match_prog)
-                                st.rerun()  # Rerun to show progress
-
-                    if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
-                        sleep(1.0)
-                        st.rerun()
+                                st.session_state['matching_in_progress'] = (rundir, launch_msg, launch_prog,
+                                        completion_msg, match_prog)
+                                if sys.platform == "win32":
+                                    subprocess.Popen(cmd_str.split(' '),
+                                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                                            stdin=subprocess.DEVNULL,
+                                            stdout=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL,
+                                            close_fds=True,
+                                    )
+                                else:
+                                    subprocess.Popen(cmd_str.split(' '),
+                                            start_new_session=True,
+                                            stdin=subprocess.DEVNULL,
+                                            stdout=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL,
+                                            close_fds=True,
+                                    )
+                                # cp = subprocess.Popen(cmd_str.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                # st.session_state['matching_process'] = cp
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele1', default_view1='Files',
@@ -1170,7 +1140,7 @@ def main():
                     rundir = exp.get_exp_dn()
                     caller_id = 'pre-execute-amp-analysis'
                     st.subheader('Amplicon Calling')
-                    st.info('This section is for custom amplicon calling. Please choose the amplicon '+\
+                    st.info('This section is for custom amplicon calling. Amplicon sequences are always inexact matched against their expected primer to find variants. Please choose the amplicon '+\
                             'reference you wish to use or upload a new one')
                     ld.load_amplicon_references('amplicon_ref1')
 
@@ -1205,10 +1175,10 @@ def main():
                             st.write(f'Selected amplicon references: {", ".join(dc.fns_from_checklist(selected_refs))}')
 
                     with st.form('amplicon_calling_form', clear_on_submit=True):
-                        cpus_avail = os.cpu_count() -1
+                        cpus_avail = max(1, os.cpu_count()-2)
                         num_cpus = st.number_input(\
                                 label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
-                                        value=cpus_avail)
+                                        value=cpus_avail, min_value=1)
                         mincov = st.number_input(label="Do not match unique sequences with less than this "+\
                                 "many reads coverage, default 5", format='%i',min_value=0, step=1,value=5)
                         minprop = st.number_input(label="Do not match unique sequences with less than this "+\
@@ -1220,7 +1190,6 @@ def main():
                         identity = st.number_input(label="Proportion of identity required for inexact match "+\
                                 ", default 0.9. Must be between 0.0 and 1.0",
                                 format='%f',min_value=0.0, max_value=1.0, value=0.9, step=0.05)
-                        inexact_mode = st.checkbox("Enable inexact matching")
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
                         debug_mode = st.checkbox('Turn on debugging for allele calling')
                         do_matching = st.form_submit_button("Run amplicon calling")
@@ -1236,8 +1205,6 @@ def main():
                             matching_prog = Path('bin/ngsmatch.py')
                             cmd_str = f'{sys.executable} {matching_prog} --ncpus {num_cpus} --rundir {rundir} '+\
                                     f'--mincov {mincov} --minprop {minprop}'
-                            if inexact_mode:
-                                cmd_str += ' --inexact'
                             if exhaustive_mode:
                                 cmd_str += ' --exhaustive'
                             if debug_mode:
@@ -1248,19 +1215,30 @@ def main():
                                 cmd_str += f' --targets amplicon_targets.fa'
                                 m(f'{cmd_str}', level='info')
                                 st.write(f'Calling {cmd_str}')
-                                cp = subprocess.Popen(cmd_str.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                                st.session_state['matching_process'] = cp
                                 launch_msg = st.empty()
                                 launch_prog = st.progress(0)
                                 completion_msg = st.empty()
                                 match_prog = st.progress(0)
-                                clean_up_match_files()
-                                run_async_task(report_progress, rundir, launch_msg, launch_prog, completion_msg, match_prog)
-                                st.rerun()  # Rerun to show progress
-
-                    if Path(exp.get_exp_fn('ngsgeno_lock')).exists():
-                        sleep(1.0)
-                        st.rerun()
+                                st.session_state['matching_in_progress'] = (rundir, launch_msg, launch_prog,
+                                        completion_msg, match_prog)
+                                if sys.platform == "win32":
+                                    subprocess.Popen(cmd_str.split(' '),
+                                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                                            stdin=subprocess.DEVNULL,
+                                            stdout=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL,
+                                            close_fds=True,
+                                    )
+                                else:
+                                    subprocess.Popen(cmd_str.split(' '),
+                                            start_new_session=True,
+                                            stdin=subprocess.DEVNULL,
+                                            stdout=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL,
+                                            close_fds=True,
+                                    )
+                                #cp = subprocess.Popen(cmd_str.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                #st.session_state['matching_process'] = cp
 
                 # ** Info viewer **
                 upper_info_viewer_code(tab_col3, tab_col2, 'upper_allele2', default_view1='Files',
@@ -1301,71 +1279,7 @@ def main():
                         else:
                             key = 'amplicon_results_display'
                             dc.show_results_display('amplicon', key, caller_id=key)
-                            # perform_reset = False
-                            # amp_pdf_fn = exp.get_exp_fn('amplicon_alignments.pdf')
-                            # tmp_pdf_fn = exp.get_exp_fn('amplicon_alignments.json')
-                            # reported_amps_fn = exp.get_exp_fn('amplicons_reported.txt')
-                            # hdr, amplicon_data, filter_dict, amplicon_data_reported, amplicon_data_unreported = exp.gather_amplicon_results(reported_amps_fn)
-                            # unreported_container = st.container()
-                            # alignment_container = st.container()
-                            # reported_container = st.container()
-
-                            # with unreported_container:
-                            #     if amplicon_data_unreported:
-                            #         st.write('Unreported amplicons:')
-                            #         st.session_state['chosen_vars'] = dc.show_results_table(hdr, amplicon_data_unreported, filter_dict, 'unreported_amps')
-                            # with reported_container:
-                            #     if amplicon_data_reported:
-                            #         st.write('Reported amplicons:')
-                            #         dc.show_results_table(hdr, amplicon_data_reported, filter_dict, 'reported_amps')
-                            #         wipe_report = st.button('Reset amplicon report', key='reset_amplicon_report_button')
-                            #         if wipe_report:
-                            #             success = True
-                            #             if Path(reported_amps_fn).exists():
-                            #                 try:
-                            #                     Path(reported_amps_fn).unlink()
-                            #                 except Exception as exc:
-                            #                     st.failure(f'Could not delete {reported_amps_fn}, perhaps you have it open? {exc}')
-                            #                     success = False
-                            #             if Path(tmp_pdf_fn).exists():
-                            #                 try:
-                            #                     Path(tmp_pdf_fn).unlink()
-                            #                 except Exception as exc:
-                            #                     st.failure(f'Coould not delete {tmp_pdf_fn}, perhaps you have it open {exc}')
-                            #                     success = False
-                            #             if Path(amp_pdf_fn).exists():
-                            #                 try:
-                            #                     Path(amp_pdf_fn).unlink()
-                            #                 except Exception as exc:
-                            #                     st.failure(f'Could not delete {amp_pdf_fn}, perhaps you have it open? {exc}')
-                            #                     success = False
-                            #             if success:
-                            #                 st.success('Amplicon report reset to empty')
-                            #                 perform_reset = True
-                            # with alignment_container:
-                            #     if 'chosen_vars' in st.session_state and st.session_state['chosen_vars']:
-                            #         st.session_state['chosen_id'] = dc.show_alignments(st.session_state['chosen_vars'], tmp_pdf_fn, amp_pdf_fn,'alignment_viewer')
-                            #     else:
-                            #         st.session_state['chosen_id'] = dc.show_alignments(None, tmp_pdf_fn, amp_pdf_fn,'alignment_viewer')
-                            #     if 'chosen_id' in st.session_state and st.session_state['chosen_id']:
-                            #         amplicons_reported = set()
-                            #         if Path(reported_amps_fn).exists():
-                            #             with open(reported_amps_fn, 'rt') as f:
-                            #                 for line in f:
-                            #                     amplicons_reported.add(line.strip())
-                            #         amplicons_reported.add(st.session_state['chosen_id'])
-                            #         with open(reported_amps_fn, 'wt') as fout:
-                            #             for ar in amplicons_reported:
-                            #                 print(ar, file=fout)
-                            #         perform_reset = True
-                            #     else:
-                            #         st.empty()
-                            # if perform_reset:
-                            #     st.session_state['chosen_vars'] = None
-                            #     st.session_state['chosen_id'] = None
-                            #     sleep(0.4)
-                            #     st.rerun()
-
+                            
             # ** Info viewer **
             upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Files',
                     default_view2='Plates')
@@ -1400,6 +1314,12 @@ def main():
         elif st.session_state['pipeline_stage'] != pipeline_stage:
             st.session_state['pipeline_stage'] = pipeline_stage
 
+
+        #================================================ PROGRESS REPORT =============================================
+        if 'matching_in_progress' in st.session_state and st.session_state['matching_in_progress']:
+            rundir, launch_msg, launch_prog, completion_msg, match_prog = st.session_state['matching_in_progress']
+            report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog)
+            
 
 if __name__ == '__main__':
     main()

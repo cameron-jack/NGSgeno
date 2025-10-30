@@ -21,6 +21,8 @@ Note: logging module was removed because it is incompatible with the multiproces
 """
 
 #from ast import Str
+import aiofiles
+import asyncio
 from timeit import default_timer as timer
 #from ast import Bytes, Str
 import os
@@ -343,6 +345,7 @@ def padwell(w):
     "convert a Nimbus well ID to an EP plate (proper/sortable) well ID"
     return '0'.join([w[0], w[1]]) if len(w)==2 else w
 
+
 def unpadwell(w):
     "Echo software doesn't like well IDs like A01, it wants A1"
     if len(w) == 2:
@@ -352,15 +355,6 @@ def unpadwell(w):
     except:
         print(f"unpadwell failed with {w=}")
     return well
-
-bclen = 8 # length of pseudo barcode
-matchcutoff = 1.5 # should control via command line - must be >1.x
-
-def myopen(fn):
-    """ handles gz files seamlessly """
-    if fn.endswith('.gz') :
-        return gzip.open(fn, "rt")
-    return open(fn, errors="ignore")
 
 
 def exact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, margin=0.9):
@@ -399,11 +393,11 @@ def exact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, margin=0.9):
     """
     if rundir and debug and lock_d:
         msg = f"debug: exact_match() {seq=} {refseqs=}"
-        wdb(msg, rundir, debug, lock_d)
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
     for refseq in refseqs:
         if rundir and debug and lock_d:
             msg = f'debug: exact_match() Trying to match {seq=} to {refseq=}'
-            wdb(msg, rundir, debug, lock_d)
+            asyncio.run(wdb(msg, rundir, debug, lock_d))
         
         found_match = False
         # compare length of sequenced region to reference seq
@@ -422,20 +416,20 @@ def exact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, margin=0.9):
                 if seq in rs:
                     if rundir and debug and lock_d:
                         msg = f"debug: exact_match() no masking {seq=} found in {rs=}"
-                        wdb(msg, rundir, debug, lock_d) 
+                        asyncio.run(wdb(msg, rundir, debug, lock_d))
                     return True, rs
             else:
                 if rs in seq:
                     if rundir and debug and lock_d:
                         msg = f"debug: exact_match() no masking {rs=} found in {seq=}"
-                        wdb(msg, rundir, debug, lock_d)
+                        asyncio.run(wdb(msg, rundir, debug, lock_d))
                     return True, rs
         # two bracket type - DEPRECATED
         elif rs.count('(') == 1 and rs.count('[') == 1 and \
                 rs.count(')') == 1 and rs.count(']') == 1:
             if rundir and debug and lock_d:
                 msg = f"debug: exact_match() two types of masking (deprecated) {rs=}"
-                wdb(msg, rundir, debug, lock_d)
+                asyncio.run(wdb(msg, rundir, debug, lock_d))
             left_flank = rs.split('(')[0].replace('[','').replace('[','')
             right_flank = rs.split(')')[1].replace('[','').replace('[','')
             if left_flank in seq:
@@ -453,7 +447,7 @@ def exact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, margin=0.9):
         elif rs.count('(') == 1 and rs.count(')') == 1:
             if rundir and debug and lock_d:
                 msg = f"debug: exact_match() single type of masking (simple) {rs=}"
-                wdb(msg, rundir, debug, lock_d)
+                asyncio.run(wdb(msg, rundir, debug, lock_d))
             left_flank = rs.split('(')[0]
             right_flank = rs.split(')')[1]
             if left_flank in seq:
@@ -464,7 +458,7 @@ def exact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, margin=0.9):
         elif rs.count('(') > 1 and rs.count(')') == rs.count('('):
             if rundir and debug and lock_d:
                 msg = f"debug: exact_match() multiple masked regions {rs=}"
-                wdb(msg, rundir, debug, lock_d)
+                asyncio.run(wdb(msg, rundir, debug, lock_d))
             seq_index = 0
             failed_rs = False
             for section in rs.split('('):
@@ -481,7 +475,7 @@ def exact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, margin=0.9):
                 return True, rs
     if rundir and debug and lock_d:
         msg = f"debug: exact_match() no match found for {seq=}"
-        wdb(msg, rundir, debug, lock_d)        
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
     return False, None
 
 
@@ -550,6 +544,7 @@ def annotate_seq(alnref, alnalt):
     """
     Return a string of PosRef/Alt e.g. 8-ATG11+TGC14A/G
     Ignore leading and trailing unmatched positions (ref or alt ---), only for global alignments
+    Must be free of brackets and parentheses
     """
     lmargin = max(len(alnref)-len(alnref.lstrip('-')),len(alnalt)-len(alnalt.lstrip('-')))
     rmargin = max(len(alnref)-len(alnref.rstrip('-')),len(alnalt)-len(alnalt.rstrip('-')))
@@ -634,7 +629,13 @@ def test_annotation():
 def inexact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, identity=0.90):
     """
     Inexact matching of a merged sequence with a set of reference target sequences
+    args:
+    seq (str): query sequence
+    refseqs (list[str]): reference sequences
+
+    Notes:
     Declare a match if we have 90% sequence identity over the matched length or better
+    Removes all brackets in reference prior to matching
     Identity must be >= 0 and <= 1.0
     We must check for the best match against all targets or we will incorrectly call variant sequences!
     Return True/False, and matching reference sequence/None
@@ -642,20 +643,24 @@ def inexact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, identity=0
     """
     if rundir and debug and lock_d:
         msg = f"debug: inexact match {seq=}"
-        wdb(msg, rundir, debug, lock_d)
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
     if len(refseqs) == 0:
         if rundir and debug and lock_d:
-            wdb('Warning: No reference sequences to align to', rundir, debug, lock_d)
+            asyncio.run(wdb('Warning: No reference sequences to align to', rundir, debug, lock_d))
         return False, None, None
 
     if identity < 0:
         identity = 0.0
         if rundir and debug and lock_d:
-            wdb('Warning: identity < 0, setting to 0.0', rundir, debug, lock_d)
+            asyncio.run(wdb('Warning: identity < 0, setting to 0.0', rundir, debug, lock_d))
     elif identity > 1.0:
         identity = 1.0
         if rundir and debug and lock_d:
-            wdb('Warning: identity > 1.0, setting to 1.0', rundir, debug, lock_d)
+            asyncio.run(wdb('Warning: identity > 1.0, setting to 1.0', rundir, debug, lock_d))
+
+    # clean up brackets in reference sequences
+    cleanseqs_refseqs = {rs.replace('(','').replace(')','').replace('[','').replace(']',''):rs for rs in refseqs}
+    cleanseqs = cleanseqs_refseqs.keys()
         
     aligner = Align.PairwiseAligner()
     aligner.mode = 'global'
@@ -678,12 +683,12 @@ def inexact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, identity=0
         if rundir and debug and lock_d:
             msg = f'critical: inexact_match() alignment failed with exception {exc}'
             print(msg, flush=True)
-            wdb(msg, rundir, debug, lock_d)
+            asyncio.run(wdb(msg, rundir, debug, lock_d))
         return False, None, None
 
     if len(all_alignments) == 0:
         if rundir and debug and lock_d:
-            wdb(f'critical: inexact_match() No alignments found {seq=}', rundir, debug, lock_d)
+            asyncio.run(wdb(f'critical: inexact_match() No alignments found {seq=}', rundir, debug, lock_d))
         return False, None, None
     best_score = 0
     best_algn = None
@@ -694,7 +699,8 @@ def inexact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, identity=0
             best_algn = algn
             best_rs = rs
     if best_score < 1:
-        wdb(f'No alignments found {seq=}', rundir, debug, lock_d)
+        if debug:
+            asyncio.run(wdb(f'No alignments found {seq=}', rundir, debug, lock_d))
         return False, None, None
     
     target_sections = []
@@ -719,13 +725,15 @@ def inexact_match(seq, refseqs, rundir=None, debug=None, lock_d=None, identity=0
     if identities > cutoff:
         # Annotate match
         seq_anno = annotate_seq(aligned_rs, aligned_seq)
-        return True, best_rs, seq_anno
+        best_ref = cleanseqs_refseqs[best_rs]
+        return True, best_ref, seq_anno
     msg = f'Best alignment identity worse than {identity*100}% {aligned_rs=} {aligned_seq=} {best_rs=} {seq=}'
-    wdb(msg, rundir, debug, lock_d)
+    if debug:
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
     return False, None, None
 
 
-def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
+async def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
     """
     Call bbduk for cleaning of reads
     Call bbmerge to merge read pairs
@@ -744,14 +752,14 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
     if not fn1s:
         with lock_l:
             log.append(f"no data for {fn1s}")
-        wdb(f"no data for {fn1s}", rundir, debug, lock_d)
+        await wdb(f"no data for {fn1s}", rundir, debug, lock_d)
         return {}, False, readCount, cleanCount, mergeCount, "No files"
             
     if len(fn1s)>1:
         with lock_l:
             log.append(f"too many reads files for pattern{rfn}")
             log.append(f"   R1 files= {fn1s}")
-        wdb(f"too many reads files for pattern{rfn}\n    R1 files= {fn1s}", rundir, debug, lock_d)
+        await wdb(f"too many reads files for pattern{rfn}\n    R1 files= {fn1s}", rundir, debug, lock_d)
         return {}, False, readCount, cleanCount, mergeCount, "Too many files"
             
     fnr1 = fn1s[0]
@@ -763,7 +771,7 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
     if not os.path.isfile(fnr2):
         with lock_l:
             log.append(f"missing file: {fnr2}")
-        wdb(f"missing file: {fnr2}", rundir, debug, lock_d)
+        await wdb(f"missing file: {fnr2}", rundir, debug, lock_d)
         return dict(), False, readCount, cleanCount, mergeCount, "R2 file missing"
         
     # use Windows file separators
@@ -797,24 +805,26 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
         # could delete cleaned data once it's been merged.
                 
         # keep the log output as record counts get used
-        with open(fnlog, "wt") as logfile:
+        async with aiofiles.open(fnlog,'wt') as f:
             for s in (pres1.stdout, pres1.stderr):
                 if s:
-                    print(s, file=logfile)
-            print('======', file=logfile)
+                    await log_file.write(s)
+            await log_file.write('======\n')
             for s in (pres2.stdout, pres2.stderr):
                 if s:
-                    print(s, file=logfile)
+                    await log_file.write(s)
         log1, log2 = ['\n'.join((p.stdout, p.stderr)) for p in (pres1, pres2)]
-
     else:
         fnm_fmt = fnmfmt.replace('{}.{}','')
         lrecs.append(f"Debug: Skipping cleaning and merging of reads for {fnm_fmt}")
-        wdb(f"Debug: Skipping cleaning and merging of reads for {fnm_fmt}", rundir, debug, lock_d)
-        with open(fnlog) as logfile:
-            logdata = logfile.read()
-        log1, log2 = logdata.split("======\n", 1)
+        if debug:
+            await wdb(f"Debug: Skipping cleaning and merging of reads for {fnm_fmt}", rundir, debug, lock_d)
+        async with aiofiles.open(fnlog, 'rt') as f:
+            log_data = await f.read()
+        log1, log2 = log_data.split("======\n", 1)
             
+
+    await wdb(f'Got here {log1=} {log2=}', rundir, debug, lock_d)
     # get counts from BBDuk & BBmerge output
     
     m = re.search(r'Input:\s+(\d+) reads', log1)
@@ -834,53 +844,63 @@ def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
         msg = f"Pair count mismatch. {cleanCount} != {cleanCount2}"
         with lock_l:
             log.append(msg)
-        wdb(msg, rundir, debug, lock_d)
+        if debug:
+            await wdb(msg, rundir, debug, lock_d)
         return {}, False, readCount, cleanCount, joinCount, msg
                 
+    
     fn = fnms[0] # merged reads file
-    with myopen(fn) as src:
-        # read a FASTQ file - sequence in in second line of each 4 line
-        gs = (r.strip() for i, r in enumerate(src) if i%4==1)
-        seqcnt = collections.Counter(gs)
+    seq_strings = await read_FASTQ_async(fn, rundir, debug, lock_d, seqs_only=True)
+    seqcnt = collections.Counter(seq_strings)
+    
     mergeCount = sum(seqcnt.values())
     if mergeCount != joinCount:
         with lock_l:
             msg = f"Merged counts mismatch. {mergeCount} != {joinCount}"
             log.append(msg)
-            wdb(msg, rundir, debug, lock_d)
+        if debug:
+            await wdb(msg, rundir, debug, lock_d)
         return {}, False, readCount, cleanCount, mergeCount, msg
 
     with lock_l:
         for l in lrecs:
             log.append(l)
-    
+
     return seqcnt, True, readCount, cleanCount, mergeCount, None
 
 
-def wdb(msg, rundir, debug, lock_d=None):
-    """ 
+async def wdb(msg, rundir, debug, lock_d=None):
+    """
     wdb = write debug.
     debug [T/F] - do this here to reduce shared logic
-    lock_d: Call from within a lock 
+    lock_d: Call from within a lock
     """
     #print (f'In wdb {msg=}')
     if debug:
         debugfn = os.path.join(rundir, 'debug.log')
         if lock_d:
             with lock_d:
+                f = None
                 try:
-                    with open(debugfn, 'at') as df:
-                        print(msg, file=df, flush=True)
+                    f = await aiofiles.open(debugfn, 'at')
+                    await f.write(f'{msg}\n')
                 except:
                     print('Could not write to debug')
                     print(f'{msg}', flush=True)
+                finally:
+                    if f:
+                        await f.close()                  
         else:
+            f = None
             try:
-                with open(debugfn, 'at') as df:
-                    print(msg, file=df, flush=True)
+                f = await aiofiles.open(debugfn, 'at')
+                await f.write(f'{msg}\n')
             except:
                 print('Could not write to debug', flush=True)
                 print(f'{msg}')
+            finally:
+                if f:
+                    await f.close()
     #print('leaving wdb')
 
 
@@ -963,7 +983,8 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     """
     PID = os.getpid()
     msg = f"Info: {PID} Starting work block {work_block} for {wr}"
-    wdb(msg, rundir, debug, lock_d)
+    if debug:
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
     lrecs = [] # log records, lock and write on exit/return
     amplicon_run = False
     if not primer_assayfam or not assayfam_primers:
@@ -973,7 +994,8 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     pcrWell = wr.get('pcrWell', None)
     if sampleNo is None or pcrPlate is None or pcrWell is None:
         msg = f"Critical: {sampleNo=}, {pcrPlate=} or {pcrWell=} missing from Stage3.csv!"
-        wdb(msg, rundir, debug, lock_d)
+        if debug:
+            asyncio.run(wdb(msg, rundir, debug, lock_d))
         retval = [str(wr[x]) for x in wr] + [-1,-1,-1, '', '', -1, msg]
         with lock_r:
             reps[sampleNo] = retval
@@ -985,25 +1007,24 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     pcrWell = padwell(pcrWell)
     msg = f"Info: {PID} Working on {sampleNo=} {pcrPlate=} {pcrWell=}"
     lrecs.append(msg)
-    wdb(msg, rundir, debug, lock_d)
     if debug:
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
         print(msg, flush=True)
 
     # clean and merge FASTQs
-    seqcnt, success, readCount, cleanCount, mergeCount, fault_msg = preprocess_seqs(wr, rundir, log, 
-            lock_l, lock_d, debug=debug)
+    seqcnt, success, readCount, cleanCount, mergeCount, fault_msg = asyncio.run(preprocess_seqs(wr, rundir, log, 
+            lock_l, lock_d, debug=debug))
     if not success:
         msg = f"Failed: preprocessing for {pcrPlate} {pcrWell} with {fault_msg}"
+        lrecs.append(msg)
         if debug:
             print(msg, flush=True)
             print(f'{readCount=} {cleanCount=} {mergeCount=} {fault_msg=}', flush=True)
-        lrecs.append(msg)
-        wdb(msg, rundir, debug, lock_d)
+            asyncio.run(wdb(msg, rundir, debug, lock_d))
         
         retval = [str(wr[x]) for x in wr] + [readCount, cleanCount, mergeCount, '','',-1,'Failed to run bbduk']
-        
-        wdb(f'Failed {retval=}', rundir, debug, lock_d)
         if debug:
+            asyncio.run(wdb(msg, rundir, debug, lock_d))
             print(f'Failed {retval=}', flush=True)
         with lock_r:
             reps[int(sampleNo)] = retval
@@ -1015,14 +1036,16 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     msg = f"Info: Completed preprocessing for {pcrPlate} {pcrWell} "+\
             f"{readCount=} {cleanCount=} {mergeCount=}"
     lrecs.append(msg)
-    wdb(msg, rundir, debug, lock_d)
+    if debug:
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
                 
     # if we get an unknown primer then we should run archetypes and call it a day?
     primer = wr.get('primer', 'No_primer')
     if not amplicon_run and primer not in primer_assayfam:
         msg = f'Warning: primer {primer} unknown'
         lrecs.append(msg)
-        wdb(msg, rundir, debug, lock_d)
+        if debug:
+            asyncio.run(wdb(msg, rundir, debug, lock_d))
         
     # decide which assays are on-target vs off-target
     on_target_ids = set()
@@ -1049,8 +1072,9 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                 off_target_ids.add(name)
         # avoid looking at the same sequence under different names - used by best_match
         off_target_seqs = set(list(seq_ids.keys())).difference(on_target_seqs)
-    msg = f"Debug: {on_target_ids=} {len(off_target_seqs)=}"
-    wdb(msg, rundir, debug, lock_d)
+    if debug:
+        msg = f"Debug: {on_target_ids=} {len(off_target_seqs)=}"
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
 
     match_cnt = Counter()
     if mincov < 1:
@@ -1062,7 +1086,8 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
         
     # unique sequences only (substrings collapsed), from most to least common
     if exhaustive:
-        wdb('Info: Aggregating archetype sequences', rundir, debug, lock_d)
+        if debug:
+            asyncio.run(wdb('Info: Aggregating archetype sequences', rundir, debug, lock_d))
         seqcnt = archetypes(seqcnt, rundir, debug, lock_d)
         
     # calculate min count proportion from exact matches to our expected targets
@@ -1080,17 +1105,20 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     original_anno_cache_size = len(anc)
     msg = f"Info: Matching {len(seqcnt)} sequences for {pcrPlate} {pcrWell} "+\
             f"with {family_exact_counts=} {low_cov_cutoff=}"
-    wdb(msg, rundir, debug, lock_d)
+    if debug:
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
 
     for seq, num in seqcnt.most_common():
         if (num >= low_cov_cutoff) or exhaustive:
-            msg = f"debug: Matching {pcrPlate} {pcrWell} on process {PID} with counts {num} and {seq=}"
-            wdb(msg, rundir, debug, lock_d)      
+            if debug:
+                msg = f"debug: Matching {pcrPlate} {pcrWell} on process {PID} with counts {num} and {seq=}"
+                asyncio.run(wdb(msg, rundir, debug, lock_d))
             
             # check if we already have this on record
             if seq in mtc:
-                msg = f"debug: hit to match cache with {seq=} and counts {num}"
-                wdb(msg, rundir, debug, lock_d)
+                if debug:
+                    msg = f"debug: hit to match cache with {seq=} and counts {num}"
+                    asyncio.run(wdb(msg, rundir, debug, lock_d))
                 ref_seq = mtc[seq]
                 match_cnt[ref_seq] += num
                 if seq in anc:
@@ -1098,75 +1126,63 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
                     match_cnt[ref_seq + '//' + seq_anno] += num
                 continue
 
-            # if amplicon_run:
-            #     # match against on_target_seqs exactly, then exact vs off-target (filter), then do inexact against on-target
-
-            #     # substring or superstring
-            #     msg = f"debug: amplicon matching {seq=} with {num=} counts to {on_target_seqs=}"
-            #     wdb(msg, rundir, debug, lock_d)
-            #     is_match, ref_seq = exact_match(seq, on_target_seqs, rundir, debug, lock_d, margin=margin)
-            #     if is_match:
-            #         msg = f"debug: Amplicon exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
-            #         wdb(msg, rundir, debug, lock_d)
-            #         match_cnt[ref_seq] += num
-            #         continue     
-
-            #     # filter targets - exact match against off-targets
-            #     is_match, ref_seq = exact_match(seq, off_target_seqs, rundir, debug, lock_d, margin=margin)
-            #     if is_match:
-            #         msg = f"debug: Amplicon exact match against off-target {seq_ids[ref_seq]} with {seq} and counts {num}"
-            #         wdb(msg, rundir, debug, lock_d)
-            #         match_cnt[ref_seq] += num
-            #         continue
-                
-            #     # look for variants
-            #     is_match2, ref_seq2, seq_anno2 = inexact_match(seq, [on_target_seq], rundir, debug, 
-            #         lock_d, identity=0.0)
-            #     if is_match2:
-            #         msg = f"debug: Amplicon inexact match against {ref_seq2=} {seq_anno2=} {num=} {seq=}\n"
-            #         wdb(msg, rundir, debug, lock_d)  
-            #         mtc[seq] = ref_seq2
-            #         if seq_anno2:
-            #             anc[seq] = seq_anno2
-            #             match_cnt[ref_seq2+'//'+seq_anno2] += num
-            #     continue
-
-            # else:  # genotyping
+            # on target exact matching
             is_match, ref_seq = exact_match(seq, on_target_seqs, rundir, debug, lock_d, margin=margin)
             if is_match:
-                msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
-                wdb(msg, rundir, debug, lock_d)
+                if debug:
+                    msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+                    asyncio.run(wdb(msg, rundir, debug, lock_d))
                 match_cnt[ref_seq] += num
                 continue   
 
+            # off target exact matching for everyone!
             is_match, ref_seq = exact_match(seq, off_target_seqs, rundir, debug, lock_d, margin=margin)
             if is_match:
-                msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
-                wdb(msg, rundir, debug, lock_d)
+                if debug:
+                    msg = f"debug: Exact match against {seq_ids[ref_seq]} with {seq} and counts {num}"
+                    asyncio.run(wdb(msg, rundir, debug, lock_d))
                 match_cnt[ref_seq] += num
                 continue
-            
-            if inexact:
-                # inexact matching must be done against all known sequences at once or it risks false association
-                is_match, ref_seq, seq_anno = inexact_match(seq, on_target_seqs.union(off_target_seqs),rundir, debug, 
-                        lock_d, identity=identity)
 
+            # We want to only compare inexact matches against the primer that was used - but don't add counts!
+            if amplicon_run:
+                is_match, ref_seq, seq_anno = inexact_match(seq, on_target_seqs, rundir, debug, 
+                        lock_d, identity=identity)
                 if is_match:
-                    msg = f"debug: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']}"+\
-                            f" {wr['pcrWell']} {num} {seq}\n"
-                    wdb(msg, rundir, debug, lock_d)
+                    if debug:
+                        msg = f"debug: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']}"+\
+                                f" {wr['pcrWell']} {num} {seq}\n"
+                        asyncio.run(wdb(msg, rundir, debug, lock_d))
                     mtc[seq] = ref_seq
-                    match_cnt[ref_seq] += num
+                    # match_cnt[ref_seq] += num  # don't add to the original count!
                     if seq_anno:
                         anc[seq] = seq_anno
                         match_cnt[ref_seq+'//'+seq_anno] += num
                     continue
-            # no match, map to itself
+            else:  # only inexact for genotypes if requested, and match against all targets        
+                if inexact:
+                    # inexact matching must be done against all known sequences at once or it risks false association
+                    is_match, ref_seq, seq_anno = inexact_match(seq, on_target_seqs.union(off_target_seqs),rundir, debug, 
+                            lock_d, identity=identity)
+
+                    if is_match:
+                        if debug:
+                            msg = f"debug: Inexact match against {seq_ids[ref_seq]} {wr['pcrPlate']}"+\
+                                    f" {wr['pcrWell']} {num} {seq}\n"
+                            asyncio.run(wdb(msg, rundir, debug, lock_d))
+                        mtc[seq] = ref_seq
+                        match_cnt[ref_seq] += num
+                        if seq_anno:
+                            anc[seq] = seq_anno
+                            match_cnt[ref_seq+'//'+seq_anno] += num
+                        continue
+            # Lastly, no match, map to itself
             match_cnt[seq] += num
  
         else:
-            msg = f"Debug: too few reads {num} for matching {seq}"
-            wdb(msg, rundir, debug, lock_d)
+            if debug:
+                msg = f"Debug: too few reads {num} for matching {seq}"
+                asyncio.run(wdb(msg, rundir, debug, lock_d))
             match_cnt['other'] += num
             other_count += 1
         # try another sequence
@@ -1175,11 +1191,13 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
         with lock_mtc:
             match_cache.update(mtc) 
             anno_cache.update(anc)
-        wdb('Info: Updating match and annotation caches', rundir, debug, lock_d)
+        if debug:
+            asyncio.run(wdb('Info: Updating match and annotation caches', rundir, debug, lock_d))
            
     msg = f"Info: Completed matching for {PID=} {pcrPlate=} {pcrWell=}"
     lrecs.append(msg)
-    wdb(msg, rundir, debug, lock_d)
+    if debug:
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
     # rename 'other' to include number of separate sequence variations
     total_others = match_cnt['other']
     other_name = 'other (' + str(other_count) +')'
@@ -1222,11 +1240,10 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
             ref_seq = seq.split('//')[0]
             anno = seq.split('//')[1]
             if ref_seq not in seq_ids:
-                msg = f'Critical: {ref_seq=} not found in sequence to ID mapping {seq_ids=}'
-                print(msg, flush=True)
                 msg = f'Critical: {ref_seq=} not found in sequence to ID mapping'
                 print(msg, flush=True)
-                wdb(msg, rundir, debug, lock_d)
+                if debug:
+                    asyncio.run(wdb(msg, rundir, debug, lock_d))
             else:
                 for name in seq_ids[ref_seq]:
                     otherCounts.append(count)
@@ -1235,14 +1252,16 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     try:
         efficiency = sum(map(int,seqCounts))/mergeCount
     except Exception as exc:
-        wdb(f"Error: calculating efficiency {seqCounts=} {mergeCount=} {exc=}", rundir, debug, lock_d)
+        if debug:
+            asyncio.run(wdb(f"Error: calculating efficiency {seqCounts=} {mergeCount=} {exc=}", rundir, debug, lock_d))
         effiency = -1.0
     # combine outputs
     try:
         res2 = [';'.join(map(str,seqCounts)), ';'.join(map(str,seqNames)), f'{round(efficiency,3)}', 
                 ';'.join(map(str,otherCounts)), ';'.join(map(str,otherNames))]
     except Exception as exc:
-        wdb(f"Error: joining names and counts {exc=}", rundir, debug, lock_d)
+        if debug:
+            asyncio.run(wdb(f"Error: joining names and counts {exc=}", rundir, debug, lock_d))
         res2 = ['','','','','']
     retval = [str(wr[x]) for x in wr] + res1 + res2
     sn = None
@@ -1251,29 +1270,32 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
     except Exception as exc:
         msg = f"Critical: sampleNo not an integer {exc=}"
         print(msg, flush=True)
-        wdb(msg, rundir, debug, lock_d)
-    if sn:    
-        wdb(f'{retval=}', rundir, debug, lock_d)    
+        if debug:
+            asyncio.run(wdb(msg, rundir, debug, lock_d))
+    if sn:
+        if debug:    
+            asyncio.run(wdb(f'{retval=}', rundir, debug, lock_d))
         with lock_r:
             reps[sn] = retval
-    wdb(f'{retval=}', rundir, debug, lock_d)
+    if debug:
+        asyncio.run(wdb(f'{retval=}', rundir, debug, lock_d))
     with lock_l:
         for l in lrecs:
             log.append(l)
-    msg = f"Info: Exiting process_well() {PID=} {sampleNo=} {pcrPlate=} {pcrWell=}"
-    wdb(msg, rundir, debug, lock_d)
-    if debug:
+    if debug:        
+        msg = f"Info: Exiting process_well() {PID=} {sampleNo=} {pcrPlate=} {pcrWell=}"
+        asyncio.run(wdb(msg, rundir, debug, lock_d))
         print(msg)
 
 
-def write_log(log, logfn):
+async def write_log(log, logfn):
     print(f"Writing log to {logfn}", file=sys.stderr)
-    with open(logfn, 'wt') as logf:
+    async with aiofiles.open(logfn, 'wt') as f:
         for l in log:
-            print(l, file=logf)
+            await f.write(l + '\n')
 
- 
-def get_raw_fastq_pairs(dirpath):  
+
+def get_raw_fastq_pairs(dirpath):
     """ return a sorted list of tuple(R1_path, R2_path) to raw FASTQ files """
     valid_pairs = []
     r1s = [dirpath/Path(f) for f in os.listdir(dirpath) if f.endswith('.fastq.gz') and '_R1_' in f]
@@ -1284,7 +1306,7 @@ def get_raw_fastq_pairs(dirpath):
     return sorted(valid_pairs)
 
 
-def report_progress(rundir, launch_progress, match_progress):
+async def write_report_progress(rundir, launch_progress, match_progress):
     """
     Clear all previous progress files and touch a new file with the launch and match progress values in the name
     Only do the operation is progress is a multiple of 5 to save on disk writes
@@ -1298,47 +1320,101 @@ def report_progress(rundir, launch_progress, match_progress):
             return
     for fn in list(Path(rundir).glob('match_progress_*')):
         os.remove(fn)
-    progress_fn = os.path.join(args.rundir,'match_progress_'+str(launch_progress)+'_'+str(match_progress))
-    with open(progress_fn, 'wt') as fp:
-        pass  # just touch the file
+    progress_fn = os.path.join(rundir,'match_progress_'+str(launch_progress)+'_'+str(match_progress))
+    async with aiofiles.open(progress_fn, 'wt') as f:
+        await f.write('')
 
 
-def parse_targets(rundir, targets, log, debug):
+async def read_FASTA_async_gen(filepath, errors='ignore'):
+    """
+    Asynchronously read a FASTA file and yield entries
+    """
+    async with aiofiles.open(filepath, 'rt', errors=errors) as f:
+        header = None
+        seq = []
+        async for line in f:
+            line = line.strip()
+            if line.startswith('>'):
+                if header:
+                    yield (header, ''.join(seq))
+                header = line[1:]
+                seq = []
+            else:
+                seq.append(line)
+        yield (header, ''.join(seq))
+
+
+async def read_FASTQ_async(filepath, rundir, debug, lock_d, seqs_only=False, errors='ignore'):
+    """
+    Asynchronously read a FASTQ file and yield entries
+    """
+    try:
+        if filepath.endswith('.gz'):
+            try:
+                async with aiofiles.open(filepath, mode='rb') as f:
+                    decompressed_data = gzip.decompress(await f.read())
+                    try:
+                        lines = decompressed_data.decode('utf-8', errors=errors).splitlines()
+                    except Exception as exc:
+                        await wdb(f'could not decode FASTQ {exc}', rundir, debug, lock_d)
+                    if not seqs_only:
+                        return lines
+                    seqs = []
+                    for i, line in enumerate(lines):
+                        if i % 4 == 1:
+                            seqs.append(line)
+                    return seqs
+            except Exception as exc:
+                await wdb(f'read_FASTQ() {exc}', rundir, debug, lock_d)
+                return []
+        else:
+            async with aiofiles.open(filepath, mode='rt', errors=errors) as f:
+                lines = await f.readlines()
+                if not seqs_only:
+                    return lines
+                seqs = []
+                for i, line in enumerate(lines):
+                    if i % 4 == 1:
+                        seqs.append(line)
+                return seqs
+    except Exception as exc:
+        await wdb(f'read_FASTQ failed {exc}', rundir, debug, lock_d)
+        return []
+
+
+async def read_file_async_gen(filepath, errors='ignore'):
+    """
+    Asynchronously read a file and yield lines
+    """
+    async with aiofiles.open(filepath, mode='rt', errors=errors) as f:
+        async for line in f:
+            yield line.strip()
+
+
+async def parse_targets(rundir, targets, log, debug):
     """
     Return a dictionary of sequences to a set of ids, and
     a dictionary of ids to sequences
     """
     seq_ids = {}
     id_seq = {}
-    with myopen(os.path.join(rundir,targets)) as src:
-        for entry in Bio.SeqIO.parse(src, "fasta"):
-            if len(entry.id) > 0 and len(entry.seq) > 0:
-                try:
-                    name = bytes(str(entry.id).strip(), 'ascii', errors='strict').decode()
-                except Exception as exc:
-                    msg = f'Warning: {exc} non-ascii character in reference sequence id {entry.id}'
-                    log.append(msg)
-                    wdb(msg, args.rundir, debug)
-                    seq_id = bytes(str(entry.id).strip(), 'ascii',errors='ignore').decode()
-                try:
-                    seq = bytes(str(entry.seq).strip(), 'ascii', errors='strict').decode().upper()
-                except Exception as exc:
-                    msg = f'Warning: {exc} non-ascii character in reference sequence {entry.seq}'
-                    log.append(msg)
-                    wdb(msg, args.rundir, debug)
-                    seq = bytes(str(entry.seq).strip(), 'ascii', errors='ignore').decode().upper()
-                if seq not in seq_ids:
-                    seq_ids[seq] = set()
-                seq_ids[seq].add(name)
-                if name in id_seq:
-                    msg = f'Warning: {name} duplicated in reference'
-                    log.append(msg)
-                    wdb(msg, args.rundir, debug)
-                id_seq[name] = seq
+    async for header,seq in read_FASTA_async_gen(os.path.join(rundir,targets)):
+        if not header or not seq:
+            continue
+        name = header[1:] if header.startswith('>') else header
+        seq = seq.strip().upper()
+        if seq not in seq_ids:
+            seq_ids[seq] = set()
+        seq_ids[seq].add(name)
+        if name in id_seq:
+            msg = f'Warning: {name} duplicated in reference'
+            log.append(msg)
+            wdb(msg, rundir, debug)
+        id_seq[name] = seq
     return seq_ids, id_seq
 
 
-def parse_primer_assayfams(rundir, paf):
+async def parse_primer_assayfams(rundir, paf):
     """
     Two column file (tab separated) of primer and assay families
     Return a mapping of primer to set of assay family, and mapping of assay family to set of primers
@@ -1347,22 +1423,21 @@ def parse_primer_assayfams(rundir, paf):
     assayfam_primers = {}  # [assayfam] = []
     pmr_fn = os.path.join(rundir, paf)
     try:
-        with open(pmr_fn, 'rt', errors='ignore') as f:
-            for line in f:
-                cols = line.strip().split(',')
-                if len(cols) != 2:
-                    print(f'skipping line {line=}')
-                    continue
-                primer = cols[0]
-                assayfam = cols[1]
-                if not primer or not assayfam:
-                    continue
-                if primer not in primer_assayfam:
-                    primer_assayfam[primer] = set()
-                primer_assayfam[primer].add(assayfam)
-                if assayfam not in assayfam_primers:
-                    assayfam_primers[assayfam] = set()
-                assayfam_primers[assayfam].add(primer)
+        async for line in read_file_async_gen(pmr_fn):
+            cols = line.strip().split(',')
+            if len(cols) != 2:
+                print(f'skipping line {line=}')
+                continue
+            primer = cols[0]
+            assayfam = cols[1]
+            if not primer or not assayfam:
+                continue
+            if primer not in primer_assayfam:
+                primer_assayfam[primer] = set()
+            primer_assayfam[primer].add(assayfam)
+            if assayfam not in assayfam_primers:
+                assayfam_primers[assayfam] = set()
+            assayfam_primers[assayfam].add(primer)
         return primer_assayfam, assayfam_primers
     except Exception as exc:
         msg = f'Critical: failed to open {pmr_fn} for primer assay family info {exc=}'
@@ -1370,14 +1445,14 @@ def parse_primer_assayfams(rundir, paf):
     return primer_assayfam, assayfam_primers
 
 
-def parse_primer_file(paf):
+async def parse_primer_file(paf):
     """
     Parse the user provided assay list file. Use this if testing without a primer_assayfam file
     """
     primer_assayfam = {}
     assayfam_primers = {}  # [assayfam] = []
-    with open(paf, 'rt') as f:
-        for line in f:
+    try:
+        async for line in read_file_async_gen(paf):
             cols = [c.strip() for c in line.split(',')]
             assayfam = cols[1]
             pmrs = [c for c in cols[2:] if len(c) != 0]
@@ -1388,6 +1463,8 @@ def parse_primer_file(paf):
                     primer_assayfam[pmr] = set()
                 primer_assayfam[pmr].add(assayfam)
                 assayfam_primers[assayfam].add(pmr)
+    except Exception as exc:
+        print(f'Critical: failed to open {paf} for primer assay family info {exc=}')
     return primer_assayfam, assayfam_primers
 
 
@@ -1402,7 +1479,7 @@ def get_variant_seq(var_name, id_seq):
     if primer not in id_seq:
         print(f'Error: no known primer: {primer}')
         return ''
-    original_seq = id_seq[primer]
+    original_seq = id_seq[primer].replace('(','').replace('(','').replace('[','').replace(']','')
     parts = re.split(r'(\d+)', var_name.split('//')[1])
     rev_parts = parts[::-1]
     new_seq = original_seq
@@ -1462,7 +1539,7 @@ def test_variant_seq():
         
 
 # def main(rundir, stagefile, logfn, outfn, targets, exhaustive=False, debugfn='debug.log', debug=False):
-def main(args):
+async def main(args):
     """
     Read background data: target reference sequences file
     Then processes merged pairs files producing NGS report.
@@ -1488,10 +1565,7 @@ def main(args):
         log.append(f"Begin: {start_time}")
         raw_pair_list = get_raw_fastq_pairs(os.path.join(args.rundir, 'raw'))
         if args.amplicons:
-            #print(f'{args.amplicons=}', file=sys.stderr)
             amplicon_plates = set([unguard_pbc(a, silent=True) for a in args.amplicons])
-            #print(f'Using amplicon plates {amplicon_plates}', file=sys.stderr)
-            #print(f'{raw_pair_list=} {[str(f[0].name).split("_")[0] for f in raw_pair_list]}', file=sys.stderr)
             raw_pair_list = [f for f in raw_pair_list if str(f[0].name).split('_')[0] in amplicon_plates]
         raw_file_identifiers = [str(f[0].name).split('_')[0] for f in raw_pair_list]
         if len(raw_file_identifiers) == 0:
@@ -1520,15 +1594,14 @@ def main(args):
         if len(wdata) == 0:
             return
                     
-        # read the target sequence file into dictionaries [seq] = set([ids]), and [id] = seq             
-        seq_ids, id_seq = parse_targets(args.rundir, args.targets, log, args.debug)
+        # read the target sequence file into dictionaries [seq] = set([ids]), and [id] = seq
+        seq_ids, id_seq = await parse_targets(args.rundir, args.targets, log, args.debug)
         print(f'Parsed {len(seq_ids)} targets from reference', flush=True)
 
         # get relationship of primers to assay family for genotyping
         #print(f'{args.primer_assayfam=}')
         if not args.amplicons:
-            primer_assayfam, assayfam_primers = parse_primer_assayfams(args.rundir, args.primer_assayfam)
-            #primer_assayfam, assayfam_primers = parse_primer_file(os.path.join(args.rundir, args.primer_assayfam))
+            primer_assayfam, assayfam_primers = await parse_primer_assayfams(args.rundir, args.primer_assayfam)
             print(f'Parsed {len(primer_assayfam)} primers/assays', flush=True) # {primer_assayfam=} {assayfam_primers=}')
         else:
             primer_assayfam = {}
@@ -1589,17 +1662,17 @@ def main(args):
                     launch_progress = ceil(100*i/total_jobs)
                     completed = sum([r.ready() for r in reports])
                     match_progress = floor(100*completed/total_jobs)
-                    report_progress(args.rundir, launch_progress, match_progress)
+                    await write_report_progress(args.rundir, launch_progress, match_progress)
                     
             while match_progress < 100:
                 completed = sum([r.ready() for r in reports])
                 # report the number of remaining tasks
                 print(f'Match completion: {100*completed/total_jobs}')
                 match_progress = 100*completed/total_jobs
-                report_progress(args.rundir, 100, floor(match_progress))
+                await write_report_progress(args.rundir, 100, floor(match_progress))
                 # wait a moment
                 time.sleep(2.5)       
-            report_progress(args.rundir, 100, 100)
+            await write_report_progress(args.rundir, 100, 100)
                             
             pool.close()
             pool.join()
@@ -1638,21 +1711,17 @@ def main(args):
                     var_count_entries = job[-2].split(';')
                     var_name_entries = job[-1].split(';')
                     primer_name = job[primer_col]
+                    ### Genotyping only want to report the sample and the count
                     #print(f'{primer_name=} {var_count_entries=} {var_name_entries=}')
                     for var_count, var_name in zip(var_count_entries, var_name_entries):
                         if var_name.startswith('other'):
                             continue
-                        var_row_name = f'>Sample:{i+1};Primer:{primer_name}'
+                        # only print out actual variants, not off-target hits
                         if '//' in var_name:
-                            var_row_name += f';{var_name}'
-                        else:
-                            var_row_name += f';No_match'
-                        var_row_name += f';count:{var_count}'
-                        print(var_row_name, file=varfd)
-                        if '//' in var_name:
+                            var_row_name = f'>Sample:{i+1}'   # ;Primer:{primer_name}'
+                            var_row_name += f';count:{var_count}'
+                            print(var_row_name, file=varfd)
                             print(get_variant_seq(var_name, id_seq), file=varfd)
-                        else:
-                            print(var_name, file=varfd)
                             
                 dstfd.flush()
                 varfd.flush()
@@ -1664,25 +1733,14 @@ def main(args):
     msg = f"End: {end_time} took: {end_time - start_time}"
     print(msg, flush=True)
     log.append(msg)
-    write_log(log, os.path.join(args.rundir,args.logfn))
+    await write_log(log, os.path.join(args.rundir,args.logfn))
      
-    
-def run_matches(exp, ncpus, mincov, minprop, exhaustive, debug):
-    """
-    Entry point when used as a library. Calls main()
-    cmd_str = f'python {matching_prog} --ncpus {num_cpus} --rundir {rundir} --mincov {mincov} --minprop {minprop}'
-                            if exhaustive_mode:
-                                cmd_str += ' --exhaustive'
-                            if debug_mode:
-                                cmd_str += ' --debug'
-    """
-    stagefile="Stage3.csv"
-    logfn = "match.log"
-
-    pass
 
    
 if __name__=="__main__":
+    """
+
+    """
     parser = argparse.ArgumentParser(description="NGS Reporting Program")
     parser.add_argument("-d", "--debug", action="store_true", help="more reporting/output for debugging purposes")
     parser.add_argument("-t", "--targets", default="targets.fa", help="file of targets in FASTA format (default=targets.fa)")
@@ -1709,16 +1767,15 @@ if __name__=="__main__":
     if not os.path.exists(lock_path):
         try:
             with open(lock_path,"wt"):
-                report_progress(args.rundir, 0, 0)  # set this up asap
-                main(args)
+                asyncio.run(write_report_progress(args.rundir, 0, 0))  # set this up asap
+                asyncio.run(main(args))
             print('Completed regular execution')
         except Exception as exc:
             print(f'Completed with exception {exc}', flush=True)
-        if os.path.exists(lock_path):
-            os.remove(lock_path)
+        finally:
+            if os.path.exists(lock_path):
+                os.remove(lock_path)
+            for fn in list(Path(args.rundir).glob('match_progress_*')):
+                os.remove(fn)
     else:
         print("Analysis already running", file=sys.stderr)
-        exit(2)
-    
-    
-    

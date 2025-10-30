@@ -1,9 +1,16 @@
-$VER = "v2.03.002"
+$VER = "v2.03.003"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: non-blocking matching processes correctly closed and cleaned up
-* Fixed: incorrect path to style.css
+* Fixed: shifted infinite progress checking loop to end of code, as recommended by Streamlit
+* New: ngsmatch.py extensively uses asyncio, aiofiles to improve concurrency
+* New: requires aiofiles python module
+* Fixed: inexact matching no longer matches against bracket characters
+* Fixed: brackets also removed from variant sequence creation
+* Changed: variants.fa no longer reports hits to other targets
+* Changed: Amplicon matching has its own inexact matching code path
+* Changed: Reverted to sans serif fonts now that sequence viewing is no longer required
+* NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
 * TODO: User reports that amplicon matching progress was not being shown, grey screen only
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment

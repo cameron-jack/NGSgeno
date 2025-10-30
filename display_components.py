@@ -1591,64 +1591,6 @@ def make_summary_line_and_format(var_seqs, wt_seq):
     return ''.join(summary_line), formatting
 
 
-# def show_unreported_amplicons(hdr, amplicon_data, filter_dict, reported_amps_fn, tmp_pdf_fn, amp_pdf_fn):
-#     """
-#     Show any amplicons that have not been reported in a results table
-#     Then show any amplicons that have been reported in their own table
-#     """
-#     exp = st.session_state['experiment']
-#     # keep track of amplicons already reported to avoid double-ups or missed results
-
-#     if Path(reported_amps_fn).exists():
-#         with open(reported_amps_fn, 'rt') as f:
-#             amplicons_reported = set([line.strip() for line in f])
-#     else:
-#         amplicons_reported = set()  # plate\twell\tbarcode\tprimer
-
-#     samplePlate_idx = hdr.index('samplePlate')
-#     sampleWell_idx = hdr.index('sampleWell')
-#     sampleBarcode_idx = hdr.index('sampleBarcode')
-#     primer_idx = hdr.index('primer')
-#     amplicons_unreported = set()
-#     for row in amplicon_data:
-#         amplicon_id = f'{row[samplePlate_idx]}\t{row[sampleWell_idx]}\t{row[sampleBarcode_idx]}\t{row[primer_idx]}'
-#         if amplicon_id not in amplicons_reported:
-#             amplicons_unreported.add(amplicon_id)
-
-#     st.write(f'Unreported amplicons: {len(amplicons_unreported)}')
-#     chosen_vars_unrep = show_results_table(hdr, amplicon_data, filter_dict, exclude_ids=amplicons_reported, key='unreported_amplicons')
-#     if chosen_vars_unrep:
-#         return chosen_vars_unrep
-#     else:
-#         return None
-
-
-# def show_reported_amplicons(hdr, amplicon_data, filter_dict, reported_amps_fn):
-#     """
-#     Show any amplicons that have not been reported in a results table
-#     Then show any amplicons that have been reported in their own table
-#     """
-#     exp = st.session_state['experiment']
-#     # keep track of amplicons already reported to avoid double-ups or missed results
-#     samplePlate_idx = hdr.index('samplePlate')
-#     sampleWell_idx = hdr.index('sampleWell')
-#     sampleBarcode_idx = hdr.index('sampleBarcode')
-#     primer_idx = hdr.index('primer')
-#     if Path(reported_amps_fn).exists():
-#         with open(reported_amps_fn, 'rt') as f:
-#             amplicons_reported = set([line.strip() for line in f])
-#     else:
-#         amplicons_reported = set()  # plate\twell\tbarcode\tprimer
-#     amplicons_unreported = set()
-#     for row in amplicon_data:
-#         amplicon_id = f'{row[samplePlate_idx]}\t{row[sampleWell_idx]}\t{row[sampleBarcode_idx]}\t{row[primer_idx]}'
-#         if amplicon_id not in amplicons_reported:
-#             amplicons_unreported.add(amplicon_id)
-
-#     with st.expander(f'Show reported amplicons {len(amplicons_reported)}'):
-#         chosen_vars_rep = show_results_table(hdr, amplicon_data, filter_dict, exclude_ids=amplicons_unreported, key='reported_amplicons')
-
-
 def show_alignments(chosen_vars, tmp_fn, pdf_fn, target_fn, key):
     """
     Show the alignments for the chosen variants
@@ -1717,17 +1659,17 @@ def show_alignments(chosen_vars, tmp_fn, pdf_fn, target_fn, key):
         'Counts': [var_list_counts[name] if name != ref_chosen else wt_counts for name in aligned.names],
         'Sequence': [str(aligned.get_gapped_seq(name)) for name in aligned.names]
     })
-    st.markdown(
-        """
-        <style>
-        /* Apply monospace to all text within the main content area */
-        [class^=dvn-scroller] {
-            font-family: Courier New", Courier, monospace;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    # st.markdown(
+    #     """
+    #     <style>
+    #     /* Apply monospace to all text within the main content area */
+    #     [class^=dvn-scroller] {
+    #         font-family: Courier New", Courier, monospace;
+    #     }
+    #     </style>
+    #     """,
+    #     unsafe_allow_html=True
+    # )
 
     # Apply the style to the DataFrame
     var_de = st.data_editor(var_df, key='alignment_editor_'+key, hide_index=True,
@@ -1933,8 +1875,9 @@ def show_results_display(results_type, key, caller_id=None):
 
 
 def add_css():
-    with open( "style.css" ) as css:
-        st.markdown( f'<style>{css.read()}</style>' , unsafe_allow_html= True)
+    # Disabled since we no longer need monospaced font everywhere
+    # with open( "style.css" ) as css:
+    #     st.markdown( f'<style>{css.read()}</style>' , unsafe_allow_html= True)
     #CSS
     st.markdown('''
     <style>

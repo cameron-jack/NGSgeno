@@ -6,7 +6,7 @@ base="light"
 primaryColor = "#be2596"
 backgroundColor = "#fafeff"
 textColor = "#00172B"
-font = "monospace"
+font = "sans serif"
 secondaryBackgroundColor = "#d3eaf2"
 
 [runner]
