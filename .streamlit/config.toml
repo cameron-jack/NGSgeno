@@ -1,5 +1,5 @@
 [server]
-port=9123
+port=9223
 
 [theme]
 base="light"

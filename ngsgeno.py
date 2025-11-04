@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-__version__ = "2.03.003"
+__version__ = "2.03.004"
 
 """
 @created: 1 May 2022

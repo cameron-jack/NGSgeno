@@ -1,3 +1,12 @@
+v2.03.004
+Date: 4/11/2025 12:03:02 PM
+* Fixed: misnamed variable in sequence merge log writer
+* Fixed: double equal needed in pyproject.toml
+* Changed: port number changed to 9223 for version 2
+* NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
+* TODO: coloured text in PDF report
+* TODO: changing included variants in the alignment table does not redo the alignment
+
 v2.03.003
 Date: 30/10/2025 1:46:06 PM
 * Fixed: shifted infinite progress checking loop to end of code, as recommended by Streamlit

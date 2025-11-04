@@ -805,7 +805,7 @@ async def preprocess_seqs(wr, rundir, log, lock_l, lock_d, debug=False):
         # could delete cleaned data once it's been merged.
                 
         # keep the log output as record counts get used
-        async with aiofiles.open(fnlog,'wt') as f:
+        async with aiofiles.open(fnlog,'wt') as log_file:
             for s in (pres1.stdout, pres1.stderr):
                 if s:
                     await log_file.write(s)
