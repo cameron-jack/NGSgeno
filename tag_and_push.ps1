@@ -1,8 +1,8 @@
-$VER = "v2.03.005"
+$VER = "v2.03.006"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: variant_seqs.fa reported incorrect sample number
+* Fixed: variant_seqs.fa now reports contaminants again in Genotyping mode
 * NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment

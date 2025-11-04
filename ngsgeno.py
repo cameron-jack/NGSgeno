@@ -1211,7 +1211,7 @@ def main():
                                 cmd_str += ' --debug'
                             if selected_pids['amplicon']:
                                 for pid in selected_pids['amplicon']:
-                                    cmd_str += f' --amplicon {",".join(selected_pids["amplicon"])}'
+                                    cmd_str += f' --amplicons {",".join(selected_pids["amplicon"])}'
                                 cmd_str += f' --targets amplicon_targets.fa'
                                 m(f'{cmd_str}', level='info')
                                 st.write(f'Calling {cmd_str}')

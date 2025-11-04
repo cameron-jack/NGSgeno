@@ -1,3 +1,10 @@
+v2.03.006
+Date: 4/11/2025 4:24:16 PM
+* Fixed: variant_seqs.fa now reports contaminants again in Genotyping mode
+* NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
+* TODO: coloured text in PDF report
+* TODO: changing included variants in the alignment table does not redo the alignment
+
 v2.03.005
 Date: 4/11/2025 3:30:05 PM
 * Fixed: variant_seqs.fa reported incorrect sample number

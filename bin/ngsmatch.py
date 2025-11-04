@@ -1722,6 +1722,11 @@ async def main(args):
                             var_row_name += f';count:{var_count}'
                             print(var_row_name, file=varfd)
                             print(get_variant_seq(var_name, id_seq), file=varfd)
+                        elif not args.amplicons:
+                            var_row_name = f'>Sample:{job[0]}'   # ;Primer:{primer_name}'
+                            var_row_name += f';count:{var_count}'
+                            print(var_row_name, file=varfd)
+                            print(var_name, file=varfd)
                             
                 dstfd.flush()
                 varfd.flush()
