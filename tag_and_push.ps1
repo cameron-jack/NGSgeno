@@ -1,10 +1,8 @@
-$VER = "v2.03.004"
+$VER = "v2.03.005"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: misnamed variable in sequence merge log writer
-* Fixed: double equal needed in pyproject.toml
-* Changed: port number changed to 9223 for version 2
+* Fixed: variant_seqs.fa reported incorrect sample number
 * NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment

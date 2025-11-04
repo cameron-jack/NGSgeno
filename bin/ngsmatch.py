@@ -1718,7 +1718,7 @@ async def main(args):
                             continue
                         # only print out actual variants, not off-target hits
                         if '//' in var_name:
-                            var_row_name = f'>Sample:{i+1}'   # ;Primer:{primer_name}'
+                            var_row_name = f'>Sample:{job[0]}'   # ;Primer:{primer_name}'
                             var_row_name += f';count:{var_count}'
                             print(var_row_name, file=varfd)
                             print(get_variant_seq(var_name, id_seq), file=varfd)
