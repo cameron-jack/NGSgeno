@@ -1711,22 +1711,31 @@ async def main(args):
                     var_count_entries = job[-2].split(';')
                     var_name_entries = job[-1].split(';')
                     primer_name = job[primer_col]
-                    ### Genotyping only want to report the sample and the count
+                    
                     #print(f'{primer_name=} {var_count_entries=} {var_name_entries=}')
                     for var_count, var_name in zip(var_count_entries, var_name_entries):
                         if var_name.startswith('other'):
                             continue
-                        # only print out actual variants, not off-target hits
+                        # 2.03.007+: print out all alternative sequences
+                        var_row_name = f'>Sample:{job[0]}'   # ;Primer:{primer_name}'
+                        var_row_name += f';count:{var_count}'
+                        print(var_row_name, file=varfd)
                         if '//' in var_name:
-                            var_row_name = f'>Sample:{job[0]}'   # ;Primer:{primer_name}'
-                            var_row_name += f';count:{var_count}'
-                            print(var_row_name, file=varfd)
                             print(get_variant_seq(var_name, id_seq), file=varfd)
-                        elif not args.amplicons:
-                            var_row_name = f'>Sample:{job[0]}'   # ;Primer:{primer_name}'
-                            var_row_name += f';count:{var_count}'
-                            print(var_row_name, file=varfd)
+                        else:
                             print(var_name, file=varfd)
+
+                        # 2.03.006 and earlier: only printed variants for amplicon runs
+                        # if '//' in var_name:
+                        #     var_row_name = f'>Sample:{job[0]}'   # ;Primer:{primer_name}'
+                        #     var_row_name += f';count:{var_count}'
+                        #     print(var_row_name, file=varfd)
+                        #     print(get_variant_seq(var_name, id_seq), file=varfd)
+                        # elif not args.amplicons:
+                        #     var_row_name = f'>Sample:{job[0]}'   # ;Primer:{primer_name}'
+                        #     var_row_name += f';count:{var_count}'
+                        #     print(var_row_name, file=varfd)
+                        #     print(var_name, file=varfd)
                             
                 dstfd.flush()
                 varfd.flush()

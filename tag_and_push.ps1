@@ -1,8 +1,8 @@
-$VER = "v2.03.006"
+$VER = "v2.03.007"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: variant_seqs.fa now reports contaminants again in Genotyping mode
+* Changed: amplicon matching now reports all alternative sequences, not just those matching the expected primer
 * NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment
