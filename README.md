@@ -1,6 +1,7 @@
-# NGSgeno - Next Generation Sequencing Genotyping pipeline
+# NGSgeno2 - Next Generation Sequencing Genotyping pipeline
 
 Integrates robotic sample preparation and Illumina Miseq DNA sequencing of amplicons with the APF's Rodentity database.
+Version 2 introduces a new amplicon-only pipeline with specialised matching behaviour.
 
 # To do - wishlist
 * Documentation! Sphinx docs of code. Need proper docstrings and type definitions
@@ -29,7 +30,8 @@ The Biomolecular Resource Facility (BRF), The John Curtin School of Medical Rese
 The project was initiated at the end of 2018 by the BRF and the construction was undertaken by the ABC - primarily 
 Bob Buckley assisted by Cameron Jack, and later Cameron Jack assisted by Gabi (Gabrielle) Ryan. 
 Some additional components were built by the Informatics Team at the Australian Phenomics Facility (led by Philip Wu). 
-Laboratory processes were constructed by the BRF Genotyping team, initially led by Sorelle Bowman, and later by Simone Kuelzer and Peter Milburn.
+Laboratory processes were constructed by the BRF Genotyping team, initially led by Sorelle Bowman, and later by Simone Kuelzer 
+and Peter Milburn, assisted by Kiran Javed.
 
 ## License
 This software (product) is issued with the MIT license

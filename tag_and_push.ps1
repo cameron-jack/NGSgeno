@@ -1,8 +1,9 @@
-$VER = "v2.03.007"
+$VER = "v2.03.008"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Changed: amplicon matching now reports all alternative sequences, not just those matching the expected primer
+* Fixed: forgot to update version variable in ngsgeno.py
+* New: updated README to NGSgeno2 and added acknowledgement of BRF genotyping team members
 * NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment
