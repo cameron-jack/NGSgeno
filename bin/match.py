@@ -1495,7 +1495,7 @@ def reconstruct_sequence(var_anno, ref_seq):
     mod_seq = ref_seq  # modified sequence to be built up
     # need to go through changes in reverse order to avoid length changes from affecting position
     for i, p in enumerate(rev_parts):
-        print(f'reconstruct_sequence() {i=} {p=}', flush=True)
+        #print(f'reconstruct_sequence() {i=} {p=}', flush=True)
         if i % 2 == 0:
             if p == '':
                 break  # we've reached the end

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-__version__ = "2.03.008"
+__version__ = "2.03.009"
 
 """
 @created: 1 May 2022
@@ -153,26 +153,28 @@ def report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog)
     """
     Allows the interface to keep running while a background process (ngsmatch.py) progress is tracked
     """
-    while True:
-        launch_progress = 0
-        match_progress = 0
+    launch_progress = 0
+    match_progress = 0
+    while True:    
         progress_files = list(Path(rundir).glob('match_progress_*'))
         if len(progress_files) == 1:
             launch_progress = int(str(progress_files[0]).split('_')[-2])
             match_progress = int(str(progress_files[0]).split('_')[-1])
 
-        if launch_progress > 100:
-            launch_progress = 100
-        if match_progress > 100:
-            match_progress = 100
-        launch_msg.write('Allele calling task launch progress: '+str(launch_progress)+'%')
-        launch_prog.progress(launch_progress)
-        completion_msg.write('Allele calling task completion progress: '+str(match_progress)+'%')
-        match_prog.progress(match_progress)
-        sleep(0.3)
+            if launch_progress > 100:
+                launch_progress = 100
+            if match_progress > 100:
+                match_progress = 100
+            launch_msg.write('Allele calling task launch progress: '+str(launch_progress)+'%')
+            launch_prog.progress(launch_progress)
+            completion_msg.write('Allele calling task completion progress: '+str(match_progress)+'%')
+            match_prog.progress(match_progress)
+            sleep(0.3)
         if match_progress == 100:
             launch_msg.write('Allele calling task launch progress: Done')
             completion_msg.write('Allele calling task completion progress: Done')
+            if 'matching_in_progress' in st.session_state:
+                st.session_state['matching_in_progress'] = None
             return
 
 
@@ -538,11 +540,11 @@ def main():
         with save_container:
             save_message(exp, key = 'save1')
 
-        # info panel displays are updated at the bottom of the script, so that they reflect any changes
         with lower_container:
             success = dc.info_selection("bottom_viewer", 'info_panel3', 'info_panel4',
                     'lower_panel_height', default_view1='Log', default_view2='None',
                     default_height=st.session_state.get('lower_panel_height',350))
+
 
         #============================================== STAGE 1: Load data =============================================
         if pipeline_stage == 0:
@@ -1179,17 +1181,17 @@ def main():
                         num_cpus = st.number_input(\
                                 label=f"Number of processes to run simultaneously, default: {cpus_avail}",\
                                         value=cpus_avail, min_value=1)
-                        mincov = st.number_input(label="Do not match unique sequences with less than this "+\
-                                "many reads coverage, default 5", format='%i',min_value=0, step=1,value=5)
-                        minprop = st.number_input(label="Do not match unique sequences with less than this "+\
-                                "proportion of the reads seen for the most observed (expected) allele, default 0.1. Must be between 0.0 and 1.0",
-                                format='%f',min_value=0.0, max_value=1.0, value=0.1, step=0.05)
                         margin = st.number_input(label="Require lengths of read sequences and target "+\
                                 "references to be proportionally similar by this amount. Value must be between 0.0 and 1.0 "+\
                                 "default 0.9", format='%f',min_value=0.0, step=0.05,value=0.9)
                         identity = st.number_input(label="Proportion of identity required for inexact match "+\
                                 ", default 0.9. Must be between 0.0 and 1.0",
                                 format='%f',min_value=0.0, max_value=1.0, value=0.9, step=0.05)
+                        mincov = st.number_input(label="Do not match unique sequences with less than this "+\
+                                "many reads coverage, default 5", format='%i',min_value=0, step=1,value=5)
+                        minprop = st.number_input(label="Do not match unique sequences with less than this "+\
+                                "proportion of the reads seen for the most observed (expected) allele, default 0.1. Must be between 0.0 and 1.0",
+                                format='%f',min_value=0.0, max_value=1.0, value=0.1, step=0.05)
                         exhaustive_mode = st.checkbox("Exhaustive mode: try to match every sequence, no matter how few counts")
                         debug_mode = st.checkbox('Turn on debugging for allele calling')
                         do_matching = st.form_submit_button("Run amplicon calling")
@@ -1284,8 +1286,14 @@ def main():
             upper_info_viewer_code(tab_col3, tab_col2, 'upper_report1', default_view1='Files',
                     default_view2='Plates')
 
+        #================================================ PROCESS UPLOADS ==============================================
+        with main_body_container:
+            with st.spinner('Processing uploaded files...'):
+                parse.process_upload_queue(exp)
+
         #=============================================== UPPER INFO SECTION ============================================
 
+        # build the upper info viewers after main content so that they reflect any changes
         upper_panels = [v for v in (st.session_state.get('info_panel1', 'None'),
                 st.session_state.get('info_panel2', 'None')) if v != 'None']
         if any(upper_panels) and st.session_state.get('show_upper_info_viewer'):
@@ -1293,6 +1301,8 @@ def main():
                 dc.show_info_viewer(upper_panels, st.session_state.get('upper_panel_height',250), 'upper_view_panels')
 
         #=============================================== LOWER INFO SECTION ============================================
+
+        # info panel displays are updated at the bottom of the script, so that they reflect any changes
 
         lower_panels = [v for v in (st.session_state.get('info_panel3','None'),
                 st.session_state.get('info_panel4','None')) if v != "None"]
@@ -1305,7 +1315,7 @@ def main():
             #dc.display_temporary_messages()
             dc.display_persistent_messages('main1')
 
-        parse.process_upload_queue(exp)
+        
         ### End of main display ###
 
         #================================================ AUTO SAVE ===================================================
@@ -1316,7 +1326,8 @@ def main():
 
 
         #================================================ PROGRESS REPORT =============================================
-        if 'matching_in_progress' in st.session_state and st.session_state['matching_in_progress']:
+        # must come last as it launches an infinite loop until matching is complete
+        if 'matching_in_progress' in st.session_state and st.session_state['matching_in_progress'] and pipeline_stage == 5:
             rundir, launch_msg, launch_prog, completion_msg, match_prog = st.session_state['matching_in_progress']
             report_progress(rundir, launch_msg, launch_prog, completion_msg, match_prog)
             

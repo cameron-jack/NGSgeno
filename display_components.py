@@ -1181,7 +1181,8 @@ def show_info_viewer(selection, height, groupkey):
         columns = st.columns(len(selection))
         for i in range(len(selection)):
             with columns[i]:
-                info_viewer(selection[i], str(groupkey)+selection[i]+str(i), view_height=height)
+                with st.spinner('loading info...'):
+                    info_viewer(selection[i], str(groupkey)+selection[i]+str(i), view_height=height)
 
 
 def display_file_checklist(widget_key:str, inc_file_purposes:list, default_value=True) -> list:
@@ -1650,7 +1651,7 @@ def show_alignments(chosen_vars, tmp_fn, pdf_fn, target_fn, key):
 
     #vars_chosen = {cv.split('//')[1]:int(cc) for cv,cc in zip(chosen_vars[-2].split(';'),chosen_vars[-3].split(';')) if ref_chosen in cv and '//' in cv and int(cc)>=(merged_counts*min_prop)}
     id = f'{chosen_vars[0]}\t{chosen_vars[1]}\t{chosen_vars[2]}\t{chosen_vars[3]}'
-    print(f'show_alignments() {ref_chosen=} {ref_seqs[ref_chosen]=}, {var_list=}', file=sys.stderr)
+    #print(f'show_alignments() {ref_chosen=} {ref_seqs[ref_chosen]=}, {var_list=}', file=sys.stderr)
     ref_seq_id = (ref_chosen, ref_seqs[ref_chosen])
     aligned = run_msa((ref_chosen,ref_seqs[ref_chosen]),var_list)
     var_df = pd.DataFrame({
@@ -1840,10 +1841,12 @@ def show_results_display(results_type, key, caller_id=None):
     with alignment_container:
         if f'{rtype}_chosen_vars' in st.session_state and st.session_state[f'{rtype}_chosen_vars']:
             #well_variants = get_variants_from_table(st.session_state[f'{rtype}_chosen_vars'], filter_dict, filter_param_fn)
-            print('Ready to do alignments', st.session_state[f'{rtype}_chosen_vars'], file=sys.stderr)
-            st.session_state[f'{rtype}_chosen_id'] = show_alignments(st.session_state[f'{rtype}_chosen_vars'], tmp_fn, pdf_fn, target_fn, f'{rtype}_alignment_viewer')
+            #print('Ready to do alignments', st.session_state[f'{rtype}_chosen_vars'], file=sys.stderr)
+            with st.spinner('Generating alignments...'):
+                st.session_state[f'{rtype}_chosen_id'] = show_alignments(st.session_state[f'{rtype}_chosen_vars'], tmp_fn, pdf_fn, target_fn, f'{rtype}_alignment_viewer')
         else:
-            st.session_state[f'{rtype}_chosen_id'] = show_alignments(None, tmp_fn, pdf_fn, target_fn, f'{rtype}_alignment_viewer')
+            with st.spinner('Generating alignments...'):
+                st.session_state[f'{rtype}_chosen_id'] = show_alignments(None, tmp_fn, pdf_fn, target_fn, f'{rtype}_alignment_viewer')
         if f'{rtype}_chosen_id' in st.session_state and st.session_state[f'{rtype}_chosen_id']:
             entries_reported = set()
             if Path(reported_fn).exists():

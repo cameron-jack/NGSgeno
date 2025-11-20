@@ -1,9 +1,13 @@
-$VER = "v2.03.008"
+$VER = "v2.03.009"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: forgot to update version variable in ngsgeno.py
-* New: updated README to NGSgeno2 and added acknowledgement of BRF genotyping team members
+* Fixed: progress bar randomly restarts from zero
+* Fixed: order of parameters for amplicon calling reordered to match allele calling
+* Fixed: Progress bar only displays during Alleles stage
+* Fixed: Progess bar is no longer displayed after completion
+* Fixed: info viewers called before file uploads are processed
+* Fixed: alignment table has spinner while waiting for completion
 * NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment

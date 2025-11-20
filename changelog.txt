@@ -1,3 +1,15 @@
+v2.03.009
+Date: 20/11/2025 1:37:02 PM
+* Fixed: progress bar randomly restarts from zero
+* Fixed: order of parameters for amplicon calling reordered to match allele calling
+* Fixed: Progress bar only displays during Alleles stage
+* Fixed: Progess bar is no longer displayed after completion
+* Fixed: info viewers called before file uploads are processed
+* Fixed: alignment table has spinner while waiting for completion
+* NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
+* TODO: coloured text in PDF report
+* TODO: changing included variants in the alignment table does not redo the alignment
+
 v2.03.008
 Date: 13/11/2025 12:15:01 PM
 * Fixed: forgot to update version variable in ngsgeno.py
