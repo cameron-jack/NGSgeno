@@ -4,7 +4,6 @@ Integrates robotic sample preparation and Illumina Miseq DNA sequencing of ampli
 Version 2 introduces a new amplicon-only pipeline with specialised matching behaviour.
 
 # To do - wishlist
-* Documentation! Sphinx docs of code. Need proper docstrings and type definitions
 * Modular indexing code
 * New file generation/transaction code
 * Secure access through SSL

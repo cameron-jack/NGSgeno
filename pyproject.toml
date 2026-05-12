@@ -5,7 +5,7 @@ authors = [
     {name = "Cameron Jack", email = "cameron.jack@anu.edu.au"},
 ]
 
-version = "2.03.004"
+version = "2.04.000"
 requires-python = "==3.13" # Specifies Python 3.13
 readme = "README.md"
 classifiers = ["License :: OSI Approved :: MIT License"]
@@ -22,4 +22,5 @@ dependencies = [
     "cogent3==2025.9.8",
     "fpdf2==2.8.4",
     "aiofiles==25.1.0",
+    "streamlit-image-coordinates==0.2.2",
 ]

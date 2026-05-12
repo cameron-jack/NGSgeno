@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Index</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation</h1> </div>
+    </div>
+    
+    <p>This contains all the documentation for the NGS Genotyping Pipeline, NGSG Retype, and NGSG Reference, as well as how to get started using the NGSG Explorer web service v2.04.000.</p>
+    <img src="images/ngsg_explorer.png" class="vsm" alt="NGSG Explorer interface">
+    <br/>
+
+    <h2>Software installation</h2>
+    <p>To install the pipeline and additional tools (Retype and Reference), follow these steps:</p>
+    <ol>
+        <li>Clone the repository from GitHub. $ git clone <a href="https://github.com/cameron-jack/NGSgeno.git">https://github.com/cameron-jack/NGSgeno.git</a></li>
+        <li>Create a new virtual environment. $ python -m venv ngsgeno_env</li>
+        <li>Activate the virtual environment. $ source ngsgeno_env/bin/activate</li>
+        <li>Install Python v3.12 and the required dependencies using pip. $ python -m pip install .</li>
+        <li>Create desktop shortcuts to the run scripts: <i>Run_NGSgeno.bat</i>, <i>run_reference.bat</i>, and<i>run_retype.bat</i></li>
+        <li>Double click your shortcut to run the application.</li>
+    </ol>
+    <br/>
+
+    <h2>Using the pipeline</h2>
+    <p>New users should read:</p>
+    <ul>
+        <li><a href="glossary.html">the glossary</a> to familiarise themselves with the terms used in this pipeline</li>
+        <li><a href="start_page.html">the start page</a> that they will see when they first start the application</li>
+        <li><a href="new_experiment.html">the new experiment documentation</a> to understand the standard features of the interface.</li>
+    </ul>
+    <br/>
+    <p>The NGS Genotyping pipeline is composed of several stages:</p>
+    <ol>
+        <li><a href="stage_load.html">Load samples, consumables, amplicon plates</a></li>
+        <li><a href="stage_nimbus.html">Hamilton Nimbus plate combining (96 to 384 well)</a></li>
+        <li><a href="stage_primers.html">Primer selection and PCR step 1</a></li>
+        <li><a href="stage_index.html">Indexing and PCR step 2</a></li>
+        <li><a href="stage_miseq.html">Miseq sequencing</a></li>
+        <li><a href="stage_alleles.html">Allele matching</a></li>
+        <li><a href="stage_reporting.html">Reporting</a></li>
+    </ol>
+    <br/>
+
+    <h2>Additional software tools</h2>
+    <p>There are three additional stand-alone tools that have been integrated with v2.04.000 of the pipeline:</p>
+    <ul>
+        <li><a href="ngsg_version_select.html">NGSG Version Select</a> - checks for new pipeline versions and allows the user to choose which one they want to be active</li>
+        <li><a href="ngsg_retype.html">NGSG Retype</a> - for finding failed assay runs and building a new custom manifest (384 well) to rerun (retype) these assays</li>
+        <li><a href="ngsg_reference.html">NGSG Reference</a> - which take an Excel-based reference file and converts it to FASTA, while also looking for forbidden characters and formating issues</li>
+    </ul>
+    <br/>
+    
+    <h2>Technical Details</h2>
+    <p>This section provides detailed information about technical aspects of the pipeline where various choices will impact the outcomes.</p>
+    <ul>
+        <li><a href="info_viewer.html">Info viewer panels</a></li>
+        <li><a href="log_view.html">Activity log</a></li>
+        <li><a href="file_formats.html">Input and output file formats</a></li>
+        <li><a href="sequence_matching.html">Sequence matching</a></li>
+    </ul>
+    <br/>
+
+    <h2>Code Reference</h2>
+    <p>The API reference can be found in the <a href="api_doc.html">API documentation</a>.</p>
+
+    <h2>Authorship</h2>
+    <p>This project was developed by the staff of the ANU Bioinformatics Consultancy (ABC) and the Genotyping team of the Biomolecular Resource Facility (BRF), at The John Curtin School of Medical Research, The Australian National University.</p>
+
+    <h2>License</h2>
+    <p>This project is licensed under the MIT License. See the LICENSE file for more details.</p>
+
+    <br/>
+    <a href="index.html">Back to index</a>
+</body>     
+</html>

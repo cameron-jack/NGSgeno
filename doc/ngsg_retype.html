@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: NGSG Retype</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: NGSG Retype</h1> </div>
+    </div>
+    <p>The NGSG Retype application is a standalone software tool that helps users to select failed assays/samples/primer-pairs for rerunning.</p>
+    <p><img src="images/retype_upload.png" alt="NGSG Retype application, file upload" class="med"></p>
+    <p>You are first required to use the widget on the left of the screen to upload the "results_workbook.csv" file that comes back from the Rodentity server. See the file formats page for more details about this.</p>
+    <p>After that has been successfully read, a new widget will appear on the right hand side of the screen asking for you to upload the Stage3.csv from the matching experiment (run) folder.</p>
+    <p>Once this has been done, Retype will create a custom 384-well manifest file that will inform the Echo liquid handler which DNA plates and wells it needs to rerun these failed samples-primer combinations.</p>
+    <p><img src="images/retype_assays.png" alt="NGSG Retype ready to save manifest" class="med"></p>
+    <p>The manifest is automatically saved in the Downloads folder as "retype_manifest_384.csv"</p>
+    <p>Make sure you place this somewhere safe before you use Retype again, because it will overwrite this file without </p>
+    <p>You should upload it to a new experiment in NGSG Explorer using the Stage 1: Load, Custom 384 well manifest option.</p>
+    <br/>
+    <a href="index.html">Back to index</a>
+</body>     
+</html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Glossary</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: Glossary</h1> </div>
+    </div>
+
+    <p>Here is an alphabetical list of terms used in the NGS Genotyping Pipeline. It is by no means exhaustive, but aims to provide a useful reference for new users.</p>
+    <ul class="horizontal-list">
+        <li>Jump to: </li>
+        <li><a href="#a-d">A-D</a></li>
+        <li><a href="#e-h">E-H</a></li>
+        <li><a href="#i-l">I-L</a></li>
+        <li><a href="#m-p">M-P</a></li>
+        <li><a href="#q-t">Q-T</a></li>
+        <li><a href="#u-z">U-Z</a></li>
+    </ul>
+    
+    <p id="a-d"><b>A-D</b></p>
+    <ul class="vertical-list">
+        <li><b>Amplicon</b> - a piece of DNA that is the source and/or product of amplification or replication events (e.g. PCR products)</li>
+        <li><b>Alignment</b> - the process of arranging sequences to identify regions of similarity, aka <i>matching</i></li>
+        <li><b>Allele</b> - a variant form of a gene that occupies a specific position on a chromosome. 
+            An allele may take several forms and require multiple primers for detection, and many different target sequences for matching</li>
+        <li><b>Adapter clipping</b> - the process of removing adapter sequences from the ends of DNA reads before analysis</li>
+        <li><b>Consumables</b> - the various reagents, plates, and other materials used in the pipeline</li>
+        <li><b>Custom manifest</b> - a user-created file that describes the layout and contents of a custom sample plate, either 96 or 384-well. See <a href="file_formats.html">File Formats</a></li>
+        <li><b>DNA plate</b> - a 384-well plate used for holding DNA from samples in the genotyping pipeline</li>
+    </ul>
+    <p><a href="#headerElement">Back to Top</a></p>
+    
+    <p id="i-l"><b>E-H</b></p>
+    <ul class="vertical-list">
+        <li><b>Echo</b> - an acoustic liquid handling robot used for precise dispensing of reagents in the genotyping pipeline</li>
+        <li><b>Echo plate</b> - a specific (and expensive)384-well plate used in the Echo liquid handling system for holding samples or reagents. 
+            These plates have DNA, primers, taq polymerase, water, and DNA index barcodes added to them</li>
+        <li><b>Exact matching</b> - a method of sequence comparison that requires perfect identity between the query and reference sequences. It is very fast</li>
+        <li><b>Experiment</b> - a collection of all the data and information related to a particular 
+            genotyping run, including samples, consumables, amplicons, and results. It exists as a 
+            subfolder with the prefix "run_", and contains all the run files, critically the 
+            "experiment.json" file, which contains the complete record of every action performed as part of the run</li>
+        <li><b>Fastq</b> - a file format used for storing DNA sequencing data, which includes both the DNA sequence and its corresponding quality scores</li>
+        <li><b>Genotype</b> - the genetic makeup of an organism, typically represented by a collection of specific alleles (genetic variations) present at specific loci</li>
+        <li><b>Genotyping</b> - the process of determining the genetic makeup of an organism by analyzing its DNA sequence</li>
+        <li><b>Global alignment</b> - a method of sequence comparison that aligns the entire length of the query sequence with the reference sequence, allowing for gaps and mismatches</li>
+    </ul>
+    <p><a href="#headerElement">Back to Top</a></p>
+    
+    <p id="i-l"><b>I-L</b></p>
+    <ul class="vertical-list">
+        <li><b>Index barcode</b> - a short DNA sequence added to samples for identification during sequencing.</li>
+        <li><b>Indexing</b> - the process of adding index barcodes to samples for identification during sequencing</li>
+        <li><b>Inexact matching</b> - a method of sequence comparison that allows for some differences between the query and reference sequences. Slower than exact matching</li>
+        <li><b>Information panel/viewer</b> - a section of the interface that displays specific information about the experiment, such as loaded samples or activity logs</li>
+        <li><b>Local alignment</b> - a method of sequence comparison that aligns a portion of the query sequence with the reference sequence, allowing for gaps and mismatches</li>
+        <li><b>Log entry</b> - a record of an event or action taken within the experiment, including details such as time, severity level, and message</li>
+        <li><b>Log level</b> - a categorization of log entries based on their severity, such as info, warning, error, etc.</li>
+    </ul>
+    <p><a href="#headerElement">Back to Top</a></p>
+    
+    <p id="m-p"><b>M-P</b></p>
+    <ul class="vertical-list">
+        <li><b>Manifest</b> - an input file that may contain records for more than one plate of samples</li>
+        <li><b>Matching</b> - the process of comparing sequenced DNA reads to reference sequences to determine genotypes, can be exact or inexact, local or global, also known as <i>alignment</i></li>
+        <li><b>Miseq</b> - a type of sequencing platform used in the pipeline for sequencing DNA samples</li>
+        <li><b>Nimbus</b> - a liquid handling robot used for plate combining and sample preparation in the pipeline. Made by the Hamilton company</li>
+        <li><b>NGS</b> - Next-Generation Sequencing (e.g. with the Illumina Miseq platform) </li>
+        <li><b>NGSG</b> - NGS Genotyping (Pipeline), the physical process and software application for managing and executing the genotyping process using NGS technologies</li>
+        <li><b>Parsing</b> - the process of analyzing and extracting information from a file or data structure</li>
+        <li><b>PCR (Polymerase Chain Reaction)</b> - a technique used to amplify specific DNA sequences, used first to amplify target regions before sequencing, and then to attach index barcodes</li>
+        <li><b>Plate</b> - a flat, rectangular container with wells used for holding and organizing samples or reagents in the pipeline</li>
+        <li><b>Primer</b> - a short strand of DNA that serves as a starting point for DNA synthesis during PCR amplification</li>
+        <li><b>Primer plate</b> - a 384-well plate used for holding primers in the genotyping pipeline</li>
+        <li><b>Processes</b> - in the context of allele matching/sequence alignment, the number of independent computational tasks being executed</li>
+    </ul>
+    <p><a href="#headerElement">Back to Top</a></p>
+    
+    <p id="q-t"><b>Q-T</b></p>
+    <ul class="vertical-list">
+        <li><b>Quality trimming</b> - the process of removing low-quality bases from the ends of DNA reads before analysis</li>
+        <li><b>Read</b> - a sequence of DNA that has been sequenced from a sample, which is analyzed to determine genotypes</li>
+        <li><b>Reference sequence</b> - a known DNA sequence used as a benchmark for comparing and aligning sequenced reads</li>
+        <li><b>Rodentity</b> - a database containing information about mouse ear punch samples, including their genotypes and other metadata</li>
+        <li><b>Run</b> - a specific execution of the genotyping pipeline, encompassing all the steps from 
+            sample loading to result generation, also referred to as an <i>experiment</i></li>
+        <li><b>Sample</b> - a biological specimen or aliquot that is subjected to genotyping analysis</li>
+        <li><b>Sequence matching</b> - the process of comparing sequenced DNA reads to reference sequences to determine genotypes, can be exact or inexact, local or global</li>
+        <li><b>Short read</b> - a brief (~100-300 base pair) DNA sequence obtained from high-throughput sequencing technologies, e.g. Illumina Miseq</li>
+        <li><b>Stage</b> - a distinct phase of the genotyping pipeline, each with specific tasks and objectives (e.g. Load, Nimbus, Primers, etc.)</li>
+        <li><b>Tab</b> - a subsection within a stage that organizes related tasks and information (e.g. Load Samples, Load Consumables, etc.)</li>
+        <li><b>Taq polymerase</b> - a DNA polymerase enzyme used in PCR amplification to synthesize new DNA strands, loaded in 6-well plates and dispensed into Echo plates</li>
+        <li><b>Threads</b> - the number of concurrent processes or tasks that can be executed simultaneously in the pipeline. Similar to <i>processes</i></li>
+    </ul>
+    <p><a href="#headerElement">Back to Top</a></p>
+
+    <p id="u-z"><b>U-Z</b></p>
+    <ul class="vertical-list">    
+        <li><b>Water</b> - provided in 6-well plates and dispensed into Echo plates. Required for PCR amplification at the Primer and Indexing stages</li>
+    </ul>
+    <p><a href="#headerElement">Back to Top</a></p>
+
+    <br/>
+    <p>This glossary was built with the assistance of Microsoft Copilot. Please report any inaccuracies or suggestions for improvement.</p>
+
+    <br/>
+    <a href="index.html">Back to index</a>
+</body>
+</html>

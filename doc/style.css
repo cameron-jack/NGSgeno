@@ -1,0 +1,131 @@
+body {
+  background-color: honeydew;
+  margin-left: 1%;
+  margin-right: 1%;
+}
+
+@media print {
+  @page { size: portrait; margin: 0; }
+  body { margin: 1%; page-break-after: always; }
+}
+
+#headerElement {
+  display:flex; 
+  flex-wrap: nowrap; 
+  align-items: center;
+  border-bottom: 1px solid grey;
+}
+
+/* All paragraphs will have blue text and a 16px font size */
+p {
+  color: black;
+  font-size: 16px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+ul {
+  color: black;
+  font-size: 16px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+ol {
+  color: black;
+  font-size: 16px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.vertical-list {
+  display: flex; /* Aligns items in a column */
+  flex-direction: column; /* Stacks items vertically */
+  list-style-type: none; /* Removes bullets */
+  padding: 0;
+  gap: 5px; /* Separates items with a 10px space */
+}
+
+.horizontal-list {
+  display: flex; /* Aligns items in a row */
+  list-style-type: none; /* Removes bullets */
+  padding: 0;
+  gap: 20px; /* Separates items with a 20px space */
+}
+
+a {
+  color: blue;
+  font-size: 16px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+h1 {
+  color: black;
+  font-size: 24px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+h2 {
+  color: black;
+  font-size: 20px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.red {
+  color: white;
+  background-color: red;
+  font-weight: bold;
+}
+
+.yellow {
+  background-color: yellow;
+  font-weight: bold;
+}
+
+.purple {
+  color: white;
+  background-color: purple;
+  font-weight: bold;
+}
+
+.med {
+  max-width: min(70%, 60vw);
+  height: auto;
+  border: 1px solid black;
+  margin-left: 2%;
+}
+
+.sm {
+  max-width: min(50%, 40vw);
+  height: auto;
+  border: 1px solid black;
+  margin-left: 3%;
+}
+
+.lrg {
+    max-width: min(80%, 80vw);
+    height: auto;
+    border: 1px solid black;
+    margin-left: 1%;
+}
+
+.tiny {
+    max-width: min(10%, 10vw);
+    height: auto;
+    border: 1px solid black;
+    margin-left: 3%;
+}
+
+.vsm {
+    max-width: min(20%, 20vw);
+    height: auto;
+    border: 1px solid black;
+    margin-left: 3%;
+}
+
+.inline {
+  display: inline-block;
+  max-width: min(3%, 3vw);
+  max-height: min(3%, 3vh);
+  height: auto;
+  border: 1px solid beige;
+  margin-left: 3%;
+  vertical-align: middle;
+}

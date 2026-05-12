@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Stage3 Primer PCR</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: Stage 3 - Primer PCR</h1> </div>
+    </div>
+    <h1>Stage 3: Primer PCR</h1>
+    <p>The third stage of the NGS genotyping pipeline involves performing primer PCR to amplify the target regions.</p>
+    <p>To achieve this, 384-well "Echo" plates are used to organize the samples for the PCR reaction.</p>
+    <p>Samples, taq polymerase, and water, and PCR primers, are added to the wells of the Echo plates.</p>
+    <p>For every combination of sample and assay, there will be at least one corresponding PCR well - usually several as different primer pairs will be used for each possible allele.</p>
+    <p><img src="images/stage_primers/primers_stage_components.png" alt="Primer stage components tab" class="sm"></p>
+    <h2>Primer stage - PCR1 Components tab</h2>
+    <p>The components tab of the primer stage contains a table listing all the components used in the PCR reaction, including samples, taq polymerase, water, and PCR primers.</p>
+    <p>Users can see the quantities and details of each component, and enable/disable them using checkboxes.</p>
+    <p>This affects the summary table below the checkboxes, and the spreadsheet view of required and available primers.</p>
+    <br/>
+    <p><img src="images/stage_primers/primers_stage_uploads.png" alt="Primer stage uploads" class="sm"></p>
+    <p>Below the component information are widgets for adding PCR (Echo) plate barcodes, and Taq/water plate barcodes to the experiment.</p>
+    <p>Below that, there are upload widgets for primer layout and volume files.</p>
+    <p>Lastly, there is a widget for adjusting liquid transfer volumes with the Echo. Do not adjust these values unless instructed!</p>
+    <p>And don't forget to save your progress!</p>    
+    <br/>
+    <h2>Primer stage - Generate picklists tab</h2>
+    <p>The Generate picklists tab has much of the same view as the Components tab, but here users can down-select from available plate options in order to generate Echo "picklists" for the primer PCR reactions.</p>
+    <p><img src="images/stage_primers/primers_stage_picklists.png" alt="Primer stage generate picklists" class="sm"></p>
+    <p>After confirming that the selected components are correct and enabled with tickboxes, users can generate the picklists for the PCR reactions.</p>
+    <p>Any there are missing primers, they will be indicated in the summary table.</p>
+    <p>Ticking the "Force picklist generation" checkbox will override any warnings and generate the picklists regardless.</p>
+    <p>If any of the files to be generated already exist, the user will be prompted to confirm overwriting them.</p>
+    <a href="index.html">Back to index</a>
+</body>
+</html>

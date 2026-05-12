@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGS Genotyping Docs: Info viewer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation</h1> </div>
+    </div>
+    <h1>NGSG Explorer Information Panels</h1>
+    <p>Throughout the NGSG Explorer interface, there are information panels that can be used to display various types of information, 
+        and provide controls for selecting and removing items from the experiment.</p>
+    <p><img src="images/info_viewer/info_viewer.png" alt="Information panels" class="sm"></p>
+    <p>These panels are controlled by drop-down selectors, and can be swapped out as needed by the users. 
+        There is a control provided to shrink or grow the height of panels for convenience. 
+        Columns within a panel can be adjusted to show or hide specific information.</p>
+
+    <h2 id="all-panels">Specific Information Panels</h2>
+    <ul>
+        <li><a href="#none-viewer">None</a></li>
+        <li><a href="#samples-viewer">Samples</a></li>
+        <li><a href="#consumables-viewer">Consumables</a></li>
+        <li><a href="#status-viewer">Status</a></li>
+        <li><a href="#files-viewer">Files</a></li>
+        <li><a href="#plates-viewer">Plates</a></li>
+        <li><a href="#plate-viewer">Plate Viewer</a></li>
+        <li><a href="#primers-viewer">Primers</a></li>
+        <li><a href="#indexes-viewer">Indexes</a></li>
+        <li><a href="#log-viewer">Log</a></li>
+    </ul>
+
+    <h2 id="none-viewer">None</h2>
+    <p>This disables the information panel, allowing the full horizontal space to be used by another information panel. 
+        Simply changing the selection to another panel type will reactivate the panel.</p>
+    
+    <br/>
+    <h2 id="samples-viewer">Samples</h2>
+    <img src="images/info_viewer/viewer_samples.png" alt="Samples viewer" class="sm">
+    <p>This panel displays all samples that have been loaded into the experiment, along with their relevant information 
+        such as sample name, sample ID, and any associated metadata. This panel allows users to select samples to remove them from the experiment.</p>
+    
+    <br/>
+    <h2 id="consumables-viewer">Consumables</h2>
+    <img src="images/info_viewer/viewer_consumables.png" alt="Consumables viewer" class="sm">
+    <p>This panel displays all consumables that have been loaded into the experiment, such as primers, sequencing indexes, 
+        and information files, required for the genotyping process. Users can view details about each consumable, such as id,
+        filename, relevant quantity.</p>
+    
+    <br/>
+    <h2 id="status-viewer">Status</h2>
+    <img src="images/info_viewer/viewer_status.png" alt="Status viewer" class="sm">
+    <p>This panel provides an overview of the current status of the experiment, notably which pipeline sections have been run. 
+        It allows users to quickly assess the progress of the experiment so that they can carry on from the last completed stage.</p>
+    
+    <br/>
+    <h2 id="files-viewer">Files</h2>
+    <img src="images/info_viewer/viewer_files.png" alt="Files viewer" class="sm">
+    <p>This panel displays all files that have been uploaded or generated during the experiment, such as raw data files, 
+        intermediate results, and final reports. Users can view details about each file, such as name, type, and size, 
+        and can select files to remove them from the experiment if they are no longer needed.</p>
+    
+    <br/>
+    <h2 id="plates-viewer">Plates</h2>
+    <img src="images/info_viewer/viewer_plates.png" alt="Plates viewer" class="sm">
+    <p>This panel displays all plates that have been loaded into the experiment, along with their relevant 
+        information such as plate name, plate type, and the samples or reagents contained within each plate. 
+        Users can select plates to remove them from the experiment if they are no longer needed.</p>
+    
+    <br/>
+    <h2 id="plate-viewer">Plate Viewer</h2>
+    <p>This panel provides a visual representation of the plates used in the experiment. You can select any loaded plate to view its layout and contents.</p>
+    <img src="images/info_viewer/viewer_plate_layout1.png" alt="Plate viewer" class="sm">
+    <p>It will then display the plate layout.</p>
+    <img src="images/info_viewer/viewer_plate_layout2.png" alt="Plate layout" class="sm">
+    <p>Users can mouse-over each well to see the layout of samples and reagents within each plate.
+        It can be used to verify that samples and reagents are correctly arranged and to identify any potential issues with plate setup.</p>
+    
+    <br/>
+    <h2 id="primers-viewer">Primers</h2>
+    <img src="images/info_viewer/viewer_primers.png" alt="Primers viewer" class="sm">
+    <p>This panel displays all primers that have been loaded into the experiment, along with their relevant information 
+        such as primer name, sequence, and any associated metadata. The user cannot remove these primer wells once they have been loaded.
+        The plate must be overwritten with one of the same name, or the old one removed and a new plate layout and volume file must be uploaded.</p>
+    
+    <br/>
+    <h2 id="indexes-viewer">Indexes</h2>
+    <p>This panel displays all indexes that have been loaded into the experiment, along with their relevant information
+         such as index name, sequence, and any associated metadata. The user cannot remove these index wells once they have been loaded. 
+         The plate must be overwritten with one of the same name, or the old one removed and a new plate layout and volume file must be uploaded.</p>
+    
+    <br/>
+    <h2 id="log-viewer">Activity Log</h2>
+    <p>This panel displays the activity log for the experiment, providing a record of all actions taken within the experiment, 
+        along with any warnings or errors that may have occurred. Users can use this panel to track the progress of 
+        the experiment and identify any issues that may need to be addressed.</p>
+
+    <p>At the bottom of every page is another information panel that always defaults to displaying the activity log.</p>
+    <p><img src="images/info_viewer/log_view.png" alt="Activity log" class="med"></p>
+    <p>This is a crucial tool for tracking all actions taken within the experiment. It is possible to change the 
+        view from the log panel to another information panel type, and you can have a second panel visible too.
+        By default only the log is shown here to provide sufficient horizontal screen space.</p>
+    <p>The columns in the log display are (from left to right): Time, Level, Message, Function name, Func line.</p>
+    <ul>
+        <li>Time - the time and date the log entry was created</li>
+        <li>Level - the severity level of the log entry (e.g. info, warning, error)</li>
+        <li>Message - a descriptive message about the log entry</li>
+        <li>Function name - the name of the function where the log entry was generated</li>
+        <li>Func line - the programming line number in the function where the log entry was generated</li>
+    </ul>
+    <p>Message levels are used to indicate the severity of an issue.</p>
+    <ul>
+        <li>Info - informational messages providing general updates on events</li>
+        <li>Success - indicates successful completion of an action or stage</li>
+        <li>Failure - indicates a failed action or stage. These are not typically problematic</li>
+        <li>Warning - indicates a potential issue that may not stop the pipeline from running, such as insufficient primer volumes, but should be considered</li>
+        <li>Error - indicates an issue that will prevent the pipeline from running, such as missing files or incorrect file formats</li>
+        <li>Critical - indicates a severe issue that requires immediate attention, such as system failures or data corruption. 
+            These indicate that the pipeline is in an inconsistent state or has encountered a programming error. You should raise any critical issues immediately.</li>
+        <li>Debug - detailed information for debugging purposes - unlikely to be seen in regular use</li>
+    </ul>
+    <p>To aid users in spotting important issues, <span class="yellow"><b>warnings</b></span> are displayed in yellow, <span class="red"><b>errors</b></span> are displayed in red, 
+        and <span class="purple"><b>critical</b></span> messages are in purple.</p>
+    <p>You cannot remove or clear log entries.</p>
+    <br>
+    <a href="index.html">Back to index</a>
+</body>
+</html>

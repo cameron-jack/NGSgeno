@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Stage4 Index PCR</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: Stage 4 - Index PCR</h1> </div>
+    </div>
+    <h1>Stage 4: Index PCR</h1>
+    <p>The fourth stage of the NGS genotyping pipeline involves performing a second round of PCR to add unique index barcodes to the DNA fragments.</p>
+    <p>As with the Primer stage, there are two tabs for PCR Components and Generating Picklists.</p>
+    <p><img src="images/stage_index/index_viewer.png" alt="Index stage viewer" class="sm"></p>
+    <h2>PCR2 Components</h2>
+    <img src="images/stage_index/index_plates_barcodes.png" alt="Index stage plates and barcodes" class="sm">
+    <p>You can see all of the component plates available for indexing here.</p>
+    <img src="images/stage_index/index_files.png" alt="Index stage files and plate barcodes" class="sm">
+    <p>You can add plates specific to the index PCR stage here, namely dedicated taq/water plates for PCR2, index layout and volume, or extra amplicon plates.</p>
+    <p>There is no need to add additional PCR plates here, it's simply that the widget offers both the PCR and Taq/water barcode types.</p>
+    <img src="images/stage_index/index_volumes.png" alt="Index stage volumes" class="sm">
+    <p>Lastly, you can set custom transfer volumes for the index (PCR2) reaction. Do not do this unless specifically instructed!</p>
+
+    <h2>Generate Picklists</h2>
+    <img src="images/stage_index/index_generate_picklists.png" alt="Index stage generate picklists" class="sm">
+    <p>Just like the Primer stage, this tab allows you to generate picklists for the index PCR reactions.</p>
+    <p>There are checkboxes to select the various available components for this pipeline stage.</p>
+    <p>There is no "force" option for generating files at this stage as the index barcodes are all required to be present at full volumes.</p>
+    <p>If the Echo PCR2 picklists already exist, you can choose to overwrite them or keep the existing ones.</p>
+    <p>...and don't forget to save your progress!</p>
+
+    <br/>
+    <a href="index.html">Back to index</a>
+</body>
+</html>

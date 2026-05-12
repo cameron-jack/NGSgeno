@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Sequence Matching</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: Sequence Matching</h1> </div>
+    </div>
+    <h1>The NGSG Explorer Sequence Matching</h1>
+
+    <p>Sequence matching is a critical step in the NGS genotyping pipeline that involves comparing the sequencing reads against a reference database to identify the presence or absence of specific genetic variants.</p>
+    <p>In the NGS Genotyping pipeline, sequence matching is done with a process of several steps. These are 
+        launched in parallel, across several physical computer processors, to save time. Steps that involve 
+        long wait times are also performed asynchronously where possible. This means that code execution 
+        "threads" can continue to work on other tasks while waiting for the completion of a long-running 
+        task, such as a sequence quality trimming or read-end merging. This allows for more efficient use 
+        of computational resources and can significantly reduce the overall time required for the
+         sequence matching process.</p>
+    <p>Repeating what is written in the Alleles Stage section... When the "Run allele calling" button is pressed, the following steps are performed:</p>
+    <ol>
+        <li>All paired-end FASTQ sequence record (two files per well) are trimmed of low quality bases, and short reads are filtered out</li>
+        <li>Clean paired sequences are merged. Unmerged reads are saved, but not included in later processing</li>
+        <li>Merged sequences are matched against the reference sequences expected for them given the primers that were used</li>
+        <li>If a particular merged sequence wasn't seen at least 5 times, or has less 10% of the most common expected sequence (using the default parameters) then it is skipped to save time</li>
+        <li>By default sequences must exactly match the expected reference sequence. They can be a little shorter, or longer, but the overlapping majority must be identical</li>
+        <li>A results.csv file is created that contains all the wells that were expected and had a matching pair of FASTQ sequence files</li>
+    </ol> 
+    <p>Steps 1 and 2 are performed using BBtools, by Brian Bushnell. The tools bbduk and bbmerge are used for quality trimming and read merging, respectively.</p>
+    <p>The bbduk command parameters are: -Xmx1g t=2 qtrim=rl trimq=20 minlen=50 k=23 ktrim=r mink=11 hdist=1 overwrite=true ref=bbmap\resources\adapters.fa</p>
+    <p>These specify:</p>
+    <ol>
+        <li>-Xmx1g: Use 1 GB of memory</li>
+        <li>t=2: Use 2 threads</li>
+        <li>qtrim=rl: Trim both ends of the reads based on quality</li>
+        <li>trimq=20: Trim bases with quality below 20</li>
+        <li>minlen=50: Discard reads shorter than 50 bases after trimming</li>
+        <li>k=23: Use a k-mer size of 23 for adapter trimming</li>
+        <li>ktrim=r: Trim adapters from the right end of the reads</li>
+        <li>mink=11: Use a minimum k-mer size of 11 for adapter trimming</li>
+        <li>hdist=1: Allow for 1 mismatch when matching adapter k-mers</li>
+        <li>overwrite=true: Overwrite existing output files</li>
+        <li>ref=bbmap\resources\adapters.fa: Use the specified adapter reference file for trimming</li>
+    </ol>
+    <br/>
+    <p>bbmerge is only run with one non-standard parameter: -pfilter=1, which forces perfect overlap requirements. This ensures that no artifical sequences are generated from the merging process.</p>
+    <p>Step 3 is matching. In the main genotyping pipeline, this is always done using <b>exact</b> matching. Inexact matching is optional, and is always used in the amplicon pipeline. These are described in more detail below.</p>
+    <p>Step 4 is a time-saving filter. Reads that do not meet the minimum criteria are skipped to save computational resources. 
+        Where to set the minimum read coverage, or the minimum proportion of reads will be determined by the PCR 
+        reaction likelihood and must be determined by trial and error. In the future, it would be ideal to set 
+        these parameters based on past performance of individual primers, but at present this kind of 
+        capability isn't available.</p>
+    <br/>
+
+    <h2>Exact matching</h2>
+    <p>Exact matching means that if seq A matches somewhere within the length of seq B (or vice versa) then this is a match. 
+        No differences are allowed within the overlapping region. This may seem strict, 
+        but around 10%-40% of merged reads will match their reference sequence this way. 
+        Exact matching is very fast, and is always performed as a preliminary step before inexact matching.</p>
+    <p>By default a maximum length difference of 10% is allowed between the merged read and the reference sequence. 
+        That is to say, the shorter sequence must be at least 90% the length of the longer sequence.</p>
+
+    <h2>Inexact matching</h2>
+    <p>As an optional feature for the genotyping pipeline, inexact matching can be used to allow for some differences between the merged sequences and the reference sequences.</p>
+    <p>Inexact matching is always done in two round, firstly against any expected sequences, and then against all remaining reference sequences.</p>
+    <p>This is partly done to improve performance, but also to avoid false positive detection against similar but unrelated sequences.</p>
+    <br/>
+    <p>Inexact matching uses the Bio.Align module from the Biopython library v1.85 to perform global (end-to-end) sequence alignment using the following parameters:</p>
+    <ul>
+        <li>aligner.mode = 'global'</li>
+        <li>aligner.open_gap_score = -2.0</li>
+        <li>aligner.extend_gap_score = -0.7</li>
+        <li>aligner.end_gap_score = -0.5</li>
+        <li>aligner.match_score = 3.5</li>
+        <li>aligner.mismatch_score = -1.0</li>
+    </ul>
+    <p>These parameters allow for a more flexible matching approach, accommodating sequencing errors and polymorphisms, which are then annotated after the best match is found.</p>
+    <p>In order to be declared a match, the alignment score must be 90% (by default) of the maximum possible score. This cutoff can be set in the interface before the matching is started.</p>
+    <p>Local alignment should not be used for amplicons in general, as it is likely to produce false matches against unrelated sequences.</p>
+    <p>The settings above are based on defaults values used in the BWA aligner by Heng Li, and are otherwise chosen empirically to fit with Illumina sequencing data.</p>
+    <br/>
+    <p>Inexact matching is always turned on with the amplicon pipeline, as we always want to find and report variants.</p>
+    <p>In any case, exact matching is always performed as a preliminary step as it's much faster, followed by inexact matching if necessary.</p>
+    <br/>
+    <a href="index.html">Back to index</a>
+</body>
+</html>

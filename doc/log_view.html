@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Activity Log and Viewer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: Activity Log and Viewer</h1> </div>
+    </div>
+    <h1>The NGSG Explorer Activity Log and Viewer</h1>
+
+    <h2>Activity log</h2>
+    <p>At the bottom of every page is an information panel displaying the activity log.</p>
+    <p><img src="images/info_viewer/log_view.png" alt="Activity log" class="med"></p>
+    <p>This is a crucial tool for tracking all actions taken within the experiment. It is possible to change the 
+        view from the log panel to another information panel type, and you can have a second panel visible too.
+        By default only the log is shown here to provide sufficient horizontal screen space.</p>
+    <p>The columns in the log display are (from left to right): Time, Level, Message, Function name, Func line.</p>
+    <ul>
+        <li>Time - the time and date the log entry was created</li>
+        <li>Level - the severity level of the log entry (e.g. info, warning, error)</li>
+        <li>Message - a descriptive message about the log entry</li>
+        <li>Function name - the name of the function where the log entry was generated</li>
+        <li>Func line - the programming line number in the function where the log entry was generated</li>
+    </ul>
+    <p>There is more information retained in each log entry than is displayed - this is mostly useful in finding and fixing any issues that arise.</p>
+    <br/>
+    <p>Message levels are used to indicate the severity of an issue.</p>
+    <ul>
+        <li>Info - informational messages providing general updates on events</li>
+        <li>Success - indicates successful completion of an action or stage</li>
+        <li>Failure - indicates a failed action or stage. These are not typically problematic</li>
+        <li>Warning - indicates a potential issue that may not stop the pipeline from running, such as insufficient primer volumes, but should be considered</li>
+        <li>Error - indicates an issue that will prevent the pipeline from running, such as missing files or incorrect file formats</li>
+        <li>Critical - indicates a severe issue that requires immediate attention, such as system failures or data corruption. 
+            These indicate that the pipeline is in an inconsistent state or has encountered a programming error. You should raise any critical issues immediately.</li>
+        <li>Debug - detailed information for debugging purposes - unlikely to be seen in regular use</li>
+    </ul>
+    <p>To aid users in spotting important issues, <span class="yellow"><b>warnings</b></span> are displayed in yellow, <span class="red"><b>errors</b></span> are displayed in red, 
+        and <span class="purple"><b>critical</b></span> messages are in purple.</p>
+    <p>You cannot remove or clear log entries.</p>
+    <br/>
+    <a href="index.html">Back to index</a>
+</body>
+</html>

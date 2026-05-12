@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Stage2 Hamilton Nimbus Robot</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: Stage 2 - Hamilton Nimbus Robot</h1> </div>
+    </div>
+    <h1>Stage 2: Hamilton Nimbus Robot</h1>
+    <p>The second stage of the NGS genotyping pipeline involves using the Hamilton Nimbus robot to perform plate aggregation from 96-well to 384-well format.</p>
+    <p><img src="images/stage_nimbus/nimbus_stage_download.png" alt="Nimbus stage download" class="sm"></p>
+    <p>After loading the necessary files in the Load stage, you can download the Hamilton Nimbus robot input files from the Nimbus stage page.</p>
+    <p>These files contain all the information needed for the robot to perform the plate aggregation step.</p> 
+    <p>You will need to generate the appropriate Nimbus inputs files by pressing the purple button labeled "<span class="purple">Generate Nimbus input files</span>". 
+        If files already exist then you will be asked whether you wish to overwrite them or not.</p>
+    <br/>
+    <p>If you haven't loaded the necessary files in the Load stage, you will see a message indicating this:</p>
+    <p><img src="images/stage_nimbus/Nimbus_warnings.png" alt="Nimbus stage no sample or assay files loaded" class="sm"></p>
+    <p>You are prompted to load the necessary files before proceeding, and a widget for uploading the assay-primer 
+        map file is made available if not yet loaded.</p>
+    <p>While the assay-map is not strictly required for the Nimbus robot, this information is needed to correctly 
+        generate the 384-well "DNA" plate records that are used as inputs for the next stage of the pipeline.</p>
+    <br/>
+    <p>After you have stepped away to run the Hamilton Nimbus robot, you can upload the resulting Echo_384_COC_ files back into the system.</p>
+    <p><img src="images/stage_nimbus/nimbus_stage_echo_upload.png" alt="Nimbus stage Echo COC file upload" class="sm"></p>
+    <p>These files contain the information about how the samples have been aggregated into 384-well format, and 
+        are necessary for the subsequent stages of the pipeline. The pipeline combines them with the 
+        information it already has to generate an internal representation of the 384-well "DNA" 
+        sample plates that now exist physically.</p>
+    <p>For each Nimbus upload file created, the pipeline will expect to see a corresponding Echo_384_COC_file uploaded, 
+        and will prompt you for each of them, though you can proceed to the next stage of the pipeline as long as one Echo_384_COC file has been uploaded.</p>
+    <br/>
+    <a href="index.html">Back to index</a>
+</body>
+</html>

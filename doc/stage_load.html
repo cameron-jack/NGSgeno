@@ -1,0 +1,84 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Load stage</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: Load Stage</h1> </div>
+    </div>
+    <h1>Stage 1: loading experiment files</h1>
+    <p>The first stage of the NGS genotyping pipeline involves loading the necessary experiment files into the system.</p>
+    <p>If you are not familiar with the interface, please refer to the <a href="new_experiment.html">new experiment</a> documentation first.</p>
+    
+    <br/>
+    <p><img src="images/stage_load/load_tabs.png" alt="Load tabs" class="sm"></p>  
+    <p>The <b>Load</b> stage has three tabs: <a href="#load-samples-tab">Load Samples</a>, <a href="#load-consumables-tab">Load Consumables</a>, and <a href="#load-amplicons-tab">Load Amplicons</a></p>
+
+    <h2 id="load-samples-tab">Load Samples</h2>
+    <p><img src="images/stage_load/load_stage_samples.png" alt="Load Stage: sample upload" class="sm"></p>
+    <p>Here we can see an example of an existing experiment with samples loaded. The default viewer panels are Samples and Files.</p>
+    <p>The Load Samples tab has three upload sections for different types of samples: Rodentity Ear-Punch Plates, 
+        Custom 96-Well Plates, and Custom 384-Well Plates (such as "DNA" plates from previous experiments).</p>
+    <br/>
+    
+    <p><b>Rodentity Ear-Punch Plates</b></p>
+    <p><img src="images/stage_load/upload_rodentity_epp.png" alt="Rodentity file upload" class="sm"></p>
+    <p>The main input widget for working with Rodentity ear-punch plates (EPP) is shown above. The user should 
+        have first downloaded the appropriate earch punch plate JSON file from Rodentity, and can then 
+        upload it for NGS Explorer here. The user can upload four JSON files at a time, representing four 
+        different ear-punch plates.</p>
+    <p>Uploading plates will cause the four slots below that to be filled with the corresponding plate ID.</p>
+    <p>Once sufficient plates are loaded, the user can assign a 384-DNA plate ID for these EPPs to be 
+        combined into using the Hamilton Nimbus robot. This is required for the subsequent stages of the pipeline.</p>
+    <br/>
+
+    <p><b>Custom 96-Well Plates</b></p>
+    <p><img src="images/stage_load/upload_custom_manifest.png" alt="Custom 96-well plate upload" class="sm"></p>
+    <p>The main input widget for working with custom 96-well plates is shown above. The user can upload 
+        a CSV file containing the sample information for each well.</p>
+    <p>Any number of custom 96-well plate manifests can be loaded at once, each of which may detail any
+         number of 96-well sample plates.</p>
+    <p>Under the upload button is a set of four drop-down selectors that let the user specify up to four 
+        plates to combine into a single 384-well "DNA" plate.</p>
+    <p>To the right is a text box for typing in a unique plate ID for the combined "DNA" plate, to be 
+        created using the Hamilton Nimbus robot.</p>
+    <br/>
+
+    <p><b>Custom 384-Well Plates</b></p>
+    <p><img src="images/stage_load/upload_384_well_manifest.png" alt="Custom 384-well plate upload" class="sm"></p>
+    <p>The main input widget for working with custom 384-well plates is shown above. Since these are already in 
+        the 384-well format, they do not need to be combined using the Hamilton Nimbus robot.</p>
+    <p>At the bottom right you will see a text button encouraging you to save your progress. 
+        If you close the browser window without saving, you will lose your progress.</p>
+    <br/>
+
+    <h2 id="load-consumables-tab">Load Consumables</h2>
+    <p><img src="images/stage_load/load_stage_consumables.png" alt="Load Stage: consumable upload" class="sm"></p>
+    <p>Here we can see an example of an existing experiment with consumables loaded. The default viewer panels are Consumables and Files.</p>
+    <p>There are four widgets for uploading/setting consumable information (from top to bottom): 
+        Reference/Assay files, Primer files, Index files, Custom volume transfers</p>
+    <p><b>Reference/Assay Files</b> - see the File Formats documentation page for details on the required formats.</p>
+    <p><img src="images/stage_load/stage1_upload_reference_assays.png" alt="reference/assay file upload" class="sm"></p>
+    <p><b>Primer Files</b> - layout and volume files are needed for each primer plate. See the File Formats documentation page for details.</p>
+    <p><img src="images/stage_load/stage1_upload_primer.png" alt="primer file upload" class="sm"></p>
+    <p><b>Index Files</b> - layout and volume files are needed. These should be standard file used in every run, but see the File Formats documentation page for details.</p>
+    <p><img src="images/stage_load/stage1_upload_index.png" alt="index file upload" class="sm"></p>
+    <p><b>Custom Volume Transfers</b> - do not adjust these unless specifically instructed. Changes are noted in the log.</p>
+    <p><img src="images/stage_load/stage1_custom_volumes.png" alt="custom volume transfer settings" class="sm"></p>
+    <p>And don't forget to save your pipeline progress!</p>
+    <p><img src="images/stage_load/save_progress.png" alt="Save progress" class="vsm"></p>
+    <br/>
+
+    <h2 id="load-amplicons-tab">Load Amplicons</h2>
+    <p><img src="images/stage_load/load_stage_amplicons.png" alt="Load Stage: amplicon upload" class="sm"></p>
+    <p>Here we can see an example of an existing experiment with amplicons loaded. The default viewer panels are Samples (including Amplicons) and Files.</p>
+    <p><img src="images/stage_load/upload_amplicons.png" alt="Amplicon file and reference upload" class="sm"></p>
+    <p>Any number of 384-well amplicon manifest files can be uploaded at once. 
+        Each amplicon reference file uploaded can be selected separately later to customise amplicon matching (in the Allele stage).</p>
+    <br/>
+    <a href="index.html">Back to index</a>
+</body>
+</html>

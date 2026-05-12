@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Stage7 Reporting</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: Stage 7 - Reporting</h1> </div>
+    </div>
+    <h1>Stage 7: Reporting</h1>
+    <p>The seventh stage of the NGS genotyping pipeline displays reduced column summary tables of results from the Allele stage.</p>
+    <p>For the Amplicon pipeline, it also allows multiple sequence alignments to be viewed, filtered for relevance, and then saved to a PDF document.</p>
+    <p><img src="images/stage_reports/report_stage.png" alt="Reporting stage download" class="med"></p>
+    <p>There are two tabs: 1) "Sequencing Results" for Rodentity, Custom and "Other" (amplicons that might be from Rodentity, or otherwise use the standard pipeline), and 2) "Amplicon Results" for Amplicons plates that were run through the Amplicon workflow.</p>
+    <p>The info viewer is set to show Files and Samples, but likely users will want to turn it off to focus on the result tables.</p>
+    <br/>
+    <h2>Sequencing Results</h2>
+    <p>This tab displays the sequencing results for Rodentity, Custom, and "Other" samples.</p>
+    <p><img src="images/stage_reports/report_sequencing_results.png" alt="Sequencing results" class="med"></p>
+    <p>Each table says "Unreported" in the header, but that's because this pipeline simply have that need. Let's look at the columns in the table.</p>
+    <ol>
+        <li><b>samplePlate</b>: the name of the sample, as entered in the Load stage</li>
+        <li><b>sampleWell</b>: the well that the sample was loaded into in the Load stage</li>
+        <li><b>sampleBarcode</b>: the barcode of the sample, as entered in the Load stage</li>  
+        <li><b>primer</b>: the primer used for the sequencing reaction</li>
+        <li><b>readCount</b>: the number of raw reads observed for the sample</li>
+        <li><b>mergeCount</b>: the number of merged reads observed for the sample</li>
+        <li><b>seqCount</b>: semicolon separated list of the number of merged reads matched against an expected and recognised reference sequence</li>
+        <li><b>seqName</b>: semicolon separated list of names of the reference sequences, corresponding to the counts in the previous column</li>
+        <li><b>efficiency</b>: the efficiency of the sequencing reaction, as measured by the proportion of reads assigned to the expected reference sequences for the given primer</li>
+        <li><b>otherCount</b>: semicolon separated list of the number of reads that did not match an expected reference sequence</li>
+        <li><b>otherName</b>: semicolon separated list of names or merged sequences that did not match the expected primer options, but were still seen in significant quantities. Note that "Other" refers to the collection of all other sequences that were seen in insignificant quantities individually, but the sum total is large enough to be significant. The number of different observed sequences is given in parentheses</li>
+        <li><b>filtProportion</b>: a proportional cutoff for the listing of observed sequences</li>
+    </ol>
+    <p>Tables can be ordered by any column (just click on them), and can be ascending or decending.</p>
+    <br/>
+    <p>It is important to remember that this table shows many less columns of information than are actually available to the user.</p>
+    <p><img src="images/stage_reports/reports_customise_table.png" alt="Customise table" class="vsm"></p>
+    <p>By right-clicking on the column headers you can customise the table to display different column choices. Here is a list of the columns that aren't displayed by default:</p>
+    <ol>
+        <li><b>sampleNo</b>: the sample number, as assigned at indexing</li>
+        <li><b>strain</b>: the organismal strain of the sample</li>
+        <li><b>sex</b>: the sex of the sample</li>
+        <li><b>alleleSymbol</b>: from Rodentity (text)</li>
+        <li><b>alleleKey</b>: from Rodentity (numeric)</li>
+        <li><b>assayKey</b>: from Rodentity (numeric)</li>
+        <li><b>assays</b>: from Rodentity (text)</li>
+        <li><b>assayFamilies</b>: linking assays and primers for a complex genotype</li>
+        <li><b>clientName</b>: the name of the client associated with the sample</li>
+        <li><b>sampleName</b>: a descriptive name for the sample</li>
+        <li><b>dnaPlate</b>: the name of the DNA plate to which the sample belongs</li>
+        <li><b>dnaWell</b>: the well in the DNA plate to which the sample belongs</li>
+        <li><b>primerPlate</b>: the plate containing the primer associated with this sample entry</li>
+        <li><b>primerWell</b>: the corresponding well in the primerPlate for the given primer</li>
+        <li><b>pcrPlate</b>: the final Echo PCR plate into which the specific combination of sample and primer were dispensed</li>
+        <li><b>pcrWell</b>: the well in the PCR plate used by the this sample/primer combination</li>
+        <li><b>i7bc</b>: the i7 forward index barcode</li>
+        <li><b>i7name</b>: the name associated with the i7 forward barcode</li>
+        <li><b>i7well</b>: the well for the i7 forward index used with this sample</li>
+        <li><b>i5bc</b>: the i5 reverse index barcode</li>
+        <li><b>i5name</b>: the name associated with the i5 reverse barcode</li>
+        <li><b>i5well</b>: the well for the i5 reverse index used with this sample</li>
+        <li><b>index_plate</b>: the plate barcode containing the i7 and i5 index barcodes</li>
+        <li><b>cleanCount</b>: the number of reads passing base quality and length trimming</li>
+    </ol>
+    <p>A reminder that the table entries can be copied in a nice format and exported if required:</p>
+    <p><img src="images/stage_reports/reports_export_table.png" alt="Pretty export with right click menu" class="vsm"></p>   
+    <br/>
+
+    <h2>Amplicon Results</h2>
+    <p>This tab displays the amplicon results for samples that were run through the Amplicon workflow.</p>
+    <p>It has its own tab because it supports additional features specific to the Amplicon workflow. Notably the ability to perform multiple sequence alignments of the observed sequences. These can filtered out using the adjustable proportion filter (this is the only column that supports changing the values in each row).</p>
+    <p><img src="images/stage_reports/report_amplicon_results.png" alt="Amplicon results and multiple sequence alignment", class="med"></p>
+    <p>Clicking on a row to select it will open an additional table underneath that show the variants (if any) that pass the filtProportion cutoff.</p>
+    <p>These are sent to multiple sequence alignment and displayed (in non-monospace font due to graphics restrictions). These can be further down-selected using the checkboxes at left, and a description added in the available text box.</p>
+    <p>Then clicking "Make report entry" will add them to a PDF report file (named amplicon_alignments.pdf) containing aligned sequences for each chosen sample.</p>
+    <p>Once a sample has been added to the report, it is removed from the "Unreported amplicon" table and placed in a new table at bottom named "Reported amplicons".</p>
+    <p>Currently (v2.04.000) it isn't possible to remove individual amplicons from the report PDF, but you can choose to reset the amplicon report PDF using the "Reset amplicon report" button underneath this table.</p>
+    <p><img src="images/stage_reports/report_amplicon_alignments.pdf.png" alt="Amplicon multiple sequence alignment PDF report" class="med"></p>
+    <p>This is a sample of the report PDF that is generated. Each sample gets its own page for clarity. Standard usage is to copy these into another document for final markup.</p>
+    <br/>
+    <a href="index.html">Back to index</a>
+</body>
+</html>

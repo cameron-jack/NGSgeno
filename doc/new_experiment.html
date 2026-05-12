@@ -1,0 +1,85 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: New experiments and standard features of the interface</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation</h1> </div>
+    </div>
+    <h1>The NGSG Explorer screen with a New Experiment</h1>
+    <p>The first stage of the NGS genotyping pipeline involves loading the necessary experiment files into the system. It is the first view a user gets when they create a new experiment.</p>
+    <p><img src="images/stage_load/new_experiment.png" alt="New Experiment" style="max-width: min(100%, 70vw); height: auto;" border="1"></p>
+    <p>This is what a new experiment looks like when first created. Let's explain the different components.</p>
+    
+    <h2>Logo region</h2>
+    <p>At the top left is the logo, version number, and currently loaded experiment name.</p>
+    <p><img src="images/stage_load/logo_region.png" alt="Logo region, version number, and experiment name" class="vsm"></p>
+    <p>There are also buttons for returing to the home/start screen, and for saving the current experiment.</p>
+    <p>Saving the experiment will preserve all changes made to the experiment and allow you to reopen it at a later time. If you close the browser window without saving, you will likely lose your changes.</p>
+
+    <h2>Pipeline widget</h2>
+    <p>At the top right is a pipeline widget for navigating between different stages of the pipeline. The current stage is indicated by the right-most purple number.</p>
+    <p><img src="images/stage_load/pipeline_widget.png" alt="Pipeline widget" class="sm"></p>
+    
+    <h2>Stage tabs</h2>
+    <p>Below, and to the left are page tabs for different sections of the load stage.</p>
+    <p><img src="images/stage_load/load_tabs.png" alt="Load tabs" class="sm"></p>  
+    <p>The <b>Load</b> stage has three tabs: Load Samples, Load Consumables, Load Amplicons</p>
+
+    <h2>Information panels</h2>
+    <p>To the right, and below the tabs, are the controls and display areas for a pair of information panels.</p>
+    <p><img src="images/info_viewer/info_viewer.png" alt="Information panels" class="sm"></p>
+    <p>You can <a href="info_viewer.html">read more about the various information panels</a>, but for now you should know that these viewers default to panels 
+        considered most appropriate for the selected stage and tab.</p>
+    <p>Appropriate panels can be used to select files and plates that have been loaded, and remove them from the experiment.</p>
+    <p>It is also possible to adjust the height of the viewer, or turn it off completely with the checkbox on the far right of the screen.</p>
+
+    <h2>Stage- and tab-specific content</h2>
+    <p>Each stage and tab has its own specific content and controls. The Load stage has three tabs, and each tab will display different file upload options</p>
+    <img src="images/stage_load/upload_rodentity_epp.png" alt="File upload options" class="med">
+    <p>For example, here is the file upload interface to Rodentity Ear Punch Plates, specific to the Load Samples tab.</p>
+    <p>You can find out how each of these works in the appropriate stage documentation.</p>
+
+    <h2>Save your progress!</h2>
+    <p><img src="images/stage_load/save_progress.png" alt="Save progress" class="vsm"></p>
+    <p>Don't forget to save your progress regularly! Saving will preserve all changes made to the experiment and allow you to reopen it at a later time.</p>
+    <p>If you close the browser window without saving, you will likely lose your changes. That includes any files that have been uploaded or generated using the pipeline.</p>
+    <p>The pipeline is designed to be rigorous and reliable, so if it detects files in the experiment folder with an expected name, that aren't recorded in the experiment records, it will delete them.</p>
+
+    <h2>Activity log</h2>
+    <p>At the bottom of every page is another information panel displaying the activity log.</p>
+    <p><img src="images/info_viewer/log_view.png" alt="Activity log" class="med"></p>
+    <p>This is a crucial tool for tracking all actions taken within the experiment. It is possible to change the 
+        view from the log panel to another information panel type, and you can have a second panel visible too.
+        By default only the log is shown here to provide sufficient horizontal screen space.</p>
+    <p>The columns in the log display are (from left to right): Time, Level, Message, Function name, Func line.</p>
+    <ul>
+        <li>Time - the time and date the log entry was created</li>
+        <li>Level - the severity level of the log entry (e.g. info, warning, error)</li>
+        <li>Message - a descriptive message about the log entry</li>
+        <li>Function name - the name of the function where the log entry was generated</li>
+        <li>Func line - the programming line number in the function where the log entry was generated</li>
+    </ul>
+    <p>Message levels are used to indicate the severity of an issue.</p>
+    <ul>
+        <li>Info - informational messages providing general updates on events</li>
+        <li>Success - indicates successful completion of an action or stage</li>
+        <li>Failure - indicates a failed action or stage. These are not typically problematic</li>
+        <li>Warning - indicates a potential issue that may not stop the pipeline from running, such as insufficient primer volumes, but should be considered</li>
+        <li>Error - indicates an issue that will prevent the pipeline from running, such as missing files or incorrect file formats</li>
+        <li>Critical - indicates a severe issue that requires immediate attention, such as system failures or data corruption. 
+            These indicate that the pipeline is in an inconsistent state or has encountered a programming error. You should raise any critical issues immediately.</li>
+        <li>Debug - detailed information for debugging purposes - unlikely to be seen in regular use</li>
+    </ul>
+    <p>To aid users in spotting important issues, <span class="yellow"><b>warnings</b></span> are displayed in yellow, <span class="red"><b>errors</b></span> are displayed in red, 
+        and <span class="purple"><b>critical</b></span> messages are in purple.</p>
+    <p>You cannot remove or clear log entries.</p>
+
+    <br/>
+    <a href="index.html">Back to index</a>
+    
+</body>
+</html>

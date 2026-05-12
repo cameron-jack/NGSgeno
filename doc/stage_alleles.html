@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NGSG Docs: Stage6 Allele Calling and Counting</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="headerElement">
+        <div> <img src="images/ngsg_icon.png" width="30px"> </div>
+        <div> <h1 style="margin-left: 10px;">NGS Genotyping Pipeline Documentation: Stage 6 - Allele Calling and Counting</h1> </div>
+    </div>
+    <h1>Stage 6: Allele Calling and Counting</h1>
+    <p>The sixth stage of the NGS genotyping pipeline involves calling and counting alleles from the sequencing data.</p>
+    <p><img src="images/stage_alleles/alleles.png" alt="Allele stage download" class="med"></p>
+    <p>There are two tabs at the Alleles stage - "Allele Calling for Rodentity Mice" and "Amplicon Calling for custom amplicons"</p>
+    <p>The upper info viewer panels default to Files and Plates as the most relevant items to track, but it's unlikely to be very useful in practice here.</p>
+    <br/>
+    <h2>Allele Calling for Rodentity Mice</h2>
+    <p>This is the main NGS Genotyping pipeline tab for calling (identifying and counting) sequences for each sample/assay well.</p>
+    <p><img src="images/stage_alleles/alleles_genotyping_fastqs.png" alt="Count raw sequences in FASTQ sequencing files" class="med"></p>
+    <p>The first widget displays the first and last (alphanumerically ordered) FASTQ file that have been manually copied to the "raw" subfolder within the experiment/run folder.</p>
+    <p>There is also a button here which will launch a count all the available raw sequences in the FASTQ files, which is a useful indicator of overall sequencing success.</p>
+    <p>It may take a few minutes to count all the sequences seen in a large genotyping run with thousands of files. Here is an example of the counts progressing:</p>
+    <p><img src="images/stage_alleles/alleles_genotyping_fastq_counting.png" alt="Sequence counting in progress" class="med"></p>
+    <p>You can see in this example that there are also messages announcing that the "targets.fa" and "primers.csv" files have been created. These are required by the allele calling process.</p>
+    <br/>
+    <p><img src="images/stage_alleles/alleles_genotyping_calling.png" alt="Allele calling settings" class="med"></p>
+    <p>Next is the panel of options for the allele calling process. Before we discuss each option, here's a quick explanation about what happens when the "Run allele calling" button is pressed</p>
+    <ol>
+        <li>All paired-end FASTQ sequence record (two files per well) are trimmed of low quality bases, and short reads are filtered out</li>
+        <li>Clean paired sequences are merged. Unmerged reads are saved, but not included in later processing</li>
+        <li>Merged sequences are matched against the reference sequences expected for them given the primers that were used</li>
+        <li>If a particular merged sequence wasn't seen at least 5 times, or has less 10% of the most common expected sequence (using the default parameters) then it is skipped to save time</li>
+        <li>By default sequences must exactly match the expected reference sequence. They can be a little shorter, or longer, but the overlapping majority must be identical</li>
+        <li>A results.csv file is created that contains all the wells that were expected and had a matching pair of FASTQ sequence files</li>
+    </ol>    
+    <p>With that in mind, let's go over these options:</p>
+    <ul>
+        <li><b>Select references to match against</b>: a drop-down box containing possible reference sequence files to match against</li>
+        <li><b>Number of processes to run simultaneously, default 8</b>: number of matching processes to run simultaneously. For best performance it should be close to the number of physical CPUs/processors availabe in the computer</li>
+        <li><b>Require lengths of read sequences and target references to be proportionally similar by this amount. Value must be between 0.0 and 1.0, default 0.9</b>: when matching against a given reference sequence, the two must of a similar length e.g. the observed sequence must be 90% the length of reference sequence or vice versa</li>
+        <li><b>Proportion of identity required for inexact match, default 0.9. Must be between 0.0 and 1.0</b>: Only applicable if inexact matching is enabled (checkbox below). This is the similarity score (normalised between 0.0 and 1.0) as calculated by the algorithm (see the technical section for more details)</li>
+        <li><b>Do not match unique sequences with less than this many reads coverage, default 5</b>: If there are an insufficient number of reads for an observed sequence, skip it as noise</li>
+        <li><b>Do not match unique sequences with less than this proportion of the reads seen for the most observed (expected) allele, default 0.1. Must be between 0.0 and 1.0</b>: If the expected allele sequence is seen 1000x in the pool of sequences for this well, then any sequence with less than 100x (0.1 of 1000x) is considered to be noise and not checked</li>
+        <li><b>Enable inexact matching</b>: (checkbox) enables inexact matching of sequences that do not match exactly to any reference sequence</li>
+        <li><b>Exhaustive mode: try to match every sequence, no matter how few counts</b>: Overrides the proportion and minimum read coverage cutoffs. Very slow!</li>
+        <li><b>Turn on debugging for allele calling</b>: very, very slow! This records a steady stream of progress notes from different stages of allele calling to a single file called "debug.log" that is saved in the experiment folder. It may be requested if the allele calling fails to run, but is usually only used during development</li>
+    </ul>
+    <p>The values for these parameters reset to the defaults after every calling run.</p>
+    <p>If you are still unclear about the meaning of any of these settings you can read the technical details page for allele calling/matching, but it's probably better to trust the defaults</p>
+    <br/>
+    <p>When you are ready, click the button labelled "Allele calling"</p>
+    <p>You will soon see a progress bar widget that displays both the assignment of tasks to available computational processes, and another bar showing the actual task completion.</p>
+    <p><img src="images/stage_alleles/alleles_progress_bar.png" alt="Progress bars for tasks launched, and tasks completed" class="sm"></p>
+    <p>Depending on your settings it can take a few minutes to exact match a full set of mouse genotypes, and 10-15 minutes if also inexact matching.</p>
+
+    <h2>Amplicon Calling for custom amplicons</h2>
+    <p>Amplicon calling is slightly different from regular genotyping in that it always uses inexact matching to let clients explore the variety of sequences that may be present across an amplicon locus.</p>
+    <p>The interface is also designed around an expectation that there could be amplicon plates present from different clients simultaneously, each requiring a different reference to match against.</p>
+    <p><img src="images/stage_alleles/alleles_amplicon_reference_upload.png" alt="Amplicon reference upload widget" class="med"></p>
+    <p>The first widget here is for uploading an extra amplicon reference files that might be needed for matching.</p>
+    <p><img src="images/stage_alleles/alleles_amplicon_plate_selection.png" alt="Select amplicon plates and reference for matching" class="med"></p>
+    <p>Next users can chose the combination of amplicon plates and references that are to be matched.</p>
+    <p>Amplicon matching options are essentially the same as for the genotyping workflow, with the only real change being that inexact matching is always performed for alleles.</p>
+    <p>Please refer to the Allele calling tab detailed above for descriptions of the calling options.</p>
+    <p><img src="images/stage_alleles/alleles_amplicon_calling.png" alt="Amplicon calling options" class="med"></p>
+    <p>Once you have set an parameters required, click on "Run amplicon calling" to launch the processing of amplicon sequences.</p>
+    <p>The progress bars are the same as for the genotyping workflow:</p>
+    <p><img src="images/stage_alleles/alleles_amplicon_progress.png" alt="progress bar" class="sm"></p>
+    <p>Those with sharp eyes will notice some differences in the command line that is displayed compared to the genotyping command line</p>
+    <p>Each amplicon plate may take approximately one minute to process</p>
+    <br/>
+
+    <a href="index.html">Back to index</a>
+</body>
+</html>
