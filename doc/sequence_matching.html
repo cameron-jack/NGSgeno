@@ -24,7 +24,7 @@
     <ol>
         <li>All paired-end FASTQ sequence record (two files per well) are trimmed of low quality bases, and short reads are filtered out</li>
         <li>Clean paired sequences are merged. Unmerged reads are saved, but not included in later processing</li>
-        <li>Merged sequences are matched against the reference sequences expected for them given the primers that were used</li>
+        <li>Merged sequences are matched against the reference sequences expected for them given the primers (assays in the amplicon pipeline) that were used</li>
         <li>If a particular merged sequence wasn't seen at least 5 times, or has less 10% of the most common expected sequence (using the default parameters) then it is skipped to save time</li>
         <li>By default sequences must exactly match the expected reference sequence. They can be a little shorter, or longer, but the overlapping majority must be identical</li>
         <li>A results.csv file is created that contains all the wells that were expected and had a matching pair of FASTQ sequence files</li>

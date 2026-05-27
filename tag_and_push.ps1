@@ -1,20 +1,10 @@
-$VER = "v2.04.000"
+$VER = "v2.04.001"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* New: Help launched in separate tab, with more detailed instructions and screenshots
-* New: HTML documentation and PDF generation with a doc folder
-* New: NGSG Retype and NGSG Reference now added to core repository
-* New: pydocgen.py script to generate HTML documentation from docstrings (API documentation)
-* Changed: NGSG Version Select now runs on port 9222
-* Changed: NGSG Reference now runs on port 9224
-* Changed: NGSG Retype now runs on port 9225
-* Changed: NGSG Retype now displays a message in the right-hand panel if no assays are found to need retyping
-* Changed: all code is now in the src folder, instead of bin, with a single entry point in the root folder
-* Changed: each pipeline stage is now in its own file in the src folder
-* Changed: add_css function moved from display_components to stutil
-* Fixed: simplified jsonpickle experiment loading
-* Fixed: typo in code that collates already reported wells at the Report stage
+* Fixed: amplicon arguments from stage_alleles were not being passed to ngsmatch
+* Fixed: amplicon reference names were being determined by primer, not assays, as they should have been
+* Fixed: amplicon reference names were taken exactly, rather than just the prefix before underscore 
 * NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment

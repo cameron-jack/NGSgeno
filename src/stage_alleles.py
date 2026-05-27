@@ -4,7 +4,7 @@ import info_viewer as iv
 from stutil import init_state, m, mq, add_vertical_space, hline, unlocked
 import display_components as dc
 from generate import run_generate, generate_targets, generate_primer_assayfams
-from util import unguard_pbc
+from util import unguard_pbc, guard_pbc
 import os, sys, subprocess
 from pathlib import Path
 
@@ -231,8 +231,9 @@ def stage_alleles(exp, main_body_container, upper_container, message_container):
                     if debug_mode:
                         cmd_str += ' --debug'
                     if selected_pids['amplicon']:
+                        cmd_str += ' --amplicons'
                         for pid in selected_pids['amplicon']:
-                            cmd_str += f' --amplicons {",".join(selected_pids["amplicon"])}'
+                            cmd_str += f' {guard_pbc(pid, silent=True)}'
                         cmd_str += f' --targets amplicon_targets.fa'
                         m(f'{cmd_str}', level='info')
                         st.write(f'Calling {cmd_str}')

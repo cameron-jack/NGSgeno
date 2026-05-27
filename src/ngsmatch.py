@@ -1035,7 +1035,10 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
         asyncio.run(wdb(msg, rundir, debug, lock_d))
                 
     # if we get an unknown primer then we should run archetypes and call it a day?
-    primer = wr.get('primer', 'No_primer')
+    if amplicon_run:
+        primer = wr.get('assays', 'No_primer')
+    else:
+        primer = wr.get('primer', 'No_primer')
     if not amplicon_run and primer not in primer_assayfam:
         msg = f'Warning: primer {primer} unknown'
         lrecs.append(msg)
@@ -1050,7 +1053,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
    
     if amplicon_run:
         for name in id_seq:
-            if primer.lower() in name.lower():
+            if name.lower().startswith(primer.split('_')[0].lower() + '_'):
                 # no worrying about splitting names here
                 on_target_ids.add(name)
                 on_target_seqs.add(id_seq[name])
