@@ -1,10 +1,8 @@
-$VER = "v2.04.001"
+$VER = "v2.04.002"
 $DATE = "Date: {0}" -f (Get-Date)
 
 $COMMENT = @"
-* Fixed: amplicon arguments from stage_alleles were not being passed to ngsmatch
-* Fixed: amplicon reference names were being determined by primer, not assays, as they should have been
-* Fixed: amplicon reference names were taken exactly, rather than just the prefix before underscore 
+* Fixed: sequence reference names were expected to have a '_' after the primer name, but some did not. Now we just check that the sequence name starts with the primer name. 
 * NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
 * TODO: coloured text in PDF report
 * TODO: changing included variants in the alignment table does not redo the alignment

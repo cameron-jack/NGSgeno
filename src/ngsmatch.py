@@ -1053,7 +1053,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
    
     if amplicon_run:
         for name in id_seq:
-            if name.lower().startswith(primer.split('_')[0].lower() + '_'):
+            if name.lower().startswith(primer.split('_')[0].lower()):
                 # no worrying about splitting names here
                 on_target_ids.add(name)
                 on_target_seqs.add(id_seq[name])
@@ -1063,7 +1063,7 @@ def process_well(work_block, wr, rundir, seq_ids, id_seq, primer_assayfam, assay
         off_target_seqs = set(list(seq_ids.keys())).difference(on_target_seqs)
     else:  # genotyping
         for name in id_seq:
-            if name.lower().startswith(primer.split('_')[0].lower() + '_'):
+            if name.lower().startswith(primer.split('_')[0].lower()):
                 on_target_ids.add(name)
                 on_target_seqs.add(id_seq[name])
             else:

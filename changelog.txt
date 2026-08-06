@@ -1,3 +1,10 @@
+v2.04.002
+Date: 6/08/2026 3:57:33 PM
+* Fixed: sequence reference names were expected to have a '_' after the primer name, but some did not. Now we just check that the sequence name starts with the primer name. 
+* NOTE: Do not try to use multithreading in Streamlit, you cannot hold thread handles in event driven code
+* TODO: coloured text in PDF report
+* TODO: changing included variants in the alignment table does not redo the alignment
+
 v2.04.001
 Date: 28/05/2026 4:54:54 AM
 * Fixed: amplicon arguments from stage_alleles were not being passed to ngsmatch
